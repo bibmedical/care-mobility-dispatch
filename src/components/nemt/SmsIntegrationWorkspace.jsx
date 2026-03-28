@@ -1,0 +1,324 @@
+'use client';
+
+import PageTitle from '@/components/PageTitle';
+import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
+
+const surfaceStyles = {
+  card: {
+    backgroundColor: '#171b27',
+    borderColor: '#2a3144',
+    color: '#e6ecff'
+  },
+  input: {
+    backgroundColor: '#101521',
+    borderColor: '#2a3144',
+    color: '#e6ecff'
+  },
+  button: {
+    backgroundColor: '#101521',
+    borderColor: '#2a3144',
+    color: '#e6ecff'
+  }
+};
+
+const PROVIDER_LABELS = {
+  disabled: 'Disabled',
+  twilio: 'Twilio',
+  telnyx: 'Telnyx',
+  ringcentral: 'RingCentral',
+  mock: 'Mock'
+};
+
+const PROVIDER_PORTALS = {
+  twilio: 'https://console.twilio.com/',
+  telnyx: 'https://portal.telnyx.com/',
+  ringcentral: 'https://developers.ringcentral.com/'
+};
+
+const buildBlankDraft = () => ({
+  activeProvider: 'disabled',
+  defaultCountryCode: '1',
+  confirmationTemplate: 'Hello {{rider}}, this is Care Mobility about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
+  groupTemplates: {
+    AL: '',
+    BL: '',
+    CL: '',
+    A: '',
+    W: '',
+    STR: ''
+  },
+  webhookBaseUrl: '',
+  notes: '',
+  lastValidatedAt: '',
+  lastInboundAt: '',
+  twilio: {
+    accountSid: '',
+    authToken: '',
+    messagingServiceSid: '',
+    fromNumber: '',
+    connectionStatus: 'Not configured'
+  },
+  telnyx: {
+    apiKey: '',
+    messagingProfileId: '',
+    fromNumber: '',
+    connectionStatus: 'Not configured'
+  },
+  ringcentral: {
+    clientId: '',
+    clientSecret: '',
+    serverUrl: 'https://platform.ringcentral.com',
+    accessToken: '',
+    extension: '1',
+    fromNumber: '',
+    connectionStatus: 'Not configured'
+  },
+  mock: {
+    enabled: true,
+    connectionStatus: 'Ready for local testing'
+  },
+  optOutList: []
+});
+
+const getProviderReadiness = draft => {
+  if (draft.activeProvider === 'disabled') return 'Provider disabled';
+  if (draft.activeProvider === 'twilio') {
+    const ready = Boolean(draft.twilio.accountSid && draft.twilio.authToken && (draft.twilio.messagingServiceSid || draft.twilio.fromNumber));
+    return ready ? 'Ready' : 'Missing Twilio credentials';
+  }
+  if (draft.activeProvider === 'telnyx') {
+    return draft.telnyx.apiKey && draft.telnyx.fromNumber ? 'Ready' : 'Missing Telnyx credentials';
+  }
+  if (draft.activeProvider === 'ringcentral') {
+    return draft.ringcentral.accessToken && draft.ringcentral.fromNumber && draft.ringcentral.serverUrl ? 'Ready' : 'Missing RingCentral credentials';
+  }
+  if (draft.activeProvider === 'mock') return 'Ready for local testing';
+  return 'Unknown provider';
+};
+
+const SmsIntegrationWorkspace = () => {
+  const { data, loading, saving, error, refresh, saveData } = useSmsIntegrationApi();
+  const [draft, setDraft] = useState(buildBlankDraft());
+  const [message, setMessage] = useState('Configura el proveedor SMS activo y deja listos los webhooks para recibir respuestas del paciente.');
+  const [optOutName, setOptOutName] = useState('');
+  const [optOutPhone, setOptOutPhone] = useState('');
+  const [optOutReason, setOptOutReason] = useState('No automatic confirmation');
+
+  useEffect(() => {
+    if (!data?.sms) return;
+    setDraft({
+      ...buildBlankDraft(),
+      ...data.sms,
+      groupTemplates: {
+        ...buildBlankDraft().groupTemplates,
+        ...data.sms.groupTemplates
+      },
+      twilio: {
+        ...buildBlankDraft().twilio,
+        ...data.sms.twilio
+      },
+      telnyx: {
+        ...buildBlankDraft().telnyx,
+        ...data.sms.telnyx
+      },
+      ringcentral: {
+        ...buildBlankDraft().ringcentral,
+        ...data.sms.ringcentral
+      },
+      mock: {
+        ...buildBlankDraft().mock,
+        ...data.sms.mock
+      }
+    });
+  }, [data]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setDraft(current => current.webhookBaseUrl ? current : {
+      ...current,
+      webhookBaseUrl: window.location.origin
+    });
+  }, []);
+
+  const activeWebhookUrl = useMemo(() => {
+    if (!draft.webhookBaseUrl || draft.activeProvider === 'disabled' || draft.activeProvider === 'mock') return '';
+    return `${draft.webhookBaseUrl.replace(/\/$/, '')}/api/integrations/sms/${draft.activeProvider}/webhook`;
+  }, [draft.activeProvider, draft.webhookBaseUrl]);
+
+  const readiness = useMemo(() => getProviderReadiness(draft), [draft]);
+
+  const handleSave = async nextDraft => {
+    try {
+      const payload = await saveData({
+        sms: nextDraft
+      });
+      setDraft(payload.sms);
+      setMessage('Configuracion SMS guardada.');
+    } catch {
+      return;
+    }
+  };
+
+  const handleValidate = async () => {
+    const nextDraft = {
+      ...draft,
+      lastValidatedAt: new Date().toISOString(),
+      twilio: {
+        ...draft.twilio,
+        connectionStatus: draft.twilio.accountSid && draft.twilio.authToken && (draft.twilio.messagingServiceSid || draft.twilio.fromNumber) ? 'Ready' : 'Missing Twilio credentials'
+      },
+      telnyx: {
+        ...draft.telnyx,
+        connectionStatus: draft.telnyx.apiKey && draft.telnyx.fromNumber ? 'Ready' : 'Missing Telnyx credentials'
+      },
+      ringcentral: {
+        ...draft.ringcentral,
+        connectionStatus: draft.ringcentral.accessToken && draft.ringcentral.fromNumber && draft.ringcentral.serverUrl ? 'Ready' : 'Missing RingCentral credentials'
+      },
+      mock: {
+        ...draft.mock,
+        connectionStatus: draft.mock.enabled ? 'Ready for local testing' : 'Disabled'
+      }
+    };
+    await handleSave(nextDraft);
+  };
+
+  const handleCopyWebhook = async () => {
+    if (!activeWebhookUrl || typeof navigator === 'undefined') return;
+    await navigator.clipboard.writeText(activeWebhookUrl);
+    setMessage('Webhook copiado. Pegalo tal cual en el proveedor SMS activo.');
+  };
+
+  const handleOpenProvider = () => {
+    const providerUrl = PROVIDER_PORTALS[draft.activeProvider];
+    if (providerUrl && typeof window !== 'undefined') {
+      window.open(providerUrl, '_blank', 'noopener,noreferrer');
+      setMessage(`Se abrio ${PROVIDER_LABELS[draft.activeProvider]} para terminar el alta del numero y webhook.`);
+    }
+  };
+
+  const handleAddOptOut = () => {
+    if (!optOutName.trim() && !optOutPhone.trim()) {
+      setMessage('Escribe nombre o telefono para agregar a la lista Do Not Confirm.');
+      return;
+    }
+    const nextEntry = {
+      id: `${optOutPhone.replace(/\D/g, '') || optOutName.trim().toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+      name: optOutName.trim(),
+      phone: optOutPhone.trim(),
+      reason: optOutReason.trim(),
+      createdAt: new Date().toISOString()
+    };
+    setDraft(current => ({
+      ...current,
+      optOutList: [nextEntry, ...(Array.isArray(current.optOutList) ? current.optOutList : [])]
+    }));
+    setOptOutName('');
+    setOptOutPhone('');
+    setOptOutReason('No automatic confirmation');
+    setMessage('Persona agregada a la lista Do Not Confirm. Guarda para aplicar el cambio.');
+  };
+
+  const handleRemoveOptOut = entryId => {
+    setDraft(current => ({
+      ...current,
+      optOutList: (Array.isArray(current.optOutList) ? current.optOutList : []).filter(entry => entry.id !== entryId)
+    }));
+    setMessage('Persona removida de la lista Do Not Confirm. Guarda para aplicar el cambio.');
+  };
+
+  const handleGroupTemplateChange = (groupKey, value) => {
+    setDraft(current => ({
+      ...current,
+      groupTemplates: {
+        ...(current.groupTemplates || {}),
+        [groupKey]: value
+      }
+    }));
+  };
+
+  return <>
+      <PageTitle title="SMS Integration" subName="Integrations" />
+      <Row className="g-3 mb-3">
+        <Col md={6} xl={3}>
+          <Card style={surfaceStyles.card} className="h-100 border">
+            <CardBody>
+              <p className="text-secondary mb-2">Active provider</p>
+              <h4 className="mb-0">{PROVIDER_LABELS[draft.activeProvider] || 'Disabled'}</h4>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md={6} xl={3}>
+          <Card style={surfaceStyles.card} className="h-100 border">
+            <CardBody>
+              <p className="text-secondary mb-2">Readiness</p>
+              <h4 className="mb-0">{readiness}</h4>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md={6} xl={3}>
+          <Card style={surfaceStyles.card} className="h-100 border">
+            <CardBody>
+              <p className="text-secondary mb-2">Last validation</p>
+              <h4 className="mb-0">{draft.lastValidatedAt || 'Pending'}</h4>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col md={6} xl={3}>
+          <Card style={surfaceStyles.card} className="h-100 border">
+            <CardBody>
+              <p className="text-secondary mb-2">Last inbound SMS</p>
+              <h4 className="mb-0">{draft.lastInboundAt || 'Pending'}</h4>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      <Card style={surfaceStyles.card} className="border">
+        <CardBody>
+          <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-4">
+            <div>
+              <h5 className="mb-1">Integrations &gt; SMS Confirmations</h5>
+              <p className="text-secondary mb-2">Este modulo deja listo el envio desde la app, el webhook de respuesta y la activacion por proveedor. Twilio es la opcion mas directa, pero puedes cambiar de proveedor sin tocar la base.</p>
+              <div className="small text-secondary">{saving ? 'Saving SMS integration...' : message}</div>
+            </div>
+            <div className="d-flex flex-wrap gap-2 align-items-start">
+              <Badge bg="success-subtle" text="success">{PROVIDER_LABELS[draft.activeProvider] || 'Disabled'}</Badge>
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={refresh} disabled={loading || saving}><IconifyIcon icon="iconoir:refresh-double" className="me-2" />Refresh</Button>
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => handleSave(draft)} disabled={saving}>Save</Button>
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleValidate} disabled={saving}>Validate setup</Button>
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleCopyWebhook} disabled={!activeWebhookUrl}>Copy active webhook</Button>
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleOpenProvider} disabled={!PROVIDER_PORTALS[draft.activeProvider]}>Open provider</Button>
+            </div>
+          </div>
+
+          {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
+          {loading ? <div className="py-5 text-center text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading SMS integration...</div> : <Row className="g-3">
+              <Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">Active Provider</Form.Label><Form.Select value={draft.activeProvider} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, activeProvider: event.target.value }))}><option value="disabled">Disabled</option><option value="twilio">Twilio</option><option value="telnyx">Telnyx</option><option value="ringcentral">RingCentral</option><option value="mock">Mock</option></Form.Select></Col>
+              <Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">Default Country Code</Form.Label><Form.Control value={draft.defaultCountryCode} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, defaultCountryCode: event.target.value.replace(/\D/g, '') }))} /></Col>
+              <Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">Webhook Base URL</Form.Label><Form.Control value={draft.webhookBaseUrl} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, webhookBaseUrl: event.target.value }))} /></Col>
+              <Col md={12}><Form.Label className="small text-uppercase text-secondary fw-semibold">Confirmation Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.confirmationTemplate} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, confirmationTemplate: event.target.value }))} /></Col>
+              <Col md={12}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="small text-secondary mb-2">Template tokens</div><div>{'{{rider}}, {{tripId}}, {{pickup}}, {{dropoff}}, {{pickupAddress}}, {{dropoffAddress}}, {{miles}}, {{code}}'}</div><div className="small text-secondary mt-2">Paciente responde con 1 code, 2 code o 3 code. El webhook actualiza la confirmacion a Confirmed, Cancelled o Needs Call.</div></div></Col>
+              <Col md={12}><Form.Label className="small text-uppercase text-secondary fw-semibold">Notes</Form.Label><Form.Control as="textarea" rows={3} value={draft.notes} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, notes: event.target.value }))} /></Col>
+
+              <Col md={12}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"><div><div className="small text-secondary">Saved Group Templates</div><div className="small text-secondary">Guarda mensajes predeterminados por grupo para cargarlos rapido en Confirmation.</div></div><Badge bg="info">AL / BL / CL / A / W / STR</Badge></div><Row className="g-3"><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">AL Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.AL || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('AL', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">BL Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.BL || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('BL', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">CL Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.CL || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('CL', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">A Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.A || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('A', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">W Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.W || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('W', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">STR Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.STR || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('STR', event.target.value)} /></Col></Row></div></Col>
+
+              <Col md={12}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"><div><div className="small text-secondary">Do Not Confirm List</div><div className="small text-secondary">Estas personas no recibiran confirmacion automatica, pero todavia puedes mandarles mensajes manuales.</div></div><Badge bg="warning" text="dark">{Array.isArray(draft.optOutList) ? draft.optOutList.length : 0} blocked</Badge></div><Row className="g-2 mb-3"><Col md={4}><Form.Control placeholder="Rider name" value={optOutName} style={surfaceStyles.input} onChange={event => setOptOutName(event.target.value)} /></Col><Col md={3}><Form.Control placeholder="Phone" value={optOutPhone} style={surfaceStyles.input} onChange={event => setOptOutPhone(event.target.value)} /></Col><Col md={3}><Form.Control placeholder="Reason" value={optOutReason} style={surfaceStyles.input} onChange={event => setOptOutReason(event.target.value)} /></Col><Col md={2}><Button style={surfaceStyles.button} className="w-100" onClick={handleAddOptOut}>Add</Button></Col></Row><div className="table-responsive"><table className="table table-dark table-striped align-middle mb-0"><thead><tr><th>Name</th><th>Phone</th><th>Reason</th><th>Added</th><th style={{ width: 90 }}>Action</th></tr></thead><tbody>{Array.isArray(draft.optOutList) && draft.optOutList.length > 0 ? draft.optOutList.map(entry => <tr key={entry.id}><td>{entry.name || '-'}</td><td>{entry.phone || '-'}</td><td>{entry.reason || '-'}</td><td>{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '-'}</td><td><Button variant="outline-light" size="sm" onClick={() => handleRemoveOptOut(entry.id)}>Remove</Button></td></tr>) : <tr><td colSpan={5} className="text-center text-secondary py-3">No patients blocked yet.</td></tr>}</tbody></table></div></div></Col>
+
+              <Col md={6}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-2"><div className="small text-secondary">Twilio</div><Badge bg="secondary">{draft.twilio.connectionStatus}</Badge></div><Row className="g-2"><Col md={6}><Form.Control placeholder="Account SID" value={draft.twilio.accountSid} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, twilio: { ...current.twilio, accountSid: event.target.value } }))} /></Col><Col md={6}><Form.Control type="password" placeholder="Auth Token" value={draft.twilio.authToken} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, twilio: { ...current.twilio, authToken: event.target.value } }))} /></Col><Col md={6}><Form.Control placeholder="Messaging Service SID" value={draft.twilio.messagingServiceSid} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, twilio: { ...current.twilio, messagingServiceSid: event.target.value } }))} /></Col><Col md={6}><Form.Control placeholder="From Number" value={draft.twilio.fromNumber} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, twilio: { ...current.twilio, fromNumber: event.target.value } }))} /></Col></Row><div className="small text-secondary mt-2">Webhook: {draft.webhookBaseUrl ? `${draft.webhookBaseUrl.replace(/\/$/, '')}/api/integrations/sms/twilio/webhook` : 'Pending base URL'}</div></div></Col>
+
+              <Col md={6}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-2"><div className="small text-secondary">Telnyx</div><Badge bg="secondary">{draft.telnyx.connectionStatus}</Badge></div><Row className="g-2"><Col md={6}><Form.Control placeholder="API Key" type="password" value={draft.telnyx.apiKey} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, telnyx: { ...current.telnyx, apiKey: event.target.value } }))} /></Col><Col md={6}><Form.Control placeholder="Messaging Profile ID" value={draft.telnyx.messagingProfileId} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, telnyx: { ...current.telnyx, messagingProfileId: event.target.value } }))} /></Col><Col md={12}><Form.Control placeholder="From Number" value={draft.telnyx.fromNumber} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, telnyx: { ...current.telnyx, fromNumber: event.target.value } }))} /></Col></Row><div className="small text-secondary mt-2">Webhook: {draft.webhookBaseUrl ? `${draft.webhookBaseUrl.replace(/\/$/, '')}/api/integrations/sms/telnyx/webhook` : 'Pending base URL'}</div></div></Col>
+
+              <Col md={6}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-2"><div className="small text-secondary">RingCentral</div><Badge bg="secondary">{draft.ringcentral.connectionStatus}</Badge></div><Row className="g-2"><Col md={6}><Form.Control placeholder="Client ID" value={draft.ringcentral.clientId} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, ringcentral: { ...current.ringcentral, clientId: event.target.value } }))} /></Col><Col md={6}><Form.Control type="password" placeholder="Client Secret" value={draft.ringcentral.clientSecret} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, ringcentral: { ...current.ringcentral, clientSecret: event.target.value } }))} /></Col><Col md={6}><Form.Control placeholder="Server URL" value={draft.ringcentral.serverUrl} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, ringcentral: { ...current.ringcentral, serverUrl: event.target.value } }))} /></Col><Col md={6}><Form.Control type="password" placeholder="Access Token" value={draft.ringcentral.accessToken} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, ringcentral: { ...current.ringcentral, accessToken: event.target.value } }))} /></Col><Col md={6}><Form.Control placeholder="Extension" value={draft.ringcentral.extension} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, ringcentral: { ...current.ringcentral, extension: event.target.value } }))} /></Col><Col md={6}><Form.Control placeholder="From Number" value={draft.ringcentral.fromNumber} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, ringcentral: { ...current.ringcentral, fromNumber: event.target.value } }))} /></Col></Row><div className="small text-secondary mt-2">Webhook: {draft.webhookBaseUrl ? `${draft.webhookBaseUrl.replace(/\/$/, '')}/api/integrations/sms/ringcentral/webhook` : 'Pending base URL'}</div></div></Col>
+
+              <Col md={6}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-2"><div className="small text-secondary">Mock Provider</div><Badge bg="secondary">{draft.mock.connectionStatus}</Badge></div><Form.Check type="switch" id="sms-mock-enabled" label="Allow local mock confirmations" checked={draft.mock.enabled} onChange={event => setDraft(current => ({ ...current, mock: { ...current.mock, enabled: event.target.checked } }))} /><div className="small text-secondary mt-2">Usa este modo para probar el endpoint de envio sin gastar SMS reales mientras terminas de configurar Twilio o cualquier otro proveedor.</div></div></Col>
+            </Row>}
+        </CardBody>
+      </Card>
+    </>;
+};
+
+export default SmsIntegrationWorkspace;

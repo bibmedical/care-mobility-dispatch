@@ -2,6 +2,7 @@
 
 import PageTitle from '@/components/PageTitle';
 import { getDocumentAlerts, isDriverOnline } from '@/helpers/nemt-admin-model';
+import { formatMinutesAsHours, getTripBillingAmount, getTripServiceMinutes, isTripBillable } from '@/helpers/nemt-billing';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
@@ -113,13 +114,6 @@ const buildStatusMetrics = trips => {
   return counts;
 };
 
-const getRevenueForTrip = trip => {
-  if (typeof trip.revenue === 'number') return trip.revenue;
-  if (typeof trip.estimatedRevenue === 'number') return trip.estimatedRevenue;
-  if (typeof trip.fare === 'number') return trip.fare;
-  return 0;
-};
-
 const PerformanceDashboardWorkspace = () => {
   const { data, loading } = useNemtAdminApi();
   const { drivers: dispatchDrivers, trips, routePlans } = useNemtContext();
@@ -135,9 +129,10 @@ const PerformanceDashboardWorkspace = () => {
     })).filter(item => item.alerts.length > 0);
     const counts = buildStatusMetrics(trips);
     const onlineDrivers = adminDrivers.filter(isDriverOnline).length;
-    const completedRevenue = trips.filter(trip => String(trip.status).toLowerCase() === 'completed').reduce((sum, trip) => sum + getRevenueForTrip(trip), 0);
-    const assignedRevenue = trips.filter(trip => ['assigned', 'in progress', 'completed'].includes(String(trip.status).toLowerCase())).reduce((sum, trip) => sum + getRevenueForTrip(trip), 0);
-    const projectedRevenue = completedRevenue > 0 ? completedRevenue : adminDrivers.filter(driver => driver.vehicleId).length * 8 * 32;
+    const billableTrips = trips.filter(isTripBillable);
+    const completedRevenue = billableTrips.filter(trip => String(trip.status).toLowerCase() === 'completed').reduce((sum, trip) => sum + getTripBillingAmount(trip), 0);
+    const assignedRevenue = billableTrips.filter(trip => ['assigned', 'in progress', 'completed'].includes(String(trip.status).toLowerCase())).reduce((sum, trip) => sum + getTripBillingAmount(trip), 0);
+    const projectedRevenue = assignedRevenue;
     const utilization = vehicles.length > 0 ? adminDrivers.filter(driver => driver.vehicleId).length / vehicles.length * 100 : 0;
     const complianceRate = adminDrivers.length > 0 ? (adminDrivers.length - driverAlerts.length) / adminDrivers.length * 100 : 100;
     const cancellationRate = trips.length > 0 ? counts.canceled / trips.length * 100 : 0;
@@ -147,21 +142,25 @@ const PerformanceDashboardWorkspace = () => {
     const leaderboard = adminDrivers.map(driver => {
       const driverTrips = trips.filter(trip => trip.driverId === driver.id);
       const completed = driverTrips.filter(trip => String(trip.status).toLowerCase() === 'completed').length;
+      const activeTrips = driverTrips.filter(trip => ['assigned', 'in progress'].includes(String(trip.status).toLowerCase())).length;
       const canceled = driverTrips.filter(trip => ['canceled', 'cancelled'].includes(String(trip.status).toLowerCase())).length;
-      const revenue = driverTrips.reduce((sum, trip) => sum + getRevenueForTrip(trip), 0);
+      const revenue = driverTrips.reduce((sum, trip) => sum + getTripBillingAmount(trip), 0);
+      const serviceMinutes = driverTrips.reduce((sum, trip) => sum + getTripServiceMinutes(trip), 0);
       return {
         id: driver.id,
         name: `${driver.firstName} ${driver.lastName}`.trim(),
         vehicle: vehicles.find(vehicle => vehicle.id === driver.vehicleId)?.label || 'No vehicle',
         completed,
+        activeTrips,
         canceled,
         revenue,
+        serviceMinutes,
         alerts: getDocumentAlerts(driver).length,
         score: completed * 12 + revenue / 10 - canceled * 8 - getDocumentAlerts(driver).length * 6
       };
     }).sort((left, right) => right.score - left.score).slice(0, 6);
 
-    const monthlyProjection = [{ month: 'Apr', value: Math.round(projectedRevenue * 0.72), secondary: Math.round(projectedRevenue * 0.61) }, { month: 'May', value: Math.round(projectedRevenue * 0.86), secondary: Math.round(projectedRevenue * 0.68) }, { month: 'Jun', value: Math.round(projectedRevenue * 0.91), secondary: Math.round(projectedRevenue * 0.74) }, { month: 'Jul', value: Math.round(projectedRevenue), secondary: Math.round(projectedRevenue * 0.79) }];
+    const monthlyProjection = [{ month: 'Apr', value: 0, secondary: 0 }, { month: 'May', value: 0, secondary: 0 }, { month: 'Jun', value: 0, secondary: 0 }, { month: 'Jul', value: Math.round(projectedRevenue), secondary: Math.round(completedRevenue) }];
 
     const activity = [{
       label: 'Open Dispatcher',
@@ -194,7 +193,8 @@ const PerformanceDashboardWorkspace = () => {
       monthlyProjection,
       activity,
       onlineDrivers,
-      readyDrivers
+      readyDrivers,
+      billableTripCount: billableTrips.length
     };
   }, [data, dispatchDrivers, routePlans, trips]);
 
@@ -234,7 +234,7 @@ const PerformanceDashboardWorkspace = () => {
         }, {
           label: 'Projected Revenue',
           value: currencyFormatter.format(analytics.projectedRevenue),
-          detail: `${currencyFormatter.format(analytics.completedRevenue)} captured`,
+          detail: `${analytics.billableTripCount} billable trips`,
           accent: '#ffb04d',
           icon: 'iconoir:dollar-circle'
         }].map(card => <Col md={6} xl={3} key={card.label}><div style={panelStyles.topStat}><div className="d-flex justify-content-between align-items-start gap-3"><div><div className="small text-secondary mb-2">{card.label}</div><div className="h3 mb-1 text-white">{card.value}</div><div className="small" style={{ color: card.accent }}>{card.detail}</div></div><div className="rounded-circle d-flex align-items-center justify-content-center" style={{ width: 44, height: 44, backgroundColor: `${card.accent}22`, color: card.accent }}><IconifyIcon icon={card.icon} className="fs-22" /></div></div></div></Col>)}
@@ -247,7 +247,7 @@ const PerformanceDashboardWorkspace = () => {
               <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                 <div>
                   <h5 className="mb-1 text-white">Performance Overview</h5>
-                  <div className="small text-secondary">Pagina primaria conectada a choferes, viajes y ganancias del sistema.</div>
+                  <div className="small text-secondary">Pagina primaria conectada a choferes, viajes y billing real del sistema.</div>
                 </div>
                 <Badge bg="dark" className="border border-secondary-subtle">This Month</Badge>
               </div>
@@ -287,7 +287,7 @@ const PerformanceDashboardWorkspace = () => {
                 <span className="text-secondary"><span className="me-1" style={{ color: '#21b8ff' }}>●</span>Canceled {donutCanceled}</span>
                 <span className="text-secondary"><span className="me-1" style={{ color: '#ffb04d' }}>●</span>Active {donutAssigned}</span>
               </div>
-              <div className="mt-4 small text-secondary text-center">Si aun no has importado trips reales, las metricas de viaje se quedaran en 0 y seguiras viendo proyeccion operativa.</div>
+              <div className="mt-4 small text-secondary text-center">Las metricas de billing quedan en 0 hasta que empieces a marcar trips o rutas en billing.</div>
             </CardBody>
           </Card>
         </Col>
@@ -306,13 +306,13 @@ const PerformanceDashboardWorkspace = () => {
                       <th>Driver</th>
                       <th>Vehicle</th>
                       <th>Completed</th>
-                      <th>Canceled</th>
-                      <th>Revenue</th>
+                      <th>Hours</th>
+                      <th>Active Trips</th>
                       <th>Alerts</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {analytics.leaderboard.length > 0 ? analytics.leaderboard.map(item => <tr key={item.id}><td><div className="fw-semibold">{item.name}</div></td><td>{item.vehicle}</td><td>{item.completed}</td><td>{item.canceled}</td><td>{currencyFormatter.format(item.revenue)}</td><td>{item.alerts > 0 ? <Badge bg="warning" text="dark">{item.alerts}</Badge> : <Badge bg="success">0</Badge>}</td></tr>) : <tr><td colSpan={6} className="text-center text-secondary py-4">No driver performance yet. Load trips to score completions and cancellations.</td></tr>}
+                    {analytics.leaderboard.length > 0 ? analytics.leaderboard.map(item => <tr key={item.id}><td><div className="fw-semibold">{item.name}</div></td><td>{item.vehicle}</td><td>{item.completed}</td><td>{formatMinutesAsHours(item.serviceMinutes)}</td><td>{item.activeTrips}</td><td>{item.alerts > 0 ? <Badge bg="warning" text="dark">{item.alerts}</Badge> : <Badge bg="success">0</Badge>}</td></tr>) : <tr><td colSpan={6} className="text-center text-secondary py-4">No driver performance yet. Load trips to start hours and trip counts.</td></tr>}
                   </tbody>
                 </Table>
               </div>
@@ -330,10 +330,10 @@ const PerformanceDashboardWorkspace = () => {
               <Row className="g-3 mb-3">
                 <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Revenue Captured</div><div className="h4 mb-1 text-white">{currencyFormatter.format(analytics.completedRevenue)}</div><div className="small text-secondary">Completed trips only</div></div></Col>
                 <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Pipeline Revenue</div><div className="h4 mb-1 text-white">{currencyFormatter.format(analytics.assignedRevenue)}</div><div className="small text-secondary">Assigned and completed</div></div></Col>
-                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Projected Revenue</div><div className="h4 mb-1 text-white">{currencyFormatter.format(analytics.projectedRevenue)}</div><div className="small text-secondary">Fallback from active capacity</div></div></Col>
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Projected Revenue</div><div className="h4 mb-1 text-white">{currencyFormatter.format(analytics.projectedRevenue)}</div><div className="small text-secondary">Real billable trips only</div></div></Col>
                 <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Fleet Units</div><div className="h4 mb-1 text-white">{analytics.vehicles.length}</div><div className="small text-secondary">Cars available in system</div></div></Col>
               </Row>
-              <div className="small text-secondary">Projected revenue uses real completed trip revenue when available. If there are no completed trips yet, it estimates income from active drivers with assigned vehicles.</div>
+              <div className="small text-secondary">Revenue now stays at 0 until a trip is really billable or has captured revenue. No fallback money is injected anymore.</div>
             </CardBody>
           </Card>
         </Col>

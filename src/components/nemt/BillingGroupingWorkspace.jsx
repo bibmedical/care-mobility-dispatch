@@ -1,6 +1,7 @@
 'use client';
 
-import { createBlankGrouping, getFullName, validateGrouping } from '@/helpers/nemt-admin-model';
+import { getCurrentRosterWeekKey, getDocumentAlerts, getFullName, getUpcomingDocumentExpirations, isDriverOnActiveRoster, normalizeRouteRoster } from '@/helpers/nemt-admin-model';
+import { isDriverRole } from '@/helpers/system-users';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import * as XLSX from 'xlsx';
@@ -12,6 +13,7 @@ const shellStyles = {
   body: { backgroundColor: '#171b27' },
   toolbarButton: { backgroundColor: '#101521', borderColor: '#2a3144', color: '#e6ecff' },
   primaryButton: { backgroundColor: '#8dc63f', borderColor: '#8dc63f', color: '#08131a' },
+  activePill: { backgroundColor: '#1565c0', borderColor: '#1565c0', color: '#ffffff' },
   dangerButton: { backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff' },
   tableShell: { borderColor: '#2a3144', backgroundColor: '#171b27' },
   tableHead: { backgroundColor: '#8dc63f', color: '#08131a' },
@@ -29,22 +31,8 @@ const defaultState = {
   groupings: []
 };
 
-const statusVariant = {
-  Active: 'success',
-  Attention: 'warning',
-  Pending: 'secondary',
-  Inactive: 'dark'
-};
-
-const normalizeGrouping = grouping => ({
-  ...grouping,
-  atd: grouping?.atd || '',
-  workHours: grouping?.workHours || '',
-  billingCode: grouping?.billingCode || ''
-});
-
 const getDriverName = driver => getFullName(driver) || driver?.displayName || driver?.username || 'Unnamed driver';
-const slugifyFileName = value => String(value || 'billing-grouping').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'billing-grouping';
+const slugifyFileName = value => String(value || 'driver-grouping').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'driver-grouping';
 
 const downloadTextFile = (fileName, contents, mimeType) => {
   const blob = new Blob([contents], { type: mimeType });
@@ -57,249 +45,230 @@ const downloadTextFile = (fileName, contents, mimeType) => {
   URL.revokeObjectURL(link.href);
 };
 
-const BillingGroupingWorkspace = ({ title = 'Billing Grouping' }) => {
+const downloadBinaryFile = (fileName, contents, mimeType) => {
+  const blob = new Blob([contents], { type: mimeType });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};
+
+const getRosterLabel = mode => {
+  if (mode === 'permanent') return 'Permanent';
+  if (mode === 'weekly') return 'Weekly';
+  return 'Off';
+};
+
+const toInputTimeValue = value => {
+  const normalizedValue = String(value || '').trim();
+  if (/^\d{2}:\d{2}$/.test(normalizedValue)) return normalizedValue;
+  const match = normalizedValue.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return '00:00';
+  let hours = Number(match[1]);
+  const minutes = match[2];
+  const meridiem = match[3].toUpperCase();
+  if (meridiem === 'AM') {
+    if (hours === 12) hours = 0;
+  } else if (hours !== 12) {
+    hours += 12;
+  }
+  return `${String(hours).padStart(2, '0')}:${minutes}`;
+};
+
+const fromInputTimeValue = value => {
+  const match = String(value || '').match(/^(\d{2}):(\d{2})$/);
+  if (!match) return value;
+  let hours = Number(match[1]);
+  const minutes = match[2];
+  const meridiem = hours >= 12 ? 'PM' : 'AM';
+  hours %= 12;
+  if (hours === 0) hours = 12;
+  return `${String(hours).padStart(2, '0')}:${minutes} ${meridiem}`;
+};
+
+const BillingGroupingWorkspace = ({ title = 'Driver Grouping' }) => {
   const { data, loading, saving, error, refresh, saveData } = useNemtAdminApi();
-  const [selectedGroupingId, setSelectedGroupingId] = useState(null);
-  const [showEditor, setShowEditor] = useState(false);
-  const [draftGrouping, setDraftGrouping] = useState(null);
-  const [message, setMessage] = useState('Grouping para billing con persistencia en la API local.');
-  const [validationErrors, setValidationErrors] = useState([]);
+  const [selectedDriverId, setSelectedDriverId] = useState(null);
   const [driverToAssign, setDriverToAssign] = useState('');
   const [search, setSearch] = useState('');
+  const [rosterView, setRosterView] = useState('today');
+  const [message, setMessage] = useState('Configura aqui el roster semanal o permanente que aparece activo en Dispatcher y Trip Dashboard.');
+  const [showExpiryModal, setShowExpiryModal] = useState(false);
+  const currentWeekKey = getCurrentRosterWeekKey();
+  const currentDateLabel = new Date().toLocaleDateString('en-US');
 
   const state = useMemo(() => ({
     drivers: data?.drivers ?? defaultState.drivers,
     attendants: data?.attendants ?? defaultState.attendants,
     vehicles: data?.vehicles ?? defaultState.vehicles,
-    groupings: (data?.groupings ?? defaultState.groupings).map(normalizeGrouping)
+    groupings: data?.groupings ?? defaultState.groupings
   }), [data]);
 
-  const groupingRows = useMemo(() => state.groupings.map(grouping => {
-    const groupedDrivers = state.drivers.filter(driver => driver.groupingId === grouping.id);
-    const groupedVehicles = state.vehicles.filter(vehicle => groupedDrivers.some(driver => driver.vehicleId === vehicle.id));
-    return {
-      ...grouping,
-      driverCount: groupedDrivers.length,
-      driversLabel: groupedDrivers.map(getDriverName).join(', ') || 'No drivers',
-      vehiclesLabel: groupedVehicles.map(vehicle => vehicle.unitNumber || vehicle.label).join(', ') || 'No vehicles',
-      vehicleCount: groupedVehicles.length
-    };
-  }), [state.drivers, state.groupings, state.vehicles]);
+  const rosterDrivers = useMemo(() => state.drivers.filter(driver => isDriverRole(driver.role)), [state.drivers]);
+  const atdOptions = useMemo(() => ['none', ...new Set(state.groupings.map(grouping => grouping.atd).filter(Boolean))], [state.groupings]);
+  const activeRosterDrivers = useMemo(() => rosterDrivers.filter(driver => isDriverOnActiveRoster(driver)), [rosterDrivers]);
+  const upcomingExpirations = useMemo(() => getUpcomingDocumentExpirations(activeRosterDrivers, 7), [activeRosterDrivers]);
 
-  const filteredRows = useMemo(() => {
+  const filteredRosterDrivers = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return groupingRows;
-    return groupingRows.filter(row => [row.name, row.atd, row.billingCode, row.driversLabel, row.vehiclesLabel, row.workHours, row.notes, row.status].join(' ').toLowerCase().includes(term));
-  }, [groupingRows, search]);
+    return rosterDrivers.filter(driver => {
+      const routeRoster = normalizeRouteRoster(driver.routeRoster, driver);
+      const matchesView = rosterView === 'today' ? isDriverOnActiveRoster(driver) : rosterView === 'all' ? routeRoster.mode !== 'off' : rosterView === 'weekly' ? routeRoster.mode === 'permanent' || routeRoster.mode === 'weekly' && routeRoster.weekKey === currentWeekKey : routeRoster.mode === rosterView && (routeRoster.mode !== 'weekly' || routeRoster.weekKey === currentWeekKey);
+      if (!matchesView) return false;
+      if (!term) return true;
+      const vehicle = state.vehicles.find(item => item.id === driver.vehicleId);
+      return [getDriverName(driver), driver.username, driver.phone, vehicle?.label, vehicle?.unitNumber, routeRoster.atd].filter(Boolean).join(' ').toLowerCase().includes(term);
+    });
+  }, [currentWeekKey, rosterDrivers, rosterView, search, state.vehicles]);
 
-  useEffect(() => {
-    if (selectedGroupingId && state.groupings.some(grouping => grouping.id === selectedGroupingId)) return;
-    setSelectedGroupingId(state.groupings[0]?.id ?? null);
-  }, [selectedGroupingId, state.groupings]);
+  const availableDrivers = useMemo(() => rosterDrivers.filter(driver => !isDriverOnActiveRoster(driver)).sort((left, right) => getDriverName(left).localeCompare(getDriverName(right))), [rosterDrivers]);
 
-  const selectedGrouping = state.groupings.find(grouping => grouping.id === selectedGroupingId) ?? null;
-  const selectedDrivers = useMemo(() => state.drivers.filter(driver => driver.groupingId === selectedGroupingId), [selectedGroupingId, state.drivers]);
-  const availableDrivers = useMemo(() => state.drivers.filter(driver => driver.id !== '' && driver.groupingId !== selectedGroupingId).sort((left, right) => getDriverName(left).localeCompare(getDriverName(right))), [selectedGroupingId, state.drivers]);
+  const selectedDriver = useMemo(() => rosterDrivers.find(driver => driver.id === selectedDriverId) ?? filteredRosterDrivers[0] ?? null, [filteredRosterDrivers, rosterDrivers, selectedDriverId]);
 
   const summary = useMemo(() => ({
-    groups: state.groupings.length,
-    groupedDrivers: state.drivers.filter(driver => driver.groupingId).length,
-    ungroupedDrivers: state.drivers.filter(driver => !driver.groupingId).length,
-    vehiclesCovered: new Set(state.drivers.filter(driver => driver.groupingId).map(driver => driver.vehicleId).filter(Boolean)).size
-  }), [state.drivers, state.groupings]);
+    weeklyDrivers: rosterDrivers.filter(driver => {
+      const routeRoster = normalizeRouteRoster(driver.routeRoster, driver);
+      return routeRoster.mode === 'weekly' && routeRoster.weekKey === currentWeekKey;
+    }).length,
+    permanentDrivers: rosterDrivers.filter(driver => normalizeRouteRoster(driver.routeRoster, driver).mode === 'permanent').length,
+    expiringLicenses: upcomingExpirations.length,
+    vehiclesCovered: new Set(activeRosterDrivers.map(driver => driver.vehicleId).filter(Boolean)).size
+  }), [activeRosterDrivers, currentWeekKey, rosterDrivers, upcomingExpirations.length]);
 
-  const exportRows = useMemo(() => {
-    const targetGroupings = selectedGrouping ? [selectedGrouping] : state.groupings;
+  const exportRows = useMemo(() => filteredRosterDrivers.map((driver, index) => {
+    const vehicle = state.vehicles.find(item => item.id === driver.vehicleId);
+    const routeRoster = normalizeRouteRoster(driver.routeRoster, driver);
+    return {
+      '#': index + 1,
+      Mode: getRosterLabel(routeRoster.mode),
+      Week: routeRoster.mode === 'weekly' ? routeRoster.weekKey : 'Permanent',
+      Driver: getDriverName(driver),
+      Username: driver.username || '',
+      Phone: driver.phone || '',
+      Vehicle: vehicle?.label || 'No vehicle',
+      VID: vehicle?.unitNumber || '',
+      'Work Start': routeRoster.workStart,
+      'Work End': routeRoster.workEnd,
+      ATD: routeRoster.atd,
+      License: driver.licenseNumber || '',
+      'License Expiration': driver.licenseExpirationDate || ''
+    };
+  }), [filteredRosterDrivers, state.vehicles]);
 
-    return targetGroupings.flatMap(grouping => {
-      const groupedDrivers = state.drivers.filter(driver => driver.groupingId === grouping.id);
-      if (groupedDrivers.length === 0) {
-        return [{
-          grouping: grouping.name,
-          atd: grouping.atd || '',
-          workHours: grouping.workHours || '',
-          billingCode: grouping.billingCode || '',
-          dispatchTag: grouping.dispatchTag || '',
-          groupingStatus: grouping.status || '',
-          driver: '',
-          username: '',
-          phone: '',
-          vehicle: '',
-          unitNumber: '',
-          driverStatus: '',
-          notes: grouping.notes || grouping.description || ''
-        }];
-      }
+  useEffect(() => {
+    if (!selectedDriverId || filteredRosterDrivers.some(driver => driver.id === selectedDriverId)) return;
+    setSelectedDriverId(filteredRosterDrivers[0]?.id ?? null);
+  }, [filteredRosterDrivers, selectedDriverId]);
 
-      return groupedDrivers.map(driver => {
-        const vehicle = state.vehicles.find(item => item.id === driver.vehicleId);
-        return {
-          grouping: grouping.name,
-          atd: grouping.atd || '',
-          workHours: grouping.workHours || '',
-          billingCode: grouping.billingCode || '',
-          dispatchTag: grouping.dispatchTag || '',
-          groupingStatus: grouping.status || '',
-          driver: getDriverName(driver),
-          username: driver.username || '',
-          phone: driver.phone || '',
-          vehicle: vehicle?.label || '',
-          unitNumber: vehicle?.unitNumber || '',
-          driverStatus: driver.profileStatus || driver.live || '',
-          notes: driver.notes || grouping.notes || grouping.description || ''
-        };
-      });
-    });
-  }, [selectedGrouping, state.drivers, state.groupings, state.vehicles]);
+  useEffect(() => {
+    if (upcomingExpirations.length > 0) {
+      setShowExpiryModal(true);
+    }
+  }, [upcomingExpirations.length]);
 
-  const persistState = async nextState => {
+  const persistDrivers = async (driverUpdater, nextMessage) => {
+    const nextState = {
+      ...state,
+      drivers: state.drivers.map(driver => driverUpdater(driver))
+    };
     await saveData(nextState);
     await refresh();
+    setMessage(nextMessage);
   };
 
-  const openCreate = () => {
-    setDraftGrouping(createBlankGrouping());
-    setValidationErrors([]);
-    setShowEditor(true);
-  };
-
-  const openEdit = () => {
-    if (!selectedGrouping) {
-      setMessage('Selecciona un grouping primero.');
-      return;
-    }
-    setDraftGrouping({ ...selectedGrouping });
-    setValidationErrors([]);
-    setShowEditor(true);
-  };
-
-  const handleSaveGrouping = async () => {
-    if (!draftGrouping) return;
-    const errors = validateGrouping(draftGrouping);
-    setValidationErrors(errors);
-    if (errors.length > 0) {
-      setMessage(errors[0]);
+  const handleAssignDriver = async mode => {
+    if (!driverToAssign) {
+      setMessage('Selecciona un chofer para agregar al roster.');
       return;
     }
 
-    const nextGroupings = state.groupings.some(grouping => grouping.id === draftGrouping.id) ? state.groupings.map(grouping => grouping.id === draftGrouping.id ? draftGrouping : grouping) : [draftGrouping, ...state.groupings];
-    await persistState({ ...state, groupings: nextGroupings });
-    setSelectedGroupingId(draftGrouping.id);
-    setShowEditor(false);
-    setDraftGrouping(null);
-    setMessage('Grouping de billing guardado.');
-  };
+    const targetDriver = rosterDrivers.find(driver => driver.id === driverToAssign);
+    if (!targetDriver) return;
 
-  const handleDeleteGrouping = async () => {
-    if (!selectedGrouping) {
-      setMessage('Selecciona un grouping para borrar.');
-      return;
-    }
-
-    await persistState({
-      ...state,
-      groupings: state.groupings.filter(grouping => grouping.id !== selectedGrouping.id),
-      drivers: state.drivers.map(driver => driver.groupingId === selectedGrouping.id ? { ...driver, groupingId: '' } : driver)
-    });
-    setSelectedGroupingId(null);
-    setMessage('Grouping eliminado y choferes desagrupados.');
-  };
-
-  const handleAssignDriver = async () => {
-    if (!selectedGrouping || !driverToAssign) {
-      setMessage('Selecciona un grouping y un chofer para agregar.');
-      return;
-    }
-
-    const targetDriver = state.drivers.find(driver => driver.id === driverToAssign);
-    await persistState({
-      ...state,
-      drivers: state.drivers.map(driver => driver.id === driverToAssign ? { ...driver, groupingId: selectedGrouping.id } : driver)
-    });
+    await persistDrivers(driver => driver.id === driverToAssign ? {
+      ...driver,
+      routeRoster: normalizeRouteRoster({
+        ...driver.routeRoster,
+        mode,
+        weekKey: currentWeekKey
+      }, driver)
+    } : driver, `${getDriverName(targetDriver)} agregado como ${mode === 'permanent' ? 'permanente' : 'semanal'} al roster.`);
+    setSelectedDriverId(driverToAssign);
     setDriverToAssign('');
-    setMessage(`${getDriverName(targetDriver)} ahora pertenece a ${selectedGrouping.name}.`);
   };
 
-  const handleUngroupDriver = async driverId => {
-    const targetDriver = state.drivers.find(driver => driver.id === driverId);
-    await persistState({
-      ...state,
-      drivers: state.drivers.map(driver => driver.id === driverId ? { ...driver, groupingId: '' } : driver)
-    });
-    setMessage(`${getDriverName(targetDriver)} fue removido del grouping.`);
+  const handleRosterChange = async (driverId, patch, successMessage) => {
+    await persistDrivers(driver => driver.id === driverId ? {
+      ...driver,
+      routeRoster: normalizeRouteRoster({
+        ...normalizeRouteRoster(driver.routeRoster, driver),
+        ...patch
+      }, driver)
+    } : driver, successMessage);
   };
 
-  const handleUngroupAll = async () => {
-    if (!selectedGrouping) return;
-    await persistState({
-      ...state,
-      drivers: state.drivers.map(driver => driver.groupingId === selectedGrouping.id ? { ...driver, groupingId: '' } : driver)
-    });
-    setMessage(`Todos los choferes fueron removidos de ${selectedGrouping.name}.`);
+  const handleRemoveFromRoster = async driverId => {
+    const targetDriver = rosterDrivers.find(driver => driver.id === driverId);
+    await persistDrivers(driver => driver.id === driverId ? {
+      ...driver,
+      routeRoster: normalizeRouteRoster({ mode: 'off' }, driver)
+    } : driver, `${getDriverName(targetDriver)} removido del roster activo.`);
   };
 
   const handleExportCsv = () => {
     if (exportRows.length === 0) {
-      setMessage('No hay datos de grouping para exportar.');
+      setMessage('No hay roster activo para exportar.');
       return;
     }
-
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    const csv = XLSX.utils.sheet_to_csv(worksheet);
-    const fileName = `${slugifyFileName(selectedGrouping?.name || 'all-billing-groups')}.csv`;
-    downloadTextFile(fileName, csv, 'text/csv;charset=utf-8;');
-    setMessage(selectedGrouping ? `CSV exportado para ${selectedGrouping.name}.` : 'CSV exportado para todos los billing groups.');
+    try {
+      const worksheet = XLSX.utils.json_to_sheet(exportRows);
+      const csv = XLSX.utils.sheet_to_csv(worksheet);
+      downloadTextFile(`${slugifyFileName(`route-roster-${rosterView}`)}.csv`, csv, 'text/csv;charset=utf-8;');
+      setMessage('CSV del roster exportado.');
+    } catch {
+      setMessage('No se pudo exportar el CSV del roster.');
+    }
   };
 
   const handleExportExcel = () => {
     if (exportRows.length === 0) {
-      setMessage('No hay datos de grouping para exportar.');
+      setMessage('No hay roster activo para exportar.');
       return;
     }
-
-    const workbook = XLSX.utils.book_new();
-    const summaryRows = (selectedGrouping ? [selectedGrouping] : state.groupings).map(grouping => {
-      const groupedDrivers = state.drivers.filter(driver => driver.groupingId === grouping.id);
-      const groupedVehicles = new Set(groupedDrivers.map(driver => driver.vehicleId).filter(Boolean));
-      return {
-        Grouping: grouping.name,
-        ATD: grouping.atd || '',
-        'Work Hours': grouping.workHours || '',
-        'Billing Code': grouping.billingCode || '',
-        'Dispatch Tag': grouping.dispatchTag || '',
-        Status: grouping.status || '',
-        Drivers: groupedDrivers.length,
-        Vehicles: groupedVehicles.size,
-        Notes: grouping.notes || grouping.description || ''
-      };
-    });
-
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(summaryRows), 'Group Summary');
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(exportRows), 'Driver Detail');
-    XLSX.writeFile(workbook, `${slugifyFileName(selectedGrouping?.name || 'all-billing-groups')}.xlsx`);
-    setMessage(selectedGrouping ? `Excel exportado para ${selectedGrouping.name}.` : 'Excel exportado para todos los billing groups.');
+    try {
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(exportRows), 'Route Roster');
+      const fileContents = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      downloadBinaryFile(`${slugifyFileName(`route-roster-${rosterView}`)}.xlsx`, fileContents, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      setMessage('Excel del roster exportado.');
+    } catch {
+      setMessage('No se pudo exportar el Excel del roster.');
+    }
   };
 
   return <>
       <Card className="border-0 shadow-sm overflow-hidden">
         <div className="d-flex align-items-center justify-content-between px-3 py-2 text-white" style={shellStyles.windowHeader}>
           <strong>{title}</strong>
-          <div className="small text-secondary-emphasis">Billing roster</div>
+          <div className="small text-secondary-emphasis">Route roster</div>
         </div>
         <CardBody className="p-3" style={shellStyles.body}>
           <Row className="g-3 mb-3">
             {[{
-              label: 'Groups',
-              value: summary.groups,
-              icon: 'iconoir:group'
+              label: 'Weekly drivers',
+              value: summary.weeklyDrivers,
+              icon: 'iconoir:calendar'
             }, {
-              label: 'Grouped drivers',
-              value: summary.groupedDrivers,
+              label: 'Permanent drivers',
+              value: summary.permanentDrivers,
               icon: 'iconoir:user-badge-check'
             }, {
-              label: 'Ungrouped drivers',
-              value: summary.ungroupedDrivers,
-              icon: 'iconoir:user-xmark'
+              label: 'Licenses expiring',
+              value: summary.expiringLicenses,
+              icon: 'iconoir:warning-triangle'
             }, {
               label: 'Vehicles covered',
               value: summary.vehiclesCovered,
@@ -309,14 +278,22 @@ const BillingGroupingWorkspace = ({ title = 'Billing Grouping' }) => {
 
           <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
             <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={refresh} disabled={loading || saving}><IconifyIcon icon="iconoir:refresh-double" /></Button>
-            <Button className="rounded-pill" style={shellStyles.primaryButton} onClick={openCreate}><IconifyIcon icon="iconoir:plus" className="me-2" />Add Group</Button>
-            <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={openEdit} disabled={!selectedGrouping}><IconifyIcon icon="iconoir:edit-pencil" className="me-2" />Edit</Button>
+            <Button className="rounded-pill" style={rosterView === 'today' ? shellStyles.activePill : shellStyles.toolbarButton} onClick={() => setRosterView('today')}>Current Day - {currentDateLabel}</Button>
+            <Button className="rounded-pill" style={rosterView === 'weekly' ? shellStyles.activePill : shellStyles.toolbarButton} onClick={() => setRosterView('weekly')}>Weekly</Button>
+            <Button className="rounded-pill" style={rosterView === 'permanent' ? shellStyles.activePill : shellStyles.toolbarButton} onClick={() => setRosterView('permanent')}>Permanent</Button>
+            <Button className="rounded-pill" style={rosterView === 'all' ? shellStyles.activePill : shellStyles.toolbarButton} onClick={() => setRosterView('all')}>All Active</Button>
             <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={handleExportCsv} disabled={loading || saving}><IconifyIcon icon="iconoir:download" className="me-2" />Export CSV</Button>
             <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={handleExportExcel} disabled={loading || saving}><IconifyIcon icon="iconoir:page" className="me-2" />Export Excel</Button>
-            <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={handleUngroupAll} disabled={!selectedGrouping || selectedDrivers.length === 0}><IconifyIcon icon="iconoir:minus-circle" className="me-2" />Ungroup All</Button>
-            <Button className="rounded-pill" style={shellStyles.dangerButton} onClick={handleDeleteGrouping} disabled={!selectedGrouping || saving}><IconifyIcon icon="iconoir:trash" className="me-2" />Delete</Button>
-            <div className="ms-auto" style={{ minWidth: 280 }}>
-              <Form.Control value={search} onChange={event => setSearch(event.target.value)} placeholder="Search billing groups" style={shellStyles.input} className="rounded-pill" />
+            <div className="ms-auto d-flex gap-2 flex-wrap" style={{ minWidth: 320 }}>
+              <Form.Select value={driverToAssign} onChange={event => setDriverToAssign(event.target.value)} style={shellStyles.input}>
+                <option value="">Select driver</option>
+                {availableDrivers.map(driver => {
+                  const vehicle = state.vehicles.find(item => item.id === driver.vehicleId);
+                  return <option key={driver.id} value={driver.id}>{getDriverName(driver)}{vehicle ? ` | ${vehicle.unitNumber || vehicle.label}` : ''}</option>;
+                })}
+              </Form.Select>
+              <Button style={shellStyles.primaryButton} onClick={() => handleAssignDriver('weekly')} disabled={!driverToAssign || saving}>Add Weekly</Button>
+              <Button style={shellStyles.toolbarButton} onClick={() => handleAssignDriver('permanent')} disabled={!driverToAssign || saving}>Make Permanent</Button>
             </div>
           </div>
 
@@ -324,109 +301,122 @@ const BillingGroupingWorkspace = ({ title = 'Billing Grouping' }) => {
           {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
 
           <Row className="g-3">
-            <Col xl={7}>
+            <Col xl={8}>
               <div className="border overflow-hidden rounded-3" style={shellStyles.tableShell}>
-                <div className="table-responsive" style={{ maxHeight: 620 }}>
+                <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom" style={{ borderColor: '#2a3144', backgroundColor: '#101521' }}>
+                  <div className="small text-uppercase text-secondary">Active route roster</div>
+                  <Form.Control value={search} onChange={event => setSearch(event.target.value)} placeholder="Search" style={{ ...shellStyles.input, maxWidth: 220 }} className="rounded-pill" />
+                </div>
+                <div className="table-responsive" style={{ maxHeight: 640 }}>
                   <Table className="align-middle mb-0 text-white">
                     <thead style={shellStyles.tableHead}>
                       <tr>
-                        {['Group', 'ATD', 'Drivers', 'Vehicles', 'Work Hours', 'Status'].map(column => <th key={column} className="fw-normal" style={shellStyles.tableHeadCell}>{column}</th>)}
+                        {['#', 'Driver Info', 'Vehicle Info', 'Work Hours', 'ATD', 'Roster', 'Ctrl'].map(column => <th key={column} className="fw-normal" style={shellStyles.tableHeadCell}>{column}</th>)}
                       </tr>
                     </thead>
                     <tbody>
-                      {loading ? <tr><td colSpan={6} className="text-center py-5 text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading groupings...</td></tr> : filteredRows.length ? filteredRows.map(row => <tr key={row.id} onClick={() => setSelectedGroupingId(row.id)} style={{ cursor: 'pointer', backgroundColor: selectedGroupingId === row.id ? '#202c42' : '#171b27', color: '#e6ecff' }}><td><div className="fw-semibold">{row.name}</div><div className="small text-secondary">{row.billingCode || 'No billing code'}</div></td><td>{row.atd || 'Not set'}</td><td><div>{row.driverCount}</div><div className="small text-secondary text-truncate" style={{ maxWidth: 220 }}>{row.driversLabel}</div></td><td><div>{row.vehicleCount}</div><div className="small text-secondary text-truncate" style={{ maxWidth: 220 }}>{row.vehiclesLabel}</div></td><td>{row.workHours || 'Not set'}</td><td><Badge bg={statusVariant[row.status] || 'secondary'}>{row.status}</Badge></td></tr>) : <tr><td colSpan={6} className="text-center py-5 text-secondary">No billing groups yet. Usa Add Group para crear el primero.</td></tr>}
+                      {loading ? <tr><td colSpan={7} className="text-center py-5 text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading route roster...</td></tr> : filteredRosterDrivers.length ? filteredRosterDrivers.map((driver, index) => {
+                        const vehicle = state.vehicles.find(item => item.id === driver.vehicleId);
+                        const routeRoster = normalizeRouteRoster(driver.routeRoster, driver);
+                        const driverAlerts = getDocumentAlerts(driver);
+                        const licenseAlert = driverAlerts.find(alert => alert.text.toLowerCase().includes('driver license'));
+                        return <tr key={driver.id} onClick={() => setSelectedDriverId(driver.id)} style={{ cursor: 'pointer', backgroundColor: selectedDriver?.id === driver.id ? '#202c42' : '#171b27', color: '#e6ecff' }}>
+                              <td>{index + 1}</td>
+                              <td>
+                                <div className="fw-semibold">{getDriverName(driver)}</div>
+                                <div className="small text-secondary">Username: {driver.username || 'No username'}</div>
+                                <div className="small text-secondary">DL: {driver.licenseNumber || 'No license'}</div>
+                                {licenseAlert ? <div className="small text-warning mt-1">{licenseAlert.text}</div> : null}
+                              </td>
+                              <td>
+                                <div>{vehicle?.label || 'No vehicle'}</div>
+                                <div className="small text-secondary">VID: {vehicle?.unitNumber || '--'}</div>
+                                <div className="small text-secondary">Type: {vehicle?.type || '--'}</div>
+                              </td>
+                              <td>
+                                <div className="d-flex gap-2 align-items-center mb-2">
+                                  <span className="small text-secondary">Start:</span>
+                                  <Form.Control type="time" size="sm" value={toInputTimeValue(routeRoster.workStart)} onChange={event => handleRosterChange(driver.id, { workStart: fromInputTimeValue(event.target.value) }, 'Horario inicial actualizado.')} style={{ ...shellStyles.input, width: 120 }} />
+                                </div>
+                                <div className="d-flex gap-2 align-items-center">
+                                  <span className="small text-secondary">End:</span>
+                                  <Form.Control type="time" size="sm" value={toInputTimeValue(routeRoster.workEnd)} onChange={event => handleRosterChange(driver.id, { workEnd: fromInputTimeValue(event.target.value) }, 'Horario final actualizado.')} style={{ ...shellStyles.input, width: 120 }} />
+                                </div>
+                              </td>
+                              <td>
+                                <Form.Select size="sm" value={routeRoster.atd} onChange={event => handleRosterChange(driver.id, { atd: event.target.value }, 'ATD actualizado.')} style={shellStyles.input}>
+                                  {atdOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                                </Form.Select>
+                              </td>
+                              <td>
+                                <Form.Select size="sm" value={routeRoster.mode} onChange={event => handleRosterChange(driver.id, { mode: event.target.value, weekKey: currentWeekKey }, 'Tipo de roster actualizado.')} style={shellStyles.input}>
+                                  <option value="weekly">Weekly</option>
+                                  <option value="permanent">Permanent</option>
+                                </Form.Select>
+                                <div className="small text-secondary mt-1">{routeRoster.mode === 'weekly' ? routeRoster.weekKey : 'Never remove'}</div>
+                              </td>
+                              <td>
+                                <Button size="sm" style={shellStyles.dangerButton} onClick={event => {
+                              event.stopPropagation();
+                              handleRemoveFromRoster(driver.id);
+                            }}>Ungroup</Button>
+                              </td>
+                            </tr>;
+                      }) : <tr><td colSpan={7} className="text-center py-5 text-secondary">No hay choferes en este roster. Agrega Weekly o Permanent para que aparezcan activos en dispatch.</td></tr>}
                     </tbody>
                   </Table>
                 </div>
               </div>
             </Col>
 
-            <Col xl={5}>
+            <Col xl={4}>
               <div style={shellStyles.cardShell} className="p-3 h-100">
-                {selectedGrouping ? <>
+                {selectedDriver ? <>
                     <div className="d-flex align-items-start justify-content-between gap-3 mb-3">
                       <div>
-                        <div className="text-uppercase small text-secondary">Selected group</div>
-                        <div className="fs-4 fw-semibold">{selectedGrouping.name}</div>
-                        <div className="small text-secondary mt-1">{selectedGrouping.description || 'No description'}</div>
+                        <div className="text-uppercase small text-secondary">Selected driver</div>
+                        <div className="fs-4 fw-semibold">{getDriverName(selectedDriver)}</div>
+                        <div className="small text-secondary mt-1">{selectedDriver.username || selectedDriver.email || 'No login'}</div>
                       </div>
-                      <Badge bg={statusVariant[selectedGrouping.status] || 'secondary'}>{selectedGrouping.status}</Badge>
+                      <Badge bg={normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).mode === 'permanent' ? 'primary' : 'success'}>{getRosterLabel(normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).mode)}</Badge>
                     </div>
 
                     <Row className="g-3 mb-3">
-                      <Col sm={6}><div className="small text-secondary text-uppercase">ATD</div><div>{selectedGrouping.atd || 'Not set'}</div></Col>
-                      <Col sm={6}><div className="small text-secondary text-uppercase">Work Hours</div><div>{selectedGrouping.workHours || 'Not set'}</div></Col>
-                      <Col sm={6}><div className="small text-secondary text-uppercase">Billing Code</div><div>{selectedGrouping.billingCode || 'Not set'}</div></Col>
-                      <Col sm={6}><div className="small text-secondary text-uppercase">Dispatch Tag</div><div>{selectedGrouping.dispatchTag || 'Not set'}</div></Col>
+                      <Col sm={6}><div className="small text-secondary text-uppercase">Phone</div><div>{selectedDriver.phone || 'Not set'}</div></Col>
+                      <Col sm={6}><div className="small text-secondary text-uppercase">License Exp.</div><div>{selectedDriver.licenseExpirationDate || 'Not set'}</div></Col>
+                      <Col sm={6}><div className="small text-secondary text-uppercase">Work Start</div><div>{normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).workStart}</div></Col>
+                      <Col sm={6}><div className="small text-secondary text-uppercase">Work End</div><div>{normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).workEnd}</div></Col>
+                      <Col sm={6}><div className="small text-secondary text-uppercase">ATD</div><div>{normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).atd}</div></Col>
+                      <Col sm={6}><div className="small text-secondary text-uppercase">Week</div><div>{normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).mode === 'weekly' ? normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).weekKey : 'Permanent'}</div></Col>
                     </Row>
 
-                    <div className="border rounded-3 p-3 mb-3" style={{ borderColor: '#2a3144', backgroundColor: '#0c111b' }}>
-                      <div className="small text-secondary text-uppercase mb-2">Assign Driver</div>
-                      <div className="d-flex gap-2">
-                        <Form.Select value={driverToAssign} onChange={event => setDriverToAssign(event.target.value)} style={shellStyles.input}>
-                          <option value="">Select driver</option>
-                          {availableDrivers.map(driver => {
-                            const vehicle = state.vehicles.find(item => item.id === driver.vehicleId);
-                            const currentGrouping = state.groupings.find(grouping => grouping.id === driver.groupingId);
-                            return <option key={driver.id} value={driver.id}>{getDriverName(driver)}{vehicle ? ` | ${vehicle.unitNumber || vehicle.label}` : ''}{currentGrouping ? ` | from ${currentGrouping.name}` : ' | ungrouped'}</option>;
-                          })}
-                        </Form.Select>
-                        <Button style={shellStyles.primaryButton} onClick={handleAssignDriver} disabled={!driverToAssign || saving}>Add</Button>
+                    <div className="border rounded-3 p-3" style={{ borderColor: '#2a3144', backgroundColor: '#0c111b' }}>
+                      <div className="small text-secondary text-uppercase mb-2">Compliance alerts</div>
+                      <div className="d-flex flex-column gap-2">
+                        {getDocumentAlerts(selectedDriver).length > 0 ? getDocumentAlerts(selectedDriver).slice(0, 5).map(alert => <div key={alert.text} className="small d-flex align-items-start gap-2"><Badge bg={alert.severity === 'danger' ? 'danger' : 'warning'}>{alert.severity}</Badge><span>{alert.text}</span></div>) : <div className="small text-secondary">No compliance alerts for this driver.</div>}
                       </div>
                     </div>
-
-                    <div className="d-flex align-items-center justify-content-between mb-2">
-                      <div className="small text-secondary text-uppercase">Drivers in group</div>
-                      <div className="small text-secondary">{selectedDrivers.length} total</div>
-                    </div>
-
-                    <div className="border rounded-3 overflow-hidden" style={{ borderColor: '#2a3144' }}>
-                      <div className="table-responsive" style={{ maxHeight: 360 }}>
-                        <Table className="align-middle mb-0 text-white">
-                          <thead>
-                            <tr>
-                              <th style={{ backgroundColor: '#0c111b', color: '#9bb0d1' }}>Driver</th>
-                              <th style={{ backgroundColor: '#0c111b', color: '#9bb0d1' }}>Vehicle</th>
-                              <th style={{ backgroundColor: '#0c111b', color: '#9bb0d1' }}>Phone</th>
-                              <th style={{ backgroundColor: '#0c111b', color: '#9bb0d1' }}>Ctrl</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {selectedDrivers.length ? selectedDrivers.map(driver => {
-                              const vehicle = state.vehicles.find(item => item.id === driver.vehicleId);
-                              return <tr key={driver.id}><td><div>{getDriverName(driver)}</div><div className="small text-secondary">{driver.username || driver.email || 'No login'}</div></td><td>{vehicle?.unitNumber || vehicle?.label || 'No vehicle'}</td><td>{driver.phone || 'No phone'}</td><td><Button size="sm" style={shellStyles.toolbarButton} onClick={() => handleUngroupDriver(driver.id)}>Ungroup</Button></td></tr>;
-                            }) : <tr><td colSpan={4} className="text-center py-4 text-secondary">This billing group has no drivers yet.</td></tr>}
-                          </tbody>
-                        </Table>
-                      </div>
-                    </div>
-                  </> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center text-secondary"><IconifyIcon icon="iconoir:group" className="fs-1 mb-3 text-success" /><div className="fw-semibold text-white mb-2">No grouping selected</div><div>Selecciona un grupo para ver billing code, ATD, work hours y los choferes asignados.</div></div>}
+                  </> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center text-secondary"><IconifyIcon icon="iconoir:user-badge-check" className="fs-1 mb-3 text-success" /><div className="fw-semibold text-white mb-2">No driver selected</div><div>Selecciona un chofer del roster para ver horarios, ATD y alertas de licencia.</div></div>}
               </div>
             </Col>
           </Row>
         </CardBody>
       </Card>
 
-      <Modal show={showEditor} onHide={() => setShowEditor(false)} centered>
+      <Modal show={showExpiryModal && upcomingExpirations.length > 0} onHide={() => setShowExpiryModal(false)} centered>
         <Modal.Header closeButton style={shellStyles.modalHeader} className="text-white">
-          <Modal.Title>{draftGrouping?.name || 'New Billing Group'}</Modal.Title>
+          <Modal.Title>Important Notifications</Modal.Title>
         </Modal.Header>
         <Modal.Body style={shellStyles.modalContent}>
-          {validationErrors.length > 0 ? <Alert variant="danger"><ul className="mb-0">{validationErrors.map(item => <li key={item}>{item}</li>)}</ul></Alert> : null}
-          <Row className="g-3">
-            <Col md={8}><Form.Label className="small text-uppercase text-secondary">Grouping Name</Form.Label><Form.Control value={draftGrouping?.name || ''} style={shellStyles.input} onChange={event => setDraftGrouping(current => ({ ...current, name: event.target.value }))} /></Col>
-            <Col md={4}><Form.Label className="small text-uppercase text-secondary">Status</Form.Label><Form.Select value={draftGrouping?.status || 'Active'} style={shellStyles.input} onChange={event => setDraftGrouping(current => ({ ...current, status: event.target.value }))}><option>Active</option><option>Attention</option><option>Pending</option><option>Inactive</option></Form.Select></Col>
-            <Col md={4}><Form.Label className="small text-uppercase text-secondary">ATD</Form.Label><Form.Control value={draftGrouping?.atd || ''} style={shellStyles.input} onChange={event => setDraftGrouping(current => ({ ...current, atd: event.target.value }))} /></Col>
-            <Col md={4}><Form.Label className="small text-uppercase text-secondary">Work Hours</Form.Label><Form.Control value={draftGrouping?.workHours || ''} style={shellStyles.input} onChange={event => setDraftGrouping(current => ({ ...current, workHours: event.target.value }))} /></Col>
-            <Col md={4}><Form.Label className="small text-uppercase text-secondary">Billing Code</Form.Label><Form.Control value={draftGrouping?.billingCode || ''} style={shellStyles.input} onChange={event => setDraftGrouping(current => ({ ...current, billingCode: event.target.value }))} /></Col>
-            <Col md={6}><Form.Label className="small text-uppercase text-secondary">Dispatch Tag</Form.Label><Form.Control value={draftGrouping?.dispatchTag || ''} style={shellStyles.input} onChange={event => setDraftGrouping(current => ({ ...current, dispatchTag: event.target.value }))} /></Col>
-            <Col md={6}><Form.Label className="small text-uppercase text-secondary">Notes</Form.Label><Form.Control value={draftGrouping?.notes || ''} style={shellStyles.input} onChange={event => setDraftGrouping(current => ({ ...current, notes: event.target.value }))} /></Col>
-            <Col md={12}><Form.Label className="small text-uppercase text-secondary">Description</Form.Label><Form.Control as="textarea" rows={3} value={draftGrouping?.description || ''} style={shellStyles.input} onChange={event => setDraftGrouping(current => ({ ...current, description: event.target.value }))} /></Col>
-          </Row>
+          <div className="fw-semibold fs-5 mb-3" style={{ color: '#ffb84d' }}>Upcoming Expirations (Next 7 Days)</div>
+          <div className="fw-semibold mb-2">Documents ({upcomingExpirations.length}):</div>
+          <ul className="mb-0">
+            {upcomingExpirations.map(item => <li key={`${item.driverId}-${item.documentLabel}`}>{item.documentLabel}: {item.driverName} (DL: {item.licenseNumber}) - Expires {item.expirationDate}</li>)}
+          </ul>
+          <div className="mt-4 small text-secondary border-top pt-3" style={{ borderColor: '#2a3144' }}>You can update these records by navigating to Drivers or Vehicles menu.</div>
         </Modal.Body>
         <Modal.Footer style={shellStyles.modalHeader}>
-          <Button style={shellStyles.toolbarButton} onClick={() => setShowEditor(false)}>Cancel</Button>
-          <Button style={shellStyles.primaryButton} onClick={handleSaveGrouping} disabled={saving}>Save</Button>
+          <Button style={shellStyles.activePill} onClick={() => setShowExpiryModal(false)}>Ok</Button>
         </Modal.Footer>
       </Modal>
     </>;

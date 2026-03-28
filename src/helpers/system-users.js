@@ -336,6 +336,12 @@ export const normalizePhoneDigits = phone => String(phone ?? '').replace(/\D/g, 
 
 export const normalizeAuthValue = value => stripAccents(value).trim().toLowerCase();
 
+const toPasswordNameSegment = value => {
+  const segments = stripAccents(value).split(/[^A-Za-z0-9]+/).map(segment => segment.trim()).filter(Boolean);
+  if (segments.length === 0) return 'User';
+  return segments.map(segment => `${segment.charAt(0).toUpperCase()}${segment.slice(1).toLowerCase()}`).join('');
+};
+
 export const isDriverRole = role => normalizeAuthValue(role).includes('driver');
 
 export const DEFAULT_PROTECTED_SYSTEM_USER_IDS = ['user-1', 'user-14', 'user-15', 'user-16', 'user-20', 'user-30'];
@@ -343,7 +349,7 @@ export const DEFAULT_PROTECTED_SYSTEM_USER_IDS = ['user-1', 'user-14', 'user-15'
 export const isProtectedSystemUser = (user, protectedUserIds = DEFAULT_PROTECTED_SYSTEM_USER_IDS) => protectedUserIds.includes(user?.id);
 
 export const buildPasswordForUser = user => {
-  const safeName = normalizeAuthValue(user.firstName).replace(/[^a-z0-9]/g, '');
+  const safeName = toPasswordNameSegment(user.username || user.firstName);
   const lastTwoDigits = normalizePhoneDigits(user.phone).slice(-2).padStart(2, '0');
   return `${safeName}@${lastTwoDigits}`;
 };
@@ -354,11 +360,16 @@ const buildFallbackEmail = user => {
 };
 
 export const getUserAccessLabels = user => ({
-  webAccess: isDriverRole(user.role) ? 'Blocked' : 'Enabled',
-  androidAccess: 'Enabled'
+  webAccess: user.webAccess ? 'Enabled' : 'Blocked',
+  androidAccess: user.androidAccess ? 'Enabled' : 'Blocked'
 });
 
-export const getUserAccessSummary = user => isDriverRole(user.role) ? 'Android only' : 'Web + Android';
+export const getUserAccessSummary = user => {
+  if (user.webAccess && user.androidAccess) return 'Web + Android';
+  if (user.webAccess) return 'Web only';
+  if (user.androidAccess) return 'Android only';
+  return 'No access';
+};
 
 export const getUserSyncStatus = ({
   user,
@@ -373,10 +384,13 @@ export const getUserSyncStatus = ({
 
 export const enrichSystemUser = (user, protectedUserIds = DEFAULT_PROTECTED_SYSTEM_USER_IDS) => ({
   ...user,
+  isCompany: Boolean(user.isCompany),
+  companyName: String(user.companyName ?? ''),
+  taxId: String(user.taxId ?? ''),
   email: user.email || buildFallbackEmail(user),
-  password: buildPasswordForUser(user),
-  webAccess: !isDriverRole(user.role),
-  androidAccess: true,
+  password: String(user.password || buildPasswordForUser(user)),
+  webAccess: typeof user.webAccess === 'boolean' ? user.webAccess : !isDriverRole(user.role),
+  androidAccess: typeof user.androidAccess === 'boolean' ? user.androidAccess : true,
   isProtected: isProtectedSystemUser(user, protectedUserIds)
 });
 
@@ -399,8 +413,12 @@ export const authorizeSystemUser = ({
     throw new Error('Username or password is not valid');
   }
 
-  if (clientType !== 'android' && isDriverRole(matchedUser.role)) {
-    throw new Error('Drivers cannot sign in on the web. Use the Android app.');
+  if (clientType === 'android' && !matchedUser.androidAccess) {
+    throw new Error('This user has no Android app access.');
+  }
+
+  if (clientType !== 'android' && !matchedUser.webAccess) {
+    throw new Error('This user has no web access.');
   }
 
   return matchedUser;
@@ -418,9 +436,12 @@ export const getUserManagementRows = (users = SYSTEM_USERS, protectedUserIds = D
     phone: user.phone,
     role: user.role,
     username: user.username,
+    isCompany: user.isCompany,
+    companyName: user.companyName,
+    taxId: user.taxId,
     lastEventTime: user.lastEventTime,
     eventType: user.eventType,
-    passwordRule: buildPasswordForUser(user),
+    passwordRule: user.password,
     webAccess: access.webAccess,
     androidAccess: access.androidAccess,
     accessSummary: getUserAccessSummary(user),

@@ -1,6 +1,6 @@
 'use client';
 
-import { normalizeDispatcherVisibleTripColumns, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord } from '@/helpers/nemt-dispatch-state';
+import { normalizeDispatcherVisibleTripColumns, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { createContext, startTransition, use, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -16,7 +16,7 @@ const buildClientState = value => ({
   })) : INITIAL_DRIVERS.map(driver => ({
     ...driver
   })),
-  trips: Array.isArray(value?.trips) ? value.trips.map(normalizeTripRecord) : INITIAL_TRIPS.map(trip => ({
+  trips: Array.isArray(value?.trips) ? normalizeTripRecords(value?.trips) : INITIAL_TRIPS.map(trip => ({
     ...trip
   })),
   routePlans: Array.isArray(value?.routePlans) ? value.routePlans.map(normalizeRoutePlanRecord) : INITIAL_ROUTE_PLANS.map(routePlan => ({
@@ -54,6 +54,7 @@ export const NemtProvider = ({
   const [state, setState] = useLocalStorage('__CARE_MOBILITY_NEMT__', createInitialState());
   const [isDispatchLoaded, setIsDispatchLoaded] = useState(false);
   const lastPersistedSnapshotRef = useRef('');
+  const hasLocalDispatchChangesRef = useRef(false);
 
   const syncDriversFromServer = async () => {
     try {
@@ -77,6 +78,39 @@ export const NemtProvider = ({
     }
   };
 
+  const syncDispatchFromServer = async (options = {}) => {
+    const forceServer = options.forceServer ?? false;
+    try {
+      const response = await fetch('/api/nemt/dispatch', {
+        cache: 'no-store'
+      });
+      if (!response.ok) throw new Error('Unable to load dispatch state');
+      const payload = normalizePersistentDispatchState(await response.json());
+      startTransition(() => {
+        setState(currentState => {
+          const localState = buildClientState(currentState ?? createInitialState());
+          const useLocalTrips = !forceServer && (localState.trips.length > payload.trips.length || hasLocalDispatchChangesRef.current && localState.trips.length > 0);
+          const useLocalRoutes = !forceServer && (localState.routePlans.length > payload.routePlans.length || hasLocalDispatchChangesRef.current && localState.routePlans.length > 0);
+          const localColumns = normalizeDispatcherVisibleTripColumns(localState.uiPreferences?.dispatcherVisibleTripColumns);
+          const serverColumns = normalizeDispatcherVisibleTripColumns(payload.uiPreferences?.dispatcherVisibleTripColumns);
+          const useLocalPreferences = !forceServer && hasLocalDispatchChangesRef.current && JSON.stringify(localColumns) !== JSON.stringify(serverColumns);
+          const nextState = buildClientState({
+            ...localState,
+            trips: useLocalTrips ? localState.trips : payload.trips,
+            routePlans: useLocalRoutes ? localState.routePlans : payload.routePlans,
+            uiPreferences: useLocalPreferences ? localState.uiPreferences : payload.uiPreferences
+          });
+          lastPersistedSnapshotRef.current = useLocalTrips || useLocalRoutes || useLocalPreferences ? '' : JSON.stringify(createPersistedSnapshot(nextState));
+          return nextState;
+        });
+      });
+      return true;
+    } catch {
+      lastPersistedSnapshotRef.current = JSON.stringify(createPersistedSnapshot(buildClientState(state ?? createInitialState())));
+      return false;
+    }
+  };
+
   useEffect(() => {
     if (!state || state.version !== STORAGE_VERSION) {
       startTransition(() => {
@@ -90,31 +124,7 @@ export const NemtProvider = ({
 
     const loadDispatchState = async () => {
       try {
-        const response = await fetch('/api/nemt/dispatch', {
-          cache: 'no-store'
-        });
-        if (!response.ok) throw new Error('Unable to load dispatch state');
-        const payload = normalizePersistentDispatchState(await response.json());
-        startTransition(() => {
-          setState(currentState => {
-            const localState = buildClientState(currentState ?? createInitialState());
-            const useLocalTrips = localState.trips.length > 0 && payload.trips.length === 0;
-            const useLocalRoutes = localState.routePlans.length > 0 && payload.routePlans.length === 0;
-            const localColumns = normalizeDispatcherVisibleTripColumns(localState.uiPreferences?.dispatcherVisibleTripColumns);
-            const serverColumns = normalizeDispatcherVisibleTripColumns(payload.uiPreferences?.dispatcherVisibleTripColumns);
-            const useLocalPreferences = JSON.stringify(localColumns) !== JSON.stringify(serverColumns) && payload.trips.length === 0 && payload.routePlans.length === 0;
-            const nextState = buildClientState({
-              ...localState,
-              trips: useLocalTrips ? localState.trips : payload.trips,
-              routePlans: useLocalRoutes ? localState.routePlans : payload.routePlans,
-              uiPreferences: useLocalPreferences ? localState.uiPreferences : payload.uiPreferences
-            });
-            lastPersistedSnapshotRef.current = useLocalTrips || useLocalRoutes || useLocalPreferences ? '' : JSON.stringify(createPersistedSnapshot(nextState));
-            return nextState;
-          });
-        });
-      } catch {
-        lastPersistedSnapshotRef.current = JSON.stringify(createPersistedSnapshot(buildClientState(state ?? createInitialState())));
+        await syncDispatchFromServer();
       } finally {
         if (active) {
           setIsDispatchLoaded(true);
@@ -145,6 +155,7 @@ export const NemtProvider = ({
         });
         if (!response.ok) return;
         lastPersistedSnapshotRef.current = snapshot;
+        hasLocalDispatchChangesRef.current = false;
       } catch {
         // Keep local state if the server is temporarily unavailable.
       }
@@ -171,10 +182,14 @@ export const NemtProvider = ({
     };
   }, []);
 
-  const updateState = updater => {
+  const updateState = (updater, options = {}) => {
+    const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;
     startTransition(() => {
       setState(currentState => {
         const baseState = currentState ?? createInitialState();
+        if (shouldMarkDispatchDirty) {
+          hasLocalDispatchChangesRef.current = true;
+        }
         return updater(baseState);
       });
     });
@@ -211,7 +226,7 @@ export const NemtProvider = ({
         status: 'Assigned'
       } : trip)
     };
-  });
+  }, { markDispatchDirty: true });
 
   const unassignTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
@@ -229,7 +244,40 @@ export const NemtProvider = ({
         status: 'Unassigned'
       } : trip)
     };
-  });
+  }, { markDispatchDirty: true });
+
+  const cancelTrips = (tripIds = []) => updateState(currentState => {
+    const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const updatedRoutePlans = currentState.routePlans.map(routePlan => ({
+      ...routePlan,
+      tripIds: routePlan.tripIds.filter(id => !targetTripIds.includes(id))
+    })).filter(routePlan => routePlan.tripIds.length > 0);
+    return {
+      ...currentState,
+      routePlans: updatedRoutePlans,
+      selectedTripIds: currentState.selectedTripIds.filter(id => !targetTripIds.includes(id)),
+      trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
+        ...trip,
+        driverId: null,
+        routeId: null,
+        status: 'Cancelled'
+      } : trip)
+    };
+  }, { markDispatchDirty: true });
+
+  const reinstateTrips = (tripIds = []) => updateState(currentState => {
+    const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    return {
+      ...currentState,
+      selectedTripIds: currentState.selectedTripIds.filter(id => !targetTripIds.includes(id)),
+      trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
+        ...trip,
+        driverId: null,
+        routeId: null,
+        status: 'Unassigned'
+      } : trip)
+    };
+  }, { markDispatchDirty: true });
 
   const createRoute = ({
     name,
@@ -264,7 +312,7 @@ export const NemtProvider = ({
       } : trip),
       selectedTripIds: targetTripIds
     };
-  });
+  }, { markDispatchDirty: true });
 
   const deleteRoute = routeId => updateState(currentState => ({
     ...currentState,
@@ -276,7 +324,7 @@ export const NemtProvider = ({
       routeId: null,
       status: 'Unassigned'
     } : trip)
-  }));
+  }), { markDispatchDirty: true });
 
   const addDriver = () => updateState(currentState => {
     const nextIndex = currentState.drivers.length + 19;
@@ -302,12 +350,12 @@ export const NemtProvider = ({
 
   const replaceTrips = trips => updateState(currentState => ({
     ...currentState,
-    trips,
+    trips: normalizeTripRecords(trips),
     routePlans: [],
     selectedTripIds: [],
     selectedRouteId: null,
     selectedDriverId: null
-  }));
+  }), { markDispatchDirty: true });
 
   const clearTrips = () => updateState(currentState => ({
     ...currentState,
@@ -316,7 +364,7 @@ export const NemtProvider = ({
     selectedTripIds: [],
     selectedRouteId: null,
     selectedDriverId: null
-  }));
+  }), { markDispatchDirty: true });
 
   const setDispatcherVisibleTripColumns = columnKeys => updateState(currentState => ({
     ...currentState,
@@ -324,7 +372,7 @@ export const NemtProvider = ({
       ...currentState.uiPreferences,
       dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(columnKeys)
     }
-  }));
+  }), { markDispatchDirty: true });
 
   const resetNemtState = () => {
     startTransition(() => {
@@ -345,6 +393,8 @@ export const NemtProvider = ({
     toggleTripSelection,
     assignTripsToDriver,
     unassignTrips,
+    cancelTrips,
+    reinstateTrips,
     createRoute,
     deleteRoute,
     addDriver,
@@ -353,7 +403,8 @@ export const NemtProvider = ({
     setDispatcherVisibleTripColumns,
     resetNemtState,
     getDriverName,
-    refreshDrivers: syncDriversFromServer
+    refreshDrivers: syncDriversFromServer,
+    refreshDispatchState: syncDispatchFromServer
   }), [state])}>
       {children}
     </NemtContext.Provider>;

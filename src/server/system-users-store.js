@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { createBlankDriver, getFullName } from '@/helpers/nemt-admin-model';
-import { DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED, authorizeSystemUser, enrichSystemUser, getUserSyncStatus, isDriverRole, isProtectedSystemUser, normalizeAuthValue } from '@/helpers/system-users';
+import { buildStableDriverId, createBlankDriver, getFullName } from '@/helpers/nemt-admin-model';
+import { DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED, authorizeSystemUser, buildPasswordForUser, enrichSystemUser, getUserSyncStatus, isDriverRole, isProtectedSystemUser, normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
@@ -12,10 +12,16 @@ const normalizeUserRecord = user => ({
   firstName: String(user?.firstName ?? ''),
   middleInitial: String(user?.middleInitial ?? ''),
   lastName: String(user?.lastName ?? ''),
+  isCompany: Boolean(user?.isCompany),
+  companyName: String(user?.companyName ?? ''),
+  taxId: String(user?.taxId ?? ''),
   email: String(user?.email ?? ''),
   phone: String(user?.phone ?? ''),
   role: String(user?.role ?? ''),
   username: String(user?.username ?? ''),
+  password: String(user?.password || buildPasswordForUser(user)),
+  webAccess: typeof user?.webAccess === 'boolean' ? user.webAccess : !isDriverRole(user?.role),
+  androidAccess: typeof user?.androidAccess === 'boolean' ? user.androidAccess : true,
   lastEventTime: String(user?.lastEventTime ?? ''),
   eventType: String(user?.eventType ?? '')
 });
@@ -37,7 +43,7 @@ const normalizeUsersState = value => {
   const users = Array.isArray(value?.users) ? value.users.map(normalizeUserRecord) : [];
 
   return {
-    version: 2,
+    version: 4,
     protectedUserIds: normalizeProtectedIds(value?.protectedUserIds, users),
     users
   };
@@ -49,7 +55,7 @@ const ensureStorageFile = async () => {
     await readFile(STORAGE_FILE, 'utf8');
   } catch {
     await writeFile(STORAGE_FILE, JSON.stringify({
-      version: 2,
+      version: 4,
       protectedUserIds: normalizeProtectedIds(DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED),
       users: USER_SEED.map(normalizeUserRecord)
     }, null, 2), 'utf8');
@@ -98,6 +104,7 @@ const syncUserIntoDriverState = (drivers, user) => {
   const baseDriver = driverIndex >= 0 ? drivers[driverIndex] : createBlankDriver();
   const nextDriver = {
     ...baseDriver,
+    id: driverIndex >= 0 ? baseDriver.id : buildStableDriverId(user),
     authUserId: user.id,
     firstName: user.firstName,
     middleInitial: user.middleInitial,
@@ -106,6 +113,12 @@ const syncUserIntoDriverState = (drivers, user) => {
     username: user.username,
     email: user.email,
     phone: user.phone,
+    password: user.password,
+    webAccess: user.webAccess,
+    androidAccess: user.androidAccess,
+    isCompany: user.isCompany,
+    companyName: user.companyName,
+    taxId: user.taxId,
     role: user.role,
     portalUsername: user.username,
     portalEmail: user.email,

@@ -1,9 +1,12 @@
 'use client';
 
-import { createContext, use, useEffect, useMemo } from 'react';
+import { createContext, use, useEffect, useMemo, useRef } from 'react';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import useQueryParams from '@/hooks/useQueryParams';
 import { toggleDocumentAttribute } from '@/utils/layout';
+
+const MENU_AUTO_COLLAPSE_MS = 5 * 60 * 1000;
+
 const ThemeContext = createContext(undefined);
 const useLayoutContext = () => {
   const context = use(ThemeContext);
@@ -26,6 +29,7 @@ const LayoutProvider = ({
     }
   };
   const [settings, setSettings] = useLocalStorage('__Dastone_NEXT_CONFIG__', INIT_STATE, override);
+  const autoCollapseTimeoutRef = useRef(null);
 
   // update settings
   const updateSettings = _newSettings => setSettings({
@@ -69,6 +73,43 @@ const LayoutProvider = ({
       toggleDocumentAttribute('data-sidebar-size', settings.menu.size, true, 'body');
     };
   }, [settings]);
+  useEffect(() => {
+    if (settings.menu.size === 'collapsed') {
+      if (autoCollapseTimeoutRef.current) {
+        window.clearTimeout(autoCollapseTimeoutRef.current);
+        autoCollapseTimeoutRef.current = null;
+      }
+      return undefined;
+    }
+
+    const resetAutoCollapseTimer = () => {
+      if (autoCollapseTimeoutRef.current) {
+        window.clearTimeout(autoCollapseTimeoutRef.current);
+      }
+
+      autoCollapseTimeoutRef.current = window.setTimeout(() => {
+        setSettings(currentSettings => currentSettings?.menu?.size === 'collapsed' ? currentSettings : {
+          ...currentSettings,
+          menu: {
+            ...currentSettings.menu,
+            size: 'collapsed'
+          }
+        });
+      }, MENU_AUTO_COLLAPSE_MS);
+    };
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
+    resetAutoCollapseTimer();
+    activityEvents.forEach(eventName => window.addEventListener(eventName, resetAutoCollapseTimer, true));
+
+    return () => {
+      activityEvents.forEach(eventName => window.removeEventListener(eventName, resetAutoCollapseTimer, true));
+      if (autoCollapseTimeoutRef.current) {
+        window.clearTimeout(autoCollapseTimeoutRef.current);
+        autoCollapseTimeoutRef.current = null;
+      }
+    };
+  }, [setSettings, settings.menu.size]);
   const resetSettings = () => updateSettings(INIT_STATE);
   return <ThemeContext.Provider value={useMemo(() => ({
     ...settings,

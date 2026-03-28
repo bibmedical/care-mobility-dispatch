@@ -42,6 +42,20 @@ const COLUMN_ALIASES = {
 
 const DEFAULT_CENTER = [28.5383, -81.3792];
 
+const toRadians = value => value * (Math.PI / 180);
+
+const getDistanceMiles = (from, to) => {
+  if (!Array.isArray(from) || !Array.isArray(to) || from.length !== 2 || to.length !== 2) return '';
+  const earthRadiusMiles = 3958.8;
+  const dLat = toRadians(to[0] - from[0]);
+  const dLon = toRadians(to[1] - from[1]);
+  const lat1 = toRadians(from[0]);
+  const lat2 = toRadians(to[0]);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  const miles = earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Number.isFinite(miles) ? miles.toFixed(1) : '';
+};
+
 const getParsedDate = value => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
 
@@ -151,11 +165,15 @@ const mapRowToTrip = (row, index) => {
   const destination = getValueByAliases(row, COLUMN_ALIASES.toAddress) || getValueByAliases(row, COLUMN_ALIASES.destination) || '';
   const rideId = getValueByAliases(row, COLUMN_ALIASES.id) || `RIDE-${Date.now()}-${index + 1}`;
   const tripId = getValueByAliases(row, COLUMN_ALIASES.brokerTripId);
+  const uniqueTripId = `${rideId}-${tripId || 'row'}-${index + 1}`;
   const status = getValueByAliases(row, COLUMN_ALIASES.status) || 'Scheduled';
   const confirmationStatus = getValueByAliases(row, COLUMN_ALIASES.confirmationStatus) || 'confirmed';
+  const position = [getCoordinate(row, 'lat', index), getCoordinate(row, 'lng', index)];
+  const destinationPosition = [getDestinationCoordinate(row, 'lat', index), getDestinationCoordinate(row, 'lng', index)];
+  const providedMiles = getValueByAliases(row, COLUMN_ALIASES.miles);
 
   return {
-    id: rideId,
+    id: uniqueTripId,
     rideId,
     brokerTripId: tripId,
     rider,
@@ -170,7 +188,7 @@ const mapRowToTrip = (row, index) => {
     notes: getValueByAliases(row, COLUMN_ALIASES.notes),
     vehicleType: getValueByAliases(row, COLUMN_ALIASES.vehicleType),
     tripType: getValueByAliases(row, COLUMN_ALIASES.tripType),
-    miles: getValueByAliases(row, COLUMN_ALIASES.miles),
+    miles: providedMiles || getDistanceMiles(position, destinationPosition),
     safeRideStatus: status,
     confirmationStatus,
     source: 'SafeRide',
@@ -181,8 +199,8 @@ const mapRowToTrip = (row, index) => {
     rawPickupTime,
     rawDropoffTime,
     pickupSortValue: getTimeValue(rawPickupTime),
-    position: [getCoordinate(row, 'lat', index), getCoordinate(row, 'lng', index)],
-    destinationPosition: [getDestinationCoordinate(row, 'lat', index), getDestinationCoordinate(row, 'lng', index)]
+    position,
+    destinationPosition
   };
 };
 
@@ -305,8 +323,15 @@ const TripImportWorkspace = () => {
               <Form.Control ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} style={{ display: 'none' }} />
               <div className="small text-muted mb-3">{selectedFileName ? `Archivo seleccionado: ${selectedFileName}` : 'No hay archivo seleccionado.'}</div>
               <div className="small text-muted mb-3">{message}</div>
+              {pendingTrips.length > 0 ? <Alert variant="success" className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                  <div>
+                    <div className="fw-semibold">Archivo listo para importar</div>
+                    <div className="small mb-0">Se encontraron {pendingTrips.length} viajes en preview. Presiona el boton verde para subirlos al sistema.</div>
+                  </div>
+                  <Button variant="success" size="lg" onClick={handleImportTrips}>Importar {pendingTrips.length} viajes ahora</Button>
+                </Alert> : null}
               <div className="d-flex flex-wrap gap-2">
-                <Button variant="dark" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Reemplazar viajes con este archivo</Button>
+                <Button variant="success" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar y reemplazar viajes</Button>
                 <Button variant="outline-secondary" onClick={() => router.push('/dispatcher')}>Abrir Dispatcher</Button>
                 <Button variant="outline-secondary" onClick={() => router.push('/trip-dashboard')}>Abrir Trip Dashboard</Button>
               </div>
@@ -317,9 +342,12 @@ const TripImportWorkspace = () => {
         <Col xl={7}>
           <Card className="h-100">
             <CardBody className="p-0">
-              <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-white">
+              <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark">
                 <strong>Preview de viajes importados</strong>
-                <Badge bg="light" text="dark">{pendingTrips.length}</Badge>
+                <div className="d-flex align-items-center gap-2">
+                  <Badge bg="light" text="dark">{pendingTrips.length}</Badge>
+                  <Button variant="light" size="sm" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar</Button>
+                </div>
               </div>
               <div className="table-responsive" style={{ maxHeight: 520 }}>
                 <Table hover className="align-middle mb-0">

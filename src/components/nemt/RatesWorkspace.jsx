@@ -1,8 +1,10 @@
 'use client';
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import { useNemtContext } from '@/context/useNemtContext';
+import { RATE_TABLES, getTripBillingAmount, isTripBillable } from '@/helpers/nemt-billing';
 import React, { useMemo, useState } from 'react';
-import { Button, Card, CardBody, Form, Table } from 'react-bootstrap';
+import { Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
 
 const shellStyles = {
   windowHeader: {
@@ -64,70 +66,6 @@ const TABS = [{
   label: 'Age Buckets'
 }];
 
-const rateTables = {
-  'bucket-pricing': {
-    columns: ['Distance (mi)', 'A', 'W', 'EP', 'E8', 'S', 'APEC', 'WPEC', 'GT', 'SGT'],
-    rows: [{
-      label: '00-03',
-      values: ['9.50', '19.00', '6.65', '13.30', '60.00', '10.21', '19.75', '6.65', '13.30']
-    }, {
-      label: '04-06',
-      values: ['12.25', '22.00', '8.58', '15.40', '65.00', '13.00', '22.50', '8.58', '15.40']
-    }, {
-      label: '07-10',
-      values: ['16.30', '26.00', '11.41', '18.20', '70.00', '16.25', '26.50', '11.41', '18.20']
-    }, {
-      label: 'Each Additional Miles',
-      values: ['1.63', '1.95', '1.14', '1.37', '2.00', '1.63', '1.95', '1.14', '1.37'],
-      selected: true
-    }]
-  },
-  'standard-pricing': {
-    columns: ['Distance (mi)', 'A', 'W', 'EP', 'E8', 'S', 'APEC', 'WPEC', 'GT', 'SGT'],
-    rows: [{
-      label: 'Seating',
-      values: ['13.50', '0.00', '0.00', '0.00', '10.00', '0.00', '0.00', '0.00', '0.00']
-    }, {
-      label: '1-1',
-      values: ['10.00', '3.00', '2.00', '2.00', '1.50', '1.50', '1.50', '1.50', '0.00']
-    }, {
-      label: '2-2',
-      values: ['5.00', '3.00', '2.00', '2.00', '2.00', '2.00', '2.00', '2.00', '0.00']
-    }, {
-      label: '3-3',
-      values: ['3.33', '0.00', '0.00', '0.00', '1.00', '0.00', '0.00', '0.00', '0.00']
-    }, {
-      label: '4-4',
-      values: ['2.50', '0.00', '0.00', '0.00', '2.00', '0.00', '0.00', '0.00', '0.00']
-    }, {
-      label: '5-5',
-      values: ['2.00', '0.00', '0.00', '0.00', '3.00', '0.00', '0.00', '0.00', '0.00'],
-      selected: true
-    }, {
-      label: '6-500',
-      values: ['2.00', '0.00', '0.00', '0.00', '50.00', '0.00', '0.00', '0.00', '0.00']
-    }, {
-      label: 'Each Additional Mile!',
-      values: ['2.00', '3.00', '2.00', '2.00', '2.00', '2.00', '2.00', '2.00', '0.00']
-    }]
-  },
-  'los-types': {
-    columns: ['LOS', 'Target', 'Switch', 'Free Miles', 'Time Before (PU)', 'Price', 'Time After (PU)', 'Price', 'Escort', 'Attendant'],
-    rows: ['A', 'W', 'EP', 'E8', 'S', 'APEC', 'WPEC', 'GT', 'SGT'].map(label => ({
-      label,
-      values: ['Bucket', '', '', '--:--', '', '--:--', '', '', ''],
-      selected: label === 'S'
-    }))
-  },
-  'age-buckets': {
-    columns: ['Age Buckets (years)', 'Age Pricing'],
-    rows: [{
-      label: '0-0',
-      values: ['0.00']
-    }]
-  }
-};
-
 const actionButtonsByTab = {
   'bucket-pricing': ['Add Distance'],
   'standard-pricing': ['Add Distance'],
@@ -138,7 +76,20 @@ const actionButtonsByTab = {
 const RatesWorkspace = () => {
   const [activeTab, setActiveTab] = useState('bucket-pricing');
   const [selectedRowIndex, setSelectedRowIndex] = useState(3);
-  const tableConfig = rateTables[activeTab];
+  const { trips } = useNemtContext();
+  const tableConfig = RATE_TABLES[activeTab];
+  const billingSummary = useMemo(() => {
+    const billableTrips = trips.filter(isTripBillable);
+    const completedTrips = billableTrips.filter(trip => String(trip.status || '').toLowerCase() === 'completed');
+    const pendingTrips = billableTrips.filter(trip => String(trip.status || '').toLowerCase() !== 'completed');
+    return {
+      billableTrips: billableTrips.length,
+      completedTrips: completedTrips.length,
+      pendingTrips: pendingTrips.length,
+      capturedRevenue: completedTrips.reduce((sum, trip) => sum + getTripBillingAmount(trip), 0),
+      pendingRevenue: pendingTrips.reduce((sum, trip) => sum + getTripBillingAmount(trip), 0)
+    };
+  }, [trips]);
 
   const rows = useMemo(() => tableConfig.rows, [tableConfig.rows]);
 
@@ -150,6 +101,22 @@ const RatesWorkspace = () => {
         </button>
       </div>
       <CardBody className="p-2" style={shellStyles.body}>
+        <Row className="g-2 mb-3">
+          {[{
+            label: 'Trips In Billing',
+            value: billingSummary.billableTrips,
+            detail: `${billingSummary.completedTrips} completed | ${billingSummary.pendingTrips} pending`
+          }, {
+            label: 'Revenue Captured',
+            value: `$${billingSummary.capturedRevenue.toFixed(2)}`,
+            detail: 'Completed billed trips'
+          }, {
+            label: 'Pending Billing',
+            value: `$${billingSummary.pendingRevenue.toFixed(2)}`,
+            detail: 'Trips ready to bill'
+          }].map(card => <Col md={4} key={card.label}><div className="rounded-3 p-3 h-100" style={{ backgroundColor: '#101521', border: '1px solid #2a3144', color: '#e6ecff' }}><div className="small text-secondary text-uppercase">{card.label}</div><div className="fs-4 fw-semibold mt-2">{card.value}</div><div className="small text-secondary mt-1">{card.detail}</div></div></Col>)}
+        </Row>
+
         <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
           <Button className="rounded-pill" style={shellStyles.inactiveTab}>
             <IconifyIcon icon="iconoir:refresh-double" />

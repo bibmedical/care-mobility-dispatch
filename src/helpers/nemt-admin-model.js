@@ -3,6 +3,8 @@ import { SYSTEM_USERS, isDriverRole, normalizePhoneDigits, normalizeAuthValue } 
 const ORLANDO_CENTER = [28.5383, -81.3792];
 const ALERT_WINDOW_DAYS = 30;
 const ONLINE_WINDOW_MINUTES = 5;
+const ROUTE_ROSTER_DEFAULT_START = '12:00 AM';
+const ROUTE_ROSTER_DEFAULT_END = '11:59 PM';
 
 const VEHICLE_SEED = [{
   id: 'veh-1',
@@ -206,10 +208,44 @@ const safeDate = value => {
   return date;
 };
 
+export const getCurrentRosterWeekKey = (referenceDate = new Date()) => {
+  const nextDate = new Date(referenceDate);
+  nextDate.setHours(0, 0, 0, 0);
+  nextDate.setDate(nextDate.getDate() - nextDate.getDay());
+  return nextDate.toISOString().slice(0, 10);
+};
+
+export const normalizeRouteRoster = (value, driver = null) => {
+  const fallbackMode = driver?.vehicleId ? 'permanent' : 'off';
+  const normalizedMode = ['off', 'weekly', 'permanent'].includes(value?.mode) ? value.mode : fallbackMode;
+  return {
+    mode: normalizedMode,
+    weekKey: value?.weekKey || getCurrentRosterWeekKey(),
+    workStart: value?.workStart || ROUTE_ROSTER_DEFAULT_START,
+    workEnd: value?.workEnd || ROUTE_ROSTER_DEFAULT_END,
+    atd: value?.atd || 'none'
+  };
+};
+
+export const isDriverOnActiveRoster = (driver, referenceDate = new Date()) => {
+  const routeRoster = normalizeRouteRoster(driver?.routeRoster, driver);
+  if (routeRoster.mode === 'permanent') return true;
+  if (routeRoster.mode === 'weekly') return routeRoster.weekKey === getCurrentRosterWeekKey(referenceDate);
+  return false;
+};
+
 const slugify = value => normalizeAuthValue(value).replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `item-${Date.now()}`;
 
+export const createGeneratedId = prefix => {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `${prefix}-${uuid}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+export const buildStableDriverId = driver => `drv-${slugify(driver?.authUserId || driver?.username || driver?.email || getFullName(driver) || driver?.id || 'driver')}`;
+
 export const createBlankDriver = () => ({
-  id: `driver-${Date.now()}`,
+  id: createGeneratedId('driver'),
   firstName: '',
   middleInitial: '',
   lastName: '',
@@ -257,6 +293,7 @@ export const createBlankDriver = () => ({
   trackingSource: '',
   trackingLastSeen: '',
   position: ORLANDO_CENTER,
+  routeRoster: normalizeRouteRoster(null),
   documents: {
     profilePhoto: null,
     licenseFront: null,
@@ -268,7 +305,7 @@ export const createBlankDriver = () => ({
 });
 
 export const createBlankAttendant = () => ({
-  id: `att-${Date.now()}`,
+  id: createGeneratedId('att'),
   name: '',
   phone: '',
   email: '',
@@ -278,7 +315,7 @@ export const createBlankAttendant = () => ({
 });
 
 export const createBlankVehicle = () => ({
-  id: `veh-${Date.now()}`,
+  id: createGeneratedId('veh'),
   label: '',
   vin: '',
   plate: '',
@@ -292,7 +329,7 @@ export const createBlankVehicle = () => ({
 });
 
 export const createBlankGrouping = () => ({
-  id: `grp-${Date.now()}`,
+  id: createGeneratedId('grp'),
   name: '',
   description: '',
   dispatchTag: '',
@@ -314,6 +351,7 @@ export const isDriverOnline = driver => {
 
 export const normalizeDriverTracking = driver => ({
   ...driver,
+  routeRoster: normalizeRouteRoster(driver?.routeRoster, driver),
   trackingSource: driver?.trackingSource || '',
   trackingLastSeen: driver?.trackingLastSeen || '',
   live: isDriverOnline(driver) ? 'Online' : 'Offline',
@@ -352,6 +390,7 @@ const buildDriverSeed = () => {
       trackingSource: '',
       trackingLastSeen: '',
       position: getSeedPosition(index),
+      routeRoster: normalizeRouteRoster({ mode: vehicleId ? 'permanent' : 'off' }, { vehicleId }),
       notes: vehicleId ? 'Imported from roster' : 'Pending vehicle assignment',
       profileStatus: groupId === 'grp-1' ? 'Active' : 'Pending',
       backgroundCheckStatus: groupId === 'grp-1' ? 'Clear' : 'Pending',
@@ -413,6 +452,54 @@ export const getDocumentAlerts = driver => {
   pushDateAlert(driver.insuranceExpirationDate, 'Insurance policy');
   pushDateAlert(driver.workersCompExpirationDate, 'Workers comp');
   return alerts;
+};
+
+export const getUpcomingLicenseAlerts = (drivers, windowDays = 7) => {
+  const now = new Date();
+  const threshold = new Date(now);
+  threshold.setDate(threshold.getDate() + windowDays);
+
+  return (Array.isArray(drivers) ? drivers : []).flatMap(driver => {
+    const licenseDate = safeDate(driver?.licenseExpirationDate);
+    if (!licenseDate || licenseDate < now || licenseDate > threshold) return [];
+    return [{
+      driverId: driver.id,
+      driverName: getFullName(driver) || driver?.displayName || driver?.username || 'Unnamed driver',
+      licenseNumber: driver?.licenseNumber || 'No license number',
+      expirationDate: driver?.licenseExpirationDate
+    }];
+  }).sort((left, right) => String(left.expirationDate).localeCompare(String(right.expirationDate)));
+};
+
+export const getUpcomingDocumentExpirations = (drivers, windowDays = 7) => {
+  const now = new Date();
+  const threshold = new Date(now);
+  threshold.setDate(threshold.getDate() + windowDays);
+  const documentFields = [{
+    key: 'licenseExpirationDate',
+    label: 'Driver License'
+  }, {
+    key: 'medCardExpirationDate',
+    label: 'Medical Card'
+  }, {
+    key: 'insuranceExpirationDate',
+    label: 'Insurance Policy'
+  }, {
+    key: 'workersCompExpirationDate',
+    label: 'Workers Comp'
+  }];
+
+  return (Array.isArray(drivers) ? drivers : []).flatMap(driver => documentFields.flatMap(field => {
+    const expirationDate = safeDate(driver?.[field.key]);
+    if (!expirationDate || expirationDate < now || expirationDate > threshold) return [];
+    return [{
+      driverId: driver.id,
+      driverName: getFullName(driver) || driver?.displayName || driver?.username || 'Unnamed driver',
+      documentLabel: field.label,
+      licenseNumber: driver?.licenseNumber || 'No license number',
+      expirationDate: driver?.[field.key]
+    }];
+  })).sort((left, right) => String(left.expirationDate).localeCompare(String(right.expirationDate)));
 };
 
 export const validateDriver = (driver, state) => {
@@ -511,7 +598,12 @@ export const buildGroupingRows = state => state.groupings.map((grouping, index) 
   };
 });
 
-export const mapAdminDataToDispatchDrivers = state => state.drivers.filter(driver => isDriverRole(driver.role)).map((driver, index) => {
+export const mapAdminDataToDispatchDrivers = state => {
+  const sourceDrivers = state.drivers.filter(driver => isDriverRole(driver.role));
+  const rosterDrivers = sourceDrivers.filter(driver => isDriverOnActiveRoster(driver));
+  const visibleDrivers = rosterDrivers.length > 0 ? rosterDrivers : sourceDrivers;
+
+  return visibleDrivers.map((driver, index) => {
   const normalizedDriver = normalizeDriverTracking(driver);
   const vehicle = state.vehicles.find(item => item.id === normalizedDriver.vehicleId);
   const attendant = state.attendants.find(item => item.id === normalizedDriver.attendantId);
@@ -524,13 +616,16 @@ export const mapAdminDataToDispatchDrivers = state => state.drivers.filter(drive
     vehicle: vehicle?.label || 'Pending vehicle',
     name: getFullName(normalizedDriver),
     nickname: normalizedDriver.username || normalizedDriver.firstName,
+    phone: normalizedDriver.phone || '',
     checkpoint: normalizedDriver.checkpoint || 'Base dispatch',
     attendant: attendant?.name || 'Not Set',
     info: alerts[0]?.text || normalizedDriver.notes || grouping?.dispatchTag || 'Ready',
     live: isLiveTracking ? 'Online' : 'Offline',
     group: grouping?.name || 'Ungrouped',
+    routeRoster: normalizedDriver.routeRoster,
     position: Array.isArray(normalizedDriver.position) ? normalizedDriver.position : ORLANDO_CENTER,
     hasRealLocation: isLiveTracking && Array.isArray(normalizedDriver.position) && normalizedDriver.position.length === 2,
     trackingSource: normalizedDriver.trackingSource || ''
   };
-});
+  });
+};

@@ -18,6 +18,16 @@ export const MENU_ITEMS = [{
   icon: 'iconoir:view-grid',
   url: '/trip-dashboard'
 }, {
+  key: 'confirmation',
+  label: 'Confirmation',
+  icon: 'iconoir:check-circle',
+  url: '/confirmation'
+}, {
+  key: 'blacklist',
+  label: 'Black List',
+  icon: 'iconoir:shield-question',
+  url: '/blacklist'
+}, {
   key: 'excel-loader',
   label: 'Excel Loader',
   icon: 'iconoir:page-search',
@@ -44,14 +54,15 @@ export const MENU_ITEMS = [{
     label: 'Attendants',
     url: '/drivers/attendants'
   }, {
-    key: 'drivers-vehicles',
-    label: 'Vehicles',
-    url: '/drivers/vehicles'
-  }, {
     key: 'drivers-grouping',
     label: 'Grouping',
     url: '/drivers/grouping'
   }]
+}, {
+  key: 'vehicles',
+  label: 'Vehicles',
+  icon: 'iconoir:truck',
+  url: '/drivers/vehicles'
 }, {
   key: 'preferences',
   label: 'Preferences',
@@ -65,6 +76,10 @@ export const MENU_ITEMS = [{
     key: 'integrations-uber',
     label: 'Uber',
     url: '/integrations/uber'
+  }, {
+    key: 'integrations-sms',
+    label: 'SMS',
+    url: '/integrations/sms'
   }]
 }, {
   key: 'rates',

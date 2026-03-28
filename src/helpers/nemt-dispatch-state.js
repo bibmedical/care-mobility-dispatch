@@ -38,17 +38,32 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   label: 'Leg'
 }];
 
-export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['trip', 'status', 'driver', 'pickup', 'dropoff', 'rider', 'address'];
+export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['trip', 'status', 'driver', 'pickup', 'dropoff', 'rider', 'address', 'destination', 'miles'];
 
 export const normalizeDispatcherVisibleTripColumns = value => {
   const allowedKeys = new Set(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key));
   const cleanedColumns = Array.isArray(value) ? value.filter(columnKey => allowedKeys.has(columnKey)) : [];
-  const uniqueColumns = Array.from(new Set(cleanedColumns));
+  const requiredColumns = ['address', 'destination', 'miles'];
+  const uniqueColumns = Array.from(new Set([...cleanedColumns, ...requiredColumns]));
   return uniqueColumns.length > 0 ? uniqueColumns : [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
 };
 
 export const normalizeNemtUiPreferences = value => ({
   dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(value?.dispatcherVisibleTripColumns)
+});
+
+const normalizeTripConfirmation = value => ({
+  status: String(value?.status ?? 'Not Sent'),
+  provider: String(value?.provider ?? ''),
+  requestId: String(value?.requestId ?? ''),
+  code: String(value?.code ?? ''),
+  sentAt: String(value?.sentAt ?? ''),
+  respondedAt: String(value?.respondedAt ?? ''),
+  lastMessageId: String(value?.lastMessageId ?? ''),
+  lastResponseText: String(value?.lastResponseText ?? ''),
+  lastResponseCode: String(value?.lastResponseCode ?? ''),
+  lastPhone: String(value?.lastPhone ?? ''),
+  lastError: String(value?.lastError ?? '')
 });
 
 export const normalizeTripRecord = trip => {
@@ -57,8 +72,25 @@ export const normalizeTripRecord = trip => {
   return {
     ...trip,
     position,
-    destinationPosition
+    destinationPosition,
+    confirmation: normalizeTripConfirmation(trip?.confirmation)
   };
+};
+
+export const normalizeTripRecords = trips => {
+  const seenIds = new Map();
+
+  return (Array.isArray(trips) ? trips : []).map((trip, index) => {
+    const normalizedTrip = normalizeTripRecord(trip);
+    const baseId = String(normalizedTrip?.id || normalizedTrip?.rideId || normalizedTrip?.brokerTripId || `trip-${index + 1}`).trim();
+    const duplicateCount = seenIds.get(baseId) ?? 0;
+    seenIds.set(baseId, duplicateCount + 1);
+
+    return {
+      ...normalizedTrip,
+      id: duplicateCount === 0 ? baseId : `${baseId}-${duplicateCount + 1}`
+    };
+  });
 };
 
 export const normalizeRoutePlanRecord = routePlan => ({
@@ -68,7 +100,7 @@ export const normalizeRoutePlanRecord = routePlan => ({
 
 export const normalizePersistentDispatchState = value => ({
   version: 1,
-  trips: Array.isArray(value?.trips) ? value.trips.map(normalizeTripRecord) : [],
+  trips: normalizeTripRecords(value?.trips),
   routePlans: Array.isArray(value?.routePlans) ? value.routePlans.map(normalizeRoutePlanRecord) : [],
   uiPreferences: normalizeNemtUiPreferences(value?.uiPreferences)
 });

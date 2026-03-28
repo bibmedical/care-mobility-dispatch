@@ -69,17 +69,23 @@ const userShellStyles = {
 
 const formLabelClassName = 'text-uppercase small fw-semibold text-secondary mb-2';
 
-const tableColumns = ['First Name', 'Middle Initial', 'Last Name', 'Email', 'Phone', 'Role', 'Username', 'Password Rule', 'Web Access', 'Android Access', 'Sync Status', 'Last Event Time', 'Event Type'];
+const tableColumns = ['First Name', 'Middle Initial', 'Last Name', 'Email', 'Phone', 'Role', 'Username', 'Password', 'Web Access', 'Android Access', 'Sync Status', 'Last Event Time', 'Event Type'];
 
 const createBlankUser = () => ({
   id: `user-${Date.now()}`,
   firstName: '',
   middleInitial: '',
   lastName: '',
+  isCompany: false,
+  companyName: '',
+  taxId: '',
   email: '',
   phone: '',
   role: 'DBSS Admin(Full...)',
   username: '',
+  password: '',
+  webAccess: true,
+  androidAccess: true,
   lastEventTime: '',
   eventType: '',
   isProtected: false
@@ -138,7 +144,15 @@ const UserManagementWorkspace = () => {
   };
 
   const openEditor = user => {
-    setDraftUser(user ? { ...user } : createBlankUser());
+    setDraftUser(user ? {
+      ...user,
+      password: user.password || buildPasswordForUser(user),
+      webAccess: typeof user.webAccess === 'boolean' ? user.webAccess : !user.role.includes('Driver'),
+      androidAccess: typeof user.androidAccess === 'boolean' ? user.androidAccess : true
+    } : {
+      ...createBlankUser(),
+      password: buildPasswordForUser(createBlankUser())
+    });
     setValidationErrors([]);
     setShowEditor(true);
   };
@@ -155,7 +169,11 @@ const UserManagementWorkspace = () => {
     if (!user.firstName.trim()) errors.push('First Name is required.');
     if (!user.lastName.trim()) errors.push('Last Name is required.');
     if (!user.username.trim()) errors.push('Username is required.');
+    if (!String(user.password ?? '').trim()) errors.push('Password is required.');
     if (normalizePhoneDigits(user.phone).length < 10) errors.push('Phone must include at least 10 digits.');
+    if (user.isCompany && !String(user.companyName ?? '').trim()) errors.push('Company name is required when Company is enabled.');
+    if (user.isCompany && !String(user.taxId ?? '').trim()) errors.push('Tax ID is required when Company is enabled.');
+    if (!user.webAccess && !user.androidAccess) errors.push('Enable at least one access type: Web or Android.');
     if (user.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) errors.push('Email format is invalid.');
     if (users.some(existingUser => existingUser.id !== user.id && existingUser.username.toLowerCase() === user.username.toLowerCase())) errors.push('Username must be unique.');
     return errors;
@@ -174,9 +192,12 @@ const UserManagementWorkspace = () => {
     const nextProtectedUserIds = draftUser.isProtected ? Array.from(new Set([...protectedUserIds, draftUser.id])) : protectedUserIds.filter(id => id !== draftUser.id);
     try {
       await saveData({
-        version: data?.version ?? 2,
+        version: data?.version ?? 4,
         protectedUserIds: nextProtectedUserIds,
-        users: nextUsers
+        users: nextUsers.map(user => ({
+          ...user,
+          password: String(user.password || buildPasswordForUser(user))
+        }))
       });
       setSelectedRowIds([draftUser.id]);
       setShowEditor(false);
@@ -198,7 +219,7 @@ const UserManagementWorkspace = () => {
     }
     try {
       await saveData({
-        version: data?.version ?? 2,
+        version: data?.version ?? 4,
         protectedUserIds,
         users: users.filter(user => !selectedRowIds.includes(user.id))
       });
@@ -273,7 +294,7 @@ const UserManagementWorkspace = () => {
         <div className="small text-secondary mb-3">
           {saving ? 'Guardando cambios y sincronizando con Drivers...' : message}
         </div>
-        <div className="small text-secondary mb-3">Todos los usuarios de esta lista ya existen en autenticacion. Password: nombre + @ + ultimos 2 digitos del telefono. Los roles Driver solo pueden entrar por Android. Doble click en una fila para editar.</div>
+        <div className="small text-secondary mb-3">Todos los usuarios de esta lista ya existen en autenticacion. Password por defecto: username con inicial mayuscula + @ + ultimos 2 digitos del telefono, pero ahora tambien lo puedes cambiar manualmente. Tambien puedes marcar si el usuario es company y guardar su Tax ID. Doble click en una fila para editar.</div>
         {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
 
         <div className="border overflow-hidden rounded-2" style={userShellStyles.tableShell}>
@@ -331,14 +352,25 @@ const UserManagementWorkspace = () => {
               <Col md={4}><Form.Label className={formLabelClassName}>First Name</Form.Label><Form.Control value={draftUser.firstName} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, firstName: event.target.value }))} /></Col>
               <Col md={2}><Form.Label className={formLabelClassName}>MI</Form.Label><Form.Control value={draftUser.middleInitial} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, middleInitial: event.target.value }))} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Last Name</Form.Label><Form.Control value={draftUser.lastName} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, lastName: event.target.value }))} /></Col>
+              <Col md={6}><Form.Check type="switch" id="company-user-switch" label="Company account" checked={Boolean(draftUser.isCompany)} onChange={event => setDraftUser(current => ({
+                ...current,
+                isCompany: event.target.checked,
+                companyName: event.target.checked ? current.companyName : '',
+                taxId: event.target.checked ? current.taxId : ''
+              }))} /></Col>
+              <Col md={6}><Form.Label className={formLabelClassName}>Company Name</Form.Label><Form.Control value={draftUser.companyName} style={userShellStyles.modalInput} disabled={!draftUser.isCompany} onChange={event => setDraftUser(current => ({ ...current, companyName: event.target.value }))} placeholder={draftUser.isCompany ? 'Enter company name' : 'Enable Company account first'} /></Col>
+              <Col md={6}><Form.Label className={formLabelClassName}>Tax ID</Form.Label><Form.Control value={draftUser.taxId} style={userShellStyles.modalInput} disabled={!draftUser.isCompany} onChange={event => setDraftUser(current => ({ ...current, taxId: event.target.value }))} placeholder={draftUser.isCompany ? 'Enter tax ID / EIN' : 'Enable Company account first'} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Email</Form.Label><Form.Control value={draftUser.email} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, email: event.target.value }))} /></Col>
               <Col md={3}><Form.Label className={formLabelClassName}>Phone</Form.Label><Form.Control value={draftUser.phone} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, phone: event.target.value }))} /></Col>
               <Col md={3}><Form.Label className={formLabelClassName}>Username</Form.Label><Form.Control value={draftUser.username} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, username: event.target.value }))} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Role</Form.Label><Form.Select value={draftUser.role} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, role: event.target.value }))}><option>DBSS Admin(Full...)</option><option>Driver(Driver)</option><option>Dispatcher</option><option>Billing</option></Form.Select></Col>
+              <Col md={6}><Form.Label className={formLabelClassName}>Password</Form.Label><Form.Control value={draftUser.password} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, password: event.target.value }))} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Last Event Time</Form.Label><Form.Control value={draftUser.lastEventTime} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, lastEventTime: event.target.value }))} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Event Type</Form.Label><Form.Control value={draftUser.eventType} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, eventType: event.target.value }))} /></Col>
+              <Col md={6}><Form.Check type="switch" id="web-access-switch" label="Web access" checked={Boolean(draftUser.webAccess)} onChange={event => setDraftUser(current => ({ ...current, webAccess: event.target.checked }))} /></Col>
+              <Col md={6}><Form.Check type="switch" id="android-access-switch" label="Android app access" checked={Boolean(draftUser.androidAccess)} onChange={event => setDraftUser(current => ({ ...current, androidAccess: event.target.checked }))} /></Col>
               <Col md={12}><Form.Check type="switch" id="protect-user-switch" label="Primary system admin: block delete from User Management" checked={Boolean(draftUser.isProtected)} onChange={event => setDraftUser(current => ({ ...current, isProtected: event.target.checked }))} /></Col>
-              <Col md={12}><div className="small text-secondary border rounded-3 p-3" style={{ borderColor: '#2a3144' }}>Password actual: <strong>{buildPasswordForUser(draftUser)}</strong><br />Acceso: {draftUser.role.includes('Driver') ? 'Android only' : 'Web + Android'}<br />Si cambias nombre, telefono, username o rol, se sincroniza con autenticacion y con Drivers.</div></Col>
+              <Col md={12}><div className="small text-secondary border rounded-3 p-3" style={{ borderColor: '#2a3144' }}>Password actual: <strong>{draftUser.password || buildPasswordForUser(draftUser)}</strong><br />Password sugerido: <strong>{buildPasswordForUser(draftUser)}</strong><br />Acceso: {!draftUser.webAccess && !draftUser.androidAccess ? 'No access' : draftUser.webAccess && draftUser.androidAccess ? 'Web + Android' : draftUser.webAccess ? 'Web only' : 'Android only'}<br />Cuenta company: {draftUser.isCompany ? `${draftUser.companyName || 'Company'}${draftUser.taxId ? ` | Tax ID: ${draftUser.taxId}` : ''}` : 'No'}<br />Si cambias nombre, telefono, username o rol, se sincroniza con autenticacion y con Drivers.</div></Col>
             </Row> : null}
         </Modal.Body>
         <Modal.Footer style={userShellStyles.modalHeader}>

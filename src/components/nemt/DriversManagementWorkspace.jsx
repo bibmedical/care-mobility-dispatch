@@ -1,7 +1,9 @@
 'use client';
 
 import { buildAttendantsRows, buildDriversRows, buildGroupingRows, buildVehiclesRows, createBlankAttendant, createBlankDriver, createBlankGrouping, createBlankVehicle, getDocumentAlerts, getFullName, validateAttendant, validateDriver, validateGrouping, validateVehicle } from '@/helpers/nemt-admin-model';
+import { formatMinutesAsHours, getTripServiceMinutes } from '@/helpers/nemt-billing';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
+import { useNemtContext } from '@/context/useNemtContext';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -49,6 +51,7 @@ const readFileAsDataUrl = file => new Promise((resolve, reject) => {
 const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const pathname = usePathname();
   const { data, loading, saving, error, refresh, saveData } = useNemtAdminApi();
+  const { trips } = useNemtContext();
   const [search, setSearch] = useState('');
   const [selectedRowId, setSelectedRowId] = useState(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -66,11 +69,22 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   }), [data]);
 
   const config = useMemo(() => {
-    if (activeTab === 'drivers') return { rows: buildDriversRows(state), pageSize: 14, columns: ['№', 'Ctrl', 'Info', 'Vehicle Assignment', 'Notes'], title: 'Users' };
+    if (activeTab === 'drivers') return { rows: buildDriversRows(state), pageSize: 14, columns: ['№', 'Ctrl', 'Info', 'Vehicle Assignment', 'Hours', 'Trips', 'Notes'], title: 'Users' };
     if (activeTab === 'attendants') return { rows: buildAttendantsRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Attendant', 'Phone', 'Certification', 'Assigned Drivers', 'Notes'], title: 'VDR Change' };
     if (activeTab === 'vehicles') return { rows: buildVehiclesRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Info', 'Capacity', 'Driver Assignment', 'Notes'], title: 'VDR Change' };
     return { rows: buildGroupingRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Group', 'Drivers', 'Vehicles', 'Notes'], title: 'VDR Change' };
   }, [activeTab, state]);
+
+  const driverTripMetrics = useMemo(() => new Map(state.drivers.map(driver => {
+    const driverTrips = trips.filter(trip => trip.driverId === driver.id);
+    const serviceMinutes = driverTrips.reduce((sum, trip) => sum + getTripServiceMinutes(trip), 0);
+    const activeTrips = driverTrips.filter(trip => ['assigned', 'in progress'].includes(String(trip.status || '').toLowerCase())).length;
+    return [driver.id, {
+      serviceMinutes,
+      totalTrips: driverTrips.length,
+      activeTrips
+    }];
+  })), [state.drivers, trips]);
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -202,6 +216,11 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
 
   const renderRowCells = row => {
     if (activeTab === 'drivers') {
+      const metrics = driverTripMetrics.get(row.raw.id) ?? {
+        serviceMinutes: 0,
+        totalTrips: 0,
+        activeTrips: 0
+      };
       return [<td key="number">{row.order}</td>, <td key="ctrl">
             <button type="button" className="btn btn-link p-0 text-info" onClick={event => {
               event.stopPropagation();
@@ -212,7 +231,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
           </td>, <td key="info">
             <div>{row.info}</div>
             <div className="small text-secondary">Username: {row.raw.username}</div>
-          </td>, <td key="assignment">{row.assignment}</td>, <td key="notes"><div className="d-flex align-items-center gap-2 flex-wrap"><span>{row.notes}</span>{row.alertCount > 0 ? <Badge bg="warning" text="dark">{row.alertCount} alerts</Badge> : null}</div></td>];
+          </td>, <td key="assignment">{row.assignment}</td>, <td key="hours">{formatMinutesAsHours(metrics.serviceMinutes)}</td>, <td key="trips"><div>{metrics.totalTrips} total</div><div className="small text-secondary">{metrics.activeTrips} active</div></td>, <td key="notes"><div className="d-flex align-items-center gap-2 flex-wrap"><span>{row.notes}</span>{row.alertCount > 0 ? <Badge bg="warning" text="dark">{row.alertCount} alerts</Badge> : null}</div></td>];
     }
 
     if (activeTab === 'attendants') {
@@ -258,7 +277,10 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
                 <Col md={6}><Form.Label className={formLabelClassName}>Last Name</Form.Label><Form.Control value={draftEntity.lastName} style={shellStyles.modalInput} onChange={event => updateDraftField('lastName', event.target.value)} /></Col>
                 <Col md={4}><Form.Label className={formLabelClassName}>Username</Form.Label><Form.Control value={draftEntity.username} style={shellStyles.modalInput} onChange={event => updateDraftField('username', event.target.value)} /></Col>
                 <Col md={4}><Form.Label className={formLabelClassName}>Phone</Form.Label><Form.Control value={draftEntity.phone} style={shellStyles.modalInput} onChange={event => updateDraftField('phone', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>License Number</Form.Label><Form.Control value={draftEntity.licenseNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseNumber', event.target.value)} /></Col>
                 <Col md={4}><Form.Label className={formLabelClassName}>Role</Form.Label><Form.Control value={draftEntity.role} style={shellStyles.modalInput} onChange={event => updateDraftField('role', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>License State</Form.Label><Form.Control value={draftEntity.licenseState} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseState', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>License Exp.</Form.Label><Form.Control type="date" value={draftEntity.licenseExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseExpirationDate', event.target.value)} /></Col>
                 <Col md={6}><Form.Label className={formLabelClassName}>Email</Form.Label><Form.Control value={draftEntity.email} style={shellStyles.modalInput} onChange={event => updateDraftField('email', event.target.value)} /></Col>
                 <Col md={6}><Form.Label className={formLabelClassName}>Vehicle</Form.Label><Form.Select value={draftEntity.vehicleId} style={shellStyles.modalInput} onChange={event => updateDraftField('vehicleId', event.target.value)}><option value="">Select vehicle</option>{state.vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.label}</option>)}</Form.Select></Col>
                 <Col md={6}><Form.Label className={formLabelClassName}>Attendant</Form.Label><Form.Select value={draftEntity.attendantId} style={shellStyles.modalInput} onChange={event => updateDraftField('attendantId', event.target.value)}><option value="">No attendant</option>{state.attendants.map(attendant => <option key={attendant.id} value={attendant.id}>{attendant.name}</option>)}</Form.Select></Col>

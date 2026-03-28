@@ -3,7 +3,13 @@
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { useMemo, useState } from 'react';
-import { Badge, Button, Form, ListGroup } from 'react-bootstrap';
+import { Badge, Button, Form } from 'react-bootstrap';
+
+const greenToolbarButtonStyle = {
+  color: '#08131a',
+  borderColor: 'rgba(8, 19, 26, 0.35)',
+  backgroundColor: 'transparent'
+};
 
 const formatTime = value => new Date(value).toLocaleTimeString([], {
   hour: '2-digit',
@@ -37,12 +43,25 @@ const DispatcherMessagingPanel = ({
   openFullChat
 }) => {
   const [threads, setThreads] = useLocalStorage('__CARE_MOBILITY_DISPATCH_MESSAGES__', buildSeedThreads(drivers));
+  const [hiddenDriverIds, setHiddenDriverIds] = useLocalStorage('__CARE_MOBILITY_DISPATCH_HIDDEN_DRIVERS__', []);
   const [draftMessage, setDraftMessage] = useState('');
+  const [driverSearch, setDriverSearch] = useState('');
+  const [showAddDriver, setShowAddDriver] = useState(false);
 
   const normalizedThreads = useMemo(() => mergeThreads(threads, drivers), [drivers, threads]);
-  const activeDriverId = selectedDriverId && normalizedThreads.some(thread => thread.driverId === selectedDriverId) ? selectedDriverId : normalizedThreads[0]?.driverId ?? null;
+  const hiddenDriverIdSet = useMemo(() => new Set(Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []), [hiddenDriverIds]);
+  const visibleThreads = useMemo(() => normalizedThreads.filter(thread => !hiddenDriverIdSet.has(thread.driverId)), [hiddenDriverIdSet, normalizedThreads]);
+  const normalizedSearch = driverSearch.trim().toLowerCase();
+  const filteredThreads = useMemo(() => visibleThreads.filter(thread => {
+    if (!normalizedSearch) return true;
+    const driver = drivers.find(item => item.id === thread.driverId);
+    const haystack = [driver?.name, driver?.vehicle, driver?.live, thread.messages[thread.messages.length - 1]?.text].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(normalizedSearch);
+  }), [drivers, normalizedSearch, visibleThreads]);
+  const hiddenDrivers = useMemo(() => drivers.filter(driver => hiddenDriverIdSet.has(driver.id)), [drivers, hiddenDriverIdSet]);
+  const activeDriverId = selectedDriverId && visibleThreads.some(thread => thread.driverId === selectedDriverId) ? selectedDriverId : visibleThreads[0]?.driverId ?? null;
   const activeThread = normalizedThreads.find(thread => thread.driverId === activeDriverId) ?? null;
-  const unreadCount = normalizedThreads.reduce((total, thread) => total + thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length, 0);
+  const unreadCount = visibleThreads.reduce((total, thread) => total + thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length, 0);
 
   const handleSelectDriver = driverId => {
     setSelectedDriverId(driverId);
@@ -74,46 +93,92 @@ const DispatcherMessagingPanel = ({
     setDraftMessage('');
   };
 
+  const handleHideDriver = driverId => {
+    setHiddenDriverIds(currentHiddenDriverIds => {
+      const nextHiddenDriverIds = Array.isArray(currentHiddenDriverIds) ? [...currentHiddenDriverIds] : [];
+      if (!nextHiddenDriverIds.includes(driverId)) nextHiddenDriverIds.push(driverId);
+      return nextHiddenDriverIds;
+    });
+
+    if (driverId === activeDriverId) {
+      const nextVisibleThread = visibleThreads.find(thread => thread.driverId !== driverId);
+      setSelectedDriverId(nextVisibleThread?.driverId ?? null);
+    }
+  };
+
+  const handleRestoreDriver = driverId => {
+    setHiddenDriverIds(currentHiddenDriverIds => (Array.isArray(currentHiddenDriverIds) ? currentHiddenDriverIds.filter(hiddenDriverId => hiddenDriverId !== driverId) : []));
+    setSelectedDriverId(driverId);
+    setShowAddDriver(false);
+  };
+
   const activeDriver = drivers.find(driver => driver.id === activeDriverId) ?? null;
 
   return <div className="h-100 d-flex flex-column">
-      <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-white flex-wrap gap-2">
+      <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
         <div className="d-flex align-items-center gap-2 flex-wrap">
           <strong>Messaging</strong>
-          <Badge bg="light" text="dark">{normalizedThreads.length} threads</Badge>
+          <Badge bg="light" text="dark">{visibleThreads.length} threads</Badge>
           <Badge bg="warning" text="dark">{unreadCount} unread</Badge>
         </div>
         <div className="d-flex gap-2 flex-wrap">
-          <Button variant="outline-light" size="sm" onClick={() => handleSendMessage('ETA update sent from dispatch.')}>Quick ETA</Button>
-          <Button variant="outline-light" size="sm" onClick={openFullChat}>Open Chat</Button>
+          <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Close Add' : 'Add Driver'}</Button>
+          <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleSendMessage('ETA update sent from dispatch.')}>Quick ETA</Button>
+          <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={openFullChat}>Open Chat</Button>
         </div>
       </div>
       <div className="d-flex flex-grow-1" style={{ minHeight: 0 }}>
         <div className="border-end" style={{ width: '40%', minWidth: 220 }}>
-          <ListGroup variant="flush" style={{ maxHeight: 360, overflowY: 'auto' }}>
-            {normalizedThreads.length > 0 ? normalizedThreads.map(thread => {
+          <div className="p-3 border-bottom bg-light">
+            <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" />
+            {showAddDriver ? <div className="mt-3">
+                <div className="small text-muted mb-2">Add a hidden driver back to this panel.</div>
+                {hiddenDrivers.length > 0 ? <div className="d-flex flex-wrap gap-2">
+                    {hiddenDrivers.map(driver => <Button key={driver.id} variant="outline-secondary" size="sm" onClick={() => handleRestoreDriver(driver.id)}>
+                        <IconifyIcon icon="iconoir:user-plus" className="me-1" />
+                        {driver.name}
+                      </Button>)}
+                  </div> : <div className="small text-muted">No hidden drivers to add.</div>}
+              </div> : null}
+          </div>
+          <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+            {filteredThreads.length > 0 ? filteredThreads.map(thread => {
             const driver = drivers.find(item => item.id === thread.driverId);
             const lastMessage = thread.messages[thread.messages.length - 1];
             const threadUnreadCount = thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length;
-            return <ListGroup.Item key={thread.driverId} action active={thread.driverId === activeDriverId} onClick={() => handleSelectDriver(thread.driverId)}>
-                    <div className="d-flex justify-content-between align-items-start gap-2">
-                      <div className="d-flex align-items-start gap-2">
-                        <div className="pt-1">
-                          <IconifyIcon icon="iconoir:map-pin" className={driver?.live === 'Online' ? 'text-success' : 'text-secondary'} />
-                        </div>
-                        <div>
-                          <div className="fw-semibold d-flex align-items-center gap-2">{driver?.name ?? 'Driver'}{driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}</div>
-                        <div className="small text-muted">{lastMessage?.text ?? 'No messages yet.'}</div>
-                        </div>
+            return <div key={thread.driverId} className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`} style={{
+              backgroundColor: thread.driverId === activeDriverId ? '#6c5ce7' : 'transparent'
+            }}>
+                    <div className="d-flex align-items-start gap-2 px-2 pt-2">
+                      <div className="flex-grow-1">
+                        <button type="button" onClick={() => handleSelectDriver(thread.driverId)} className={`w-100 text-start border-0 px-1 pb-2 ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`} style={{
+                      backgroundColor: 'transparent'
+                    }}>
+                          <div className="d-flex justify-content-between align-items-start gap-2">
+                            <div className="d-flex align-items-start gap-2">
+                              <div className="pt-1">
+                                <IconifyIcon icon="iconoir:map-pin" className={driver?.live === 'Online' ? 'text-success' : 'text-secondary'} />
+                              </div>
+                              <div>
+                                <div className="fw-semibold d-flex align-items-center gap-2">{driver?.name ?? 'Driver'}{driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}</div>
+                                <div className="small text-muted">{driver?.vehicle || 'Vehicle pending'}</div>
+                                <div className="small text-muted">{lastMessage?.text ?? 'No messages yet.'}</div>
+                              </div>
+                            </div>
+                            <div className="text-end">
+                              <div className="small">{lastMessage ? formatTime(lastMessage.timestamp) : '--:--'}</div>
+                              {threadUnreadCount > 0 ? <Badge bg="danger">{threadUnreadCount}</Badge> : null}
+                            </div>
+                          </div>
+                        </button>
                       </div>
-                      <div className="text-end">
-                        <div className="small">{lastMessage ? formatTime(lastMessage.timestamp) : '--:--'}</div>
-                        {threadUnreadCount > 0 ? <Badge bg="danger">{threadUnreadCount}</Badge> : null}
-                      </div>
+                      <Button variant="link" size="sm" className="p-1 text-decoration-none" style={{ color: thread.driverId === activeDriverId ? '#ffffff' : '#6b7280' }} onClick={() => handleHideDriver(thread.driverId)} title="Remove driver from this panel">
+                        <IconifyIcon icon="iconoir:xmark" />
+                      </Button>
                     </div>
-                  </ListGroup.Item>;
-          }) : <div className="text-center text-muted py-4 small">No driver threads available.</div>}
-          </ListGroup>
+                  </div>;
+          }) : <div className="text-center text-muted py-4 small">{driverSearch.trim() ? 'No drivers match this search.' : 'No driver threads available.'}</div>}
+          </div>
         </div>
         <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
           <div className="p-3 border-bottom bg-light">
