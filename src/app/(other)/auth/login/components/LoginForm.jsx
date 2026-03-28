@@ -1,0 +1,51 @@
+'use client';
+
+import PasswordFormInput from '@/components/form/PasswordFormInput';
+import TextFormInput from '@/components/form/TextFormInput';
+import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import Link from 'next/link';
+import useSignIn from '../useSignIn';
+import { Col } from 'react-bootstrap';
+const LoginForm = () => {
+  const {
+    loading,
+    login,
+    control
+  } = useSignIn();
+  return <form onSubmit={login} className="my-4">
+      <TextFormInput control={control} name="identifier" label="Username or Email" containerClassName="form-group mb-2" placeholder="Enter your username or email" />
+
+      <PasswordFormInput control={control} name="password" label="Password" containerClassName="form-group" placeholder="Enter your password" />
+
+      <div className="alert alert-dark border mt-3 mb-0" style={{ borderColor: '#2a3144', backgroundColor: '#101521', color: '#c8d2eb' }}>
+        Password rule: first name + @ + last 2 digits of phone. Drivers cannot sign in on the web and must use Android.
+      </div>
+
+      <div className="form-group row mt-3">
+        <Col sm={6}>
+          <div className="form-check form-switch form-switch-primary">
+            <input className="form-check-input" type="checkbox" id="customSwitchSuccess" />
+            <label className="form-check-label" htmlFor="customSwitchSuccess">
+              Remember me
+            </label>
+          </div>
+        </Col>
+        <Col sm={6} className="text-end">
+          <Link href="/auth/reset-pass" className="text-muted font-13">
+            {' '}
+            Forgot password?
+          </Link>
+        </Col>
+      </div>
+      <div className="form-group mb-0 row">
+        <Col xs={12}>
+          <div className="d-grid mt-3">
+            <button className="btn btn-primary flex-centered" type="submit" disabled={loading}>
+              Log In <IconifyIcon icon="fa6-solid:right-to-bracket" className="ms-1" />
+            </button>
+          </div>
+        </Col>
+      </div>
+    </form>;
+};
+export default LoginForm;

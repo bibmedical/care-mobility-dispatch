@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: care-mobility-dispatch
+    runtime: node
+    rootDir: .
+    plan: starter
+    buildCommand: npm install ; npm run build
+    startCommand: npm run start
+    healthCheckPath: /auth/login
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: NODE_ENV
+        value: production
+      - key: NEXTAUTH_URL
+        sync: false
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: STORAGE_ROOT
+        value: /var/data/care-mobility/storage
+      - key: NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
+        sync: false
+      - key: NEXT_PUBLIC_MAPBOX_STYLE_ID
+        value: mapbox/streets-v12
+    disk:
+      name: care-mobility-storage
+      mountPath: /var/data/care-mobility
+      sizeGB: 1

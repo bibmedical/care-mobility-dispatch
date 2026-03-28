@@ -1,0 +1,9 @@
+export const currency = '$';
+export const currentYear = new Date().getFullYear();
+export const developedByLink = '#';
+export const developedBy = 'Tu equipo';
+export const contactUs = 'admin@local';
+export const buyLink = '';
+export const basePath = '';
+export const DEFAULT_PAGE_TITLE = 'Care Mobility Dispatch';
+export const colorVariants = ['primary', 'secondary', 'success', 'warning', 'info', 'danger', 'dark', 'light'];
