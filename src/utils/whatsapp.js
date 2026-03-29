@@ -29,16 +29,38 @@ export const openWhatsAppConversation = ({ phoneNumber, message }) => {
     };
   }
 
-  const openedWindow = window.open('', '_blank', 'noopener,noreferrer');
+  const whatsappUrl = `https://api.whatsapp.com/send?phone=${normalizedPhone}&text=${encodeURIComponent(String(message || '').trim())}`;
+  const openedWindow = window.open(whatsappUrl, '_blank');
+
   if (!openedWindow) {
-    return {
-      ok: false,
-      reason: 'popup-blocked'
-    };
+    try {
+      const link = document.createElement('a');
+      link.href = whatsappUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      return {
+        ok: true,
+        normalizedPhone,
+        usedFallback: true
+      };
+    } catch {
+      return {
+        ok: false,
+        reason: 'popup-blocked'
+      };
+    }
   }
 
-  openedWindow.opener = null;
-  openedWindow.location.replace(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(String(message || '').trim())}`);
+  try {
+    openedWindow.opener = null;
+  } catch {
+    // Ignore cross-window restrictions after the browser opens the tab.
+  }
 
   return {
     ok: true,
