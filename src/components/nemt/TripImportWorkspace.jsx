@@ -2,6 +2,7 @@
 
 import PageTitle from '@/components/PageTitle';
 import { useNemtContext } from '@/context/useNemtContext';
+import { getTripLateMinutes, getTripPunctualityLabel } from '@/helpers/nemt-dispatch-state';
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
@@ -37,7 +38,17 @@ const COLUMN_ALIASES = {
   miles: ['distance'],
   notes: ['additionalnotes', 'otherdetails'],
   tripType: ['triptype'],
-  driverName: ['drivername']
+  driverName: ['drivername'],
+  onTimeStatus: ['ontimestatus', 'on time status', 'punctuality', 'punctuality status'],
+  delay: ['delay', 'delayminutes', 'delay minutes', 'late', 'late minutes', 'lateminutes'],
+  avgDelay: ['avgdelay', 'average delay', 'average delay minutes'],
+  lateMinutes: ['lateminutes', 'late minutes', 'minutes late'],
+  scheduledPickup: ['scheduledpickup', 'scheduled pickup', 'scheduled pu'],
+  actualPickup: ['actualpickup', 'actual pickup', 'actual pu'],
+  scheduledDropoff: ['scheduleddropoff', 'scheduled dropoff', 'scheduled do'],
+  actualDropoff: ['actualdropoff', 'actual dropoff', 'actual do'],
+  lateFlag: ['lateflag', 'islate', 'late flag'],
+  delayedFlag: ['delayed', 'delay flag', 'isdelayed']
 };
 
 const DEFAULT_CENTER = [28.5383, -81.3792];
@@ -171,6 +182,29 @@ const mapRowToTrip = (row, index) => {
   const position = [getCoordinate(row, 'lat', index), getCoordinate(row, 'lng', index)];
   const destinationPosition = [getDestinationCoordinate(row, 'lat', index), getDestinationCoordinate(row, 'lng', index)];
   const providedMiles = getValueByAliases(row, COLUMN_ALIASES.miles);
+  const scheduledPickup = getValueByAliases(row, COLUMN_ALIASES.scheduledPickup) || rawPickupTime;
+  const actualPickup = getValueByAliases(row, COLUMN_ALIASES.actualPickup);
+  const scheduledDropoff = getValueByAliases(row, COLUMN_ALIASES.scheduledDropoff) || rawDropoffTime;
+  const actualDropoff = getValueByAliases(row, COLUMN_ALIASES.actualDropoff);
+  const importedDelay = getValueByAliases(row, COLUMN_ALIASES.delay) || getValueByAliases(row, COLUMN_ALIASES.lateMinutes);
+  const avgDelay = getValueByAliases(row, COLUMN_ALIASES.avgDelay);
+
+  const tripDraft = {
+    scheduledPickup,
+    actualPickup,
+    scheduledDropoff,
+    actualDropoff,
+    delay: importedDelay,
+    avgDelay,
+    onTimeStatus: getValueByAliases(row, COLUMN_ALIASES.onTimeStatus),
+    late: getValueByAliases(row, COLUMN_ALIASES.lateFlag),
+    delayed: getValueByAliases(row, COLUMN_ALIASES.delayedFlag)
+  };
+  const lateMinutes = getTripLateMinutes(tripDraft);
+  const onTimeStatus = tripDraft.onTimeStatus || getTripPunctualityLabel({
+    ...tripDraft,
+    lateMinutes
+  });
 
   return {
     id: uniqueTripId,
@@ -196,6 +230,16 @@ const mapRowToTrip = (row, index) => {
     driverId: null,
     routeId: null,
     importedDriverName: getValueByAliases(row, COLUMN_ALIASES.driverName),
+    scheduledPickup,
+    actualPickup,
+    scheduledDropoff,
+    actualDropoff,
+    delay: importedDelay,
+    avgDelay,
+    lateMinutes,
+    onTimeStatus,
+    late: String(tripDraft.late || '').trim(),
+    delayed: String(tripDraft.delayed || '').trim(),
     rawPickupTime,
     rawDropoffTime,
     pickupSortValue: getTimeValue(rawPickupTime),
@@ -233,8 +277,8 @@ const TripImportWorkspace = () => {
 
   const handleDownloadTemplate = () => {
     const templateRows = [
-      ['rideId', 'tripId', 'fromAddress', 'fromZipcode', 'toAddress', 'toZipcode', 'pickupTime', 'appointmentTime', 'fromLatitude', 'fromLongitude', 'toLatitude', 'toLogitude', 'patientFirstName', 'patientLastName', 'patientPhoneNumber', 'requestedVehicleType', 'additionalNotes', 'status', 'confirmationStatus', 'tripType', 'driverName'],
-      ['37418742', '20590287', '6037 Scotchwood Glen, Orlando, FL', '32822', '401 S Chickasaw Trail, Orlando, FL', '32825', '03/28/2026 10:33', '03/28/2026 11:00', '28.514180', '-81.302910', '28.538208', '-81.274046', 'KENNETH', 'PENA', '3213484257', 'AMB', 'Need assistance', 'Scheduled', 'confirmed', 'Multi Leg', 'Unassigned']
+      ['rideId', 'tripId', 'fromAddress', 'fromZipcode', 'toAddress', 'toZipcode', 'pickupTime', 'appointmentTime', 'scheduledPickup', 'actualPickup', 'scheduledDropoff', 'actualDropoff', 'delayMinutes', 'onTimeStatus', 'fromLatitude', 'fromLongitude', 'toLatitude', 'toLogitude', 'patientFirstName', 'patientLastName', 'patientPhoneNumber', 'requestedVehicleType', 'additionalNotes', 'status', 'confirmationStatus', 'tripType', 'driverName'],
+      ['37418742', '20590287', '6037 Scotchwood Glen, Orlando, FL', '32822', '401 S Chickasaw Trail, Orlando, FL', '32825', '03/28/2026 10:33', '03/28/2026 11:00', '10:33 AM', '10:41 AM', '11:00 AM', '11:06 AM', '8', 'Late', '28.514180', '-81.302910', '28.538208', '-81.274046', 'KENNETH', 'PENA', '3213484257', 'AMB', 'Need assistance', 'Scheduled', 'confirmed', 'Multi Leg', 'Unassigned']
     ];
     const worksheet = XLSX.utils.aoa_to_sheet(templateRows);
     const workbook = XLSX.utils.book_new();
@@ -313,8 +357,8 @@ const TripImportWorkspace = () => {
           <Card className="h-100">
             <CardBody>
               <h5 className="mb-2">Importar plantilla oficial de SafeRide</h5>
-              <p className="text-muted mb-3">Este modulo reemplaza todos los viajes cargados actualmente. Ya esta adaptado al formato oficial de SafeRide con columnas como rideId, tripId, fromAddress, toAddress, pickupTime y patientFirstName.</p>
-              <Alert variant="info" className="small">Formato oficial detectado: rideId, tripId, fromAddress, fromZipcode, toAddress, toZipcode, pickupTime, appointmentTime, fromLatitude, fromLongitude, patientFirstName, patientLastName y columnas relacionadas.</Alert>
+              <p className="text-muted mb-3">Este modulo reemplaza todos los viajes cargados actualmente. Ya esta adaptado al formato oficial de SafeRide con columnas como rideId, tripId, fromAddress, toAddress, pickupTime y patientFirstName. Si tu archivo trae puntualidad, tambien guarda scheduledPickup, actualPickup, delayMinutes y onTimeStatus.</p>
+              <Alert variant="info" className="small">Formato oficial detectado: rideId, tripId, fromAddress, fromZipcode, toAddress, toZipcode, pickupTime, appointmentTime, fromLatitude, fromLongitude, patientFirstName, patientLastName y columnas relacionadas. Opcionalmente puedes incluir scheduledPickup, actualPickup, scheduledDropoff, actualDropoff, delayMinutes y onTimeStatus.</Alert>
               <div className="d-flex flex-wrap gap-2 mb-3">
                 <Button variant="success" onClick={() => fileInputRef.current?.click()} disabled={isParsing}>{isParsing ? 'Leyendo archivo...' : 'Seleccionar Excel o CSV'}</Button>
                 <Button variant="outline-primary" onClick={handleDownloadTemplate}>Descargar plantilla</Button>

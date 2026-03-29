@@ -14,16 +14,17 @@ type LocationSnapshot = {
 
 type DriverShiftState = 'available' | 'en-route' | 'arrived' | 'completed';
 
-const API_BASE_URL = 'http://YOUR-COMPUTER-IP:3005';
-
-const sampleTrip = {
-  tripId: '138493-01',
-  rider: 'Maria Lopez',
-  pickupTime: '11:40 AM',
-  pickupAddress: '6900 Turkey Lake Rd, Orlando, FL',
-  dropoffAddress: '601 E Rollins St, Orlando, FL',
-  notes: 'Call rider on arrival'
+type DriverTrip = {
+  id: string;
+  rider: string;
+  pickup: string;
+  dropoff: string;
+  address: string;
+  destination: string;
+  notes?: string;
 };
+
+const API_BASE_URL = 'http://YOUR-COMPUTER-IP:3005';
 
 const formatDateTime = (value: number | null) => {
   if (!value) return 'No update yet';
@@ -40,6 +41,11 @@ export default function App() {
   const [watchError, setWatchError] = useState('');
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   const [shiftState, setShiftState] = useState<DriverShiftState>('available');
+  const [assignedTrips, setAssignedTrips] = useState<DriverTrip[]>([]);
+  const [activeTrip, setActiveTrip] = useState<DriverTrip | null>(null);
+  const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+  const [tripSyncError, setTripSyncError] = useState('');
+  const [lastTripSyncAt, setLastTripSyncAt] = useState<number | null>(null);
 
   useEffect(() => {
     let subscription: Location.LocationSubscription | null = null;
@@ -92,6 +98,52 @@ export default function App() {
       subscription?.remove();
     };
   }, [loggedIn, trackingEnabled]);
+
+  useEffect(() => {
+    if (!loggedIn) {
+      setAssignedTrips([]);
+      setActiveTrip(null);
+      setTripSyncError('');
+      setLastTripSyncAt(null);
+      return;
+    }
+
+    let active = true;
+
+    const loadTrips = async () => {
+      setIsLoadingTrips(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/mobile/driver-trips?driverCode=${encodeURIComponent(driverCode.trim())}`);
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Unable to load trips.');
+        }
+        if (!active) return;
+        const nextTrips = Array.isArray(payload?.trips) ? payload.trips : [];
+        setAssignedTrips(nextTrips);
+        setActiveTrip(payload?.activeTrip ?? nextTrips[0] ?? null);
+        setTripSyncError('');
+        setLastTripSyncAt(Date.now());
+      } catch (error) {
+        if (!active) return;
+        setAssignedTrips([]);
+        setActiveTrip(null);
+        setTripSyncError(error instanceof Error ? error.message : 'Unable to load trips.');
+      } finally {
+        if (active) {
+          setIsLoadingTrips(false);
+        }
+      }
+    };
+
+    loadTrips();
+    const intervalId = setInterval(loadTrips, 15000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [driverCode, loggedIn]);
 
   const statusCard = useMemo(() => {
     if (!loggedIn) return 'Sign in to begin driver tracking.';
@@ -167,6 +219,7 @@ export default function App() {
               <View style={styles.metricsGrid}>
                 <View style={styles.metricCard}><Text style={styles.metricLabel}>Permission</Text><Text style={styles.metricValue}>{permissionStatus}</Text></View>
                 <View style={styles.metricCard}><Text style={styles.metricLabel}>Last update</Text><Text style={styles.metricValue}>{formatDateTime(locationSnapshot?.timestamp ?? null)}</Text></View>
+                <View style={styles.metricCard}><Text style={styles.metricLabel}>Trip sync</Text><Text style={styles.metricValue}>{formatDateTime(lastTripSyncAt)}</Text></View>
               </View>
 
               <View style={styles.locationCard}>
@@ -182,25 +235,31 @@ export default function App() {
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Active Trip</Text>
-              <Text style={styles.tripId}>{sampleTrip.tripId}</Text>
-              <Text style={styles.tripRider}>{sampleTrip.rider}</Text>
-              <Text style={styles.tripLine}>Pickup: {sampleTrip.pickupTime}</Text>
-              <Text style={styles.tripLine}>{sampleTrip.pickupAddress}</Text>
-              <Text style={styles.tripLine}>Dropoff: {sampleTrip.dropoffAddress}</Text>
-              <Text style={styles.tripNotes}>{sampleTrip.notes}</Text>
+              {isLoadingTrips ? <ActivityIndicator color="#dce9ff" /> : null}
+              {tripSyncError ? <Text style={styles.errorText}>{tripSyncError}</Text> : null}
+              {activeTrip ? <>
+                  <Text style={styles.tripId}>{activeTrip.id}</Text>
+                  <Text style={styles.tripRider}>{activeTrip.rider}</Text>
+                  <Text style={styles.tripLine}>Pickup: {activeTrip.pickup}</Text>
+                  <Text style={styles.tripLine}>{activeTrip.address}</Text>
+                  <Text style={styles.tripLine}>Dropoff: {activeTrip.dropoff}</Text>
+                  <Text style={styles.tripLine}>{activeTrip.destination}</Text>
+                  <Text style={styles.tripNotes}>{activeTrip.notes?.trim() || 'No notes for this trip.'}</Text>
 
-              <View style={styles.actionRow}>
-                <Pressable style={styles.actionButton} onPress={() => setShiftState('en-route')}><Text style={styles.actionText}>En Route</Text></Pressable>
-                <Pressable style={styles.actionButton} onPress={() => setShiftState('arrived')}><Text style={styles.actionText}>Arrived</Text></Pressable>
-                <Pressable style={styles.actionButton} onPress={() => setShiftState('completed')}><Text style={styles.actionText}>Complete</Text></Pressable>
-              </View>
+                  <View style={styles.actionRow}>
+                    <Pressable style={styles.actionButton} onPress={() => setShiftState('en-route')}><Text style={styles.actionText}>En Route</Text></Pressable>
+                    <Pressable style={styles.actionButton} onPress={() => setShiftState('arrived')}><Text style={styles.actionText}>Arrived</Text></Pressable>
+                    <Pressable style={styles.actionButton} onPress={() => setShiftState('completed')}><Text style={styles.actionText}>Complete</Text></Pressable>
+                  </View>
+                </> : <Text style={styles.cardText}>No assigned trips found for this driver code yet.</Text>}
             </View>
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Dispatcher Sync</Text>
-              <Text style={styles.cardText}>When you are ready, the app should send GPS updates to:</Text>
-              <Text style={styles.endpoint}>{API_BASE_URL}/api/mobile/driver-location</Text>
-              <Text style={styles.hint}>Change YOUR-COMPUTER-IP to the IP of the machine running the dispatcher web server.</Text>
+              <Text style={styles.cardText}>The app reads assigned trips and notes from:</Text>
+              <Text style={styles.endpoint}>{API_BASE_URL}/api/mobile/driver-trips?driverCode={driverCode || 'YOUR-CODE'}</Text>
+              <Text style={styles.hint}>Change YOUR-COMPUTER-IP to the IP and port of the machine running the dispatcher web server.</Text>
+              <Text style={styles.hint}>Assigned trips loaded: {assignedTrips.length}</Text>
             </View>
           </>}
       </ScrollView>

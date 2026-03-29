@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { Toaster } from 'sonner';
 import { NotificationProvider } from '@/context/useNotificationContext';
 import { NemtProvider } from '@/context/useNemtContext';
+import DispatchAssistantWidget from '@/components/nemt/DispatchAssistantWidget';
 const LayoutProvider = dynamic(() => import('@/context/useLayoutContext').then(mod => mod.LayoutProvider), {
   ssr: false
 });
@@ -31,6 +32,7 @@ const AppProvidersWrapper = ({
         <NotificationProvider>
           <NemtProvider>
             {children}
+            <DispatchAssistantWidget />
             <Toaster richColors />
           </NemtProvider>
         </NotificationProvider>

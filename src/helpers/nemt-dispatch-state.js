@@ -1,6 +1,12 @@
 const DEFAULT_CENTER = [28.5383, -81.3792];
+const DEFAULT_ASSISTANT_AVATAR_IMAGE = '/WhatsApp%20Image%202026-03-28%20at%2011.58.52%20PM.jpeg';
 
 const normalizeTextValue = value => String(value ?? '').trim();
+
+export const DEFAULT_ASSISTANT_AVATAR = {
+  name: 'Balby',
+  image: DEFAULT_ASSISTANT_AVATAR_IMAGE
+};
 
 const getFirstNonEmptyValue = (...values) => values.map(normalizeTextValue).find(Boolean) ?? '';
 
@@ -54,9 +60,15 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
 }, {
   key: 'leg',
   label: 'Leg'
+}, {
+  key: 'punctuality',
+  label: 'Punctuality'
+}, {
+  key: 'lateMinutes',
+  label: 'Late Min'
 }];
 
-export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['trip', 'status', 'driver', 'pickup', 'dropoff', 'rider', 'address', 'destination', 'miles'];
+export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['trip', 'status', 'driver', 'pickup', 'dropoff', 'punctuality', 'lateMinutes', 'rider', 'address', 'destination', 'miles'];
 
 export const normalizeMapProviderPreference = value => {
   const normalized = String(value ?? 'auto').trim().toLowerCase();
@@ -90,17 +102,135 @@ const normalizeTripConfirmation = value => ({
   lastError: String(value?.lastError ?? '')
 });
 
+export const parseTripMinutesValue = value => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return null;
+  const numericMatch = text.match(/-?\d+(?:\.\d+)?/);
+  if (!numericMatch) return null;
+  const parsed = Number(numericMatch[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const parseTripClockMinutes = value => {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const match = text.match(/(\d{1,2}):(\d{2})(?:\s*(am|pm))?/i);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const suffix = String(match[3] ?? '').toLowerCase();
+  if (suffix === 'pm' && hours < 12) hours += 12;
+  if (suffix === 'am' && hours === 12) hours = 0;
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
+const normalizeTripBoolean = value => {
+  if (typeof value === 'boolean') return value;
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return false;
+  return ['true', 'yes', 'y', '1', 'late', 'delayed'].includes(text);
+};
+
+export const getTripLateMinutes = trip => {
+  const explicitLateMinutes = parseTripMinutesValue(trip?.lateMinutes);
+  if (explicitLateMinutes != null && explicitLateMinutes > 0) return explicitLateMinutes;
+
+  const explicitDelay = parseTripMinutesValue(trip?.delay) ?? parseTripMinutesValue(trip?.avgDelay);
+  if (explicitDelay != null && explicitDelay > 0) return explicitDelay;
+
+  const booleanLate = [trip?.late, trip?.delayed].some(normalizeTripBoolean);
+  const onTimeStatus = normalizeTextValue(trip?.onTimeStatus).toLowerCase();
+  if (booleanLate || onTimeStatus.includes('late') || onTimeStatus.includes('delay') || onTimeStatus.includes('tarde') || onTimeStatus.includes('retras')) {
+    const pickupActual = parseTripClockMinutes(trip?.actualPickup);
+    const pickupScheduled = parseTripClockMinutes(trip?.scheduledPickup);
+    if (pickupActual != null && pickupScheduled != null && pickupActual > pickupScheduled) {
+      return pickupActual - pickupScheduled;
+    }
+
+    const dropoffActual = parseTripClockMinutes(trip?.actualDropoff);
+    const dropoffScheduled = parseTripClockMinutes(trip?.scheduledDropoff);
+    if (dropoffActual != null && dropoffScheduled != null && dropoffActual > dropoffScheduled) {
+      return dropoffActual - dropoffScheduled;
+    }
+
+    return 1;
+  }
+
+  const pickupActual = parseTripClockMinutes(trip?.actualPickup);
+  const pickupScheduled = parseTripClockMinutes(trip?.scheduledPickup);
+  if (pickupActual != null && pickupScheduled != null && pickupActual > pickupScheduled) {
+    return pickupActual - pickupScheduled;
+  }
+
+  const dropoffActual = parseTripClockMinutes(trip?.actualDropoff);
+  const dropoffScheduled = parseTripClockMinutes(trip?.scheduledDropoff);
+  if (dropoffActual != null && dropoffScheduled != null && dropoffActual > dropoffScheduled) {
+    return dropoffActual - dropoffScheduled;
+  }
+
+  return null;
+};
+
+export const getTripPunctualityLabel = trip => {
+  const explicitStatus = normalizeTextValue(trip?.onTimeStatus);
+  if (explicitStatus) return explicitStatus;
+  const lateMinutes = getTripLateMinutes(trip);
+  if (lateMinutes == null) return 'Pending';
+  if (lateMinutes > 0) return 'Late';
+  return 'On Time';
+};
+
+export const getTripPunctualityVariant = trip => {
+  const label = getTripPunctualityLabel(trip).toLowerCase();
+  if (label.includes('late') || label.includes('delay') || label.includes('tarde') || label.includes('retras')) return 'danger';
+  if (label.includes('time') || label.includes('ontime') || label.includes('a tiempo') || label.includes('on time')) return 'success';
+  return 'secondary';
+};
+
+export const getTripLateMinutesDisplay = trip => {
+  const lateMinutes = getTripLateMinutes(trip);
+  if (lateMinutes == null) return '-';
+  return String(Math.round(lateMinutes));
+};
+
 export const normalizeTripRecord = trip => {
   const position = Array.isArray(trip?.position) && trip.position.length === 2 ? trip.position.map(Number) : [...DEFAULT_CENTER];
   const destinationPosition = Array.isArray(trip?.destinationPosition) && trip.destinationPosition.length === 2 ? trip.destinationPosition.map(Number) : [...position];
   const rider = getDerivedRiderName(trip);
   const rideId = getDerivedRideId(trip);
+  const scheduledPickup = normalizeTextValue(trip?.scheduledPickup || trip?.rawPickupTime || trip?.pickup);
+  const scheduledDropoff = normalizeTextValue(trip?.scheduledDropoff || trip?.rawDropoffTime || trip?.dropoff);
+  const actualPickup = normalizeTextValue(trip?.actualPickup);
+  const actualDropoff = normalizeTextValue(trip?.actualDropoff);
+  const delay = trip?.delay ?? '';
+  const avgDelay = trip?.avgDelay ?? '';
+  const lateMinutes = getTripLateMinutes({
+    ...trip,
+    scheduledPickup,
+    scheduledDropoff,
+    actualPickup,
+    actualDropoff,
+    delay,
+    avgDelay
+  });
   return {
     ...trip,
     rider,
     rideId,
     position,
     destinationPosition,
+    scheduledPickup,
+    scheduledDropoff,
+    actualPickup,
+    actualDropoff,
+    delay,
+    avgDelay,
+    late: normalizeTripBoolean(trip?.late),
+    delayed: normalizeTripBoolean(trip?.delayed),
+    lateMinutes,
+    onTimeStatus: normalizeTextValue(trip?.onTimeStatus || (lateMinutes == null ? 'Pending' : lateMinutes > 0 ? 'Late' : 'On Time')),
     confirmation: normalizeTripConfirmation(trip?.confirmation)
   };
 };

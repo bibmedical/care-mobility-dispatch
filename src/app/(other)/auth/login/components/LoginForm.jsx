@@ -6,7 +6,7 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
 import { Controller } from 'react-hook-form';
 import { Col } from 'react-bootstrap';
-import useSignIn, { COMPANY_KEY, PAGE_OPTIONS } from '../useSignIn';
+import useSignIn, { PAGE_OPTIONS } from '../useSignIn';
 
 const LoginForm = () => {
   const {
@@ -27,14 +27,6 @@ const LoginForm = () => {
       <TextFormInput control={control} name="identifier" label="Username or Email" containerClassName="form-group mb-2" placeholder="Enter your username or email" />
 
       <PasswordFormInput control={control} name="password" label="Password" containerClassName="form-group" placeholder="Enter your password" />
-
-      <div className="alert alert-dark border mt-3 mb-0" style={{ borderColor: '#2a3144', backgroundColor: '#101521', color: '#c8d2eb' }}>
-        Password rule: first name + @ + last 2 digits of phone. Drivers cannot sign in on the web and must use Android.
-      </div>
-
-      <div className="mt-3 small text-muted">
-        Company code: {COMPANY_KEY}
-      </div>
 
       <div className="form-group row mt-3">
         <Col sm={6}>

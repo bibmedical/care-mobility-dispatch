@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
+import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
 
 const STORAGE_DIR = getStorageRoot();
 const STORAGE_FILE = getStorageFilePath('integrations.json');
@@ -20,6 +21,26 @@ const DEFAULT_STATE = {
     lastValidatedAt: '',
     lastCallbackAt: '',
     lastCallbackCode: ''
+  },
+  ai: {
+    provider: 'openai',
+    enabled: false,
+    assistantVisible: true,
+    apiKey: '',
+    model: 'gpt-5.4-nano',
+    avatarName: DEFAULT_ASSISTANT_AVATAR.name,
+    avatarImage: DEFAULT_ASSISTANT_AVATAR.image,
+    avatarUpdatedAt: '',
+    memoryNotes: '',
+    memorySections: {
+      patients: '',
+      drivers: '',
+      rules: '',
+      phones: ''
+    },
+    notes: '',
+    connectionStatus: 'Not configured',
+    lastValidatedAt: ''
   },
   sms: {
     activeProvider: 'disabled',
@@ -113,6 +134,27 @@ const normalizeMockSmsState = value => ({
   connectionStatus: String(value?.connectionStatus ?? 'Ready for local testing')
 });
 
+const normalizeAiState = value => ({
+  provider: String(value?.provider ?? 'openai'),
+  enabled: value?.enabled === true,
+  assistantVisible: value?.assistantVisible !== false,
+  apiKey: String(value?.apiKey ?? ''),
+  model: String(value?.model ?? 'gpt-5.4-nano'),
+  avatarName: String(value?.avatarName ?? DEFAULT_ASSISTANT_AVATAR.name),
+  avatarImage: String(value?.avatarImage ?? DEFAULT_ASSISTANT_AVATAR.image),
+  avatarUpdatedAt: String(value?.avatarUpdatedAt ?? ''),
+  memoryNotes: String(value?.memoryNotes ?? ''),
+  memorySections: {
+    patients: String(value?.memorySections?.patients ?? ''),
+    drivers: String(value?.memorySections?.drivers ?? ''),
+    rules: String(value?.memorySections?.rules ?? ''),
+    phones: String(value?.memorySections?.phones ?? '')
+  },
+  notes: String(value?.notes ?? ''),
+  connectionStatus: String(value?.connectionStatus ?? 'Not configured'),
+  lastValidatedAt: String(value?.lastValidatedAt ?? '')
+});
+
 const normalizeSmsOptOutEntry = value => ({
   id: String(value?.id ?? `${String(value?.phone ?? '').replace(/\D/g, '') || String(value?.name ?? '').trim().toLowerCase().replace(/\s+/g, '-')}`),
   name: String(value?.name ?? ''),
@@ -147,6 +189,7 @@ const normalizeSmsState = value => ({
 const normalizeState = value => ({
   version: 1,
   uber: normalizeUberState(value?.uber),
+  ai: normalizeAiState(value?.ai),
   sms: normalizeSmsState(value?.sms)
 });
 

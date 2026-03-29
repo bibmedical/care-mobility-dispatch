@@ -2,8 +2,9 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
-import { DISPATCH_TRIP_COLUMN_OPTIONS } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant } from '@/helpers/nemt-dispatch-state';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
@@ -12,7 +13,7 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { CircleMarker, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
-import { Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
+import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 
 const greenToolbarButtonStyle = {
   color: '#08131a',
@@ -114,6 +115,18 @@ const getDisplayTripId = trip => {
   return tripId.split('-')[0] || tripId;
 };
 
+const getTripNoteText = trip => String(trip?.notes || trip?.note || trip?.comments || '').trim();
+
+const buildTripEditDraft = trip => ({
+  notes: String(trip?.notes || '').trim(),
+  scheduledPickup: String(trip?.scheduledPickup || '').trim(),
+  actualPickup: String(trip?.actualPickup || '').trim(),
+  scheduledDropoff: String(trip?.scheduledDropoff || '').trim(),
+  actualDropoff: String(trip?.actualDropoff || '').trim(),
+  delay: trip?.lateMinutes != null ? String(Math.round(trip.lateMinutes)) : String(trip?.delay || '').trim(),
+  onTimeStatus: String(trip?.onTimeStatus || '').trim()
+});
+
 const getTripSortValue = (trip, sortKey, getDriverName) => {
   switch (sortKey) {
     case 'trip':
@@ -140,6 +153,10 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
       return trip.vehicleType;
     case 'leg':
       return trip.legLabel;
+    case 'punctuality':
+      return getTripPunctualityLabel(trip);
+    case 'lateMinutes':
+      return Number(trip.lateMinutes) || 0;
     default:
       return trip.pickupSortValue ?? trip.id;
   }
@@ -181,6 +198,7 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const DispatcherWorkspace = () => {
   const router = useRouter();
+  const { changeTheme, themeMode } = useLayoutContext();
   const {
     drivers,
     trips,
@@ -200,6 +218,8 @@ const DispatcherWorkspace = () => {
     refreshDrivers,
     refreshDispatchState,
     getDriverName,
+    updateTripNotes,
+    updateTripRecord,
     setDispatcherVisibleTripColumns,
     setMapProvider
   } = useNemtContext();
@@ -223,6 +243,9 @@ const DispatcherWorkspace = () => {
   const [routeMetrics, setRouteMetrics] = useState(null);
   const [tripOrderMode, setTripOrderMode] = useState('original');
   const [quickReassignDriverId, setQuickReassignDriverId] = useState('');
+  const [noteModalTripId, setNoteModalTripId] = useState(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [tripEditDraft, setTripEditDraft] = useState(buildTripEditDraft(null));
   const [tripSort, setTripSort] = useState({
     key: 'pickup',
     direction: 'asc'
@@ -376,7 +399,7 @@ const DispatcherWorkspace = () => {
     return null;
   }, [routeTrips, selectedDriver, selectedRoute, selectedTripIds, trips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIds.includes(id));
-  const tripTableColumnCount = visibleTripColumns.length + 2;
+  const tripTableColumnCount = visibleTripColumns.length + 3;
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
     const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && trip.driverId === selectedDriver.id);
@@ -398,6 +421,35 @@ const DispatcherWorkspace = () => {
     const onlineDrivers = drivers.filter(driver => driver.live === 'Online');
     return onlineDrivers.length > 0 ? onlineDrivers : drivers;
   }, [drivers]);
+  const noteModalTrip = useMemo(() => noteModalTripId ? trips.find(trip => trip.id === noteModalTripId) ?? null : null, [noteModalTripId, trips]);
+
+  const handleOpenTripNote = trip => {
+    setNoteModalTripId(trip.id);
+    setNoteDraft(getTripNoteText(trip));
+    setTripEditDraft(buildTripEditDraft(trip));
+  };
+
+  const handleCloseTripNote = () => {
+    setNoteModalTripId(null);
+    setNoteDraft('');
+    setTripEditDraft(buildTripEditDraft(null));
+  };
+
+  const handleSaveTripNote = () => {
+    if (!noteModalTrip) return;
+    updateTripRecord(noteModalTrip.id, {
+      notes: noteDraft,
+      scheduledPickup: tripEditDraft.scheduledPickup,
+      actualPickup: tripEditDraft.actualPickup,
+      scheduledDropoff: tripEditDraft.scheduledDropoff,
+      actualDropoff: tripEditDraft.actualDropoff,
+      delay: tripEditDraft.delay,
+      lateMinutes: tripEditDraft.delay,
+      onTimeStatus: tripEditDraft.onTimeStatus
+    });
+    setStatusMessage(`Puntualidad y nota guardadas para ${getDisplayTripId(noteModalTrip)}.`);
+    handleCloseTripNote();
+  };
 
   const handleToggleTripColumn = columnKey => {
     const nextColumns = visibleTripColumns.includes(columnKey) ? visibleTripColumns.filter(item => item !== columnKey) : [...visibleTripColumns, columnKey];
@@ -940,6 +992,13 @@ const DispatcherWorkspace = () => {
                   {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
                   {selectedDriver ? <Badge bg="warning" text="dark">{selectedDriverOpenTripCount} open</Badge> : null}
                   <span className="small">{selectedTripIds.length} sel.</span>
+                  <div className="d-flex align-items-center gap-1 flex-wrap">
+                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
+                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
+                        <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
+                        <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+                      </>}
+                  </div>
                 </div>
                 <div className="d-flex gap-2 small flex-wrap position-relative">
                   <Badge bg="primary">{trips.length} trips</Badge>
@@ -973,6 +1032,16 @@ const DispatcherWorkspace = () => {
                     <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
                     <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
                   </div>
+                  <Button
+                    variant="outline-dark"
+                    size="sm"
+                    style={greenToolbarButtonStyle}
+                    onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')}
+                    title={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
+                    aria-label={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
+                  >
+                    <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
+                  </Button>
                   {routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null}
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                   {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 35, width: 240 }}>
@@ -991,16 +1060,8 @@ const DispatcherWorkspace = () => {
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 48 }}><Form.Check checked={allVisibleSelected} onChange={event => handleSelectAll(event.target.checked)} /></th>
-                      <th style={{ width: 170, whiteSpace: 'nowrap' }}>
-                        <div className="d-flex align-items-center gap-2">
-                          <span>ACT</span>
-                          {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
-                              <Button variant="success" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-                              <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
-                              <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
-                            </>}
-                        </div>
-                      </th>
+                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
+                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
                       {visibleTripColumns.includes('trip') ? renderTripHeader('trip', 'Trip / Ride') : null}
                       {visibleTripColumns.includes('status') ? renderTripHeader('status', 'Status') : null}
                       {visibleTripColumns.includes('driver') ? renderTripHeader('driver', 'Driver') : null}
@@ -1013,6 +1074,8 @@ const DispatcherWorkspace = () => {
                       {visibleTripColumns.includes('phone') ? renderTripHeader('phone', 'Phone') : null}
                       {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
                       {visibleTripColumns.includes('leg') ? renderTripHeader('leg', 'Leg') : null}
+                      {visibleTripColumns.includes('punctuality') ? renderTripHeader('punctuality', 'Punctuality') : null}
+                      {visibleTripColumns.includes('lateMinutes') ? renderTripHeader('lateMinutes', 'Late Min') : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -1020,7 +1083,7 @@ const DispatcherWorkspace = () => {
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
                       </tr> : <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : row.trip.driverId && row.trip.driverId === selectedDriverId ? 'table-success' : ''}>
                         <td><Form.Check checked={selectedTripIds.includes(row.trip.id)} onChange={() => handleTripSelectionToggle(row.trip.id)} /></td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
+                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
                             <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" onClick={() => {
                           setSelectedTripIds([row.trip.id]);
@@ -1031,12 +1094,12 @@ const DispatcherWorkspace = () => {
                           }
                           setStatusMessage(`Trip ${row.trip.id} activo.`);
                         }}>ACT</Button>
-                            {tripStatusFilter === 'cancelled' || row.trip.status === 'Cancelled' ? <Button variant="primary" size="sm" onClick={() => handleReinstateTrip(row.trip.id)}>I</Button> : <>
-                                <Button variant="success" size="sm" onClick={() => handleAssignTrip(row.trip.id)}>A</Button>
-                                <Button variant="secondary" size="sm" onClick={() => handleUnassignTrip(row.trip.id)}>U</Button>
-                                <Button variant="danger" size="sm" onClick={() => handleCancelTrip(row.trip.id)}>C</Button>
-                              </>}
                           </div>
+                        </td>
+                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                          <Button variant="outline-secondary" size="sm" onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent' }}>
+                            N
+                          </Button>
                         </td>
                         {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
                           <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
@@ -1053,6 +1116,8 @@ const DispatcherWorkspace = () => {
                         {visibleTripColumns.includes('phone') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.patientPhoneNumber || '-'}</td> : null}
                         {visibleTripColumns.includes('vehicle') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.vehicleType || '-'}</td> : null}
                         {visibleTripColumns.includes('leg') ? <td style={{ whiteSpace: 'nowrap' }}>{getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant}>{getLegBadge(row.trip).label}</Badge> : '-'}</td> : null}
+                        {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
+                        {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}
                       </tr>) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No hay viajes cargados. Esperando tus trips reales.</td>
                       </tr>}
@@ -1157,6 +1222,72 @@ const DispatcherWorkspace = () => {
             </CardBody>
           </Card>
         </div>
+
+        <Modal show={Boolean(noteModalTrip)} onHide={handleCloseTripNote} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Trip Details</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="small text-muted mb-2">{noteModalTrip ? getDisplayTripId(noteModalTrip) : ''}</div>
+            <Row className="g-3">
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Scheduled pickup</Form.Label>
+                <Form.Control value={tripEditDraft.scheduledPickup} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                scheduledPickup: event.target.value
+              }))} placeholder="10:30 AM" />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Actual pickup</Form.Label>
+                <Form.Control value={tripEditDraft.actualPickup} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                actualPickup: event.target.value
+              }))} placeholder="10:42 AM" />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Scheduled dropoff</Form.Label>
+                <Form.Control value={tripEditDraft.scheduledDropoff} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                scheduledDropoff: event.target.value
+              }))} placeholder="11:00 AM" />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Actual dropoff</Form.Label>
+                <Form.Control value={tripEditDraft.actualDropoff} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                actualDropoff: event.target.value
+              }))} placeholder="11:08 AM" />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Late minutes</Form.Label>
+                <Form.Control value={tripEditDraft.delay} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                delay: event.target.value
+              }))} placeholder="8" />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Punctuality</Form.Label>
+                <Form.Select value={tripEditDraft.onTimeStatus} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                onTimeStatus: event.target.value
+              }))}>
+                  <option value="">Auto</option>
+                  <option value="On Time">On Time</option>
+                  <option value="Late">Late</option>
+                  <option value="Pending">Pending</option>
+                </Form.Select>
+              </Col>
+              <Col md={12}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Trip note</Form.Label>
+                <Form.Control as="textarea" rows={5} value={noteDraft} onChange={event => setNoteDraft(event.target.value)} placeholder="Write the note for the driver here." />
+              </Col>
+            </Row>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={handleCloseTripNote}>Close</Button>
+            <Button variant="primary" onClick={handleSaveTripNote}>Save Trip</Button>
+          </Modal.Footer>
+        </Modal>
       </div>
     </>;
 };

@@ -368,6 +368,30 @@ export const NemtProvider = ({
     selectedDriverId: null
   }), { markDispatchDirty: true });
 
+  const updateTripNotes = (tripId, notes) => updateState(currentState => {
+    const normalizedTripId = String(tripId || '').trim();
+    const normalizedNotes = String(notes ?? '').trim();
+    return {
+      ...currentState,
+      trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? {
+        ...trip,
+        notes: normalizedNotes
+      } : trip)
+    };
+  }, { markDispatchDirty: true });
+
+  const updateTripRecord = (tripId, updates) => updateState(currentState => {
+    const normalizedTripId = String(tripId || '').trim();
+    if (!normalizedTripId) return currentState;
+    return {
+      ...currentState,
+      trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? normalizeTripRecord({
+        ...trip,
+        ...(updates || {})
+      }) : trip)
+    };
+  }, { markDispatchDirty: true });
+
   const setDispatcherVisibleTripColumns = columnKeys => updateState(currentState => ({
     ...currentState,
     uiPreferences: {
@@ -410,6 +434,8 @@ export const NemtProvider = ({
     addDriver,
     replaceTrips,
     clearTrips,
+    updateTripNotes,
+    updateTripRecord,
     setDispatcherVisibleTripColumns,
     setMapProvider,
     resetNemtState,

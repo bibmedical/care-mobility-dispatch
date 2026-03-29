@@ -3,37 +3,13 @@
 import { useNemtContext } from '@/context/useNemtContext';
 import { getMapTileConfig } from '@/utils/map-tiles';
 import { divIcon } from 'leaflet';
-import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Badge, Button } from 'react-bootstrap';
-import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
+import { Alert, Button, Form, Spinner } from 'react-bootstrap';
+import { MapContainer, Marker, Polyline, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 
 const DEFAULT_CENTER = [28.5383, -81.3792];
-
-const toRadians = value => value * (Math.PI / 180);
-
-const getDistanceMiles = (from, to) => {
-  if (!Array.isArray(from) || !Array.isArray(to) || from.length !== 2 || to.length !== 2) return null;
-  const earthRadiusMiles = 3958.8;
-  const dLat = toRadians(to[0] - from[0]);
-  const dLon = toRadians(to[1] - from[1]);
-  const lat1 = toRadians(from[0]);
-  const lat2 = toRadians(to[0]);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-const formatEta = miles => {
-  if (miles == null) return 'ETA unavailable';
-  const speedMph = 28;
-  const minutes = Math.max(1, Math.round(miles / speedMph * 60));
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
-};
 
 const formatDriveMinutes = minutes => {
   if (!Number.isFinite(minutes)) return 'Time unavailable';
@@ -44,218 +20,175 @@ const formatDriveMinutes = minutes => {
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 };
 
-const sortTripsByPickupTime = items => [...items].sort((leftTrip, rightTrip) => {
-  const leftTime = leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
-  const rightTime = rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
-  if (leftTime !== rightTime) return leftTime - rightTime;
-  return String(leftTrip.id).localeCompare(String(rightTrip.id));
-});
-
-const getTripTargetPosition = trip => trip?.status === 'In Progress' ? trip?.destinationPosition ?? trip?.position : trip?.position;
-
-const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
-  className: 'driver-map-icon-shell',
-  html: `<div style="width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:${isSelected ? '#f59e0b' : isOnline ? '#16a34a' : '#475569'};border:2px solid #ffffff;box-shadow:0 6px 18px rgba(15,23,42,0.28);color:#ffffff;font-size:16px;line-height:1;">&#128663;</div>`,
-  iconSize: [34, 34],
-  iconAnchor: [17, 17],
+const createRouteStopIcon = label => divIcon({
+  className: 'route-stop-icon-shell',
+  html: `<div style="width:32px;height:32px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:#0f766e;border:2px solid #ffffff;box-shadow:0 8px 20px rgba(15,23,42,0.24);color:#ffffff;font-size:13px;font-weight:700;line-height:1;">${label}</div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
   popupAnchor: [0, -16]
 });
 
-const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
-  className: 'route-stop-icon-shell',
-  html: `<div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:${variant === 'pickup' ? '#16a34a' : '#2563eb'};border:2px solid #ffffff;box-shadow:0 6px 18px rgba(15,23,42,0.28);color:#ffffff;font-size:13px;font-weight:700;line-height:1;">${label}</div>`,
-  iconSize: [28, 28],
-  iconAnchor: [14, 14],
-  popupAnchor: [0, -14]
-});
-
-const StandaloneDispatchMapScreen = () => {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const source = searchParams.get('source') === 'dashboard' ? 'dashboard' : 'dispatcher';
-  const {
-    drivers,
-    trips,
-    routePlans,
-    selectedTripIds,
-    selectedDriverId,
-    selectedRouteId,
-    uiPreferences,
-    toggleTripSelection,
-    getDriverName
-  } = useNemtContext();
-  const [showRoute, setShowRoute] = useState(true);
-  const [showInfo, setShowInfo] = useState(true);
-  const [mapLocked, setMapLocked] = useState(false);
-  const [routeGeometry, setRouteGeometry] = useState([]);
-  const [routeMetrics, setRouteMetrics] = useState(null);
-
-  const selectedDriver = useMemo(() => drivers.find(driver => driver.id === selectedDriverId) ?? null, [drivers, selectedDriverId]);
-  const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
-  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
-  const selectedTrips = useMemo(() => sortTripsByPickupTime(trips.filter(trip => selectedTripIds.includes(trip.id))), [selectedTripIds, trips]);
-  const routeTrips = useMemo(() => {
-    if (selectedRoute) return sortTripsByPickupTime(trips.filter(trip => selectedRoute.tripIds.includes(trip.id)));
-    if (selectedDriver) return sortTripsByPickupTime(trips.filter(trip => trip.driverId === selectedDriver.id));
-    return selectedTrips;
-  }, [selectedDriver, selectedRoute, selectedTrips, trips]);
-  const activeInfoTrip = selectedTrips[0] ?? routeTrips[0] ?? null;
-
-  const routeStops = useMemo(() => {
-    const baseTrips = selectedTrips.length > 0 ? selectedTrips : routeTrips;
-    return baseTrips.flatMap((trip, index) => [{
-      key: `${trip.id}-pickup`,
-      label: `${index * 2 + 1}`,
-      variant: 'pickup',
-      position: trip.position,
-      title: `Pickup ${trip.pickup}`,
-      detail: trip.address || 'Pickup pending'
-    }, {
-      key: `${trip.id}-dropoff`,
-      label: `${index * 2 + 2}`,
-      variant: 'dropoff',
-      position: trip.destinationPosition ?? trip.position,
-      title: `Dropoff ${trip.dropoff}`,
-      detail: trip.destination || 'Destination pending'
-    }]);
-  }, [routeTrips, selectedTrips]);
-
-  const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
-  const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
-  const selectedDriverActiveTrip = useMemo(() => {
-    if (!selectedDriver) return null;
-    const preferredTrip = selectedTrips.find(trip => trip.driverId === selectedDriver.id);
-    if (preferredTrip) return preferredTrip;
-    return routeTrips.find(trip => trip.driverId === selectedDriver.id) ?? trips.find(trip => trip.driverId === selectedDriver.id) ?? null;
-  }, [routeTrips, selectedDriver, selectedTrips, trips]);
-  const selectedDriverEta = useMemo(() => {
-    if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
-    const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip));
-    return {
-      miles,
-      label: formatEta(miles)
-    };
-  }, [selectedDriver, selectedDriverActiveTrip]);
-  const mapCenter = selectedDriver?.position ?? routeStops[0]?.position ?? trips[0]?.position ?? DEFAULT_CENTER;
-  const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
-  const backHref = source === 'dashboard' ? '/trip-dashboard' : '/dispatcher';
-  const hasMapSelection = routeTrips.length > 0 || selectedTrips.length > 0 || Boolean(selectedDriver);
+const MapViewportController = ({ points }) => {
+  const map = useMap();
 
   useEffect(() => {
-    if (!showRoute || routeStops.length < 2) {
-      setRouteGeometry([]);
-      setRouteMetrics(null);
-      return undefined;
+    if (!Array.isArray(points) || points.length === 0) return;
+    if (points.length === 1) {
+      map.setView(points[0], 11, {
+        animate: true
+      });
+      return;
+    }
+    map.fitBounds(points, {
+      animate: true,
+      padding: [48, 48]
+    });
+  }, [map, points]);
+
+  return null;
+};
+
+const findLocation = async query => {
+  const response = await fetch(`/api/maps/search?q=${encodeURIComponent(query)}`, {
+    cache: 'no-store'
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Location not found.');
+  }
+  return payload;
+};
+
+const findRoute = async coordinates => {
+  const coordinateQuery = coordinates.map(([latitude, longitude]) => `${latitude},${longitude}`).join(';');
+  const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinateQuery)}`, {
+    cache: 'no-store'
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to calculate route.');
+  }
+  return payload;
+};
+
+const StandaloneDispatchMapScreen = () => {
+  const { uiPreferences } = useNemtContext();
+  const [originQuery, setOriginQuery] = useState('32808');
+  const [destinationQuery, setDestinationQuery] = useState('32822');
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [originResult, setOriginResult] = useState(null);
+  const [destinationResult, setDestinationResult] = useState(null);
+  const [routeGeometry, setRouteGeometry] = useState([]);
+  const [routeMetrics, setRouteMetrics] = useState(null);
+  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+
+  const mapPoints = useMemo(() => {
+    const points = [];
+    if (originResult?.coordinates) points.push(originResult.coordinates);
+    if (destinationResult?.coordinates) points.push(destinationResult.coordinates);
+    return points.length > 0 ? points : [DEFAULT_CENTER];
+  }, [destinationResult, originResult]);
+
+  const handleLookupRoute = async event => {
+    event?.preventDefault();
+    const originValue = originQuery.trim();
+    const destinationValue = destinationQuery.trim();
+
+    if (!originValue || !destinationValue) {
+      setErrorMessage('Write the origin and destination first.');
+      return;
     }
 
-    const abortController = new AbortController();
+    setIsLoading(true);
+    setErrorMessage('');
 
-    const loadRouteGeometry = async () => {
-      const uniqueStops = routeStops.filter((stop, index, allStops) => index === 0 || String(stop.position) !== String(allStops[index - 1]?.position));
-      const coordinates = uniqueStops.map(stop => `${stop.position[1]},${stop.position[0]}`).join(';');
-      if (!coordinates) return;
+    try {
+      const [nextOrigin, nextDestination] = await Promise.all([findLocation(originValue), findLocation(destinationValue)]);
+      const nextRoute = await findRoute([nextOrigin.coordinates, nextDestination.coordinates]);
+      setOriginResult(nextOrigin);
+      setDestinationResult(nextDestination);
+      setRouteGeometry(Array.isArray(nextRoute?.geometry) ? nextRoute.geometry : []);
+      setRouteMetrics({
+        distanceMiles: Number.isFinite(nextRoute?.distanceMiles) ? nextRoute.distanceMiles : null,
+        durationMinutes: Number.isFinite(nextRoute?.durationMinutes) ? nextRoute.durationMinutes : null,
+        isFallback: Boolean(nextRoute?.isFallback)
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to calculate route.');
+      setRouteGeometry([]);
+      setRouteMetrics(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-      try {
-        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
-          signal: abortController.signal,
-          cache: 'no-store'
-        });
-        if (!response.ok) throw new Error('Routing service unavailable');
-        const payload = await response.json();
-        const geometry = Array.isArray(payload?.geometry) ? payload.geometry : [];
-        if (geometry.length < 2) throw new Error('No drivable route found');
-        setRouteGeometry(geometry);
-        setRouteMetrics({
-          distanceMiles: Number.isFinite(payload?.distanceMiles) ? payload.distanceMiles : null,
-          durationMinutes: Number.isFinite(payload?.durationMinutes) ? payload.durationMinutes : null,
-          isFallback: Boolean(payload?.isFallback)
-        });
-      } catch {
-        if (abortController.signal.aborted) return;
-        setRouteGeometry(uniqueStops.map(stop => stop.position));
-        setRouteMetrics(null);
-      }
-    };
+  const handleClear = () => {
+    setOriginQuery('');
+    setDestinationQuery('');
+    setOriginResult(null);
+    setDestinationResult(null);
+    setRouteGeometry([]);
+    setRouteMetrics(null);
+    setErrorMessage('');
+  };
 
-    loadRouteGeometry();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [routeStops, showRoute]);
-
-  return <div style={{ height: '100vh', padding: 12, background: '#0f172a' }}>
-      <div className="h-100 rounded-4 overflow-hidden" style={{ border: '1px solid rgba(148, 163, 184, 0.18)', boxShadow: '0 24px 80px rgba(2, 6, 23, 0.45)' }}>
-        <div className="d-flex justify-content-between align-items-center gap-3 flex-wrap px-3 py-2" style={{ background: 'linear-gradient(90deg, #0b1220 0%, #122033 100%)', borderBottom: '1px solid rgba(148, 163, 184, 0.12)' }}>
-          <div className="d-flex align-items-center gap-2 flex-wrap text-white">
-            <strong>Map Screen</strong>
-            <Badge bg="info">{source === 'dashboard' ? 'Trip Dashboard' : 'Dispatcher'}</Badge>
-            <Badge bg="secondary">{trips.length} trips</Badge>
-            <Badge bg="secondary">{drivers.length} drivers</Badge>
-            <Badge bg={liveDrivers > 0 ? 'success' : 'dark'}>{liveDrivers} live</Badge>
-            {routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null}
-            {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
+  return <div style={{ height: '100vh', padding: 0, background: '#eff3ea' }}>
+      <div className="h-100" style={{ display: 'grid', gridTemplateColumns: '360px minmax(0, 1fr)' }}>
+        <aside className="d-flex flex-column" style={{ background: 'linear-gradient(180deg, #f7f3ec 0%, #f1eee6 100%)', borderRight: '1px solid rgba(15, 23, 42, 0.08)', padding: 24, gap: 18 }}>
+          <div>
+            <div className="text-uppercase fw-semibold small" style={{ color: '#0f766e', letterSpacing: '0.12em' }}>Route Finder</div>
+            <h1 className="h3 mt-2 mb-2" style={{ color: '#18212f' }}>ZIP code, city or full address</h1>
+            <p className="mb-0" style={{ color: '#5b6677', lineHeight: 1.6 }}>Write where you start and where you are going. The map will show the route, miles and estimated driving time.</p>
           </div>
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <Button variant="outline-light" size="sm" onClick={() => setShowRoute(current => !current)}>{showRoute ? 'Hide Route' : 'Show Route'}</Button>
-            <Button variant="outline-light" size="sm" onClick={() => setShowInfo(current => !current)}>{showInfo ? 'Hide Info' : 'Show Info'}</Button>
-            <Button variant="outline-light" size="sm" onClick={() => setMapLocked(current => !current)}>{mapLocked ? 'Unlock' : 'Lock'}</Button>
-            <Button variant="light" size="sm" onClick={() => router.push(backHref)}>Back To {source === 'dashboard' ? 'Dashboard' : 'Dispatcher'}</Button>
-            <Button variant="secondary" size="sm" onClick={() => window.close()}>Close Window</Button>
+
+          <Form onSubmit={handleLookupRoute} className="d-flex flex-column gap-3">
+            <Form.Group>
+              <Form.Label className="fw-semibold" style={{ color: '#18212f' }}>From</Form.Label>
+              <Form.Control value={originQuery} onChange={event => setOriginQuery(event.target.value)} placeholder="Example: 32808 or Orlando, FL" style={{ borderRadius: 16, padding: '14px 16px', borderColor: 'rgba(15, 23, 42, 0.14)' }} />
+            </Form.Group>
+            <Form.Group>
+              <Form.Label className="fw-semibold" style={{ color: '#18212f' }}>To</Form.Label>
+              <Form.Control value={destinationQuery} onChange={event => setDestinationQuery(event.target.value)} placeholder="Example: 32822 or Kissimmee, FL" style={{ borderRadius: 16, padding: '14px 16px', borderColor: 'rgba(15, 23, 42, 0.14)' }} />
+            </Form.Group>
+            <div className="d-flex gap-2">
+              <Button type="submit" disabled={isLoading} style={{ flex: 1, borderRadius: 16, border: 'none', background: '#0f766e', padding: '12px 16px' }}>
+                {isLoading ? <span className="d-inline-flex align-items-center gap-2"><Spinner size="sm" /> Calculating...</span> : 'Calculate Route'}
+              </Button>
+              <Button type="button" variant="light" onClick={handleClear} style={{ borderRadius: 16, padding: '12px 16px', borderColor: 'rgba(15, 23, 42, 0.12)' }}>Clear</Button>
+            </div>
+          </Form>
+
+          {errorMessage ? <Alert variant="danger" className="mb-0" style={{ borderRadius: 16 }}>{errorMessage}</Alert> : null}
+
+          <div className="d-flex flex-column gap-3" style={{ marginTop: 4 }}>
+            <div className="rounded-4" style={{ background: '#ffffff', padding: 18, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+              <div className="small text-uppercase fw-semibold" style={{ color: '#6b7280', letterSpacing: '0.08em' }}>Estimated Drive Time</div>
+              <div className="mt-2 fw-bold" style={{ fontSize: 32, color: '#18212f', lineHeight: 1.1 }}>{routeMetrics ? formatDriveMinutes(routeMetrics.durationMinutes) : '--'}</div>
+              <div className="small mt-2" style={{ color: '#667085' }}>{routeMetrics?.isFallback ? 'Showing a direct line because no driving route was available.' : 'Live route based on the current map provider.'}</div>
+            </div>
+            <div className="rounded-4" style={{ background: '#ffffff', padding: 18, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+              <div className="small text-uppercase fw-semibold" style={{ color: '#6b7280', letterSpacing: '0.08em' }}>Distance</div>
+              <div className="mt-2 fw-bold" style={{ fontSize: 28, color: '#18212f', lineHeight: 1.1 }}>{routeMetrics?.distanceMiles != null ? `${routeMetrics.distanceMiles.toFixed(1)} mi` : '--'}</div>
+            </div>
+            <div className="rounded-4" style={{ background: '#ffffff', padding: 18, border: '1px solid rgba(15, 23, 42, 0.08)' }}>
+              <div className="small text-uppercase fw-semibold" style={{ color: '#6b7280', letterSpacing: '0.08em' }}>Points</div>
+              <div className="mt-3 small" style={{ color: '#18212f', lineHeight: 1.6 }}>
+                <div><strong>A:</strong> {originResult?.label || 'Waiting for origin'}</div>
+                <div className="mt-2"><strong>B:</strong> {destinationResult?.label || 'Waiting for destination'}</div>
+              </div>
+            </div>
           </div>
-        </div>
+        </aside>
 
-        <div className="position-relative" style={{ height: 'calc(100% - 56px)' }}>
-          {showInfo ? <div className="position-absolute top-0 start-0 m-3 rounded-4 px-3 py-2" style={{ zIndex: 500, minWidth: 280, backgroundColor: 'rgba(15, 19, 32, 0.92)', border: '1px solid rgba(255,255,255,0.12)', color: '#f8fafc' }}>
-              <div className="small text-uppercase" style={{ color: '#94a3b8' }}>{selectedRoute?.name || (selectedDriver ? `Driver ${selectedDriver.name}` : 'Current selection')}</div>
-              <div className="fw-semibold">{activeInfoTrip?.rider || 'Select trips, route, or driver in the main screen'}</div>
-              <div className="small mt-1">{activeInfoTrip ? `${activeInfoTrip.pickup} • ${activeInfoTrip.address || 'No pickup address'}` : 'This screen follows the same local dispatch state.'}</div>
-              <div className="small mt-1" style={{ color: '#cbd5e1' }}>{activeInfoTrip ? `${activeInfoTrip.dropoff} • ${activeInfoTrip.destination || 'No dropoff address'}` : 'Open this on another monitor and keep working in Dispatcher or Trip Dashboard.'}</div>
-              <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                <Badge bg="info">{selectedTrips.length || routeTrips.length} active trips</Badge>
-                {selectedDriver ? <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.name}</Badge> : null}
-              </div>
-            </div> : null}
-
-          {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
-              <div className="small text-uppercase text-secondary">Driver ETA</div>
-              <div className="fw-semibold">{selectedDriver.name}</div>
-              <div className="small mt-1">Heading to {selectedDriverActiveTrip.rideId || selectedDriverActiveTrip.id} • {selectedDriverActiveTrip.rider}</div>
-              <div className="small text-secondary">{selectedDriverActiveTrip.pickup} • {selectedDriverActiveTrip.address}</div>
-              <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                <Badge bg="info">{selectedDriverEta?.label || 'ETA unavailable'}</Badge>
-                <Badge bg="secondary">{selectedDriverEta?.miles != null ? `${selectedDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
-              </div>
-            </div> : null}
-
-          {!hasMapSelection ? <div className="position-absolute top-50 start-50 translate-middle rounded-4 px-4 py-3 text-center" style={{ zIndex: 550, width: 'min(92vw, 420px)', backgroundColor: 'rgba(15, 19, 32, 0.9)', border: '1px solid rgba(255,255,255,0.12)', color: '#f8fafc' }}>
-              <div className="fw-semibold">Map ready for second screen</div>
-              <div className="small mt-2" style={{ color: '#cbd5e1' }}>Select trips, a route, or a driver in the main workspace and this window will follow the same local state automatically.</div>
-            </div> : null}
-
-          <MapContainer center={mapCenter} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
+        <div style={{ position: 'relative', minWidth: 0 }}>
+          <MapContainer center={DEFAULT_CENTER} zoom={10} zoomControl={false} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
+            <MapViewportController points={mapPoints} />
             <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
-            <ZoomControl position="bottomleft" />
-            {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-            {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
-            {drivers.filter(driver => Array.isArray(driver.position) && driver.position.length === 2).map(driver => <Marker key={driver.id} position={driver.position} icon={createDriverMapIcon({ isSelected: driver.id === selectedDriverId, isOnline: driver.live === 'Online' })}>
-                <Popup>
-                  <div className="fw-semibold">{driver.name}</div>
-                  <div>{driver.vehicle || 'Vehicle pending'}</div>
-                  <div>{driver.live}</div>
-                </Popup>
-              </Marker>)}
-            {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
-                <Popup>
-                  <div className="fw-semibold">{stop.title}</div>
-                  <div>{stop.detail}</div>
-                </Popup>
-              </Marker>)}
-            {selectedTrips.map(trip => <CircleMarker key={trip.id} center={trip.position} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
-            click: () => toggleTripSelection(trip.id)
-          }}>
-                <Popup>{`${trip.rideId || trip.brokerTripId || trip.id} | ${trip.rider} | ${trip.pickup}`}</Popup>
-              </CircleMarker>)}
+            <ZoomControl position="bottomright" />
+            {routeGeometry.length > 1 ? <Polyline positions={routeGeometry} pathOptions={{ color: '#0f766e', weight: 5 }} /> : null}
+            {originResult?.coordinates ? <Marker position={originResult.coordinates} icon={createRouteStopIcon('A')} /> : null}
+            {destinationResult?.coordinates ? <Marker position={destinationResult.coordinates} icon={createRouteStopIcon('B')} /> : null}
           </MapContainer>
         </div>
       </div>

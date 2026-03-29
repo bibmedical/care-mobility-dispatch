@@ -69,6 +69,11 @@ export const MENU_ITEMS = [{
   icon: 'iconoir:settings',
   url: '/preferences'
 }, {
+  key: 'avatar',
+  label: 'Avatar',
+  icon: 'iconoir:user-love',
+  url: '/avatar'
+}, {
   key: 'integrations-menu',
   label: 'Integrations',
   icon: 'iconoir:plug-type-a',
@@ -76,6 +81,10 @@ export const MENU_ITEMS = [{
     key: 'integrations-uber',
     label: 'Uber',
     url: '/integrations/uber'
+  }, {
+    key: 'integrations-ai',
+    label: 'AI',
+    url: '/integrations/ai'
   }, {
     key: 'integrations-sms',
     label: 'SMS',
