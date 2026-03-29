@@ -139,8 +139,12 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
 const getDisplayTripId = trip => {
+  const rideId = String(trip?.rideId || '').trim();
+  if (rideId) return rideId;
+  const brokerTripId = String(trip?.brokerTripId || '').trim();
+  if (brokerTripId) return brokerTripId;
   const tripId = String(trip?.id || '').trim();
-  if (!tripId) return String(trip?.brokerTripId || '').trim();
+  if (!tripId) return '';
   return tripId.split('-')[0] || tripId;
 };
 

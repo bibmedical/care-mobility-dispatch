@@ -1,5 +1,23 @@
 const DEFAULT_CENTER = [28.5383, -81.3792];
 
+const normalizeTextValue = value => String(value ?? '').trim();
+
+const getFirstNonEmptyValue = (...values) => values.map(normalizeTextValue).find(Boolean) ?? '';
+
+const getDerivedRiderName = trip => {
+  const combinedPatientName = [trip?.patientFirstName, trip?.patientLastName].map(normalizeTextValue).filter(Boolean).join(' ').trim();
+  return getFirstNonEmptyValue(trip?.rider, combinedPatientName, trip?.patientName, trip?.passengerName, trip?.riderName, trip?.memberName, trip?.clientName, trip?.name);
+};
+
+const getDerivedRideId = trip => {
+  const explicitRideId = getFirstNonEmptyValue(trip?.rideId, trip?.riderId, trip?.memberId, trip?.tripId, trip?.tripNumber);
+  if (explicitRideId) return explicitRideId;
+  const normalizedId = normalizeTextValue(trip?.id);
+  if (!normalizedId) return '';
+  const [firstSegment] = normalizedId.split('-');
+  return firstSegment || normalizedId;
+};
+
 export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   key: 'trip',
   label: 'Trip / Ride'
@@ -75,8 +93,12 @@ const normalizeTripConfirmation = value => ({
 export const normalizeTripRecord = trip => {
   const position = Array.isArray(trip?.position) && trip.position.length === 2 ? trip.position.map(Number) : [...DEFAULT_CENTER];
   const destinationPosition = Array.isArray(trip?.destinationPosition) && trip.destinationPosition.length === 2 ? trip.destinationPosition.map(Number) : [...position];
+  const rider = getDerivedRiderName(trip);
+  const rideId = getDerivedRideId(trip);
   return {
     ...trip,
+    rider,
+    rideId,
     position,
     destinationPosition,
     confirmation: normalizeTripConfirmation(trip?.confirmation)
