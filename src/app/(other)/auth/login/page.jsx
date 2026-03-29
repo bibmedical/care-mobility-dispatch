@@ -1,38 +1,51 @@
 import Image from 'next/image';
-import { Col } from 'react-bootstrap';
+import Link from 'next/link';
+import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import LoginForm from './components/LoginForm';
+import logoSmImg from '@/assets/images/logo-sm.png';
+import { Card, CardBody, Col } from 'react-bootstrap';
 
 export const metadata = {
   title: 'Login'
 };
 
 const Login = () => {
-  return <Col xl={11} xxl={10} className="mx-auto">
-      <div className="position-relative overflow-hidden rounded-5" style={{
-      minHeight: '86vh',
-      padding: '32px 18px',
-      background: 'radial-gradient(circle at top, rgba(17, 196, 194, 0.1), transparent 28%), linear-gradient(180deg, #fcfcfd 0%, #f4f5f8 100%)',
-      boxShadow: '0 30px 70px rgba(148, 163, 184, 0.18)'
-    }}>
-        <div className="position-absolute" style={{ left: '-8%', top: '18%', width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(17, 196, 194, 0.12) 0%, rgba(17,196,194,0) 72%)' }} />
-        <div className="position-absolute" style={{ right: '-6%', bottom: '10%', width: 260, height: 260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(79, 70, 229, 0.08) 0%, rgba(79,70,229,0) 72%)' }} />
-
-        <div className="position-relative mx-auto d-flex flex-column justify-content-center align-items-center text-center" style={{ minHeight: '78vh', maxWidth: 760 }}>
-          <div className="mb-4">
-            <Image src="/care-mobility-logo.png" alt="Care Mobility" width={330} height={113} priority style={{ width: 'min(330px, 82vw)', height: 'auto' }} />
+  return <Col lg={4} className="mx-auto">
+      <Card>
+        <CardBody className="p-0 bg-black auth-header-box rounded-top">
+          <div className="text-center p-3">
+            <Link href="/auth/login" className="logo logo-admin">
+              <Image src={logoSmImg} height={50} alt="logo" className="auth-logo" />
+            </Link>
+            <h4 className="mt-3 mb-1 fw-semibold text-white fs-18">Inicia sesion en tu panel</h4>
+            <p className="text-muted fw-medium mb-0">Entra para continuar al sistema.</p>
           </div>
+        </CardBody>
+        <CardBody>
+          <LoginForm />
 
-          <div className="w-100 rounded-5 px-3 px-md-5 py-4 py-md-5" style={{ maxWidth: 520, background: 'rgba(255, 255, 255, 0.74)', border: '1px solid rgba(255,255,255,0.72)', boxShadow: '0 28px 60px rgba(148, 163, 184, 0.18)', backdropFilter: 'blur(12px)' }}>
-            <div className="mx-auto" style={{ maxWidth: 360 }}>
-              <LoginForm />
-            </div>
+          <div className="text-center  mb-2">
+            <p className="text-muted">
+              Don&apos;t have an account ?&nbsp;
+              <Link href="/auth/register" className="text-primary ms-2">
+                Free Resister
+              </Link>
+            </p>
+            <h6 className="px-3 d-inline-block">Or Login With</h6>
           </div>
-
-          <div className="mt-4 small fw-semibold" style={{ color: '#8b8fa0' }}>
-            Secure staff login only
+          <div className="d-flex justify-content-center">
+            <span role="button" className="d-flex justify-content-center align-items-center thumb-md bg-blue-subtle text-blue rounded-circle me-2">
+              <IconifyIcon icon="fa6-brands:facebook" className="align-self-center" />
+            </span>
+            <span role="button" className="d-flex justify-content-center align-items-center thumb-md bg-info-subtle text-info rounded-circle me-2">
+              <IconifyIcon icon="fa6-brands:twitter" className="align-self-center" />
+            </span>
+            <span role="button" className="d-flex justify-content-center align-items-center thumb-md bg-danger-subtle text-danger rounded-circle">
+              <IconifyIcon icon="fa6-brands:google" className="align-self-center" />
+            </span>
           </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
     </Col>;
 };
 

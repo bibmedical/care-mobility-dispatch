@@ -193,6 +193,7 @@ const TripDashboardWorkspace = () => {
   const [showInfo, setShowInfo] = useState(false);
   const [showRoute, setShowRoute] = useState(true);
   const [showBottomPanels, setShowBottomPanels] = useState(false);
+  const [showInlineMap, setShowInlineMap] = useState(true);
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -738,12 +739,26 @@ const TripDashboardWorkspace = () => {
     zIndex: 30
   };
 
+  const handleOpenMapWindow = () => {
+    const mapUrl = `/map-screen?source=dashboard`;
+    const popup = window.open(mapUrl, 'care-mobility-map', 'popup=yes,width=1600,height=900,resizable=yes,scrollbars=no');
+    if (popup) {
+      popup.focus();
+      setShowInlineMap(false);
+      setStatusMessage('Mapa abierto en otra pantalla.');
+      return;
+    }
+    window.open(mapUrl, '_blank', 'noopener,noreferrer');
+    setShowInlineMap(false);
+    setStatusMessage('Mapa abierto en otra pestana.');
+  };
+
   return <>
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0 }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="position-relative h-100">
+              {showInlineMap ? <div className="position-relative h-100">
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
                   <Button variant="dark" size="sm" onClick={() => setShowRoute(current => !current)}>Route</Button>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
@@ -754,6 +769,7 @@ const TripDashboardWorkspace = () => {
                   setStatusMessage(showBottomPanels ? 'Paneles inferiores ocultos.' : 'Paneles inferiores visibles.');
                 }}>{showBottomPanels ? 'Hide Panel' : 'Panel'}</Button>
                   <Button variant="dark" size="sm" onClick={() => setMapLocked(current => !current)}>{mapLocked ? 'Unlock' : 'Lock'}</Button>
+                  <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button>
                 </div>
                 {activeInfoTrip && (showInfo || selectedTripIds.length > 0) ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
                 zIndex: 500,
@@ -793,7 +809,14 @@ const TripDashboardWorkspace = () => {
                       </Popup>
                     </Marker>)}
                 </MapContainer>
-              </div>
+              </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
+                  <div className="fw-semibold fs-5">Mapa movido a otra pantalla</div>
+                  <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Abre el mapa solo en la otra pantalla y deja aqui el manejo de rutas, viajes y choferes.</div>
+                  <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
+                    <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
+                    <Button variant="outline-light" size="sm" onClick={handleOpenMapWindow}>Open Map Window Again</Button>
+                  </div>
+                </div>}
             </CardBody>
           </Card>
         </div>
@@ -835,6 +858,7 @@ const TripDashboardWorkspace = () => {
                   <Badge bg="secondary">{liveDrivers} live</Badge>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/drivers/grouping')}>Billing Grouping</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)}>Columns</Button>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map Screen' : 'Show Map Here'}</Button>
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={{ ...greenToolbarButtonStyle, width: 150, backgroundColor: '#ffffff', color: '#08131a' }}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
