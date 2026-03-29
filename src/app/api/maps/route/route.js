@@ -14,6 +14,7 @@ const buildFallbackGeometry = coordinates => coordinates.map(([latitude, longitu
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const coordinates = toCoordinatePairs(searchParams.get('coordinates'));
+  const includeAlternatives = ['1', 'true', 'yes'].includes(String(searchParams.get('alternatives') ?? '').trim().toLowerCase());
 
   if (coordinates.length < 2) {
     return NextResponse.json({
@@ -25,8 +26,8 @@ export async function GET(request) {
 
   const coordinateQuery = coordinates.map(([latitude, longitude]) => `${longitude},${latitude}`).join(';');
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
-  const mapboxUrl = mapboxToken ? `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinateQuery}?alternatives=false&geometries=geojson&overview=full&steps=false&access_token=${mapboxToken}` : null;
-  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinateQuery}?alternatives=false&geometries=geojson&overview=full&steps=false`;
+  const mapboxUrl = mapboxToken ? `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinateQuery}?alternatives=${includeAlternatives ? 'true' : 'false'}&geometries=geojson&overview=full&steps=false&access_token=${mapboxToken}` : null;
+  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinateQuery}?alternatives=${includeAlternatives ? 'true' : 'false'}&geometries=geojson&overview=full&steps=false`;
 
   const providers = [{
     name: 'mapbox',
@@ -44,16 +45,24 @@ export async function GET(request) {
       if (!response.ok) continue;
 
       const payload = await response.json();
-      const route = payload?.routes?.[0];
+      const routes = Array.isArray(payload?.routes) ? payload.routes : [];
+      const route = routes[0];
       const geometry = Array.isArray(route?.geometry?.coordinates) ? route.geometry.coordinates.map(([longitude, latitude]) => [latitude, longitude]) : [];
 
       if (geometry.length < 2) continue;
+
+      const alternatives = routes.slice(1).map(item => ({
+        geometry: Array.isArray(item?.geometry?.coordinates) ? item.geometry.coordinates.map(([longitude, latitude]) => [latitude, longitude]) : [],
+        distanceMiles: toMiles(item?.distance),
+        durationMinutes: toMinutes(item?.duration)
+      })).filter(item => item.geometry.length > 1);
 
       return NextResponse.json({
         provider: provider.name,
         geometry,
         distanceMiles: toMiles(route.distance),
         durationMinutes: toMinutes(route.duration),
+        alternatives,
         isFallback: false
       });
     } catch {
@@ -66,6 +75,7 @@ export async function GET(request) {
     geometry: buildFallbackGeometry(coordinates),
     distanceMiles: null,
     durationMinutes: null,
+    alternatives: [],
     isFallback: true
   });
 }

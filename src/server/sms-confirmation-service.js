@@ -423,6 +423,34 @@ export const sendCustomSmsRequests = async ({ tripIds, message }) => {
   };
 };
 
+export const sendTestSmsRequest = async ({ to, message }) => {
+  if (!String(to || '').trim()) throw new Error('Enter a phone number before sending a test SMS.');
+  if (!String(message || '').trim()) throw new Error('Enter a test message before sending.');
+
+  const integrationsState = await readIntegrationsState();
+  const smsState = integrationsState.sms;
+  const providerState = getProviderSettings(smsState);
+  if (!providerState.valid) throw new Error(`The active SMS provider (${providerState.provider}) is missing required credentials.`);
+
+  const normalizedPhone = normalizePhoneNumber(to, smsState.defaultCountryCode);
+  if (!normalizedPhone) throw new Error('Enter a valid phone number before sending a test SMS.');
+
+  const providerResult = await sendThroughProvider({
+    provider: providerState.provider,
+    settings: providerState.settings,
+    to: normalizedPhone,
+    body: String(message).trim()
+  });
+
+  return {
+    ok: true,
+    provider: providerState.provider,
+    to: normalizedPhone,
+    messageId: providerResult.messageId,
+    status: providerResult.providerStatus
+  };
+};
+
 export const processInboundConfirmationReply = async ({ provider, fromPhone, messageText, providerMessageId }) => {
   const action = extractReplyAction(messageText);
   if (!action) {

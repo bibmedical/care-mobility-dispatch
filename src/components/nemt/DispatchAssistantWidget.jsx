@@ -467,12 +467,13 @@ const DispatchAssistantWidget = () => {
   useEffect(() => {
     if (assistantVisible) return;
     stopSpeaking();
-    setStoredAssistantState(currentState => ({
+    if (!open) return;
+    setStoredAssistantState(currentState => currentState?.open ? {
       ...buildInitialState(assistantName),
       ...currentState,
       open: false
-    }));
-  }, [assistantName, assistantVisible, setStoredAssistantState]);
+    } : currentState);
+  }, [assistantName, assistantVisible, open]);
 
   if (pathname?.startsWith('/auth') || pathname === '/map-screen') {
     return null;
@@ -509,7 +510,7 @@ const DispatchAssistantWidget = () => {
     }
   };
 
-  const stopSpeaking = () => {
+  function stopSpeaking() {
     setListeningMode(false);
     recognitionRef.current?.stop?.();
     if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -517,7 +518,7 @@ const DispatchAssistantWidget = () => {
     }
     setIsListening(false);
     setIsSpeaking(false);
-  };
+  }
 
   const renderPhotoAvatar = frameStyle => <span style={frameStyle}>
       <img src={avatarImage} alt="Avatar del asistente" style={widgetStyles.avatarImage} onError={() => setAvatarLoadFailed(true)} />

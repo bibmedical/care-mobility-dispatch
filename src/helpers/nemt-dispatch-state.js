@@ -1,7 +1,95 @@
+import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
+
 const DEFAULT_CENTER = [28.5383, -81.3792];
 const DEFAULT_ASSISTANT_AVATAR_IMAGE = '/WhatsApp%20Image%202026-03-28%20at%2011.58.52%20PM.jpeg';
 
 const normalizeTextValue = value => String(value ?? '').trim();
+
+const padDatePart = value => String(value).padStart(2, '0');
+
+const normalizeTripDateInput = value => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+
+  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  }
+
+  const slashMatch = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (slashMatch) {
+    const month = padDatePart(slashMatch[1]);
+    const day = padDatePart(slashMatch[2]);
+    const year = slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  const parsedDate = new Date(text);
+  if (Number.isNaN(parsedDate.getTime())) return '';
+  return `${parsedDate.getFullYear()}-${padDatePart(parsedDate.getMonth() + 1)}-${padDatePart(parsedDate.getDate())}`;
+};
+
+const normalizeTimestampToDateKey = value => {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
+  const parsedDate = new Date(timestamp);
+  if (Number.isNaN(parsedDate.getTime())) return '';
+  return `${parsedDate.getFullYear()}-${padDatePart(parsedDate.getMonth() + 1)}-${padDatePart(parsedDate.getDate())}`;
+};
+
+export const getTripServiceDateKey = trip => {
+  const dateCandidates = [
+    trip?.serviceDate,
+    trip?.dateOfService,
+    trip?.pickupDate,
+    trip?.appointmentDate,
+    trip?.tripDate,
+    trip?.scheduledDate,
+    trip?.requestedDate,
+    trip?.date,
+    trip?.dos,
+    trip?.service_day,
+    trip?.service_day_date,
+    trip?.rawDate,
+    trip?.rawServiceDate,
+    trip?.createdForDate,
+    trip?.scheduleDate
+  ];
+
+  const explicitDate = dateCandidates.map(normalizeTripDateInput).find(Boolean);
+  if (explicitDate) return explicitDate;
+
+  return normalizeTimestampToDateKey(trip?.pickupSortValue) || normalizeTimestampToDateKey(trip?.dropoffSortValue) || normalizeTimestampToDateKey(trip?.confirmation?.sentAt) || '';
+};
+
+export const getRouteServiceDateKey = (routePlan, trips = []) => {
+  const explicitRouteDate = normalizeTripDateInput(routePlan?.serviceDate || routePlan?.routeDate || routePlan?.date);
+  if (explicitRouteDate) return explicitRouteDate;
+
+  const routeTripIds = Array.isArray(routePlan?.tripIds) ? routePlan.tripIds : [];
+  const firstRouteTrip = routeTripIds.map(tripId => (Array.isArray(trips) ? trips : []).find(trip => trip.id === tripId)).find(Boolean);
+  return getTripServiceDateKey(firstRouteTrip);
+};
+
+export const shiftTripDateKey = (dateKey, offsetDays) => {
+  const normalized = normalizeTripDateInput(dateKey);
+  if (!normalized) return '';
+  const [year, month, day] = normalized.split('-').map(Number);
+  const shiftedDate = new Date(year, month - 1, day + offsetDays);
+  return `${shiftedDate.getFullYear()}-${padDatePart(shiftedDate.getMonth() + 1)}-${padDatePart(shiftedDate.getDate())}`;
+};
+
+export const formatTripDateLabel = dateKey => {
+  const normalized = normalizeTripDateInput(dateKey);
+  if (!normalized) return 'All dates';
+  const [year, month, day] = normalized.split('-').map(Number);
+  const displayDate = new Date(year, month - 1, day);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric'
+  }).format(displayDate);
+};
 
 export const DEFAULT_ASSISTANT_AVATAR = {
   name: 'Balby',
@@ -85,7 +173,8 @@ export const normalizeDispatcherVisibleTripColumns = value => {
 
 export const normalizeNemtUiPreferences = value => ({
   dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(value?.dispatcherVisibleTripColumns),
-  mapProvider: normalizeMapProviderPreference(value?.mapProvider)
+  mapProvider: normalizeMapProviderPreference(value?.mapProvider),
+  printSetup: normalizePrintSetup(value?.printSetup)
 });
 
 const normalizeTripConfirmation = value => ({
@@ -253,6 +342,7 @@ export const normalizeTripRecords = trips => {
 
 export const normalizeRoutePlanRecord = routePlan => ({
   ...routePlan,
+  serviceDate: normalizeTripDateInput(routePlan?.serviceDate || routePlan?.routeDate || routePlan?.date),
   tripIds: Array.isArray(routePlan?.tripIds) ? routePlan.tripIds.filter(Boolean) : []
 });
 

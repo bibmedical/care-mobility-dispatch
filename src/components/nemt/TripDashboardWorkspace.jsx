@@ -2,7 +2,8 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
@@ -19,6 +20,23 @@ const greenToolbarButtonStyle = {
   color: '#08131a',
   borderColor: 'rgba(8, 19, 26, 0.35)',
   backgroundColor: 'transparent'
+};
+
+const yellowMapTabStyle = {
+  position: 'absolute',
+  top: 18,
+  right: -14,
+  zIndex: 720,
+  minWidth: 118,
+  minHeight: 38,
+  padding: '8px 14px',
+  borderRadius: '12px 12px 12px 0',
+  border: '1px solid rgba(161, 98, 7, 0.48)',
+  background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
+  color: '#5b3b00',
+  fontSize: 12,
+  fontWeight: 800,
+  boxShadow: '0 10px 26px rgba(120, 73, 0, 0.24)'
 };
 
 const getStatusBadge = status => {
@@ -63,6 +81,31 @@ const formatDriveMinutes = minutes => {
   const hours = Math.floor(roundedMinutes / 60);
   const remainder = roundedMinutes % 60;
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+};
+
+const estimateTravelMinutes = (from, to) => {
+  const miles = getDistanceMiles(from, to);
+  if (miles == null) return 0;
+  return Math.max(4, Math.round(miles / 28 * 60));
+};
+
+const estimateTripServiceMinutes = trip => {
+  const scheduledPickupMinutes = parseTripClockMinutes(trip?.scheduledPickup || trip?.pickup);
+  const scheduledDropoffMinutes = parseTripClockMinutes(trip?.scheduledDropoff || trip?.dropoff);
+  if (scheduledPickupMinutes != null && scheduledDropoffMinutes != null && scheduledDropoffMinutes >= scheduledPickupMinutes) {
+    return Math.max(10, scheduledDropoffMinutes - scheduledPickupMinutes);
+  }
+  const miles = Number(trip?.miles);
+  if (Number.isFinite(miles) && miles > 0) {
+    return Math.max(12, Math.round(miles / 28 * 60) + 8);
+  }
+  return 18;
+};
+
+const formatSlackLabel = minutes => {
+  if (!Number.isFinite(minutes)) return 'Sin calculo';
+  if (minutes >= 0) return `${minutes} min libres`;
+  return `${Math.abs(minutes)} min tarde`;
 };
 
 const sortTripsByPickupTime = items => [...items].sort((leftTrip, rightTrip) => {
@@ -141,8 +184,6 @@ const getTripTargetPosition = trip => trip?.status === 'In Progress' ? trip?.des
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
-
 const getDisplayTripId = trip => {
   const rideId = String(trip?.rideId || '').trim();
   if (rideId) return rideId;
@@ -206,6 +247,7 @@ const TripDashboardWorkspace = () => {
   const [routeNotes, setRouteNotes] = useState('');
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
   const [tripIdSearch, setTripIdSearch] = useState('');
+  const [tripDateFilter, setTripDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
   const [driverGrouping, setDriverGrouping] = useState('VDR Grouping');
@@ -214,6 +256,7 @@ const TripDashboardWorkspace = () => {
   const [showRoute, setShowRoute] = useState(true);
   const [showBottomPanels, setShowBottomPanels] = useState(false);
   const [showInlineMap, setShowInlineMap] = useState(true);
+  const [showMapPane, setShowMapPane] = useState(true);
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -235,14 +278,25 @@ const TripDashboardWorkspace = () => {
   const deferredRouteSearch = useDeferredValue(routeSearch);
 
   const selectedDriver = useMemo(() => drivers.find(driver => driver.id === selectedDriverId) ?? null, [drivers, selectedDriverId]);
-  const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
+  const filteredRoutePlans = useMemo(() => routePlans.filter(routePlan => {
+    if (tripDateFilter === 'all') return true;
+    return getRouteServiceDateKey(routePlan, trips) === tripDateFilter;
+  }), [routePlans, tripDateFilter, trips]);
+  const selectedRoute = useMemo(() => filteredRoutePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [filteredRoutePlans, selectedRouteId]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
+  const todayDateKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const getTripTimelineDateKey = trip => getTripServiceDateKey(trip) || getRouteServiceDateKey(routePlans.find(routePlan => routePlan.id === trip?.routeId), trips);
+  const availableTripDateKeys = useMemo(() => Array.from(new Set(trips.map(getTripTimelineDateKey).filter(Boolean).concat(routePlans.map(routePlan => getRouteServiceDateKey(routePlan, trips)).filter(Boolean)))).sort(), [routePlans, trips]);
+  const activeTripDateLabel = useMemo(() => formatTripDateLabel(tripDateFilter), [tripDateFilter]);
   const filteredTrips = useMemo(() => trips.filter(trip => {
     const normalizedStatus = String(trip.status || '').toLowerCase();
     if (tripStatusFilter === 'all') return true;
     if (tripStatusFilter === 'unassigned') return !trip.driverId && !['cancelled', 'canceled'].includes(normalizedStatus);
     return normalizedStatus === tripStatusFilter;
+  }).filter(trip => {
+    if (tripDateFilter === 'all') return true;
+    return getTripTimelineDateKey(trip) === tripDateFilter;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
     return getTripLegFilterKey(trip) === tripLegFilter;
@@ -253,17 +307,23 @@ const TripDashboardWorkspace = () => {
     const searchValue = tripIdSearch.trim().toLowerCase();
     if (!searchValue) return true;
     return String(trip.id || '').toLowerCase().includes(searchValue) || String(trip.brokerTripId || '').toLowerCase().includes(searchValue);
-  }), [tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, trips]);
+  }), [tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, trips]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIds.includes(trip.id)), [selectedTripIds, trips]);
   const visibleTripIds = filteredTrips.map(trip => trip.id);
   const filteredDrivers = drivers;
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
+  const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIds.includes(trip.id) && (!trip.driverId || trip.driverId === selectedDriverId)).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIds]);
+  const selectedDriverWorkingTrips = useMemo(() => {
+    if (!selectedDriver) return [];
+    const relevantTrips = filteredTrips.filter(trip => trip.driverId === selectedDriver.id || selectedDriverCandidateTripIds.has(trip.id));
+    return sortTripsByPickupTime(relevantTrips);
+  }, [filteredTrips, selectedDriver, selectedDriverCandidateTripIds]);
 
   const routeTrips = useMemo(() => {
-    const baseTrips = selectedRoute ? trips.filter(trip => selectedRoute.tripIds.includes(trip.id)) : selectedDriver ? trips.filter(trip => trip.driverId === selectedDriver.id) : trips.filter(trip => selectedTripIds.includes(trip.id));
+    const baseTrips = selectedDriver ? selectedDriverWorkingTrips : selectedRoute ? trips.filter(trip => selectedRoute.tripIds.includes(trip.id)) : trips.filter(trip => selectedTripIds.includes(trip.id));
     const term = deferredRouteSearch.trim().toLowerCase();
     return sortTripsByPickupTime(baseTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => value.toLowerCase().includes(term))));
-  }, [deferredRouteSearch, selectedDriver, selectedRoute, selectedTripIds, trips]);
+  }, [deferredRouteSearch, selectedDriver, selectedDriverWorkingTrips, selectedRoute, selectedTripIds, trips]);
 
   const routeStops = useMemo(() => {
     if (!showRoute) return [];
@@ -273,6 +333,24 @@ const TripDashboardWorkspace = () => {
         key: `${trip.id}-pickup`,
         label: `${index * 2 + 1}`,
         variant: 'pickup',
+        position: trip.position,
+        title: `Pickup ${trip.pickup}`,
+        detail: trip.address
+      }, {
+        key: `${trip.id}-dropoff`,
+        label: `${index * 2 + 2}`,
+        variant: 'dropoff',
+        position: trip.destinationPosition ?? trip.position,
+        title: `Dropoff ${trip.dropoff}`,
+        detail: trip.destination || 'Destination pending'
+      }]);
+    }
+
+    if (selectedDriver) {
+      return routeTrips.flatMap((trip, index) => [{
+        key: `${trip.id}-pickup`,
+        label: `${index * 2 + 1}`,
+        variant: selectedDriverCandidateTripIds.has(trip.id) ? 'dropoff' : 'pickup',
         position: trip.position,
         title: `Pickup ${trip.pickup}`,
         detail: trip.address
@@ -305,7 +383,7 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [routeTrips, selectedRoute, selectedTripIds, showRoute, trips]);
+  }, [routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
@@ -332,6 +410,43 @@ const TripDashboardWorkspace = () => {
       label: formatEta(miles)
     };
   }, [selectedDriver, selectedDriverActiveTrip]);
+  const selectedDriverRouteHealth = useMemo(() => {
+    if (!selectedDriver || selectedDriverWorkingTrips.length === 0) return null;
+
+    const now = Date.now();
+    const items = [];
+    let previousAvailableAt = selectedDriver.hasRealLocation ? now : null;
+    let previousDropoffPosition = selectedDriver.hasRealLocation ? selectedDriver.position : null;
+
+    for (const trip of selectedDriverWorkingTrips) {
+      const scheduledStart = Number.isFinite(Number(trip.pickupSortValue)) ? Number(trip.pickupSortValue) : previousAvailableAt;
+      const travelMinutes = previousDropoffPosition ? estimateTravelMinutes(previousDropoffPosition, trip.position) : 0;
+      const estimatedArrival = previousAvailableAt != null ? previousAvailableAt + travelMinutes * 60000 : scheduledStart;
+      const effectiveStart = scheduledStart != null && estimatedArrival != null ? Math.max(scheduledStart, estimatedArrival) : scheduledStart ?? estimatedArrival ?? null;
+      const slackMinutes = scheduledStart != null && estimatedArrival != null ? Math.round((scheduledStart - estimatedArrival) / 60000) : null;
+      const late = Number.isFinite(slackMinutes) ? slackMinutes < -5 : false;
+      const serviceMinutes = estimateTripServiceMinutes(trip);
+      const finishAt = effectiveStart != null ? effectiveStart + serviceMinutes * 60000 : null;
+
+      items.push({
+        trip,
+        travelMinutes,
+        slackMinutes,
+        late,
+        finishAt,
+        candidate: selectedDriverCandidateTripIds.has(trip.id)
+      });
+
+      previousAvailableAt = finishAt;
+      previousDropoffPosition = trip.destinationPosition ?? trip.position;
+    }
+
+    return {
+      items,
+      lateCount: items.filter(item => item.late).length,
+      candidateCount: items.filter(item => item.candidate).length
+    };
+  }, [selectedDriver, selectedDriverCandidateTripIds, selectedDriverWorkingTrips]);
   const routeTitle = useMemo(() => {
     if (selectedRoute?.name) return selectedRoute.name;
     if (routeName.trim()) return routeName.trim();
@@ -340,6 +455,12 @@ const TripDashboardWorkspace = () => {
     return 'Ruta sin nombre';
   }, [routeName, routeTrips.length, selectedDriver, selectedRoute]);
   const noteModalTrip = useMemo(() => noteModalTripId ? trips.find(trip => trip.id === noteModalTripId) ?? null : null, [noteModalTripId, trips]);
+
+  useEffect(() => {
+    if (!selectedRouteId) return;
+    if (filteredRoutePlans.some(routePlan => routePlan.id === selectedRouteId)) return;
+    setSelectedRouteId('');
+  }, [filteredRoutePlans, selectedRouteId, setSelectedRouteId]);
 
   const handleOpenTripNote = trip => {
     setNoteModalTripId(trip.id);
@@ -351,6 +472,12 @@ const TripDashboardWorkspace = () => {
     setNoteModalTripId(null);
     setNoteDraft('');
     setTripEditDraft(buildTripEditDraft(null));
+  };
+
+  const handleShiftTripDate = offsetDays => {
+    const baseDate = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
+    const nextDate = shiftTripDateKey(baseDate, offsetDays);
+    if (nextDate) setTripDateFilter(nextDate);
   };
 
   const handleSaveTripNote = () => {
@@ -398,12 +525,68 @@ const TripDashboardWorkspace = () => {
       return String(leftTrip.id).localeCompare(String(rightTrip.id));
     };
 
-    return [...filteredTrips].sort(compareTrips).map(trip => ({
-      type: 'trip',
-      groupKey: trip.brokerTripId || trip.id,
-      trip
-    }));
-  }, [filteredTrips, getDriverName, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key]);
+    const sortedTrips = [...filteredTrips].sort(compareTrips);
+    const now = Date.now();
+    const selectedDateIsToday = tripDateFilter === todayDateKey;
+    const selectedDateIsPast = tripDateFilter !== 'all' && tripDateFilter < todayDateKey;
+    const selectedDateIsFuture = tripDateFilter !== 'all' && tripDateFilter > todayDateKey;
+
+    const happenedTrips = sortedTrips.filter(trip => {
+      if (selectedDateIsPast) return true;
+      if (selectedDateIsFuture) return false;
+      if (!selectedDateIsToday) return false;
+      const tripTime = Number(trip.pickupSortValue);
+      return Number.isFinite(tripTime) ? tripTime < now : ['completed', 'cancelled'].includes(String(trip.status || '').toLowerCase());
+    });
+
+    const upcomingTrips = sortedTrips.filter(trip => !happenedTrips.includes(trip));
+    const rows = [];
+
+    if (tripDateFilter === 'all') {
+      return sortedTrips.map(trip => ({
+        type: 'trip',
+        groupKey: trip.brokerTripId || trip.id,
+        trip
+      }));
+    }
+
+    if (happenedTrips.length > 0) {
+      rows.push({
+        type: 'section',
+        key: 'happened',
+        label: selectedDateIsPast ? 'What Happened On This Day' : 'Already Happened'
+      });
+      rows.push(...happenedTrips.map(trip => ({
+        type: 'trip',
+        groupKey: trip.brokerTripId || trip.id,
+        trip
+      })));
+    }
+
+    if (upcomingTrips.length > 0) {
+      rows.push({
+        type: 'section',
+        key: 'upcoming',
+        label: selectedDateIsFuture ? 'What Will Happen On This Day' : 'Still Pending / Will Happen'
+      });
+      rows.push(...upcomingTrips.map(trip => ({
+        type: 'trip',
+        groupKey: trip.brokerTripId || trip.id,
+        trip
+      })));
+    }
+
+    return rows;
+  }, [filteredTrips, getDriverName, selectedDriverId, todayDateKey, tripDateFilter, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key]);
+
+  const selectedDateDriverSummary = useMemo(() => {
+    const driverCounts = filteredTrips.reduce((summary, trip) => {
+      const driverName = getDriverName(trip.driverId) || 'Unassigned';
+      summary.set(driverName, (summary.get(driverName) ?? 0) + 1);
+      return summary;
+    }, new Map());
+    return Array.from(driverCounts.entries()).sort((left, right) => right[1] - left[1]);
+  }, [filteredTrips, getDriverName]);
 
   const tripTableColumnCount = visibleTripColumns.length + 3;
 
@@ -548,7 +731,8 @@ const TripDashboardWorkspace = () => {
       name: routeName.trim(),
       driverId: selectedDriverId,
       tripIds: selectedTripIds,
-      notes: routeNotes.trim()
+      notes: routeNotes.trim(),
+      serviceDate: tripDateFilter
     });
     setStatusMessage('Ruta creada y sincronizada con dispatcher.');
     showNotification({
@@ -601,57 +785,14 @@ const TripDashboardWorkspace = () => {
     }
 
     const generatedAt = new Date().toLocaleString();
-    const rowsMarkup = routeTrips.map((trip, index) => `<tr>
-        <td>${index + 1}</td>
-        <td>${escapeHtml(trip.id)}</td>
-        <td>${escapeHtml(getTripTypeLabel(trip))}</td>
-        <td>${escapeHtml(trip.pickup)}</td>
-        <td>${escapeHtml(trip.dropoff)}</td>
-        <td>${escapeHtml(trip.rider)}</td>
-        <td>${escapeHtml(trip.address || '-')}</td>
-        <td>${escapeHtml(trip.destination || '-')}</td>
-      </tr>`).join('');
-
-    printWindow.document.write(`<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(routeTitle)}</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-      h1 { margin: 0 0 8px; font-size: 24px; }
-      p { margin: 0 0 16px; color: #4b5563; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; font-size: 12px; }
-      th { background: #f3f4f6; }
-      .meta { display: flex; gap: 16px; margin-bottom: 16px; font-size: 12px; flex-wrap: wrap; }
-      .meta strong { color: #111827; }
-    </style>
-  </head>
-  <body>
-    <h1>${escapeHtml(routeTitle)}</h1>
-    <div class="meta">
-      <div><strong>Driver:</strong> ${escapeHtml(selectedDriver ? selectedDriver.name : 'No driver selected')}</div>
-      <div><strong>Generado:</strong> ${escapeHtml(generatedAt)}</div>
-      <div><strong>Total de viajes:</strong> ${routeTrips.length}</div>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Trip ID</th>
-          <th>Type</th>
-          <th>PU</th>
-          <th>DO</th>
-          <th>Rider</th>
-          <th>PU Address</th>
-          <th>DO Address</th>
-        </tr>
-      </thead>
-      <tbody>${rowsMarkup}</tbody>
-    </table>
-  </body>
-</html>`);
+    printWindow.document.write(buildRoutePrintDocument({
+      routeTitle,
+      driverName: selectedDriver ? selectedDriver.name : 'No driver selected',
+      generatedAt,
+      routeTrips,
+      printSetup: uiPreferences?.printSetup,
+      getTripTypeLabel
+    }));
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
@@ -778,7 +919,7 @@ const TripDashboardWorkspace = () => {
   const dividerSize = 10;
   const workspaceGridStyle = {
     display: 'grid',
-    gridTemplateColumns: `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)`,
+    gridTemplateColumns: showMapPane ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
     gridTemplateRows: showBottomPanels ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
     height: workspaceHeight,
     minHeight: workspaceHeight,
@@ -793,6 +934,7 @@ const TripDashboardWorkspace = () => {
 
   const handleOpenMapWindow = () => {
     const mapUrl = `/map-screen?source=dashboard`;
+    window.localStorage.setItem('__CARE_MOBILITY_MAP_SCREEN_SOURCE__', 'dashboard');
     const popup = window.open(mapUrl, 'care-mobility-map', 'popup=yes,width=1600,height=900,resizable=yes,scrollbars=no');
     if (popup) {
       popup.focus();
@@ -807,10 +949,16 @@ const TripDashboardWorkspace = () => {
 
   return <>
       <div ref={workspaceRef} style={workspaceGridStyle}>
-        <div style={{ minWidth: 0, minHeight: 0 }}>
+        <div style={{ minWidth: 0, minHeight: 0, display: showMapPane ? 'block' : 'none' }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               {showInlineMap ? <div className="position-relative h-100">
+                <Button variant="warning" type="button" onClick={() => {
+                setShowMapPane(false);
+                setStatusMessage('Mapa escondido en Trip Dashboard.');
+              }} style={yellowMapTabStyle}>
+                  Hide Map
+                </Button>
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
                   <Button variant="dark" size="sm" onClick={() => setShowRoute(current => !current)}>Route</Button>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
@@ -823,7 +971,7 @@ const TripDashboardWorkspace = () => {
                   <Button variant="dark" size="sm" onClick={() => setMapLocked(current => !current)}>{mapLocked ? 'Unlock' : 'Lock'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button>
                 </div>
-                {activeInfoTrip && (showInfo || selectedTripIds.length > 0) ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
+                {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
                 zIndex: 500,
                 minWidth: 260,
                 marginTop: 46,
@@ -837,17 +985,6 @@ const TripDashboardWorkspace = () => {
                     <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.address || 'No pickup address available'}</div>
                     <div className="small mt-1">DO {activeInfoTrip.dropoff}</div>
                     <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
-                  </div> : null}
-                {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
-                    <div className="small text-uppercase text-secondary">Driver ETA</div>
-                    <div className="fw-semibold d-flex align-items-center gap-2"><IconifyIcon icon="iconoir:map-pin" /> {selectedDriver.name}</div>
-                    <div className="small mt-1">Heading to {selectedDriverActiveTrip.id} • {selectedDriverActiveTrip.rider}</div>
-                    <div className="small text-secondary">{selectedDriverActiveTrip.pickup} • {selectedDriverActiveTrip.address}</div>
-                    <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                      <Badge bg="info">{selectedDriverEta?.label || 'ETA unavailable'}</Badge>
-                      <Badge bg="secondary">{selectedDriverEta?.miles != null ? `${selectedDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
-                      <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
-                    </div>
                   </div> : null}
                 <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
                   <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
@@ -873,22 +1010,32 @@ const TripDashboardWorkspace = () => {
           </Card>
         </div>
 
-        <div onMouseDown={() => setDragMode('column')} style={{
+        <div onMouseDown={() => showMapPane ? setDragMode('column') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'col-resize',
         gridColumn: 2,
-        gridRow: '1 / span 3'
+        gridRow: '1 / span 3',
+        display: showMapPane ? 'block' : 'none'
       }}>
           <div className="position-absolute start-50 translate-middle-x rounded-pill" style={{ top: 10, bottom: 10, width: 4, backgroundColor: '#4c536a' }} />
         </div>
 
-        <div style={{ minWidth: 0, minHeight: 0 }}>
+        <div style={{ minWidth: 0, minHeight: 0, gridColumn: showMapPane ? 3 : '1 / span 3', gridRow: 1 }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2 flex-shrink-0">
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <strong>Trips</strong>
                   <Badge bg="light" text="dark">{assignedTripsCount}/{trips.length}</Badge>
+                  <div className="d-flex align-items-center gap-1 flex-wrap">
+                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(-1)} title="Previous day">Prev</Button>
+                    <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || 'all')} style={{ width: 150 }} />
+                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(1)} title="Next day">Next</Button>
+                    <Button variant={tripDateFilter === todayDateKey ? 'dark' : 'outline-dark'} size="sm" style={tripDateFilter === todayDateKey ? undefined : greenToolbarButtonStyle} onClick={() => setTripDateFilter(todayDateKey)}>Today</Button>
+                    <Badge bg="light" text="dark">{activeTripDateLabel}</Badge>
+                    {availableTripDateKeys.length > 0 ? <Badge bg="light" text="dark">{availableTripDateKeys.length} days</Badge> : null}
+                    {tripDateFilter !== 'all' && selectedDateDriverSummary.length > 0 ? <Badge bg="light" text="dark">Drivers {selectedDateDriverSummary.map(([name, count]) => `${name}: ${count}`).slice(0, 3).join(' | ')}</Badge> : null}
+                  </div>
                   <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 130 }}>
                     <option value="all">All</option>
                     <option value="assigned">Assigned</option>
@@ -912,6 +1059,17 @@ const TripDashboardWorkspace = () => {
                   </div>
                 </div>
                 <div className="d-flex gap-2 small flex-wrap position-relative">
+                  {!showMapPane ? <Button variant="warning" size="sm" onClick={() => {
+                  setShowMapPane(true);
+                  setStatusMessage('Mapa visible otra vez en Trip Dashboard.');
+                }} style={{
+                  color: '#5b3b00',
+                  borderColor: 'rgba(161, 98, 7, 0.48)',
+                  background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
+                  fontWeight: 800
+                }}>
+                      Show Map
+                    </Button> : null}
                   <Badge bg="primary">{trips.length} trips</Badge>
                   <Badge bg="info">{drivers.length} drivers</Badge>
                   <Badge bg="secondary">{liveDrivers} live</Badge>
@@ -984,7 +1142,9 @@ const TripDashboardWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : row.trip.driverId && row.trip.driverId === selectedDriverId ? 'table-success' : ''}>
+                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'section' ? <tr key={row.key} className="table-light">
+                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
+                      </tr> : <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : row.trip.driverId && row.trip.driverId === selectedDriverId ? 'table-success' : ''}>
                         <td><Form.Check checked={selectedTripIds.includes(row.trip.id)} onChange={() => handleTripSelectionToggle(row.trip.id)} /></td>
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
@@ -1019,7 +1179,7 @@ const TripDashboardWorkspace = () => {
                         {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
                         {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}
                       </tr>) : <tr>
-                        <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No hay viajes cargados. Esperando tus trips reales.</td>
+                        <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No encontre movimientos para ese dia. Si habia una ruta guardada, revisa ese mismo dia en Trip Route y te mostrara los trips y choferes ligados a esa fecha.</td>
                       </tr>}
                   </tbody>
                 </Table>
@@ -1135,10 +1295,11 @@ const TripDashboardWorkspace = () => {
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
                 <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <Form.Select size="sm" value={selectedRouteId ?? ''} onChange={event => setSelectedRouteId(event.target.value)} style={{ width: 180 }}>
+                  <Form.Select size="sm" value={selectedRouteId ?? ''} onChange={event => setSelectedRouteId(event.target.value)} style={{ width: 220 }}>
                     <option value="">Current selection</option>
-                    {routePlans.map(routePlan => <option key={routePlan.id} value={routePlan.id}>{routePlan.name}</option>)}
+                    {filteredRoutePlans.map(routePlan => <option key={routePlan.id} value={routePlan.id}>{routePlan.name}{getRouteServiceDateKey(routePlan, trips) ? ` • ${formatTripDateLabel(getRouteServiceDateKey(routePlan, trips))}` : ''}</option>)}
                   </Form.Select>
+                  <Badge bg="light" text="dark">{filteredRoutePlans.length} route(s)</Badge>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
                 </div>

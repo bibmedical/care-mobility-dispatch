@@ -5,6 +5,7 @@ import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
 import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant } from '@/helpers/nemt-dispatch-state';
+import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
@@ -649,58 +650,14 @@ const DispatcherWorkspace = () => {
 
     const title = selectedDriver ? `Ruta de ${selectedDriver.name}` : selectedRoute ? `Ruta ${selectedRoute.name}` : 'Ruta actual';
     const generatedAt = new Date().toLocaleString();
-    const rowsMarkup = routeTrips.map((trip, index) => `<tr>
-        <td>${index + 1}</td>
-        <td>${escapeHtml(getDriverName(trip.driverId))}</td>
-        <td>${escapeHtml(getTripTypeLabel(trip))}</td>
-        <td>${escapeHtml(trip.pickup)}</td>
-        <td>${escapeHtml(trip.dropoff)}</td>
-        <td>${escapeHtml(trip.rider)}</td>
-        <td>${escapeHtml(trip.patientPhoneNumber || '-')}</td>
-        <td>${escapeHtml(trip.address)}</td>
-        <td>${escapeHtml(trip.destination || '-')}</td>
-      </tr>`).join('');
-
-    printWindow.document.write(`<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>${escapeHtml(title)}</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-      h1 { margin: 0 0 8px; font-size: 24px; }
-      p { margin: 0 0 16px; color: #4b5563; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; font-size: 12px; }
-      th { background: #f3f4f6; }
-      .meta { display: flex; gap: 16px; margin-bottom: 16px; font-size: 12px; }
-      .meta strong { color: #111827; }
-    </style>
-  </head>
-  <body>
-    <h1>${escapeHtml(title)}</h1>
-    <div class="meta">
-      <div><strong>Generado:</strong> ${escapeHtml(generatedAt)}</div>
-      <div><strong>Total de viajes:</strong> ${routeTrips.length}</div>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Driver</th>
-          <th>Type</th>
-          <th>PU</th>
-          <th>DO</th>
-          <th>Rider</th>
-          <th>Phone</th>
-          <th>PU Address</th>
-          <th>DO Address</th>
-        </tr>
-      </thead>
-      <tbody>${rowsMarkup}</tbody>
-    </table>
-  </body>
-</html>`);
+    printWindow.document.write(buildRoutePrintDocument({
+      routeTitle: title,
+      driverName: selectedDriver ? selectedDriver.name : 'No driver selected',
+      generatedAt,
+      routeTrips,
+      printSetup: uiPreferences?.printSetup,
+      getTripTypeLabel
+    }));
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
@@ -891,6 +848,7 @@ const DispatcherWorkspace = () => {
 
   const handleOpenMapWindow = () => {
     const mapUrl = `/map-screen?source=dispatcher`;
+    window.localStorage.setItem('__CARE_MOBILITY_MAP_SCREEN_SOURCE__', 'dispatcher');
     const popup = window.open(mapUrl, 'care-mobility-map', 'popup=yes,width=1600,height=900,resizable=yes,scrollbars=no');
     if (popup) {
       popup.focus();

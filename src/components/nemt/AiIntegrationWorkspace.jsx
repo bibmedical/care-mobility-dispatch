@@ -3,6 +3,7 @@
 import PageTitle from '@/components/PageTitle';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import useAiIntegrationApi from '@/hooks/useAiIntegrationApi';
+import useAvatarSettingsApi from '@/hooks/useAvatarSettingsApi';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
 
@@ -21,6 +22,17 @@ const surfaceStyles = {
     backgroundColor: '#101521',
     borderColor: '#2a3144',
     color: '#e6ecff'
+  },
+  pill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 24,
+    padding: '4px 10px',
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 700,
+    border: '1px solid transparent'
   }
 };
 
@@ -40,11 +52,27 @@ const buildConnectionStatus = draft => {
   return 'Ready';
 };
 
+const buildStatusPillStyle = active => ({
+  ...surfaceStyles.pill,
+  backgroundColor: active ? 'rgba(33, 186, 115, 0.18)' : 'rgba(255, 193, 7, 0.18)',
+  borderColor: active ? 'rgba(33, 186, 115, 0.42)' : 'rgba(255, 193, 7, 0.42)',
+  color: active ? '#7ef0b1' : '#ffd76a'
+});
+
 const AiIntegrationWorkspace = () => {
   const { data, loading, saving, error, refresh, saveData } = useAiIntegrationApi();
+  const {
+    data: avatarData,
+    loading: avatarLoading,
+    saving: avatarSaving,
+    error: avatarError,
+    refresh: refreshAvatar,
+    saveData: saveAvatarData
+  } = useAvatarSettingsApi();
   const [draft, setDraft] = useState(buildBlankDraft());
   const [message, setMessage] = useState('Pega aqui tu OpenAI API key para que el asistente de la esquina responda con IA real en lugar del modo basico.');
   const [showKey, setShowKey] = useState(false);
+  const [assistantVisible, setAssistantVisible] = useState(true);
 
   useEffect(() => {
     if (!data?.ai) return;
@@ -54,7 +82,28 @@ const AiIntegrationWorkspace = () => {
     });
   }, [data]);
 
+  useEffect(() => {
+    if (!avatarData?.avatar) return;
+    setAssistantVisible(avatarData.avatar.visible !== false);
+  }, [avatarData]);
+
   const readiness = useMemo(() => buildConnectionStatus(draft), [draft]);
+  const pageLoading = loading || avatarLoading;
+  const pageSaving = saving || avatarSaving;
+  const pageError = error || avatarError;
+
+  const buildAvatarPayload = visible => ({
+    name: String(avatarData?.avatar?.name || draft.avatarName || ''),
+    image: String(avatarData?.avatar?.image || draft.avatarImage || ''),
+    memoryNotes: String(avatarData?.avatar?.memoryNotes || draft.memoryNotes || ''),
+    visible,
+    memorySections: {
+      patients: String(avatarData?.avatar?.memorySections?.patients || draft.memorySections?.patients || ''),
+      drivers: String(avatarData?.avatar?.memorySections?.drivers || draft.memorySections?.drivers || ''),
+      rules: String(avatarData?.avatar?.memorySections?.rules || draft.memorySections?.rules || ''),
+      phones: String(avatarData?.avatar?.memorySections?.phones || draft.memorySections?.phones || '')
+    }
+  });
 
   const handleSave = async nextDraft => {
     try {
@@ -81,6 +130,21 @@ const AiIntegrationWorkspace = () => {
     if (typeof window === 'undefined') return;
     window.open('https://platform.openai.com/api-keys', '_blank', 'noopener,noreferrer');
     setMessage('Se abrio OpenAI API Keys para crear o copiar tu llave.');
+  };
+
+  const handleRefresh = async () => {
+    await Promise.all([refresh(), refreshAvatar()]);
+  };
+
+  const handleAssistantVisibilityChange = async event => {
+    const nextVisible = event.target.checked;
+    setAssistantVisible(nextVisible);
+    try {
+      await saveAvatarData(buildAvatarPayload(nextVisible));
+      setMessage(nextVisible ? 'La IA flotante ya esta visible en pantalla.' : 'La IA flotante se escondio de la pantalla.');
+    } catch {
+      setAssistantVisible(!nextVisible);
+    }
   };
 
   return <>
@@ -126,22 +190,22 @@ const AiIntegrationWorkspace = () => {
             <div>
               <h5 className="mb-1">Integrations &gt; AI Assistant</h5>
               <p className="text-secondary mb-2">Guarda aqui la llave de OpenAI y el modelo que quieres usar. El bot flotante tomara esta configuracion automaticamente.</p>
-              <div className="small text-secondary">{saving ? 'Saving AI integration...' : message}</div>
+              <div className="small text-secondary">{pageSaving ? 'Saving AI integration...' : message}</div>
             </div>
             <div className="d-flex flex-wrap gap-2 align-items-start">
-              <Badge bg={draft.enabled ? 'success-subtle' : 'secondary'} text={draft.enabled ? 'success' : 'light'}>{draft.enabled ? 'Enabled' : 'Disabled'}</Badge>
-              <Button style={surfaceStyles.button} className="rounded-pill" onClick={refresh} disabled={loading || saving}><IconifyIcon icon="iconoir:refresh-double" className="me-2" />Refresh</Button>
+              <span style={buildStatusPillStyle(draft.enabled)}>{draft.enabled ? 'Enabled' : 'Disabled'}</span>
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleRefresh} disabled={pageLoading || pageSaving}><IconifyIcon icon="iconoir:refresh-double" className="me-2" />Refresh</Button>
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => handleSave({
               ...draft,
               connectionStatus: readiness
-            })} disabled={saving}>Save</Button>
-              <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleValidate} disabled={saving}>Validate setup</Button>
+            })} disabled={pageSaving}>Save</Button>
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleValidate} disabled={pageSaving}>Validate setup</Button>
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleOpenPortal}>Open OpenAI</Button>
             </div>
           </div>
 
-          {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
-          {loading ? <div className="py-5 text-center text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading AI integration...</div> : <Row className="g-3">
+          {pageError ? <Alert variant="danger" className="py-2">{pageError}</Alert> : null}
+          {pageLoading ? <div className="py-5 text-center text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading AI integration...</div> : <Row className="g-3">
               <Col md={4}>
                 <Form.Label className="small text-uppercase text-secondary fw-semibold">Provider</Form.Label>
                 <Form.Select value={draft.provider} style={surfaceStyles.input} onChange={event => setDraft(current => ({
@@ -158,11 +222,12 @@ const AiIntegrationWorkspace = () => {
                 model: event.target.value
               }))} placeholder="gpt-5.4-nano" />
               </Col>
-              <Col md={4} className="d-flex align-items-end">
+              <Col md={4} className="d-flex flex-column justify-content-end gap-3">
                 <Form.Check type="switch" id="ai-enabled" label="Enable AI assistant" checked={draft.enabled} onChange={event => setDraft(current => ({
                 ...current,
                 enabled: event.target.checked
               }))} />
+                <Form.Check type="switch" id="assistant-visible" label={assistantVisible ? 'Mostrar IA en pantalla' : 'IA escondida de la pantalla'} checked={assistantVisible} onChange={handleAssistantVisibilityChange} disabled={avatarSaving} />
               </Col>
               <Col md={12}>
                 <Form.Label className="small text-uppercase text-secondary fw-semibold">OpenAI API Key</Form.Label>
@@ -189,9 +254,9 @@ const AiIntegrationWorkspace = () => {
                       <div className="small text-secondary">Assistant behavior</div>
                       <div>Cuando esta integracion este activa, el widget flotante usara esta llave y este modelo. Si la IA esta desactivada o no hay llave, seguira usando el modo basico.</div>
                     </div>
-                    <Badge bg={readiness === 'Ready' ? 'success' : 'warning'} text={readiness === 'Ready' ? 'success' : 'dark'}>{readiness}</Badge>
+                    <span style={buildStatusPillStyle(readiness === 'Ready')}>{readiness}</span>
                   </div>
-                  <div className="small text-secondary">Tip: despues de guardar, abre el bot flotante y haz una pregunta sobre viajes o modulos de la web para confirmar que ya responde con IA real.</div>
+                  <div className="small text-secondary">Tip: desde este switch tambien puedes esconder o volver a mostrar la IA de la esquina sin salir de esta pagina.</div>
                 </div>
               </Col>
             </Row>}

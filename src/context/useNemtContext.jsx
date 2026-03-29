@@ -1,6 +1,7 @@
 'use client';
 
-import { normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
+import { getTripServiceDateKey, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
+import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { createContext, startTransition, use, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -95,7 +96,9 @@ export const NemtProvider = ({
           const serverColumns = normalizeDispatcherVisibleTripColumns(payload.uiPreferences?.dispatcherVisibleTripColumns);
           const localMapProvider = normalizeMapProviderPreference(localState.uiPreferences?.mapProvider);
           const serverMapProvider = normalizeMapProviderPreference(payload.uiPreferences?.mapProvider);
-          const useLocalPreferences = !forceServer && hasLocalDispatchChangesRef.current && (JSON.stringify(localColumns) !== JSON.stringify(serverColumns) || localMapProvider !== serverMapProvider);
+          const localPrintSetup = normalizePrintSetup(localState.uiPreferences?.printSetup);
+          const serverPrintSetup = normalizePrintSetup(payload.uiPreferences?.printSetup);
+          const useLocalPreferences = !forceServer && hasLocalDispatchChangesRef.current && (JSON.stringify(localColumns) !== JSON.stringify(serverColumns) || localMapProvider !== serverMapProvider || JSON.stringify(localPrintSetup) !== JSON.stringify(serverPrintSetup));
           const nextState = buildClientState({
             ...localState,
             trips: useLocalTrips ? localState.trips : payload.trips,
@@ -285,10 +288,13 @@ export const NemtProvider = ({
     name,
     driverId,
     tripIds,
-    notes
+    notes,
+    serviceDate
   }) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
     const routeId = `route-${Date.now()}`;
+    const firstTripInRoute = currentState.trips.find(trip => targetTripIds.includes(trip.id));
+    const routeServiceDate = String(serviceDate || getTripServiceDateKey(firstTripInRoute) || '').trim();
     const cleanedRoutePlans = currentState.routePlans.map(routePlan => ({
       ...routePlan,
       tripIds: routePlan.tripIds.filter(id => !targetTripIds.includes(id))
@@ -297,6 +303,7 @@ export const NemtProvider = ({
       id: routeId,
       name,
       driverId,
+      serviceDate: routeServiceDate,
       tripIds: targetTripIds,
       notes,
       color: routeColors[cleanedRoutePlans.length % routeColors.length]
@@ -408,6 +415,17 @@ export const NemtProvider = ({
     }
   }), { markDispatchDirty: true });
 
+  const setPrintSetup = updates => updateState(currentState => ({
+    ...currentState,
+    uiPreferences: {
+      ...currentState.uiPreferences,
+      printSetup: normalizePrintSetup({
+        ...currentState.uiPreferences?.printSetup,
+        ...(updates || {})
+      })
+    }
+  }), { markDispatchDirty: true });
+
   const resetNemtState = () => {
     startTransition(() => {
       setState(createInitialState());
@@ -438,6 +456,7 @@ export const NemtProvider = ({
     updateTripRecord,
     setDispatcherVisibleTripColumns,
     setMapProvider,
+    setPrintSetup,
     resetNemtState,
     getDriverName,
     refreshDrivers: syncDriversFromServer,

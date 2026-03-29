@@ -69,6 +69,15 @@ export const MENU_ITEMS = [{
   icon: 'iconoir:settings',
   url: '/preferences'
 }, {
+  key: 'configuraciones-menu',
+  label: 'Configuraciones',
+  icon: 'iconoir:settings-system',
+  children: [{
+    key: 'configuraciones-office',
+    label: 'Office',
+    url: '/settings/office'
+  }]
+}, {
   key: 'avatar',
   label: 'Avatar',
   icon: 'iconoir:user-love',
