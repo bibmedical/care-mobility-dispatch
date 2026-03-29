@@ -4,7 +4,8 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { DISPATCH_TRIP_COLUMN_OPTIONS } from '@/helpers/nemt-dispatch-state';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
-import { mapTilesConfig } from '@/utils/map-tiles';
+import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
+import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
@@ -137,13 +138,6 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
-const normalizeWhatsAppPhone = value => {
-  const digits = String(value || '').replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.length === 10) return `1${digits}`;
-  return digits;
-};
-
 const getDisplayTripId = trip => {
   const tripId = String(trip?.id || '').trim();
   if (!tripId) return String(trip?.brokerTripId || '').trim();
@@ -180,7 +174,8 @@ const TripDashboardWorkspace = () => {
     refreshDrivers,
     getDriverName,
     uiPreferences,
-    setDispatcherVisibleTripColumns
+    setDispatcherVisibleTripColumns,
+    setMapProvider
   } = useNemtContext();
   const { showNotification } = useNotificationContext();
   const [routeName, setRouteName] = useState('');
@@ -213,6 +208,7 @@ const TripDashboardWorkspace = () => {
 
   const selectedDriver = useMemo(() => drivers.find(driver => driver.id === selectedDriverId) ?? null, [drivers, selectedDriverId]);
   const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
+  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const filteredTrips = useMemo(() => trips.filter(trip => {
     const normalizedStatus = String(trip.status || '').toLowerCase();
@@ -606,7 +602,14 @@ const TripDashboardWorkspace = () => {
   };
 
   const handleShareRouteWhatsapp = () => {
-    if (!selectedDriver) {
+    const targetDriver = resolveRouteShareDriver({
+      selectedDriver,
+      selectedRoute,
+      routeTrips,
+      drivers
+    });
+
+    if (!targetDriver) {
       setStatusMessage('Selecciona un chofer antes de enviar por WhatsApp.');
       return;
     }
@@ -615,25 +618,31 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    const phoneNumber = normalizeWhatsAppPhone(selectedDriver.phone);
-    if (!phoneNumber) {
-      setStatusMessage(`El chofer ${selectedDriver.name} no tiene un numero valido para WhatsApp.`);
+    const message = [`Hola ${targetDriver.name},`, '', `Tu ruta: ${routeTitle}`, `Total de viajes: ${routeTrips.length}`, '', routeTrips.map((trip, index) => [`${index + 1}. ${trip.pickup} - ${trip.dropoff} | ${trip.rider}`,
+      `PU: ${trip.address || 'No pickup address'}`,
+      `DO: ${trip.destination || 'No dropoff address'}`
+    ].join('\n')).join('\n\n')].join('\n');
+    const whatsappResult = openWhatsAppConversation({
+      phoneNumber: targetDriver.phone,
+      message
+    });
+
+    if (!whatsappResult.ok) {
+      if (whatsappResult.reason === 'missing-phone') {
+        setStatusMessage(`El chofer ${targetDriver.name} no tiene un numero valido para WhatsApp.`);
+        return;
+      }
+
+      if (whatsappResult.reason === 'popup-blocked') {
+        setStatusMessage('El navegador bloqueo la nueva pestaña de WhatsApp. Permite popups para esta pagina.');
+        return;
+      }
+
+      setStatusMessage('No se pudo abrir WhatsApp.');
       return;
     }
 
-    const tripsSummary = routeTrips.map((trip, index) => [`${index + 1}. ${trip.pickup} - ${trip.dropoff} | ${trip.rider}`,
-      `PU: ${trip.address || 'No pickup address'}`,
-      `DO: ${trip.destination || 'No dropoff address'}`
-    ].join('\n')).join('\n\n');
-    const message = [`Hola ${selectedDriver.name},`, '', `Tu ruta: ${routeTitle}`, `Total de viajes: ${routeTrips.length}`, '', tripsSummary].join('\n');
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=${phoneNumber}&text=${encodeURIComponent(message)}`;
-    const openedWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-    if (!openedWindow) {
-      setStatusMessage('El navegador bloqueo la nueva pestaña de WhatsApp. Permite popups para esta pagina.');
-      return;
-    }
-    openedWindow.opener = null;
-    setStatusMessage(`Abriendo WhatsApp en una nueva pestaña para ${selectedDriver.name}.`);
+    setStatusMessage(`Abriendo WhatsApp en una nueva pestaña para ${targetDriver.name}.`);
   };
 
   useEffect(() => {
@@ -769,7 +778,7 @@ const TripDashboardWorkspace = () => {
                     </div>
                   </div> : null}
                 <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
-                  <TileLayer attribution={mapTilesConfig.attribution} url={mapTilesConfig.url} />
+                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
                   {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
@@ -822,6 +831,11 @@ const TripDashboardWorkspace = () => {
                   <Badge bg="secondary">{liveDrivers} live</Badge>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/drivers/grouping')}>Billing Grouping</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)}>Columns</Button>
+                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={{ ...greenToolbarButtonStyle, width: 150, backgroundColor: '#ffffff', color: '#08131a' }}>
+                    <option value="auto">Map: Auto</option>
+                    <option value="openstreetmap">Map: OSM</option>
+                    <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
+                  </Form.Select>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/forms-safe-ride-import')}>Import Excel</Button>
                   <div className="d-flex align-items-center gap-1 flex-wrap">

@@ -40,6 +40,11 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
 
 export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['trip', 'status', 'driver', 'pickup', 'dropoff', 'rider', 'address', 'destination', 'miles'];
 
+export const normalizeMapProviderPreference = value => {
+  const normalized = String(value ?? 'auto').trim().toLowerCase();
+  return ['auto', 'openstreetmap', 'mapbox'].includes(normalized) ? normalized : 'auto';
+};
+
 export const normalizeDispatcherVisibleTripColumns = value => {
   const allowedKeys = new Set(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key));
   const cleanedColumns = Array.isArray(value) ? value.filter(columnKey => allowedKeys.has(columnKey)) : [];
@@ -49,7 +54,8 @@ export const normalizeDispatcherVisibleTripColumns = value => {
 };
 
 export const normalizeNemtUiPreferences = value => ({
-  dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(value?.dispatcherVisibleTripColumns)
+  dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(value?.dispatcherVisibleTripColumns),
+  mapProvider: normalizeMapProviderPreference(value?.mapProvider)
 });
 
 const normalizeTripConfirmation = value => ({

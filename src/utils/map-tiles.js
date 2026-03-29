@@ -7,16 +7,39 @@ const openStreetMapConfig = {
   url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 };
 
-export const getMapTileConfig = () => {
-  if (!mapboxAccessToken) {
+export const MAP_PROVIDER_OPTIONS = [{
+  value: 'auto',
+  label: 'Auto'
+}, {
+  value: 'openstreetmap',
+  label: 'OpenStreetMap'
+}, {
+  value: 'mapbox',
+  label: 'Mapbox'
+}];
+
+export const hasMapboxConfigured = Boolean(mapboxAccessToken);
+
+const getMapboxConfig = () => ({
+  provider: 'mapbox',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a>',
+  url: `https://api.mapbox.com/styles/v1/${mapboxStyleId}/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxAccessToken}`
+});
+
+export const getMapTileConfig = providerPreference => {
+  if (providerPreference === 'openstreetmap') {
     return openStreetMapConfig;
   }
 
-  return {
-    provider: 'mapbox',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a>',
-    url: `https://api.mapbox.com/styles/v1/${mapboxStyleId}/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxAccessToken}`
-  };
+  if (providerPreference === 'mapbox') {
+    return hasMapboxConfigured ? getMapboxConfig() : openStreetMapConfig;
+  }
+
+  if (!hasMapboxConfigured) {
+    return openStreetMapConfig;
+  }
+
+  return getMapboxConfig();
 };
 
 export const mapTilesConfig = getMapTileConfig();

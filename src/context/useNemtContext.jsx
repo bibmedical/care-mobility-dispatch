@@ -1,6 +1,6 @@
 'use client';
 
-import { normalizeDispatcherVisibleTripColumns, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
+import { normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { createContext, startTransition, use, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -93,7 +93,9 @@ export const NemtProvider = ({
           const useLocalRoutes = !forceServer && (localState.routePlans.length > payload.routePlans.length || hasLocalDispatchChangesRef.current && localState.routePlans.length > 0);
           const localColumns = normalizeDispatcherVisibleTripColumns(localState.uiPreferences?.dispatcherVisibleTripColumns);
           const serverColumns = normalizeDispatcherVisibleTripColumns(payload.uiPreferences?.dispatcherVisibleTripColumns);
-          const useLocalPreferences = !forceServer && hasLocalDispatchChangesRef.current && JSON.stringify(localColumns) !== JSON.stringify(serverColumns);
+          const localMapProvider = normalizeMapProviderPreference(localState.uiPreferences?.mapProvider);
+          const serverMapProvider = normalizeMapProviderPreference(payload.uiPreferences?.mapProvider);
+          const useLocalPreferences = !forceServer && hasLocalDispatchChangesRef.current && (JSON.stringify(localColumns) !== JSON.stringify(serverColumns) || localMapProvider !== serverMapProvider);
           const nextState = buildClientState({
             ...localState,
             trips: useLocalTrips ? localState.trips : payload.trips,
@@ -374,6 +376,14 @@ export const NemtProvider = ({
     }
   }), { markDispatchDirty: true });
 
+  const setMapProvider = provider => updateState(currentState => ({
+    ...currentState,
+    uiPreferences: {
+      ...currentState.uiPreferences,
+      mapProvider: normalizeMapProviderPreference(provider)
+    }
+  }), { markDispatchDirty: true });
+
   const resetNemtState = () => {
     startTransition(() => {
       setState(createInitialState());
@@ -401,6 +411,7 @@ export const NemtProvider = ({
     replaceTrips,
     clearTrips,
     setDispatcherVisibleTripColumns,
+    setMapProvider,
     resetNemtState,
     getDriverName,
     refreshDrivers: syncDriversFromServer,
