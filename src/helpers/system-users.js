@@ -344,6 +344,8 @@ const toPasswordNameSegment = value => {
 
 export const isDriverRole = role => normalizeAuthValue(role).includes('driver');
 
+export const isAdminRole = role => normalizeAuthValue(role).includes('admin');
+
 export const DEFAULT_PROTECTED_SYSTEM_USER_IDS = ['user-1', 'user-14', 'user-15', 'user-16', 'user-20', 'user-30'];
 
 export const isProtectedSystemUser = (user, protectedUserIds = DEFAULT_PROTECTED_SYSTEM_USER_IDS) => protectedUserIds.includes(user?.id);
