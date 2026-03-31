@@ -39,6 +39,16 @@ const yellowMapTabStyle = {
   boxShadow: '0 10px 26px rgba(120, 73, 0, 0.24)'
 };
 
+const TRIP_COLUMN_MIN_WIDTHS = {
+  pickup: 56,
+  dropoff: 56,
+  miles: 56,
+  puZip: 64,
+  doZip: 64,
+  leg: 52,
+  lateMinutes: 68
+};
+
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
   if (status === 'In Progress') return 'success';
@@ -778,7 +788,8 @@ const TripDashboardWorkspace = () => {
 
     const handlePointerMove = moveEvent => {
       const delta = moveEvent.clientX - startX;
-      const nextWidth = Math.max(72, Math.min(640, startWidth + delta));
+      const minWidth = TRIP_COLUMN_MIN_WIDTHS[columnKey] ?? 56;
+      const nextWidth = Math.max(minWidth, Math.min(640, startWidth + delta));
       setColumnWidths(current => ({
         ...current,
         [columnKey]: Math.round(nextWidth)
@@ -1325,8 +1336,8 @@ const TripDashboardWorkspace = () => {
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
               </div>
-              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', maxHeight: '100%' }}>
-                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges' }}>
+                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content' }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 48 }}>
