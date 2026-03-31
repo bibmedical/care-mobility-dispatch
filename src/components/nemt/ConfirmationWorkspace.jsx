@@ -406,11 +406,9 @@ const ConfirmationWorkspace = () => {
     setMilesMaxFilter(String(Number(cappedDefault.toFixed(2))));
   }, [detectedMaxMilesForWindow, isMilesMaxManual]);
 
-  const tripsBeforeMilesFilter = useMemo(() => {
+  const baseFilteredTrips = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const today = new Date().toISOString().slice(0, 10);
-    const fromMinutes = timeFromFilter ? parseTripClockMinutes(timeFromFilter) : null;
-    const toMinutes = timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
 
     const matchedTrips = trips.filter(trip => {
       // Check if trip is in hospital/rehab (should be excluded from normal confirmation)
@@ -434,26 +432,32 @@ const ConfirmationWorkspace = () => {
       const riderProfile = getPatientProfileForTrip(trip);
       if (isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
       
-      // Filter by time range
-      const tripTimeMinutes = getTripTimeMinutesForFilter(trip);
-      const hasTimeFilter = fromMinutes != null || toMinutes != null;
-      if (hasTimeFilter) {
-        if (tripTimeMinutes == null) return false;
-        if (fromMinutes != null && tripTimeMinutes < fromMinutes) return false;
-        if (toMinutes != null && tripTimeMinutes > toMinutes) return false;
-      }
-
       if (!normalizedSearch) return true;
       const haystack = [trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(normalizedSearch);
     });
 
     return Array.from(new Map(matchedTrips.map(trip => [String(trip.id), trip])).values());
-  }, [confirmationDate, legFilter, rideTypeFilter, search, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
+  }, [confirmationDate, legFilter, rideTypeFilter, search, statusFilter, tripBlockingMap, trips]);
+
+  const timeWindowMatchedTripIds = useMemo(() => {
+    const fromMinutes = timeFromFilter ? parseTripClockMinutes(timeFromFilter) : null;
+    const toMinutes = timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
+    const hasTimeFilter = fromMinutes != null || toMinutes != null;
+    if (!hasTimeFilter) return new Set(baseFilteredTrips.map(trip => trip.id));
+
+    return new Set(baseFilteredTrips.filter(trip => {
+      const tripTimeMinutes = getTripTimeMinutesForFilter(trip);
+      if (tripTimeMinutes == null) return false;
+      if (fromMinutes != null && tripTimeMinutes < fromMinutes) return false;
+      if (toMinutes != null && tripTimeMinutes > toMinutes) return false;
+      return true;
+    }).map(trip => trip.id));
+  }, [baseFilteredTrips, timeFromFilter, timeToFilter]);
 
   const existingMilesRows = useMemo(() => {
     const milesMap = new Map();
-    tripsBeforeMilesFilter.forEach(trip => {
+    baseFilteredTrips.forEach(trip => {
       const milesValue = getTripMilesValue(trip);
       if (milesValue == null) return;
       const key = Number(milesValue.toFixed(2)).toString();
@@ -463,7 +467,7 @@ const ConfirmationWorkspace = () => {
       miles: Number(miles),
       tripsCount
     })).sort((a, b) => b.miles - a.miles);
-  }, [tripsBeforeMilesFilter]);
+  }, [baseFilteredTrips]);
 
   const milesOptionValuesDesc = useMemo(() => {
     const values = existingMilesRows.map(item => Number(item.miles.toFixed(2)));
@@ -473,7 +477,7 @@ const ConfirmationWorkspace = () => {
 
   const milesOptionValuesAsc = useMemo(() => [...milesOptionValuesDesc].sort((a, b) => a - b), [milesOptionValuesDesc]);
 
-  const filteredTrips = useMemo(() => {
+  const milesRangeMatchedTripIds = useMemo(() => {
     const parsedMin = Number(milesMinFilter);
     const parsedMax = Number(milesMaxFilter);
     const rawMinMiles = milesMinFilter === '' || !Number.isFinite(parsedMin) ? null : parsedMin;
@@ -486,18 +490,23 @@ const ConfirmationWorkspace = () => {
     const normalizedMaxMiles = Number.isFinite(maxMiles) ? Number(maxMiles.toFixed(2)) : null;
     const epsilon = 0.0001;
 
-    const milesFilteredTrips = tripsBeforeMilesFilter.filter(trip => {
+    const hasMilesFilter = minMiles != null || maxMiles != null;
+    if (!hasMilesFilter) return new Set(baseFilteredTrips.map(trip => trip.id));
+
+    return new Set(baseFilteredTrips.filter(trip => {
       const tripMiles = getTripMilesValue(trip);
-      const hasMilesFilter = minMiles != null || maxMiles != null;
-      if (!hasMilesFilter) return true;
       if (tripMiles == null) return false;
       const normalizedTripMiles = Number(tripMiles.toFixed(2));
       if (normalizedMinMiles != null && normalizedTripMiles < normalizedMinMiles - epsilon) return false;
       if (normalizedMaxMiles != null && normalizedTripMiles > normalizedMaxMiles + epsilon) return false;
       return true;
-    });
+    }).map(trip => trip.id));
+  }, [baseFilteredTrips, milesMaxFilter, milesMinFilter]);
 
-    const dedupedTrips = Array.from(new Map(milesFilteredTrips.map(trip => [buildTripDedupKey(trip), trip])).values());
+  const filteredTrips = useMemo(() => {
+    const intersectedTrips = baseFilteredTrips.filter(trip => timeWindowMatchedTripIds.has(trip.id) && milesRangeMatchedTripIds.has(trip.id));
+
+    const dedupedTrips = Array.from(new Map(intersectedTrips.map(trip => [buildTripDedupKey(trip), trip])).values());
 
     return [...dedupedTrips].sort((leftTrip, rightTrip) => {
       const leftMiles = getTripMilesValue(leftTrip);
@@ -513,7 +522,7 @@ const ConfirmationWorkspace = () => {
       if (milesSortOrder === 'trip-desc') return String(rightTrip.id || '').localeCompare(String(leftTrip.id || ''));
       return rightValue - leftValue;
     });
-  }, [milesMaxFilter, milesMinFilter, milesSortOrder, tripsBeforeMilesFilter]);
+  }, [baseFilteredTrips, milesSortOrder, milesRangeMatchedTripIds, timeWindowMatchedTripIds]);
 
   const visibleTripIds = useMemo(() => filteredTrips.map(trip => trip.id), [filteredTrips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(tripId => selectedTripIds.includes(tripId));
@@ -1332,6 +1341,7 @@ const ConfirmationWorkspace = () => {
                 All Day
               </Button>
               {detectedMaxMilesForWindow != null ? <Badge bg="info">Detected max {Number(detectedMaxMilesForWindow.toFixed(2))} mi</Badge> : null}
+              <Badge bg="light" text="dark" title="Internal filter split">Time {timeWindowMatchedTripIds.size} | Miles {milesRangeMatchedTripIds.size} | Final {filteredTrips.length}</Badge>
               <Form.Select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 220 }}>
                 <option value="all">All statuses</option>
                 <option value="Not Sent">Not Sent</option>
