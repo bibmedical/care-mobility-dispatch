@@ -355,19 +355,26 @@ const DispatcherWorkspace = () => {
   const tripTableElementRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
+  const [tripTableScrollLeft, setTripTableScrollLeft] = useState(0);
+  const [tripTableMaxScrollLeft, setTripTableMaxScrollLeft] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
 
   const syncTripTableScroll = source => {
     if (tripTableScrollSyncRef.current) return;
     const topNode = tripTableTopScrollerRef.current;
     const bottomNode = tripTableBottomScrollerRef.current;
-    if (!topNode || !bottomNode) return;
+    if (!bottomNode) return;
     tripTableScrollSyncRef.current = true;
     if (source === 'top') {
-      bottomNode.scrollLeft = topNode.scrollLeft;
+      const nextLeft = topNode?.scrollLeft || 0;
+      bottomNode.scrollLeft = nextLeft;
+      setTripTableScrollLeft(nextLeft);
     } else {
-      topNode.scrollLeft = bottomNode.scrollLeft;
+      const nextLeft = bottomNode.scrollLeft;
+      if (topNode) topNode.scrollLeft = nextLeft;
+      setTripTableScrollLeft(nextLeft);
     }
+    setTripTableMaxScrollLeft(Math.max(0, bottomNode.scrollWidth - bottomNode.clientWidth));
     window.requestAnimationFrame(() => {
       tripTableScrollSyncRef.current = false;
     });
@@ -1137,6 +1144,9 @@ const DispatcherWorkspace = () => {
       const containerWidth = scrollContainer?.scrollWidth || 0;
       const tableWidth = tableNode?.scrollWidth || 0;
       setTripTableScrollWidth(Math.max(containerWidth, tableWidth));
+      const maxScrollLeft = Math.max(0, (scrollContainer?.scrollWidth || 0) - (scrollContainer?.clientWidth || 0));
+      setTripTableMaxScrollLeft(maxScrollLeft);
+      setTripTableScrollLeft(Math.min(scrollContainer?.scrollLeft || 0, maxScrollLeft));
     };
 
     updateTripTableScrollWidth();
@@ -1405,8 +1415,15 @@ const DispatcherWorkspace = () => {
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
               </div>
-                  {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ width: '100%', overflowX: 'scroll', overflowY: 'hidden', height: 22, marginBottom: 4, scrollbarGutter: 'stable', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
-                    <div style={{ width: tripTableScrollWidth > 0 ? tripTableScrollWidth + 200 : 'calc(100% + 200px)', height: 1 }} />
+                  {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} style={{ width: '100%', marginBottom: 4, padding: '2px 0 4px', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
+                    <input type="range" min={0} max={Math.max(1, tripTableMaxScrollLeft)} value={Math.min(tripTableScrollLeft, Math.max(1, tripTableMaxScrollLeft))} onChange={event => {
+                    const nextLeft = Number(event.target.value) || 0;
+                    const bottomNode = tripTableBottomScrollerRef.current;
+                    const topNode = tripTableTopScrollerRef.current;
+                    if (bottomNode) bottomNode.scrollLeft = nextLeft;
+                    if (topNode) topNode.scrollLeft = nextLeft;
+                    setTripTableScrollLeft(nextLeft);
+                  }} style={{ width: '100%', accentColor: '#22c55e' }} aria-label="Horizontal table scroll" />
                 </div> : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%', position: 'relative', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
                 {mapLocked && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 45, borderRadius: '4px', backdropFilter: 'blur(1px)' }}>
