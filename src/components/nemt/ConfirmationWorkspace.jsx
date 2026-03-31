@@ -64,6 +64,12 @@ const parseMilesValue = value => {
   return Number.isFinite(miles) ? miles : null;
 };
 
+const isTripCompleted = trip => {
+  const status = String(trip?.status || '').trim().toLowerCase();
+  if (status.includes('complete') || status.includes('completed') || status.includes('done') || status.includes('finished')) return true;
+  return Boolean(String(trip?.actualDropoff || '').trim());
+};
+
 const ConfirmationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
@@ -119,6 +125,10 @@ const ConfirmationWorkspace = () => {
   const [tripUpdateNote, setTripUpdateNote] = useState('');
   const [tripUpdateCompanionNote, setTripUpdateCompanionNote] = useState('');
   const [tripUpdateMobilityNote, setTripUpdateMobilityNote] = useState('');
+  const [patientSearch, setPatientSearch] = useState('');
+  const [patientFromDate, setPatientFromDate] = useState('');
+  const [patientToDate, setPatientToDate] = useState('');
+  const [selectedPatientKey, setSelectedPatientKey] = useState('');
 
   const optOutList = Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [];
   const blacklistEntries = Array.isArray(blacklistData?.entries) ? blacklistData.entries : [];
@@ -145,6 +155,94 @@ const ConfirmationWorkspace = () => {
     notSent: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Not Sent').length,
     optedOut: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length
   }), [tripBlockingMap, trips]);
+
+  const patientHistoryRows = useMemo(() => {
+    const term = patientSearch.trim().toLowerCase();
+    const groups = new Map();
+
+    trips.forEach(trip => {
+      const rider = String(trip?.rider || '').trim();
+      const phone = String(trip?.patientPhoneNumber || '').trim();
+      const key = `${rider.toLowerCase()}|${phone.replace(/\D/g, '')}`;
+      if (!key || key === '|') return;
+
+      const dateKey = getTripServiceDateKey(trip);
+      if (patientFromDate && (!dateKey || dateKey < patientFromDate)) return;
+      if (patientToDate && (!dateKey || dateKey > patientToDate)) return;
+
+      if (term) {
+        const haystack = [trip.id, rider, phone, trip.address, trip.destination, trip.notes].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(term)) return;
+      }
+
+      const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+      const responseCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
+      const status = String(trip?.status || '').trim();
+      const notes = String(trip?.notes || '').trim();
+      const hospitalType = String(trip?.hospitalStatus?.type || '').trim().toLowerCase();
+      const isRehab = hospitalType.includes('rehab');
+      const isHospital = Boolean(trip?.hospitalStatus) && !isRehab;
+
+      const current = groups.get(key) || {
+        key,
+        rider,
+        phone,
+        totalTrips: 0,
+        completedTrips: 0,
+        confirmedTrips: 0,
+        notConfirmedTrips: 0,
+        callConfirmedTrips: 0,
+        smsConfirmedTrips: 0,
+        whatsappConfirmedTrips: 0,
+        rehabTrips: 0,
+        hospitalTrips: 0,
+        hasTravelled: false,
+        notes: [],
+        trips: []
+      };
+
+      current.totalTrips += 1;
+      current.hasTravelled = true;
+      if (isTripCompleted(trip)) current.completedTrips += 1;
+      if (confirmationStatus === 'Confirmed') current.confirmedTrips += 1;
+      else current.notConfirmedTrips += 1;
+      if (responseCode === 'C') current.callConfirmedTrips += 1;
+      if (responseCode === 'S') current.smsConfirmedTrips += 1;
+      if (responseCode === 'W') current.whatsappConfirmedTrips += 1;
+      if (isRehab) current.rehabTrips += 1;
+      if (isHospital) current.hospitalTrips += 1;
+      if (notes) current.notes.push(`[${dateKey || 'No date'}] ${notes}`);
+      current.trips.push({
+        id: trip.id,
+        dateKey,
+        pickup: trip.scheduledPickup || trip.pickup || '-',
+        dropoff: trip.scheduledDropoff || trip.dropoff || '-',
+        status,
+        completion: isTripCompleted(trip) ? 'Completed' : 'Open',
+        confirmationStatus,
+        responseCode,
+        rehabHospital: trip?.hospitalStatus ? `${trip.hospitalStatus.type || 'Hospital'} until ${trip.hospitalStatus.endDate || '-'}` : '-',
+        note: notes || '-'
+      });
+      groups.set(key, current);
+    });
+
+    return Array.from(groups.values()).sort((a, b) => b.totalTrips - a.totalTrips || a.rider.localeCompare(b.rider));
+  }, [patientFromDate, patientSearch, patientToDate, tripBlockingMap, trips]);
+
+  useEffect(() => {
+    if (patientHistoryRows.length === 0) {
+      if (selectedPatientKey) setSelectedPatientKey('');
+      return;
+    }
+    const exists = patientHistoryRows.some(row => row.key === selectedPatientKey);
+    if (!exists) setSelectedPatientKey(patientHistoryRows[0].key);
+  }, [patientHistoryRows, selectedPatientKey]);
+
+  const selectedPatientHistory = useMemo(() => {
+    if (!selectedPatientKey) return null;
+    return patientHistoryRows.find(row => row.key === selectedPatientKey) || null;
+  }, [patientHistoryRows, selectedPatientKey]);
 
   const detectedMaxMilesForWindow = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -815,6 +913,94 @@ const ConfirmationWorkspace = () => {
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => router.push('/integrations/sms')}>Open SMS Integration</Button>
             </div>
           </div>
+        </CardBody>
+      </Card>
+
+      <Card style={surfaceStyles.card} className="border mb-3">
+        <CardBody>
+          <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-3">
+            <div>
+              <h5 className="mb-1">Patient History Search</h5>
+              <div className="text-secondary small">Busca por paciente y fecha para ver cuantas veces viajo, confirmaciones, rehab/hospital, notas y resultados de viajes completados.</div>
+            </div>
+            <div className="small text-secondary">{patientHistoryRows.length} patient(s) found</div>
+          </div>
+
+          <div className="d-flex flex-column flex-xl-row gap-2 mb-3">
+            <Form.Control value={patientSearch} onChange={event => setPatientSearch(event.target.value)} placeholder="Search patient, phone, trip ID or notes" style={{ ...surfaceStyles.input, minWidth: 260 }} />
+            <Form.Control type="date" value={patientFromDate} onChange={event => setPatientFromDate(event.target.value)} style={{ ...surfaceStyles.input, width: 170 }} title="From date" />
+            <Form.Control type="date" value={patientToDate} onChange={event => setPatientToDate(event.target.value)} style={{ ...surfaceStyles.input, width: 170 }} title="To date" />
+            <Button style={surfaceStyles.button} onClick={() => {
+              setPatientSearch('');
+              setPatientFromDate('');
+              setPatientToDate('');
+            }}>
+              Clear History Filters
+            </Button>
+          </div>
+
+          {patientHistoryRows.length > 0 ? <>
+              <div className="d-flex flex-column flex-xl-row gap-2 mb-3">
+                <Form.Select value={selectedPatientKey} onChange={event => setSelectedPatientKey(event.target.value)} style={{ ...surfaceStyles.input, maxWidth: 520 }}>
+                  {patientHistoryRows.map(row => <option key={row.key} value={row.key}>{row.rider || 'Unknown'} {row.phone ? `• ${row.phone}` : ''} • {row.totalTrips} trip(s)</option>)}
+                </Form.Select>
+              </div>
+
+              {selectedPatientHistory ? <>
+                  <div className="d-flex flex-wrap gap-2 mb-3">
+                    <Badge bg="primary">Trips: {selectedPatientHistory.totalTrips}</Badge>
+                    <Badge bg="success">Completed: {selectedPatientHistory.completedTrips}</Badge>
+                    <Badge bg="info">Confirmed: {selectedPatientHistory.confirmedTrips}</Badge>
+                    <Badge bg="secondary">Not Confirmed: {selectedPatientHistory.notConfirmedTrips}</Badge>
+                    <Badge bg="warning">Rehab: {selectedPatientHistory.rehabTrips}</Badge>
+                    <Badge bg="dark">Hospital: {selectedPatientHistory.hospitalTrips}</Badge>
+                    <Badge bg="light" text="dark">Call C: {selectedPatientHistory.callConfirmedTrips}</Badge>
+                    <Badge bg="light" text="dark">SMS S: {selectedPatientHistory.smsConfirmedTrips}</Badge>
+                    <Badge bg="light" text="dark">WhatsApp W: {selectedPatientHistory.whatsappConfirmedTrips}</Badge>
+                    <Badge bg={selectedPatientHistory.hasTravelled ? 'success' : 'secondary'}>{selectedPatientHistory.hasTravelled ? 'Has Travelled' : 'No Trips'}</Badge>
+                  </div>
+
+                  <div className="mb-3">
+                    <div className="fw-semibold mb-2">All Notes</div>
+                    <div className="small p-2 rounded-2" style={{ ...surfaceStyles.input, maxHeight: 140, overflowY: 'auto' }}>
+                      {selectedPatientHistory.notes.length > 0 ? selectedPatientHistory.notes.map((note, index) => <div key={`patient-note-${index}`} className="mb-1">{note}</div>) : <div className="text-secondary">No notes found for this patient.</div>}
+                    </div>
+                  </div>
+
+                  <div className="table-responsive">
+                    <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+                      <thead className="table-light">
+                        <tr>
+                          <th>Date</th>
+                          <th>Trip ID</th>
+                          <th>Pickup</th>
+                          <th>Dropoff</th>
+                          <th>Status</th>
+                          <th>Completed</th>
+                          <th>Confirmation</th>
+                          <th>Method</th>
+                          <th>Rehab/Hospital</th>
+                          <th>Note</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedPatientHistory.trips.sort((a, b) => String(b.dateKey || '').localeCompare(String(a.dateKey || ''))).map(item => <tr key={`patient-trip-${item.id}-${item.dateKey || 'na'}`}>
+                            <td>{item.dateKey || '-'}</td>
+                            <td>{item.id}</td>
+                            <td>{item.pickup}</td>
+                            <td>{item.dropoff}</td>
+                            <td>{item.status || '-'}</td>
+                            <td>{item.completion}</td>
+                            <td>{item.confirmationStatus}</td>
+                            <td>{item.responseCode || '-'}</td>
+                            <td>{item.rehabHospital}</td>
+                            <td style={{ maxWidth: 360, whiteSpace: 'normal' }}>{item.note}</td>
+                          </tr>)}
+                      </tbody>
+                    </Table>
+                  </div>
+                </> : null}
+            </> : <div className="text-secondary small">No patient history matches those filters yet.</div>}
         </CardBody>
       </Card>
 
