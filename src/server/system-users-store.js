@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { buildStableDriverId, createBlankDriver, getFullName } from '@/helpers/nemt-admin-model';
-import { DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED, authorizeSystemUser, buildPasswordForUser, enrichSystemUser, getUserSyncStatus, isDriverRole, isProtectedSystemUser, normalizeAuthValue } from '@/helpers/system-users';
+import { DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED, authorizeSystemUser, buildPasswordForUser, enrichSystemUser, getUserSyncStatus, isAdminRole, isDriverRole, isProtectedSystemUser, normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
@@ -83,14 +83,11 @@ const buildUsersPayload = async state => {
   };
 };
 
-const ensureProtectedUsersRemain = (nextUsers, currentUsers, currentProtectedUserIds) => {
-  const nextUserIds = new Set(nextUsers.map(user => user.id));
-  const blockedDeletes = currentUsers.filter(user => isProtectedSystemUser(user, currentProtectedUserIds) && !nextUserIds.has(user.id));
-
-  if (blockedDeletes.length === 0) return;
-
-  const blockedNames = blockedDeletes.map(user => `${user.firstName} ${user.lastName}`.trim()).join(', ');
-  throw new Error(`No puedes borrar admins principales del sistema: ${blockedNames}`);
+const ensureAtLeastOneAdminRemains = (nextUsers) => {
+  const hasAdmin = nextUsers.some(user => isAdminRole(user.role));
+  if (!hasAdmin) {
+    throw new Error('No puedes borrar todos los administradores del sistema. Debe quedar al menos uno.');
+  }
 };
 
 const syncUserIntoDriverState = (drivers, user) => {
@@ -173,7 +170,7 @@ export const writeSystemUsersState = async nextState => {
   await ensureStorageFile();
   const currentState = await readSystemUsersState();
   const normalized = normalizeUsersState(nextState);
-  ensureProtectedUsersRemain(normalized.users, currentState.users, currentState.protectedUserIds);
+  ensureAtLeastOneAdminRemains(normalized.users);
   await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
   await syncUsersToAdminState(normalized.users.map(user => enrichSystemUser(user, normalized.protectedUserIds)), currentState.users.map(user => enrichSystemUser(user, currentState.protectedUserIds)));
   return buildUsersPayload(normalized);

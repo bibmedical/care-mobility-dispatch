@@ -41,11 +41,12 @@ const widgetStyles = {
     position: 'absolute',
     right: 0,
     bottom: 110,
-    width: 182,
+    width: 320,
     maxWidth: 'calc(100vw - 24px)',
-    minHeight: 172,
+    minHeight: 220,
+    maxHeight: 'calc(100vh - 140px)',
     borderRadius: 20,
-    background: 'rgba(13, 18, 28, 0.92)',
+    background: 'rgba(13, 18, 28, 0.96)',
     boxShadow: '0 16px 36px rgba(3, 8, 20, 0.34)',
     border: '1px solid rgba(255, 255, 255, 0.08)',
     overflow: 'hidden',
@@ -270,6 +271,8 @@ const DispatchAssistantWidget = () => {
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const [lastProvider, setLastProvider] = useState('local');
   const [listeningMode, setListeningMode] = useState(false);
+  const [textInput, setTextInput] = useState('');
+  const chatEndRef = useRef(null);
   const assistantModeRef = useRef(assistantMode);
   const messagesRef = useRef([]);
   const isSendingRef = useRef(isSending);
@@ -356,6 +359,12 @@ const DispatchAssistantWidget = () => {
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
   }, [isSpeaking]);
+
+  useEffect(() => {
+    if (open && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, open]);
 
   useEffect(() => {
     if (!clientId) return;
@@ -661,6 +670,20 @@ const DispatchAssistantWidget = () => {
     recognitionRef.current.start();
   };
 
+  const handleSendText = async () => {
+    const trimmed = textInput.trim();
+    if (!trimmed || isSending) return;
+    setTextInput('');
+    await sendVoiceMessage(trimmed);
+  };
+
+  const handleTextKeyDown = e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void handleSendText();
+    }
+  };
+
   const providerLabel = assistantMode === 'openai' ? 'GPT' : 'LOCAL';
 
   return <div style={widgetStyles.shell}>
@@ -677,9 +700,70 @@ const DispatchAssistantWidget = () => {
 
           <div style={widgetStyles.body}>
             <div style={widgetStyles.providerPill}>{lastProvider === 'openai-integrations' || lastProvider === 'openai' ? 'Respuesta: GPT' : 'Respuesta: IA local'}</div>
-            <div style={widgetStyles.statusPill}>
-              {errorMessage ? errorMessage : isSending ? 'Consultando...' : isListening ? 'Escuchando...' : isSpeaking ? 'Hablando...' : 'Lista'}
+
+            {/* Chat messages */}
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, minHeight: 80 }}>
+              {messages.map(msg => (
+                <div key={msg.id} style={{
+                  alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                  maxWidth: '85%',
+                  background: msg.role === 'user' ? 'rgba(90, 140, 255, 0.22)' : 'rgba(255,255,255,0.07)',
+                  border: `1px solid ${msg.role === 'user' ? 'rgba(90,140,255,0.3)' : 'rgba(255,255,255,0.10)'}`,
+                  borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  color: '#ffffff',
+                  lineHeight: 1.4,
+                  wordBreak: 'break-word'
+                }}>
+                  {msg.text}
+                </div>
+              ))}
+              {isSending && (
+                <div style={{ alignSelf: 'flex-start', color: 'rgba(255,255,255,0.45)', fontSize: 10, padding: '2px 4px' }}>
+                  {assistantName} está escribiendo...
+                </div>
+              )}
+              <div ref={chatEndRef} />
             </div>
+
+            {errorMessage && <div style={{ ...widgetStyles.statusPill, background: 'rgba(220,50,50,0.18)', borderColor: 'rgba(220,50,50,0.3)', fontSize: 10 }}>{errorMessage}</div>}
+
+            {/* Text input */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+              <textarea
+                value={textInput}
+                onChange={e => setTextInput(e.target.value)}
+                onKeyDown={handleTextKeyDown}
+                placeholder={isListening ? 'Escuchando...' : 'Escribe o habla...'}
+                rows={1}
+                style={{
+                  flex: 1,
+                  background: 'rgba(255,255,255,0.07)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 12,
+                  color: '#ffffff',
+                  fontSize: 11,
+                  padding: '6px 10px',
+                  resize: 'none',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  lineHeight: 1.4,
+                  maxHeight: 80,
+                  overflow: 'auto'
+                }}
+              />
+              <Button
+                type="button"
+                variant="light"
+                onClick={() => void handleSendText()}
+                disabled={isSending || !textInput.trim()}
+                style={{ ...widgetStyles.miniButton, minWidth: 38, padding: '6px 8px' }}
+              >
+                ➤
+              </Button>
+            </div>
+
             <div style={widgetStyles.modeRow}>
               <Button type="button" variant={assistantMode === 'openai' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('openai')} style={widgetStyles.miniButton}>
                 GPT

@@ -213,10 +213,6 @@ const UserManagementWorkspace = () => {
       setMessage('Selecciona uno o mas usuarios para borrar.');
       return;
     }
-    if (selectedProtectedUsers.length > 0) {
-      setMessage(`No puedes borrar admins principales del sistema: ${selectedProtectedUsers.map(user => `${user.firstName} ${user.lastName}`.trim()).join(', ')}.`);
-      return;
-    }
     try {
       await saveData({
         version: data?.version ?? 4,

@@ -6,8 +6,17 @@ const STORAGE_FILE = getStorageFilePath('assistant-memory.json');
 
 const DEFAULT_STATE = {
   version: 1,
-  conversations: {}
+  conversations: {},
+  facts: []
 };
+
+const normalizeFact = value => ({
+  id: String(value?.id ?? `fact-${Date.now()}`),
+  subject: String(value?.subject ?? '').trim(),
+  value: String(value?.value ?? '').trim(),
+  kind: String(value?.kind ?? 'general'),
+  updatedAt: Number(value?.updatedAt ?? Date.now())
+});
 
 const normalizeMessage = value => ({
   id: String(value?.id ?? `msg-${Date.now()}`),
@@ -24,7 +33,8 @@ const normalizeConversation = value => ({
 
 const normalizeState = value => ({
   version: 1,
-  conversations: Object.fromEntries(Object.entries(value?.conversations || {}).map(([key, conversation]) => [String(key), normalizeConversation(conversation)]))
+  conversations: Object.fromEntries(Object.entries(value?.conversations || {}).map(([key, conversation]) => [String(key), normalizeConversation(conversation)])),
+  facts: Array.isArray(value?.facts) ? value.facts.map(normalizeFact).filter(f => f.subject && f.value) : []
 });
 
 const ensureStorageFile = async () => {
@@ -68,4 +78,22 @@ export const writeAssistantConversation = async (clientId, conversation) => {
       [normalizedClientId]: nextConversation
     }
   });
+};
+
+export const readAssistantFacts = async () => {
+  const state = await readAssistantMemoryState();
+  return Array.isArray(state.facts) ? state.facts : [];
+};
+
+export const mergeAssistantFact = async ({ subject, value, kind = 'general' }) => {
+  const state = await readAssistantMemoryState();
+  const existingFacts = Array.isArray(state.facts) ? state.facts : [];
+  const normalizedSubject = String(subject || '').trim().toLowerCase();
+  const existingIndex = existingFacts.findIndex(f => String(f.subject || '').toLowerCase() === normalizedSubject);
+  const nextFact = normalizeFact({ id: existingFacts[existingIndex]?.id || `fact-${Date.now()}`, subject: String(subject).trim(), value: String(value).trim(), kind, updatedAt: Date.now() });
+  const nextFacts = existingIndex >= 0
+    ? existingFacts.map((f, i) => i === existingIndex ? nextFact : f)
+    : [...existingFacts, nextFact];
+  await writeAssistantMemoryState({ ...state, facts: nextFacts.slice(-500) });
+  return nextFact;
 };

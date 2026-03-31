@@ -1,12 +1,12 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { MENU_ITEMS } from '@/assets/data/menu-items';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
 import { getTripLateMinutes as getSharedTripLateMinutes } from '@/helpers/nemt-dispatch-state';
 import { readBlacklistState } from '@/server/blacklist-store';
-import { readAssistantConversation, writeAssistantConversation } from '@/server/assistant-memory-store';
+import { readAssistantConversation, readAssistantFacts, mergeAssistantFact, writeAssistantConversation } from '@/server/assistant-memory-store';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
-import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
+import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readIntegrationsState } from '@/server/integrations-store';
 import { readSystemUsersPayload } from '@/server/system-users-store';
 
@@ -37,8 +37,8 @@ const trySolveSimpleMathSafe = message => {
   const normalized = String(message || '')
     .toLowerCase()
     .replace(/,/g, '.')
-    .replace(/cu[aá]nto es|cu[aá]l es|cuanto da|dime|resuelve/g, ' ')
-    .replace(/m[aá]s/g, '+')
+    .replace(/cu[aÃ¡]nto es|cu[aÃ¡]l es|cuanto da|dime|resuelve/g, ' ')
+    .replace(/m[aÃ¡]s/g, '+')
     .replace(/menos/g, '-')
     .replace(/por|x|multiplicado por/g, '*')
     .replace(/dividido entre|dividido por|entre/g, '/')
@@ -73,8 +73,8 @@ const trySolveSimpleMathSafe = message => {
   return `El resultado es ${Number.isInteger(result) ? result : result.toFixed(2)}.`;
 };
 
-const buildLocalLearnedFacts = history => {
-  const facts = [];
+const buildLocalLearnedFacts = (history, persistedFacts) => {
+  const facts = Array.isArray(persistedFacts) ? [...persistedFacts] : [];
   for (const item of Array.isArray(history) ? history : []) {
     if (item?.role !== 'user') continue;
     const text = String(item?.text || '').trim();
@@ -89,12 +89,21 @@ const buildLocalLearnedFacts = history => {
       });
     }
 
-    const phoneMatch = text.match(/(?:telefono|tel[eé]fono|numero|n[uú]mero)\s+de\s+(.+?)\s+(?:es|=)\s+([+()\d\s-]+)/i);
+    const phoneMatch = text.match(/(?:telefono|tel[eÃ©]fono|numero|n[uÃº]mero)\s+de\s+(.+?)\s+(?:es|=)\s+([+()\d\s-]+)/i);
     if (phoneMatch) {
       facts.push({
         subject: phoneMatch[1].trim(),
         value: phoneMatch[2].trim(),
         kind: 'phone'
+      });
+    }
+
+    const addressMatch = text.match(/(?:direcci[oÃ³]n|domicilio|vive en|address)\s+de\s+(.+?)\s+(?:es|=)\s+(.+)/i);
+    if (addressMatch) {
+      facts.push({
+        subject: addressMatch[1].trim(),
+        value: addressMatch[2].trim(),
+        kind: 'address'
       });
     }
   }
@@ -148,22 +157,28 @@ const buildConfiguredSectionFacts = integrationsState => {
     }));
 };
 
-const findLearnedFactReply = (message, history, integrationsState) => {
+const findLearnedFactReply = (message, history, integrationsState, snapshot) => {
   const prompt = normalizeLookupValue(message);
-  const facts = [...buildConfiguredSectionFacts(integrationsState), ...buildConfiguredMemoryFacts(integrationsState), ...buildLocalLearnedFacts(history)];
+  const persistedFacts = Array.isArray(snapshot?.persistedFacts) ? snapshot.persistedFacts : [];
+  const facts = [...buildConfiguredSectionFacts(integrationsState), ...buildConfiguredMemoryFacts(integrationsState), ...buildLocalLearnedFacts(history, persistedFacts)];
   if (facts.length === 0) return null;
 
-  const wantedPhone = /telefono|tel[eé]fono|numero|n[uú]mero|phone|cell|cel/.test(prompt);
+  const wantedPhone = /telefono|tel[eÃ©]fono|numero|n[uÃº]mero|phone|cell|cel/.test(prompt);
+  const wantedAddress = /direcci[oÃ³]n|domicilio|donde vive|address/.test(prompt);
   const match = [...facts].reverse().find(fact => {
     const subject = normalizeLookupValue(fact.subject);
     if (!subject) return false;
     if (wantedPhone && fact.kind !== 'phone') return false;
+    if (wantedAddress && fact.kind !== 'address') return false;
     return prompt.includes(subject);
   });
 
   if (!match) return null;
   if (match.kind === 'phone') {
     return `El telefono guardado de ${match.subject} es ${match.value}.`;
+  }
+  if (match.kind === 'address') {
+    return `La direccion guardada de ${match.subject} es ${match.value}.`;
   }
   if (match.kind === 'configured') {
     return `${match.subject}: ${match.value}.`;
@@ -309,7 +324,7 @@ const findTripReply = (message, snapshot) => {
 
   const trip = matches[0];
   const sameRiderMatches = matches.filter(item => normalizeLookupValue(item.rider) === normalizeLookupValue(trip.rider));
-  const wantsPhone = /telefono|tel[eé]fono|numero|n[uú]mero|phone|cell|cel/.test(prompt);
+  const wantsPhone = /telefono|tel[eÃ©]fono|numero|n[uÃº]mero|phone|cell|cel/.test(prompt);
   const wantsStatus = /estado|status/.test(prompt);
   const wantsPickup = /pickup|recogida|buscar|pu\b/.test(prompt);
   const wantsDropoff = /dropoff|destino|llevar|do\b/.test(prompt);
@@ -349,7 +364,7 @@ const findTripReply = (message, snapshot) => {
 
 const findModuleAction = (message, snapshot) => {
   const prompt = normalizeLookupValue(message);
-  if (!/(abre|abrir|open|ve a|ll[eé]vame|go to)/.test(prompt)) return null;
+  if (!/(abre|abrir|open|ve a|ll[eÃ©]vame|go to)/.test(prompt)) return null;
   const modules = Array.isArray(snapshot?.modules) ? snapshot.modules : [];
   const candidates = modules.map(module => ({
     ...module,
@@ -396,7 +411,142 @@ const findDriverMessageAction = (message, snapshot) => {
       driverName: matchedDriver.name,
       message: messageText
     },
-    reply: `Listo. Le dejé el mensaje a ${matchedDriver.name}: ${messageText}`
+    reply: `Listo. Le dejÃ© el mensaje a ${matchedDriver.name}: ${messageText}`
+  };
+};
+
+const parseDateKeyword = text => {
+  const t = normalizeLookupValue(text);
+  const today = new Date();
+  if (/ma[nÃ±]ana|tomorrow/.test(t)) {
+    const d = new Date(today); d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (/hoy|today/.test(t)) return today.toISOString().slice(0, 10);
+  const dateMatch = text.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+  if (dateMatch) {
+    const month = String(dateMatch[1]).padStart(2, '0');
+    const day = String(dateMatch[2]).padStart(2, '0');
+    const year = dateMatch[3] ? (String(dateMatch[3]).length === 2 ? `20${dateMatch[3]}` : dateMatch[3]) : String(today.getFullYear());
+    return `${year}-${month}-${day}`;
+  }
+  return today.toISOString().slice(0, 10);
+};
+
+const findDriverInSnapshot = (text, snapshot) => {
+  const drivers = Array.isArray(snapshot?.driverDirectory) ? snapshot.driverDirectory : [];
+  const norm = normalizeLookupValue(text);
+  return drivers.find(driver => {
+    const name = normalizeLookupValue(driver.name);
+    if (norm.includes(name)) return true;
+    return name.split(' ').some(token => token.length >= 3 && norm.includes(token));
+  }) || null;
+};
+
+const findCreateRouteAction = (message, snapshot) => {
+  const prompt = normalizeLookupValue(message);
+  if (!/(crea|crear|nueva|generar|hacer|haz|armar)\s*(la\s*)?ruta/.test(prompt)) return null;
+  const trips = Array.isArray(snapshot?.allTrips) ? snapshot.allTrips : [];
+  const serviceDate = parseDateKeyword(message);
+
+  const afterVerb = prompt.replace(/(crea|crear|nueva|generar|hacer|haz|armar)\s*(la\s*)?ruta\s*(de|del|para)?\s*/g, '').trim();
+  const matchedDriver = findDriverInSnapshot(afterVerb, snapshot);
+
+  let targetTripIds = [];
+  let targetDriverId = null;
+  let targetDriverName = '';
+
+  if (matchedDriver) {
+    const unassigned = trips.filter(t => !t.driverId && !['cancelled', 'canceled'].includes(String(t.status || '').toLowerCase()));
+    const alreadyAssigned = trips.filter(t => t.driverId === matchedDriver.id);
+    const combined = [...alreadyAssigned, ...unassigned];
+    targetTripIds = combined.map(t => t.id);
+    targetDriverId = matchedDriver.id;
+    targetDriverName = matchedDriver.name;
+  } else {
+    targetTripIds = trips.filter(t => !t.driverId && !['cancelled', 'canceled'].includes(String(t.status || '').toLowerCase())).map(t => t.id).slice(0, 50);
+  }
+
+  const routeId = `route-${Date.now()}`;
+  return {
+    action: {
+      type: 'create-route',
+      routePlan: { id: routeId, serviceDate, tripIds: targetTripIds },
+      assignDriverId: targetDriverId,
+      assignTripIds: targetTripIds
+    },
+    reply: targetDriverName
+      ? `Listo. CreÃ© la ruta del ${serviceDate} para ${targetDriverName} y le asignÃ© ${targetTripIds.length} viaje${targetTripIds.length !== 1 ? 's' : ''}. El estado offline no afecta la asignaciÃ³n.`
+      : `Listo. CreÃ© una ruta para el ${serviceDate} con ${targetTripIds.length} viaje${targetTripIds.length !== 1 ? 's' : ''} sin asignar.`
+  };
+};
+
+const findAssignTripToDriverAction = (message, snapshot) => {
+  const prompt = normalizeLookupValue(message);
+  if (!/(asigna|asignar|pon|poner|dale|da|assign)\s/.test(prompt)) return null;
+  const trips = Array.isArray(snapshot?.allTrips) ? snapshot.allTrips : [];
+
+  // Detect driver name after "a [driver]" at the end
+  const toDriverMatch = prompt.match(/\s+a\s+([a-z\s]{3,})\s*$/);
+  if (!toDriverMatch) return null;
+  const driverText = toDriverMatch[1].trim();
+  const matchedDriver = findDriverInSnapshot(driverText, snapshot);
+  if (!matchedDriver) return null;
+
+  // Detect trip / patient in the middle portion
+  const midText = prompt.replace(/(asigna(?:r)?|pon(?:er)?|dale|da|assign)\s+(?:el\s+)?(?:viaje\s+)?(?:de\s+)?/, '').replace(/\s+a\s+[a-z\s]+$/, '').trim();
+  const scoredTrips = trips.map(trip => {
+    const riderNorm = normalizeLookupValue(trip.rider || '');
+    const rideNorm = normalizeLookupValue(trip.rideId || '');
+    let score = 0;
+    if (riderNorm && midText.includes(riderNorm)) score += 5;
+    if (rideNorm && midText.includes(rideNorm)) score += 5;
+    riderNorm.split(' ').filter(w => w.length >= 3).forEach(w => { if (midText.includes(w)) score += 2; });
+    return { trip, score };
+  }).filter(item => item.score > 0).sort((a, b) => b.score - a.score);
+
+  // "asigna todos los viajes de hoy a [driver]" â€” assign all unassigned
+  const allTripsMode = /todos|all/.test(prompt);
+  if (allTripsMode || scoredTrips.length === 0) {
+    const unassigned = trips.filter(t => !['cancelled', 'canceled'].includes(String(t.status || '').toLowerCase()));
+    return {
+      action: { type: 'assign-trips', driverId: matchedDriver.id, tripIds: unassigned.map(t => t.id) },
+      reply: `Listo. AsignÃ© ${unassigned.length} viaje${unassigned.length !== 1 ? 's' : ''} a ${matchedDriver.name}. El estado offline no afecta esto.`
+    };
+  }
+
+  const { trip } = scoredTrips[0];
+  return {
+    action: { type: 'assign-trips', driverId: matchedDriver.id, tripIds: [trip.id] },
+    reply: `Listo. El viaje de ${trip.rider || trip.id} fue asignado a ${matchedDriver.name}.`
+  };
+};
+
+const findConfirmTripAction = (message, snapshot) => {
+  const prompt = normalizeLookupValue(message);
+  if (!/(confirma|confirmar|confirm)\s*(el\s*)?viaje/.test(prompt) && !/(confirma|confirmar|confirm)\s+/.test(prompt)) return null;
+  const trips = Array.isArray(snapshot?.allTrips) ? snapshot.allTrips : [];
+
+  const strippedPrompt = prompt.replace(/(confirma|confirmar|confirm)(?:\s+el)?(?:\s+viaje)?\s+(de|del|a|al)?\s*/, '').trim();
+  const scoredTrips = trips.map(trip => {
+    const riderNorm = normalizeLookupValue(trip.rider || '');
+    const rideNorm = normalizeLookupValue(trip.rideId || '');
+    let score = 0;
+    if (riderNorm && strippedPrompt.includes(riderNorm)) score += 5;
+    if (rideNorm && strippedPrompt.includes(rideNorm)) score += 5;
+    riderNorm.split(' ').filter(w => w.length >= 3).forEach(w => { if (strippedPrompt.includes(w)) score += 2; });
+    return { trip, score };
+  }).filter(item => item.score > 0).sort((a, b) => b.score - a.score);
+
+  if (scoredTrips.length === 0) return null;
+  const { trip } = scoredTrips[0];
+  return {
+    action: {
+      type: 'confirm-trip',
+      tripId: trip.id,
+      riderName: trip.rider
+    },
+    reply: `Listo. El viaje de ${trip.rider || trip.id} ha sido confirmado.`
   };
 };
 
@@ -436,7 +586,7 @@ const flattenMenuItems = items => items.flatMap(item => item.children ? [{
 }]);
 
 const buildDispatchSnapshot = async session => {
-  const [adminPayload, dispatchState, integrationsState, systemUsersPayload, blacklistState] = await Promise.all([readNemtAdminPayload(), readNemtDispatchState(), readIntegrationsState(), readSystemUsersPayload(), readBlacklistState()]);
+  const [adminPayload, dispatchState, integrationsState, systemUsersPayload, blacklistState, persistedFacts] = await Promise.all([readNemtAdminPayload(), readNemtDispatchState(), readIntegrationsState(), readSystemUsersPayload(), readBlacklistState(), readAssistantFacts()]);
   const drivers = Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : [];
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
   const routePlans = Array.isArray(dispatchState?.routePlans) ? dispatchState.routePlans : [];
@@ -454,46 +604,6 @@ const buildDispatchSnapshot = async session => {
     modules: flattenMenuItems(MENU_ITEMS).filter(item => !item.isTitle).map(item => ({
       key: item.key,
       label: item.label,
-      url: item.url
-    })),
-    totals: {
-      trips: trips.length,
-      drivers: drivers.length,
-      routePlans: routePlans.length,
-      onlineDrivers: onlineDrivers.length,
-      unassignedTrips: unassignedTrips.length,
-      cancelledTrips: cancelledTrips.length,
-      users: users.length,
-      adminUsers: adminUsers.length,
-      driverUsers: driverUsers.length,
-      blacklistEntries: blacklistEntries.length
-    },
-    integrations: {
-      uberConfigured: Boolean(integrationsState?.uber?.clientId || integrationsState?.uber?.enabled),
-      aiConfigured: Boolean(integrationsState?.ai?.enabled && integrationsState?.ai?.apiKey),
-      aiModel: String(integrationsState?.ai?.model || '').trim(),
-      assistantName: String(integrationsState?.ai?.avatarName || 'Balby').trim(),
-      assistantMemoryNotes: String(integrationsState?.ai?.memoryNotes || '').trim(),
-      smsProvidersEnabled: enabledSmsProviders,
-      smsProvidersConfigured: Object.entries(integrationsState?.sms || {}).filter(([, config]) => Boolean(config?.accountSid || config?.apiKey || config?.messagingProfileId || config?.enabled)).map(([provider]) => provider)
-    },
-    currentUser: {
-      id: String(session?.user?.id || '').trim(),
-      name: String(session?.user?.name || '').trim(),
-      username: String(session?.user?.username || '').trim(),
-      firstName: String(session?.user?.firstName || '').trim(),
-      role: String(session?.user?.role || '').trim()
-    },
-    sampleDrivers: drivers.slice(0, 12).map(driver => ({
-      id: driver.id,
-      name: driver.name,
-      code: driver.code,
-      vehicle: driver.vehicle,
-      live: driver.live,
-      checkpoint: driver.checkpoint
-    })),
-    driverDirectory: drivers.slice(0, 250).map(driver => ({
-      id: driver.id,
       name: String(driver.name || '').trim(),
       vehicle: String(driver.vehicle || '').trim(),
       live: String(driver.live || '').trim()
@@ -519,83 +629,73 @@ const buildDispatchSnapshot = async session => {
       userManagement: 'Manage system users, passwords and access for web and Android.',
       drivers: 'Manage drivers, attendants, grouping and vehicles.',
       integrations: 'Configure Uber, SMS and AI assistant integrations.'
-    }
+    },
+    persistedFacts: Array.isArray(persistedFacts) ? persistedFacts : [],
+    allTrips: trips.map(trip => ({
+      id: trip.id,
+      rideId: trip.rideId,
+      brokerTripId: trip.brokerTripId,
+      rider: trip.rider,
+      status: trip.status,
+      driverId: trip.driverId,
+      pickup: trip.pickup,
+      dropoff: trip.dropoff,
+      address: trip.address,
+      destination: trip.destination,
+      confirmation: trip.confirmation
+    })),
+    routePlans: routePlans.slice(0, 30).map(rp => ({
+      id: rp.id,
+      serviceDate: rp.serviceDate,
+      tripIds: rp.tripIds
+    }))
   };
-};
-
-const trySolveSimpleMath = message => {
-  const normalized = String(message || '')
-    .toLowerCase()
-    .replace(/,/g, '.')
-    .replace(/cu[aá]nto es|cu[aá]l es|cuanto da|dime|resuelve/g, ' ')
-    .replace(/m[aá]s/g, '+')
-    .replace(/menos/g, '-')
-    .replace(/por|x|multiplicado por/g, '*')
-    .replace(/dividido entre|dividido por|entre/g, '/')
-    .replace(/les|es|son/g, ' ')
-    .replace(/and/g, ' ')
-    .replace(/what is/g, ' ')
-    .replace(/plus/g, '+')
-    .replace(/minus/g, '-')
-    .replace(/times/g, '*')
-    .replace(/over/g, '/')
-    .replace(/[^\d.+\-*/() ]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const match = normalized.match(/^(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)$/);
-  if (!match) return null;
-
-  const left = Number(match[1]);
-  const operator = match[2];
-  const right = Number(match[3]);
-  if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
-
-  let result = null;
-  if (operator === '+') result = left + right;
-  if (operator === '-') result = left - right;
-  if (operator === '*') result = left * right;
-  if (operator === '/') result = right === 0 ? null : left / right;
-  if (result === null || !Number.isFinite(result)) {
-    return 'No puedo dividir entre cero.';
-  }
-
-  return `El resultado es ${Number.isInteger(result) ? result : result.toFixed(2)}.`;
 };
 
 const buildFallbackReply = (message, snapshot, pathname = '', history = [], session = null, integrationsState = null) => {
   const prompt = String(message || '').toLowerCase();
+  const myName = snapshot?.integrations?.assistantName || 'Balby';
   const personalizedLead = buildPersonalizedLead(session);
+
   const mathReply = trySolveSimpleMathSafe(message);
-  if (mathReply) {
-    return mathReply;
-  }
-  const learnedFactReply = findLearnedFactReply(message, history, integrationsState);
-  if (learnedFactReply) {
-    return learnedFactReply;
-  }
+  if (mathReply) return mathReply;
+
+  const learnedFactReply = findLearnedFactReply(message, history, integrationsState, snapshot);
+  if (learnedFactReply) return learnedFactReply;
+
   if (/cual es tu nombre|como te llamas|tu nombre/.test(prompt)) {
-    return `Soy ${snapshot?.integrations?.assistantName || 'Balby'}.`;
+    return `Soy ${myName}, tu asistente de dispatch.`;
   }
   if (/quien soy|mi nombre|como me llamo/.test(prompt)) {
     const firstName = getSessionFirstName(session);
     return `${personalizedLead}tu nombre es ${firstName}.`;
   }
+  if (/hola|buenos dias|buenas tardes|buenas noches|hey|hi\b/.test(prompt)) {
+    const firstName = getSessionFirstName(session);
+    return `Hola ${firstName}, soy ${myName}. Puedo crear rutas, confirmar viajes, mandar mensajes a choferes, buscar pacientes y responder preguntas sobre la operacion. Dime en que te ayudo.`;
+  }
+  if (/que puedes hacer|que sabes|como me ayudas|ayuda|help/.test(prompt)) {
+    return `Soy ${myName} y puedo: crear rutas para el dia, confirmar viajes, mandar mensajes a choferes, buscar informacion de pacientes y viajes, navegar a cualquier modulo, y recordar datos que me enseÃ±es. Solo pideme lo que necesites.`;
+  }
   if (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(prompt)) {
     return `${personalizedLead}te voy a cerrar la sesion.`;
   }
+
   const moduleAction = findModuleAction(message, snapshot);
-  if (moduleAction) {
-    return `${personalizedLead}${moduleAction.reply}`;
-  }
+  if (moduleAction) return `${personalizedLead}${moduleAction.reply}`;
+
+  const createRouteAction = findCreateRouteAction(message, snapshot);
+  if (createRouteAction) return `${personalizedLead}${createRouteAction.reply}`;
+
+  const confirmTripAction = findConfirmTripAction(message, snapshot);
+  if (confirmTripAction) return `${personalizedLead}${confirmTripAction.reply}`;
+
   const driverMessageAction = findDriverMessageAction(message, snapshot);
-  if (driverMessageAction) {
-    return `${personalizedLead}${driverMessageAction.reply}`;
-  }
+  if (driverMessageAction) return `${personalizedLead}${driverMessageAction.reply}`;
+
   const tripReply = findTripReply(message, snapshot);
-  if (tripReply) {
-    return tripReply;
-  }
+  if (tripReply) return tripReply;
+
   if (/(chofer|driver)/.test(prompt) && /(mas|mayor|peor|worst)/.test(prompt) && /(tarde|late|retras)/.test(prompt)) {
     return buildWorstDriverDelayReply(snapshot);
   }
@@ -605,11 +705,18 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
   if (/chofer|driver/.test(prompt) && /tarde|late|retras/.test(prompt)) {
     return buildDriverDelayReply(snapshot);
   }
-  if (/telefono|tel[eé]fono|numero|n[uú]mero|phone|cell|cel/.test(prompt)) {
+  if (/telefono|tel[eÃ©]fono|numero|n[uÃº]mero|phone|cell|cel/.test(prompt)) {
     return 'Puedo buscar telefono, pero dime el nombre del paciente o el ride id del viaje.';
+  }
+  if (/direcci[oÃ³]n|domicilio|address/.test(prompt)) {
+    return 'Puedo buscar direcciones. Dime el nombre del paciente o recuerdame la direccion diciendo: direccion de [nombre] es [direccion].';
   }
   if (/cuantos|cuantas|cantidad|total/.test(prompt) && /viajes|trips/.test(prompt)) {
     return `${personalizedLead}ahora mismo hay ${snapshot.totals.trips} viajes cargados y ${snapshot.totals.unassignedTrips} siguen sin asignar.`;
+  }
+  if (/rutas?|route/.test(prompt)) {
+    const routeCount = Array.isArray(snapshot?.routePlans) ? snapshot.routePlans.length : 0;
+    return `Hay ${routeCount} plan${routeCount !== 1 ? 'es' : ''} de ruta guardado${routeCount !== 1 ? 's' : ''}. Para crear una nueva dime: crea la ruta de maÃ±ana, o crea ruta para [nombre del chofer].`;
   }
   if (/paciente|rider|member|trip|viaje|ride/.test(prompt)) {
     return 'Puedo revisar datos del viaje, pero necesito el nombre del paciente o el ride id para buscarlo bien.';
@@ -620,8 +727,11 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
   if (prompt.includes('cancel')) {
     return `Ahora mismo hay ${snapshot.totals.cancelledTrips} viajes cancelados.`;
   }
+  if (/offline|en linea|en l.nea/.test(prompt) && /chofer|driver/.test(prompt)) {
+    return `El estado online u offline de un chofer solo indica si tiene el GPS activo en la app Android. No afecta para nada la asignacion de viajes ni la creacion de rutas. Puedes asignar viajes a cualquier chofer sin importar si esta offline.`;
+  }
   if (prompt.includes('driver') || prompt.includes('chofer')) {
-    return `${personalizedLead}hay ${snapshot.totals.drivers} choferes en la plantilla y ${snapshot.totals.onlineDrivers} estan online.`;
+    return `${personalizedLead}hay ${snapshot.totals.drivers} choferes en la plantilla. ${snapshot.totals.onlineDrivers} tienen el GPS activo ahora. Los choferes offline pueden recibir viajes y rutas sin problema, el offline solo significa que tienen la app cerrada.`;
   }
   if (prompt.includes('trip') || prompt.includes('viaje')) {
     return `${personalizedLead}hay ${snapshot.totals.trips} viajes cargados y ${snapshot.totals.unassignedTrips} siguen abiertos.`;
@@ -636,20 +746,34 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
   if (prompt.includes('integr') || prompt.includes('sms') || prompt.includes('uber')) {
     return `Resumen de integraciones: Uber configurado ${snapshot.integrations.uberConfigured ? 'si' : 'no'}. IA configurada ${snapshot.integrations.aiConfigured ? `si, usando ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no'}. Proveedores SMS activos: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'ninguno'}.`;
   }
-  return `${personalizedLead}dime en que te ayudo.`;
+  if (/recuerda|aprende|guarda/.test(prompt)) {
+    return `Entendido. Lo voy a guardar para recordarlo la proxima vez.`;
+  }
+  return `${personalizedLead}dime en que te ayudo. Puedo crear rutas, confirmar viajes, mandar mensajes, buscar pacientes y responder preguntas de dispatch.`;
+};
+
+const extractLearnFacts = message => {
+  const results = [];
+  const text = String(message || '');
+  const rememberMatch = text.match(/(?:recuerda|aprende|guarda)(?: que)?\s+(.+?)\s+(?:es|=)\s+(.+)/i);
+  if (rememberMatch) results.push({ subject: rememberMatch[1].trim(), value: rememberMatch[2].trim(), kind: 'general' });
+  const phoneMatch = text.match(/(?:telefono|tel[eÃ©]fono|numero|n[uÃº]mero)\s+de\s+(.+?)\s+(?:es|=)\s+([+()\d\s-]+)/i);
+  if (phoneMatch) results.push({ subject: phoneMatch[1].trim(), value: phoneMatch[2].trim(), kind: 'phone' });
+  const addressMatch = text.match(/(?:direcci[oÃ³]n|domicilio|vive en|address)\s+de\s+(.+?)\s+(?:es|=)\s+(.+)/i);
+  if (addressMatch) results.push({ subject: addressMatch[1].trim(), value: addressMatch[2].trim(), kind: 'address' });
+  return results;
 };
 
 const callOpenAI = async ({ message, history, snapshot, pathname, integrationsState, providerMode, session }) => {
   const mathReply = trySolveSimpleMathSafe(message);
   const moduleAction = findModuleAction(message, snapshot);
+  const createRouteAction = findCreateRouteAction(message, snapshot);
+  const confirmTripAction = findConfirmTripAction(message, snapshot);
   const driverMessageAction = findDriverMessageAction(message, snapshot);
-  const directAction = driverMessageAction?.action || moduleAction?.action || (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(String(message || '').toLowerCase()) ? 'signout' : null);
+  const assignTripAction = findAssignTripToDriverAction(message, snapshot);
+  const directAction = confirmTripAction?.action || assignTripAction?.action || createRouteAction?.action || driverMessageAction?.action || moduleAction?.action || (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(String(message || '').toLowerCase()) ? 'signout' : null);
   if (mathReply) {
-    return {
-      reply: mathReply,
-      provider: 'local',
-      action: directAction
-    };
+    return { reply: mathReply, provider: 'local', action: directAction };
   }
 
   if (providerMode === 'local') {
@@ -735,29 +859,47 @@ export async function POST(request) {
   const pathname = String(body?.pathname || '').trim();
   const providerMode = String(body?.providerMode || 'local').trim().toLowerCase() === 'openai' ? 'openai' : 'local';
   const session = await getServerSession(authOptions);
-  const conversationKey = buildConversationKey({
-    session,
-    clientId
-  });
+  const conversationKey = buildConversationKey({ session, clientId });
 
   if (!message) {
-    return NextResponse.json({
-      error: 'Message is required.'
-    }, { status: 400 });
+    return NextResponse.json({ error: 'Message is required.' }, { status: 400 });
   }
 
   try {
     const snapshot = await buildDispatchSnapshot(session);
     const integrationsState = await readIntegrationsState();
-    const result = await callOpenAI({
-      message,
-      history,
-      snapshot,
-      pathname,
-      integrationsState,
-      providerMode,
-      session
-    });
+    const result = await callOpenAI({ message, history, snapshot, pathname, integrationsState, providerMode, session });
+
+    // Persist learned facts from this message
+    const newFacts = extractLearnFacts(message);
+    for (const fact of newFacts) {
+      await mergeAssistantFact(fact);
+    }
+
+    // Execute create-route action server-side
+    if (result.action?.type === 'create-route' && result.action?.routePlan) {
+      try {
+        const currentState = await readNemtDispatchState();
+        await writeNemtDispatchState({
+          ...currentState,
+          routePlans: [...(Array.isArray(currentState.routePlans) ? currentState.routePlans : []), result.action.routePlan]
+        });
+      } catch {}
+    }
+
+    // Execute confirm-trip action server-side
+    if (result.action?.type === 'confirm-trip' && result.action?.tripId) {
+      try {
+        const currentState = await readNemtDispatchState();
+        const nextTrips = (Array.isArray(currentState.trips) ? currentState.trips : []).map(trip =>
+          trip.id === result.action.tripId
+            ? { ...trip, confirmation: { ...trip.confirmation, status: 'Confirmed', respondedAt: new Date().toISOString() } }
+            : trip
+        );
+        await writeNemtDispatchState({ ...currentState, trips: nextTrips });
+      } catch {}
+    }
+
     if (conversationKey) {
       const nextMessages = [...history.slice(-20).map((item, index) => ({
         id: `hist-${index}-${Date.now()}`,
