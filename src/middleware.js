@@ -11,6 +11,11 @@ export default withAuth(
       return NextResponse.redirect(new URL('/trip-analytics', request.url));
     }
 
+    // Allow access to login page even if logged in - user can logout and re-authenticate
+    if (pathname.startsWith('/auth/login')) {
+      return NextResponse.next();
+    }
+
     if (AUTH_ROUTES.some(route => pathname.startsWith(route)) && request.nextauth.token) {
       return NextResponse.redirect(new URL('/trip-analytics', request.url));
     }
