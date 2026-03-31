@@ -210,10 +210,6 @@ const getDisplayTripId = trip => {
 
 const getTripNoteText = trip => String(trip?.notes || trip?.note || trip?.comments || '').trim();
 
-const getPickupZip = trip => String(trip?.fromZipcode || trip?.fromZip || trip?.pickupZipcode || trip?.pickupZip || trip?.originZip || '').trim();
-
-const getDropoffZip = trip => String(trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.dropoffZip || trip?.destinationZip || '').trim();
-
 const buildTripEditDraft = trip => ({
   notes: String(trip?.notes || '').trim(),
   scheduledPickup: String(trip?.scheduledPickup || '').trim(),
@@ -268,6 +264,8 @@ const TripDashboardWorkspace = () => {
   const [tripDateFilter, setTripDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
+  const [pickupZipFilter, setPickupZipFilter] = useState('');
+  const [dropoffZipFilter, setDropoffZipFilter] = useState('');
   const [zipFilter, setZipFilter] = useState('');
   const [puCityFilter, setPuCityFilter] = useState('');
   const [doCityFilter, setDoCityFilter] = useState('');
@@ -286,6 +284,7 @@ const TripDashboardWorkspace = () => {
     key: 'pickup',
     direction: 'asc'
   });
+  const [columnWidths, setColumnWidths] = useState({});
   const [statusMessage, setStatusMessage] = useState('Trip dashboard listo con paneles inferiores cerrados.');
   const [columnSplit, setColumnSplit] = useState(58);
   const [rowSplit, setRowSplit] = useState(68);
@@ -310,7 +309,7 @@ const TripDashboardWorkspace = () => {
   const getTripTimelineDateKey = trip => getTripServiceDateKey(trip) || getRouteServiceDateKey(routePlans.find(routePlan => routePlan.id === trip?.routeId), trips);
   const availableTripDateKeys = useMemo(() => Array.from(new Set(trips.map(getTripTimelineDateKey).filter(Boolean).concat(routePlans.map(routePlan => getRouteServiceDateKey(routePlan, trips)).filter(Boolean)))).sort(), [routePlans, trips]);
   const activeTripDateLabel = useMemo(() => formatTripDateLabel(tripDateFilter), [tripDateFilter]);
-  const filteredTrips = useMemo(() => trips.filter(trip => {
+  const cityOptionTrips = useMemo(() => trips.filter(trip => {
     const normalizedStatus = String(trip.status || '').toLowerCase();
     if (tripStatusFilter === 'all') return true;
     if (tripStatusFilter === 'unassigned') return !trip.driverId && !['cancelled', 'canceled'].includes(normalizedStatus);
@@ -328,7 +327,44 @@ const TripDashboardWorkspace = () => {
     const searchValue = tripIdSearch.trim().toLowerCase();
     if (!searchValue) return true;
     return String(trip.id || '').toLowerCase().includes(searchValue) || String(trip.brokerTripId || '').toLowerCase().includes(searchValue);
-  }), [tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, trips]);
+  }).filter(trip => {
+    const pickupZipValue = pickupZipFilter.trim();
+    if (!pickupZipValue) return true;
+    return getPickupZip(trip) === pickupZipValue;
+  }).filter(trip => {
+    const dropoffZipValue = dropoffZipFilter.trim();
+    if (!dropoffZipValue) return true;
+    return getDropoffZip(trip) === dropoffZipValue;
+  }).filter(trip => {
+    const zipValue = zipFilter.trim().toLowerCase();
+    if (!zipValue) return true;
+    return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
+  }), [dropoffZipFilter, pickupZipFilter, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, trips, zipFilter]);
+  const availablePickupZips = useMemo(() => {
+    const targetDropoffZip = dropoffZipFilter.trim();
+    return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, dropoffZipFilter]);
+  const availableDropoffZips = useMemo(() => {
+    const targetPickupZip = pickupZipFilter.trim();
+    return Array.from(new Set(cityOptionTrips.filter(trip => !targetPickupZip || getPickupZip(trip) === targetPickupZip).map(trip => getDropoffZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, pickupZipFilter]);
+  const availablePickupCities = useMemo(() => {
+    const targetDropoffCity = doCityFilter.trim().toLowerCase();
+    return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffCity || getDropoffCity(trip).toLowerCase() === targetDropoffCity).map(trip => getPickupCity(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, doCityFilter]);
+  const availableDropoffCities = useMemo(() => {
+    const targetPickupCity = puCityFilter.trim().toLowerCase();
+    return Array.from(new Set(cityOptionTrips.filter(trip => !targetPickupCity || getPickupCity(trip).toLowerCase() === targetPickupCity).map(trip => getDropoffCity(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, puCityFilter]);
+  const filteredTrips = useMemo(() => cityOptionTrips.filter(trip => {
+    const pickupCityValue = puCityFilter.trim().toLowerCase();
+    if (!pickupCityValue) return true;
+    return getPickupCity(trip).toLowerCase() === pickupCityValue;
+  }).filter(trip => {
+    const dropoffCityValue = doCityFilter.trim().toLowerCase();
+    if (!dropoffCityValue) return true;
+    return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
+  }), [cityOptionTrips, doCityFilter, puCityFilter]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIds.includes(trip.id)), [selectedTripIds, trips]);
   const visibleTripIds = filteredTrips.map(trip => trip.id);
   const filteredDrivers = drivers;
@@ -687,12 +723,55 @@ const TripDashboardWorkspace = () => {
     });
   };
 
-  const renderTripHeader = (columnKey, label, width) => <th style={width ? { width } : undefined}>
+  const handleColumnResizeStart = (event, columnKey) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const headerCell = event.currentTarget.closest('th');
+    const startX = event.clientX;
+    const startWidth = columnWidths[columnKey] ?? Math.round(headerCell?.getBoundingClientRect().width || 120);
+
+    const handlePointerMove = moveEvent => {
+      const delta = moveEvent.clientX - startX;
+      const nextWidth = Math.max(72, Math.min(640, startWidth + delta));
+      setColumnWidths(current => ({
+        ...current,
+        [columnKey]: Math.round(nextWidth)
+      }));
+    };
+
+    const stopDragging = () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', stopDragging);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', stopDragging);
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+  };
+
+  const renderTripHeader = (columnKey, label, width) => {
+    const resolvedWidth = columnWidths[columnKey] ?? width;
+    return <th style={resolvedWidth ? { width: resolvedWidth, minWidth: resolvedWidth, maxWidth: resolvedWidth, position: 'relative' } : {
+      position: 'relative'
+    }}>
       <button type="button" onClick={() => handleTripSortChange(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
         <span>{label}</span>
         <span className="small">{tripSort.key === columnKey ? tripSort.direction === 'asc' ? '↑' : '↓' : '↕'}</span>
       </button>
+      <span role="presentation" onMouseDown={event => handleColumnResizeStart(event, columnKey)} style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        width: 10,
+        height: '100%',
+        cursor: 'col-resize',
+        background: 'linear-gradient(180deg, rgba(107,114,128,0) 0%, rgba(107,114,128,0.45) 30%, rgba(107,114,128,0.45) 70%, rgba(107,114,128,0) 100%)'
+      }} />
     </th>;
+  };
 
   const handleDriverSelectionChange = nextDriverId => {
     setSelectedDriverId(nextDriverId);
@@ -1075,7 +1154,7 @@ const TripDashboardWorkspace = () => {
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto' }}>
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }}>
                   {!showMapPane ? <Button variant="warning" size="sm" onClick={() => {
                   setShowMapPane(true);
                   setStatusMessage('Mapa visible otra vez en Trip Dashboard.');
@@ -1094,8 +1173,26 @@ const TripDashboardWorkspace = () => {
                   
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map Screen' : 'Show Map Here'}</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/forms-safe-ride-import')}>Import Excel</Button>
-                  {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 35, width: 240 }}>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
+                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
+                      <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
+                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+                    </>}
+                  </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <span className="fw-semibold small">Leg</span>
+                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
+                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Viajes de regreso a casa">BL</Button>
+                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Tercer viaje o connector leg">CL</Button>
+                  </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <span className="fw-semibold small">Type</span>
+                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
+                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
+                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
+                  </div>
+                  {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 80, width: 240 }}>
                       <CardBody className="p-3 text-dark">
                         <div className="fw-semibold mb-2">Escoge que quieres ver</div>
                         <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
@@ -1113,34 +1210,30 @@ const TripDashboardWorkspace = () => {
                     {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Leg</span>
-                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
-                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Viajes de regreso a casa">BL</Button>
-                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Tercer viaje o connector leg">CL</Button>
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Type</span>
-                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
-                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
-                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">ZIP</span>
-                    <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="ZIP" style={{ width: 72 }} title="Filtra por PU o DO zip code" />
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">City</span>
-                    <Form.Control size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} placeholder="PU city" style={{ width: 90 }} title="Ciudad de recogida" />
+                    <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} style={{ width: 110 }} title="ZIP de origen">
+                      <option value="">PU ZIP</option>
+                      {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
+                    </Form.Select>
                     <span className="text-muted small">→</span>
-                    <Form.Control size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} placeholder="DO city" style={{ width: 90 }} title="Ciudad de destino" />
-                    {(puCityFilter || doCityFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setZipFilter(''); }} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
+                    <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} style={{ width: 110 }} title="ZIP de destino">
+                      <option value="">DO ZIP</option>
+                      {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
+                    </Form.Select>
+                    <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
                   </div>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
-                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-                      <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
-                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
-                    </>}
+                    <span className="fw-semibold small">Ruta</span>
+                    <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} style={{ width: 140 }} title="Ciudad de recogida">
+                      <option value="">Origen</option>
+                      {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
+                    </Form.Select>
+                    <span className="text-muted small">→</span>
+                    <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} style={{ width: 140 }} title="Ciudad de destino">
+                      <option value="">Destino</option>
+                      {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
+                    </Form.Select>
+                    {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
                   </div>
                   <Button
                     variant="outline-dark"

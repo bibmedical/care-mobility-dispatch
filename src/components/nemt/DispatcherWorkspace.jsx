@@ -244,6 +244,8 @@ const DispatcherWorkspace = () => {
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
+  const [pickupZipFilter, setPickupZipFilter] = useState('');
+  const [dropoffZipFilter, setDropoffZipFilter] = useState('');
   const [zipFilter, setZipFilter] = useState('');
   const [puCityFilter, setPuCityFilter] = useState('');
   const [doCityFilter, setDoCityFilter] = useState('');
@@ -270,6 +272,7 @@ const DispatcherWorkspace = () => {
     key: 'pickup',
     direction: 'asc'
   });
+  const [columnWidths, setColumnWidths] = useState({});
   const workspaceRef = useRef(null);
   const deferredRouteSearch = useDeferredValue(routeSearch);
 
@@ -278,7 +281,7 @@ const DispatcherWorkspace = () => {
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const hasSelectedTrips = selectedTripIds.length > 0;
 
-  const filteredTrips = useMemo(() => trips.filter(trip => {
+  const cityOptionTrips = useMemo(() => trips.filter(trip => {
     const normalizedStatus = String(trip.status || '').toLowerCase();
     const matchesStatus = tripStatusFilter === 'all' ? normalizedStatus !== 'cancelled' : normalizedStatus === tripStatusFilter;
     if (!matchesStatus) return false;
@@ -294,7 +297,44 @@ const DispatcherWorkspace = () => {
     const searchValue = tripIdSearch.trim().toLowerCase();
     if (!searchValue) return true;
     return String(trip.id || '').toLowerCase().includes(searchValue) || String(trip.brokerTripId || '').toLowerCase().includes(searchValue);
-  }), [selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, trips]);
+  }).filter(trip => {
+    const pickupZipValue = pickupZipFilter.trim();
+    if (!pickupZipValue) return true;
+    return getPickupZip(trip) === pickupZipValue;
+  }).filter(trip => {
+    const dropoffZipValue = dropoffZipFilter.trim();
+    if (!dropoffZipValue) return true;
+    return getDropoffZip(trip) === dropoffZipValue;
+  }).filter(trip => {
+    const zipValue = zipFilter.trim().toLowerCase();
+    if (!zipValue) return true;
+    return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
+  }), [dropoffZipFilter, pickupZipFilter, selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, trips, zipFilter]);
+  const availablePickupZips = useMemo(() => {
+    const targetDropoffZip = dropoffZipFilter.trim();
+    return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, dropoffZipFilter]);
+  const availableDropoffZips = useMemo(() => {
+    const targetPickupZip = pickupZipFilter.trim();
+    return Array.from(new Set(cityOptionTrips.filter(trip => !targetPickupZip || getPickupZip(trip) === targetPickupZip).map(trip => getDropoffZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, pickupZipFilter]);
+  const availablePickupCities = useMemo(() => {
+    const targetDropoffCity = doCityFilter.trim().toLowerCase();
+    return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffCity || getDropoffCity(trip).toLowerCase() === targetDropoffCity).map(trip => getPickupCity(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, doCityFilter]);
+  const availableDropoffCities = useMemo(() => {
+    const targetPickupCity = puCityFilter.trim().toLowerCase();
+    return Array.from(new Set(cityOptionTrips.filter(trip => !targetPickupCity || getPickupCity(trip).toLowerCase() === targetPickupCity).map(trip => getDropoffCity(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, puCityFilter]);
+  const filteredTrips = useMemo(() => cityOptionTrips.filter(trip => {
+    const pickupCityValue = puCityFilter.trim().toLowerCase();
+    if (!pickupCityValue) return true;
+    return getPickupCity(trip).toLowerCase() === pickupCityValue;
+  }).filter(trip => {
+    const dropoffCityValue = doCityFilter.trim().toLowerCase();
+    if (!dropoffCityValue) return true;
+    return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
+  }), [cityOptionTrips, doCityFilter, puCityFilter]);
   const visibleTripIds = filteredTrips.map(trip => trip.id);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const filteredDrivers = drivers;
@@ -760,12 +800,55 @@ const DispatcherWorkspace = () => {
     setStatusMessage(`Abriendo WhatsApp en una nueva pestaña para ${targetDriver.name}.`);
   };
 
-  const renderTripHeader = (columnKey, label, width) => <th style={width ? { width } : undefined}>
+  const handleColumnResizeStart = (event, columnKey) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const headerCell = event.currentTarget.closest('th');
+    const startX = event.clientX;
+    const startWidth = columnWidths[columnKey] ?? Math.round(headerCell?.getBoundingClientRect().width || 120);
+
+    const handlePointerMove = moveEvent => {
+      const delta = moveEvent.clientX - startX;
+      const nextWidth = Math.max(72, Math.min(640, startWidth + delta));
+      setColumnWidths(current => ({
+        ...current,
+        [columnKey]: Math.round(nextWidth)
+      }));
+    };
+
+    const stopDragging = () => {
+      window.removeEventListener('mousemove', handlePointerMove);
+      window.removeEventListener('mouseup', stopDragging);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mouseup', stopDragging);
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+  };
+
+  const renderTripHeader = (columnKey, label, width) => {
+    const resolvedWidth = columnWidths[columnKey] ?? width;
+    return <th style={resolvedWidth ? { width: resolvedWidth, minWidth: resolvedWidth, maxWidth: resolvedWidth, position: 'relative' } : {
+      position: 'relative'
+    }}>
       <button type="button" onClick={() => handleTripSortChange(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
         <span>{label}</span>
         <span className="small">{tripSort.key === columnKey ? tripSort.direction === 'asc' ? '↑' : '↓' : '↕'}</span>
       </button>
+      <span role="presentation" onMouseDown={event => handleColumnResizeStart(event, columnKey)} style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        width: 10,
+        height: '100%',
+        cursor: 'col-resize',
+        background: 'linear-gradient(180deg, rgba(107,114,128,0) 0%, rgba(107,114,128,0.45) 30%, rgba(107,114,128,0.45) 70%, rgba(107,114,128,0) 100%)'
+      }} />
     </th>;
+  };
 
   useEffect(() => {
     if (!showRoute || routeStops.length < 2) {
@@ -977,7 +1060,7 @@ const DispatcherWorkspace = () => {
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto' }}>
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }}>
                   <Badge bg="primary">{trips.length} trips</Badge>
                   <Badge bg="info">{drivers.length} drivers</Badge>
                   <Badge bg="secondary">{liveDrivers} live</Badge>
@@ -990,8 +1073,26 @@ const DispatcherWorkspace = () => {
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle} disabled={mapLocked}>
                     {tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}
                   </Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/forms-safe-ride-import')} disabled={mapLocked}>Import Excel</Button>
-                  {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 35, width: 240 }}>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked}>I</Button> : <>
+                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)} disabled={mapLocked}>A</Button>
+                      <Button variant="secondary" size="sm" onClick={handleUnassign} disabled={mapLocked}>U</Button>
+                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} disabled={mapLocked}>C</Button>
+                    </>}
+                  </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <span className="fw-semibold small">Leg</span>
+                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} disabled={mapLocked} title="Primer viaje a la cita">AL</Button>
+                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} disabled={mapLocked} title="Viajes de regreso a casa">BL</Button>
+                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} disabled={mapLocked} title="Tercer viaje o connector leg">CL</Button>
+                  </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <span className="fw-semibold small">Type</span>
+                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} disabled={mapLocked} title="Ambulatory">A</Button>
+                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} disabled={mapLocked} title="Wheelchair">W</Button>
+                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} disabled={mapLocked} title="Stretcher">STR</Button>
+                  </div>
+                  {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 80, width: 240 }}>
                       <CardBody className="p-3 text-dark">
                         <div className="fw-semibold mb-2">Escoge que quieres ver</div>
                         <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
@@ -1005,34 +1106,30 @@ const DispatcherWorkspace = () => {
                 {/* Row 3: Leg/Type filters and misc buttons */}
                 <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Leg</span>
-                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} disabled={mapLocked} title="Primer viaje a la cita">AL</Button>
-                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} disabled={mapLocked} title="Viajes de regreso a casa">BL</Button>
-                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} disabled={mapLocked} title="Tercer viaje o connector leg">CL</Button>
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Type</span>
-                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} disabled={mapLocked} title="Ambulatory">A</Button>
-                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} disabled={mapLocked} title="Wheelchair">W</Button>
-                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} disabled={mapLocked} title="Stretcher">STR</Button>
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">ZIP</span>
-                    <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="ZIP" disabled={mapLocked} style={{ width: 72 }} title="Filtra por PU o DO zip code" />
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">City</span>
-                    <Form.Control size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} placeholder="PU city" disabled={mapLocked} style={{ width: 90 }} title="Ciudad de recogida" />
+                    <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} disabled={mapLocked} style={{ width: 110 }} title="ZIP de origen">
+                      <option value="">PU ZIP</option>
+                      {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
+                    </Form.Select>
                     <span className="text-muted small">→</span>
-                    <Form.Control size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} placeholder="DO city" disabled={mapLocked} style={{ width: 90 }} title="Ciudad de destino" />
-                    {(puCityFilter || doCityFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
+                    <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} disabled={mapLocked} style={{ width: 110 }} title="ZIP de destino">
+                      <option value="">DO ZIP</option>
+                      {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
+                    </Form.Select>
+                    <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" disabled={mapLocked} style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
                   </div>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked}>I</Button> : <>
-                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)} disabled={mapLocked}>A</Button>
-                      <Button variant="secondary" size="sm" onClick={handleUnassign} disabled={mapLocked}>U</Button>
-                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} disabled={mapLocked}>C</Button>
-                    </>}
+                    <span className="fw-semibold small">Ruta</span>
+                    <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} disabled={mapLocked} style={{ width: 140 }} title="Ciudad de recogida">
+                      <option value="">Origen</option>
+                      {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
+                    </Form.Select>
+                    <span className="text-muted small">→</span>
+                    <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} disabled={mapLocked} style={{ width: 140 }} title="Ciudad de destino">
+                      <option value="">Destino</option>
+                      {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
+                    </Form.Select>
+                    {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
                   </div>
                   <Button
                     variant="outline-dark"
