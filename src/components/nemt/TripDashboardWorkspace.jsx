@@ -994,23 +994,25 @@ const TripDashboardWorkspace = () => {
   };
 
   const handleAssign = driverId => {
-    if (!driverId || selectedTripIds.length === 0) {
+    const targetTripIds = [...selectedTripIds];
+    if (!driverId || targetTripIds.length === 0) {
       setStatusMessage('Selecciona chofer y al menos un trip.');
       return;
     }
 
-    assignTripsToDriver(driverId);
+    assignTripsToDriver(driverId, targetTripIds);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage('Trips asignados al chofer seleccionado.');
   };
 
   const handleAssignSecondary = driverId => {
-    if (!driverId || selectedTripIds.length === 0) {
+    const targetTripIds = [...selectedTripIds];
+    if (!driverId || targetTripIds.length === 0) {
       setStatusMessage('Escoge segundo chofer y al menos un trip.');
       return;
     }
 
-    assignTripsToSecondaryDriver(driverId);
+    assignTripsToSecondaryDriver(driverId, targetTripIds);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage('Trips actualizados con segundo chofer.');
   };

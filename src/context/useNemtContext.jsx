@@ -191,14 +191,12 @@ export const NemtProvider = ({
 
   const updateState = (updater, options = {}) => {
     const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;
-    startTransition(() => {
-      setState(currentState => {
-        const baseState = currentState ?? createInitialState();
-        if (shouldMarkDispatchDirty) {
-          hasLocalDispatchChangesRef.current = true;
-        }
-        return updater(baseState);
-      });
+    setState(currentState => {
+      const baseState = currentState ?? createInitialState();
+      if (shouldMarkDispatchDirty) {
+        hasLocalDispatchChangesRef.current = true;
+      }
+      return updater(baseState);
     });
   };
 

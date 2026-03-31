@@ -707,7 +707,8 @@ const DispatcherWorkspace = () => {
   };
 
   const handleAssign = driverId => {
-    if (!driverId || selectedTripIds.length === 0) {
+    const targetTripIds = [...selectedTripIds];
+    if (!driverId || targetTripIds.length === 0) {
       setStatusMessage('Selecciona chofer y al menos un trip.');
       return;
     }
@@ -718,13 +719,14 @@ const DispatcherWorkspace = () => {
       return;
     }
 
-    assignTripsToDriver(driverId);
+    assignTripsToDriver(driverId, targetTripIds);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
-    setStatusMessage(`${selectedTripIds.length} trip(s) asignados a ${driver.name}.`);
+    setStatusMessage(`${targetTripIds.length} trip(s) asignados a ${driver.name}.`);
   };
 
   const handleAssignSecondary = driverId => {
-    if (!driverId || selectedTripIds.length === 0) {
+    const targetTripIds = [...selectedTripIds];
+    if (!driverId || targetTripIds.length === 0) {
       setStatusMessage('Escoge segundo chofer y al menos un trip.');
       return;
     }
@@ -735,9 +737,9 @@ const DispatcherWorkspace = () => {
       return;
     }
 
-    assignTripsToSecondaryDriver(driverId);
+    assignTripsToSecondaryDriver(driverId, targetTripIds);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
-    setStatusMessage(`${selectedTripIds.length} trip(s) actualizados con segundo chofer: ${driver.name}.`);
+    setStatusMessage(`${targetTripIds.length} trip(s) actualizados con segundo chofer: ${driver.name}.`);
   };
 
   const handleAssignTrip = tripId => {
