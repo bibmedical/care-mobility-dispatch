@@ -399,7 +399,7 @@ const ConfirmationWorkspace = () => {
   useEffect(() => {
     if (isMilesMaxManual) return;
     if (detectedMaxMilesForWindow == null) {
-      setMilesMaxFilter('25');
+      setMilesMaxFilter('');
       return;
     }
     setMilesMaxFilter(String(Number(detectedMaxMilesForWindow.toFixed(2))));
