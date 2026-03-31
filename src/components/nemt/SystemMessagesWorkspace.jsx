@@ -81,7 +81,7 @@ const SystemMessagesWorkspace = () => {
       <div style={{ marginBottom: '20px' }}>
         <h4 style={{ margin: 0 }}>System Messages</h4>
         <p style={{ color: '#888', marginTop: 4, marginBottom: 0, fontSize: 13 }}>
-          Mensajes internos, alertas operativas y avisos listos para revisar.
+          Internal messages, operational alerts and notices ready for review.
         </p>
       </div>
 

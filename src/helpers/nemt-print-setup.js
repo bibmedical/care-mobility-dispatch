@@ -194,7 +194,7 @@ export const buildRoutePrintDocument = ({
     <div class="meta">
       <div><strong>Driver:</strong> ${escapeHtml(driverName || 'No driver selected')}</div>
       <div><strong>Generado:</strong> ${escapeHtml(generatedAt)}</div>
-      <div><strong>Total de viajes:</strong> ${routeTrips.length}</div>
+      <div><strong>Total trips:</strong> ${routeTrips.length}</div>
       <div><strong>Total millas:</strong> ${escapeHtml(totalMiles > 0 ? totalMiles.toFixed(2) : '-')}</div>
     </div>
     <table>
@@ -252,11 +252,11 @@ export const buildEarlyMorningRideReportDocument = ({
   <body>
     <h1>${escapeHtml(reportTitle)}</h1>
     <div class="meta">
-      <div><strong>Fecha:</strong> ${escapeHtml(selectedDate || '-')}</div>
+      <div><strong>Date:</strong> ${escapeHtml(selectedDate || '-')}</div>
       <div><strong>Generado:</strong> ${escapeHtml(generatedAt)}</div>
-      <div><strong>Total de viajes:</strong> ${trips.length}</div>
-      <div><strong>Total millas:</strong> ${escapeHtml(totalMiles > 0 ? totalMiles.toFixed(2) : '-')}</div>
-      <div><strong>Filtro:</strong> Ride ID empieza con 4, PU de 2:00 AM a 8:00 AM</div>
+      <div><strong>Total trips:</strong> ${trips.length}</div>
+      <div><strong>Total miles:</strong> ${escapeHtml(totalMiles > 0 ? totalMiles.toFixed(2) : '-')}</div>
+      <div><strong>Filter:</strong> Ride ID starts with 4, PU from 2:00 AM to 8:00 AM</div>
     </div>
     <table>
       <thead>

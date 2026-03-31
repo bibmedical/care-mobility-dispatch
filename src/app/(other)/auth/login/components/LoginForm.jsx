@@ -31,10 +31,10 @@ const LoginForm = () => {
   return <>
       {loginMode === 'credentials' ? <form onSubmit={login} className="my-4">
           {lockoutStatus?.isBlocked ? <Alert variant="danger" className="mb-3 py-2">
-              <div className="fw-semibold">Cuenta bloqueada temporalmente</div>
+              <div className="fw-semibold">Account temporarily locked</div>
               <div className="small">{lockoutStatus.message}</div>
-              {lockoutStatus.lockRemaining ? <div className="small mt-1">Tiempo restante: {lockoutStatus.lockRemaining}</div> : null}
-              <div className="small mt-1">Si necesita acceso inmediato, contacte al admin.</div>
+              {lockoutStatus.lockRemaining ? <div className="small mt-1">Time remaining: {lockoutStatus.lockRemaining}</div> : null}
+              <div className="small mt-1">If you need immediate access, contact your admin.</div>
             </Alert> : null}
 
           <Controller name="companyKey" control={control} render={({

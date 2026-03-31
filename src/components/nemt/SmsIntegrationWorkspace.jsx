@@ -346,7 +346,7 @@ const SmsIntegrationWorkspace = () => {
           <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-4">
             <div>
               <h5 className="mb-1">Integrations &gt; SMS Confirmations</h5>
-              <p className="text-secondary mb-2">Este modulo deja listo el envio desde la app, el webhook de respuesta y la activacion por proveedor. Twilio es la opcion mas directa, pero puedes cambiar de proveedor sin tocar la base.</p>
+              <p className="text-secondary mb-2">This module sets up outbound sending, the response webhook, and provider activation. Twilio is the most direct option, but you can switch providers without touching the base config.</p>
               <div className="small text-secondary">{saving ? 'Saving SMS integration...' : message}</div>
             </div>
             <div className="d-flex flex-wrap gap-2 align-items-start">

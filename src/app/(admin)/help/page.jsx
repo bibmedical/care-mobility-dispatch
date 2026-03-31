@@ -9,110 +9,110 @@ export const metadata = {
 const HELP_ENTRIES = [{
   module: 'AI Integrations',
   route: '/integrations/ai',
-  instruction: 'Configura proveedor, valida claves y prueba prompts operacionales.'
+  instruction: 'Configure provider, validate keys and test operational prompts.'
 }, {
   module: 'Avatar',
   route: '/avatar',
-  instruction: 'Administra perfil visual y datos rapidos del usuario activo.'
+  instruction: 'Manage the visual profile and quick data of the active user.'
 }, {
   module: 'Black List',
   route: '/blacklist',
-  instruction: 'Revisa pasajeros bloqueados, razones y estado de restriccion.'
+  instruction: 'Review blocked passengers, reasons and restriction status.'
 }, {
   module: 'Confirmation',
   route: '/confirmation',
-  instruction: 'Dispara confirmaciones y verifica respuesta de pasajeros en cola.'
+  instruction: 'Trigger confirmations and verify passenger response queue.'
 }, {
   module: 'Daily Driver Snapshot',
   route: '/daily-driver-snapshot',
-  instruction: 'Consulta foto diaria de rendimiento por chofer y turnos.'
+  instruction: 'View daily driver snapshot with status, checkpoint, trips and shift performance.'
 }, {
   module: 'Dispatcher',
   route: '/dispatcher',
-  instruction: 'Asigna viajes, aplica filtros de mapa, y monitorea choferes en vivo.'
+  instruction: 'Assign trips, apply map filters, and monitor drivers live.'
 }, {
   module: 'Driver Efficiency Report',
   route: '/driver-efficiency-report',
-  instruction: 'Mide eficiencia por bloque, tiempos muertos y cumplimiento.'
+  instruction: 'Measure efficiency by block, idle time and compliance.'
 }, {
   module: 'Drivers',
   route: '/drivers',
-  instruction: 'Edita choferes, licencias y estados de disponibilidad operativa.'
+  instruction: 'Edit drivers, licenses and operational availability status.'
 }, {
   module: 'Email Templates',
   route: '/settings/email-templates',
-  instruction: 'Actualiza plantillas para alertas, vencimientos y mensajes automaticos.'
+  instruction: 'Update templates for alerts, expirations and automated messages.'
 }, {
   module: 'Excel Loader',
   route: '/forms-safe-ride-import',
-  instruction: 'Importa trips SafeRide por Excel/CSV y valida errores antes de guardar.'
+  instruction: 'Import SafeRide trips from Excel/CSV and validate errors before saving.'
 }, {
   module: 'Full Shift Analysis',
   route: '/full-shift-analysis',
-  instruction: 'Analiza jornada completa por rutas, tiempos y productividad.'
+  instruction: 'Analyze the full shift by routes, times and productivity.'
 }, {
   module: 'Office Settings',
   route: '/settings/office',
-  instruction: 'Configura datos de oficina, contacto y parametros de operacion.'
+  instruction: 'Configure office data, contact info and operational parameters.'
 }, {
   module: 'Preferences',
   route: '/preferences',
-  instruction: 'Ajusta comportamiento de interfaz, tablas y vistas guardadas.'
+  instruction: 'Adjust interface behavior, tables and saved views.'
 }, {
   module: 'Primary Dashboard',
   route: '/trip-analytics',
-  instruction: 'Supervisa KPIs principales y volumen de viajes por estado.'
+  instruction: 'Monitor key KPIs and trip volume by status.'
 }, {
   module: 'Rates',
   route: '/rates',
-  instruction: 'Gestiona tarifas por servicio, tipo de viaje y condiciones.'
+  instruction: 'Manage rates by service type, trip type and conditions.'
 }, {
   module: 'SMS Integrations',
   route: '/integrations/sms',
-  instruction: 'Envia mensajes manuales/automaticos y revisa estado de entregas.'
+  instruction: 'Send manual/automatic messages and review delivery status.'
 }, {
   module: 'System Logs',
   route: '/system-logs',
-  instruction: 'Audita sesiones, acciones y tiempo activo por usuario.'
+  instruction: 'Audit sessions, actions and active time per user.'
 }, {
   module: 'System Messages',
   route: '/system-messages',
-  instruction: 'Programa alertas internas y seguimiento de notificaciones criticas.'
+  instruction: 'Schedule internal alerts and track critical notifications.'
 }, {
   module: 'Trip Dashboard',
   route: '/trip-dashboard',
-  instruction: 'Arma rutas visuales, selecciona viajes y controla panel de mapa.'
+  instruction: 'Build visual routes, select trips and control the map panel.'
 }, {
   module: 'Uber Integrations',
   route: '/integrations/uber',
-  instruction: 'Sincroniza solicitudes con Uber y valida respuesta del proveedor.'
+  instruction: 'Sync requests with Uber and validate provider response.'
 }, {
   module: 'User Management',
   route: '/user-management',
-  instruction: 'Crea usuarios, define roles, accesos y tiempos de inactividad.'
+  instruction: 'Create users, define roles, access levels and inactivity timeouts.'
 }, {
   module: 'Vehicles',
   route: '/drivers/vehicles',
-  instruction: 'Registra vehiculos, documentos y capacidad por unidad.'
+  instruction: 'Register vehicles, documents and capacity per unit.'
 }].sort((a, b) => a.module.localeCompare(b.module, 'en', {
   sensitivity: 'base'
 }));
 
 const QUICK_FLOW = [{
   step: '1. Log in',
-  detail: 'Entra con username o email y tu password activa.'
+  detail: 'Sign in with your username or email and active password.'
 }, {
   step: '2. Dispatcher',
-  detail: 'Filtra y selecciona viajes; valida conteo de selected trips arriba.'
+  detail: 'Filter and select trips; validate the selected-trips count at the top.'
 }, {
   step: '3. Route/Clear',
-  detail: 'Construye ruta, limpia seleccion o enfoca mapa por city/ZIP.'
+  detail: 'Build a route, clear selection or focus the map by city/ZIP.'
 }, {
   step: '4. Confirmations',
-  detail: 'Envia SMS de confirmacion o mensajes custom segun necesidad.'
+  detail: 'Send confirmation SMS or custom messages as needed.'
 }, {
   step: '5. Review logs',
-  detail: 'Audita en System Logs las acciones y sesiones del equipo.'
+  detail: 'Audit actions and team sessions in System Logs.'
 }];
 
 const HelpPage = () => {

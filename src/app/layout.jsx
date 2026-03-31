@@ -9,7 +9,7 @@ export const metadata = {
     template: '%s | Care Mobility Dispatch',
     default: DEFAULT_PAGE_TITLE
   },
-  description: 'Panel NEMT para operaciones, viajes y conductores'
+  description: 'NEMT Operations Panel — trips, drivers, and dispatch management'
 };
 export default function RootLayout({
   children

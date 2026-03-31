@@ -17,7 +17,7 @@ const buildInitialState = assistantName => ({
   messages: [{
     id: 'welcome',
     role: 'assistant',
-    text: `Hola, soy ${assistantName || DEFAULT_ASSISTANT_AVATAR.name}. Puedo ayudarte con viajes, choferes, notas, rutas y preguntas de dispatch.`,
+    text: `Hi, I'm ${assistantName || DEFAULT_ASSISTANT_AVATAR.name}. I can help you with trips, drivers, notes, routes and dispatch questions.`,
     createdAt: Date.now()
   }]
 });

@@ -70,7 +70,7 @@ export const MENU_ITEMS = [{
   url: '/preferences'
 }, {
   key: 'configuraciones-menu',
-  label: 'Configuraciones',
+  label: 'Settings',
   icon: 'iconoir:settings-system',
   children: [{
     key: 'configuraciones-office',

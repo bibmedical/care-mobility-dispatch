@@ -47,7 +47,7 @@ const PrintSetupWorkspace = () => {
 
   const handlePrintEarlyMorningReport = () => {
     if (earlyMorningTrips.length === 0) {
-      setMessage('No encontre viajes de 2:00 AM a 8:00 AM con Ride ID que empieza con 4 para ese dia.');
+      setMessage('No trips found between 2:00 AM and 8:00 AM with a Ride ID starting with 4 for that day.');
       return;
     }
 
@@ -77,7 +77,7 @@ const PrintSetupWorkspace = () => {
   };
 
   return <>
-      <PageTitle title="Print Setup" subName="Configuraciones / Office" />
+      <PageTitle title="Print Setup" subName="Settings / Office" />
       <Row className="g-3">
         <Col xl={8}>
           <Card>

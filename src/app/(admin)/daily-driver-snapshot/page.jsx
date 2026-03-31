@@ -5,7 +5,7 @@ export const metadata = {
 };
 
 const DailyDriverSnapshotPage = () => {
-  return <ModulePage title="Daily Driver Snapshot" description="Foto diaria por chofer con estado, checkpoint, viajes y rendimiento del turno." stats={[{
+  return <ModulePage title="Daily Driver Snapshot" description="Daily snapshot per driver showing status, checkpoint, trips and shift performance." stats={[{
       label: 'Drivers reported',
       value: '0'
     }, {

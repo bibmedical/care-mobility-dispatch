@@ -107,7 +107,7 @@ const UserManagementWorkspace = () => {
   const [accessFilter, setAccessFilter] = useState('all');
   const [selectedRowIds, setSelectedRowIds] = useState([]);
   const [pageIndex, setPageIndex] = useState(0);
-  const [message, setMessage] = useState('Add, Edit, Delete, doble click y seleccion multiple ya estan conectados a autenticacion y al roster de choferes.');
+  const [message, setMessage] = useState('Add, Edit, Delete, double-click and multi-select are all connected to authentication and the driver roster.');
   const [showEditor, setShowEditor] = useState(false);
   const [draftUser, setDraftUser] = useState(null);
   const [validationErrors, setValidationErrors] = useState([]);
@@ -300,7 +300,7 @@ const UserManagementWorkspace = () => {
         <div className="small text-secondary mb-3">
           {saving ? 'Guardando cambios y sincronizando con Drivers...' : message}
         </div>
-        <div className="small text-secondary mb-3">Todos los usuarios de esta lista ya existen en autenticacion. Password por defecto: username con inicial mayuscula + @ + ultimos 2 digitos del telefono, pero ahora tambien lo puedes cambiar manualmente. Tambien puedes marcar si el usuario es company y guardar su Tax ID. Doble click en una fila para editar.</div>
+        <div className="small text-secondary mb-3">All users in this list have authentication accounts. Default password: username with uppercase first letter + @ + last 2 digits of phone, but you can also change it manually. You can also mark a user as a company and save their Tax ID. Double-click a row to edit.</div>
         {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
 
         <div className="border overflow-hidden rounded-2" style={userShellStyles.tableShell}>

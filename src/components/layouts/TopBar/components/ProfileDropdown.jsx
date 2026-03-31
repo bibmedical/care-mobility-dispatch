@@ -11,7 +11,7 @@ const ProfileDropdown = () => {
   const { data: session } = useSession();
 
   const displayName = session?.user?.name || session?.user?.username || 'Administrador';
-  const displaySubtitle = session?.user?.email || session?.user?.role || 'Cuenta local';
+  const displaySubtitle = session?.user?.email || session?.user?.role || 'Local account';
 
   const handleLogout = async event => {
     event.preventDefault();

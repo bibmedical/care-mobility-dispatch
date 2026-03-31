@@ -150,7 +150,7 @@ const BlacklistWorkspace = () => {
           <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-3">
             <div>
               <h5 className="mb-1">Add Person To Black List</h5>
-              <div className="small text-secondary">Usa esta pagina para bloquear personas que no quieren viajar, fallecieron, pausar temporalmente o manejar casos legales. Toda entrada activa se aplicara automaticamente a los viajes diarios hasta que la saques o la resuelvas.</div>
+              <div className="small text-secondary">Use this page to block passengers who refuse transport, have passed away, need a temporary pause, or require legal case handling. Every active entry will be automatically applied to daily trips until removed or resolved.</div>
               <div className="small text-secondary mt-2">{saving ? 'Saving Black List...' : message}</div>
             </div>
             <div className="d-flex gap-2 flex-wrap">

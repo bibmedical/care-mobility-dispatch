@@ -729,7 +729,7 @@ const TripDashboardWorkspace = () => {
 
   const handleCancelSelectedTrips = () => {
     if (selectedTripIds.length === 0) {
-      setStatusMessage('Selecciona al menos un trip para cancelar.');
+      setStatusMessage('Select at least one trip to cancel.');
       return;
     }
     cancelTrips(selectedTripIds);
@@ -743,7 +743,7 @@ const TripDashboardWorkspace = () => {
 
   const handleReinstateSelectedTrips = () => {
     if (selectedTripIds.length === 0) {
-      setStatusMessage('Selecciona al menos un trip para incorporar.');
+      setStatusMessage('Select at least one trip to incorporate.');
       return;
     }
     reinstateTrips(selectedTripIds);
@@ -868,7 +868,7 @@ const TripDashboardWorkspace = () => {
       return;
     }
     if (selectedTripIds.length === 0) {
-      setStatusMessage('Selecciona al menos un trip para la ruta.');
+      setStatusMessage('Select at least one trip to build a route.');
       return;
     }
 
@@ -900,7 +900,7 @@ const TripDashboardWorkspace = () => {
 
   const handleUnassign = () => {
     if (selectedTripIds.length === 0) {
-      setStatusMessage('Selecciona al menos un trip para quitar asignacion.');
+      setStatusMessage('Select at least one trip to remove assignment.');
       return;
     }
 
@@ -961,7 +961,7 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    const message = [`Hola ${targetDriver.name},`, '', `Tu ruta: ${routeTitle}`, `Total de viajes: ${routeTrips.length}`, '', routeTrips.map((trip, index) => [`${index + 1}. ${trip.pickup} - ${trip.dropoff} | ${trip.rider}`,
+    const message = [`Hello ${targetDriver.name},`, '', `Your route: ${routeTitle}`, `Total trips: ${routeTrips.length}`, '', routeTrips.map((trip, index) => [`${index + 1}. ${trip.pickup} - ${trip.dropoff} | ${trip.rider}`,
       `PU: ${trip.address || 'No pickup address'}`,
       `DO: ${trip.destination || 'No dropoff address'}`
     ].join('\n')).join('\n\n')].join('\n');
@@ -977,7 +977,7 @@ const TripDashboardWorkspace = () => {
       }
 
       if (whatsappResult.reason === 'popup-blocked') {
-        setStatusMessage('El navegador bloqueo la nueva pestaña de WhatsApp. Permite popups para esta pagina.');
+        setStatusMessage('The browser blocked the new WhatsApp tab. Allow pop-ups for this page.');
         return;
       }
 
@@ -1259,7 +1259,7 @@ const TripDashboardWorkspace = () => {
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">Leg</span>
                     <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
-                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Viajes de regreso a casa">BL</Button>
+                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
                     <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Tercer viaje o connector leg">CL</Button>
                   </div>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">

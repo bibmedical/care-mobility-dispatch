@@ -17,17 +17,17 @@ const formatRemainingTime = totalSeconds => {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 };
 
-const buildLockoutResponse = (remainingMs, reason = 'Demasiados intentos fallidos de login.') => {
+const buildLockoutResponse = (remainingMs, reason = 'Too many failed login attempts.') => {
   const retryAfterSeconds = Math.max(1, Math.ceil(remainingMs / 1000));
   const lockRemaining = formatRemainingTime(retryAfterSeconds);
 
   return new Response(JSON.stringify({
-    error: 'Cuenta bloqueada temporalmente.',
+    error: 'Account temporarily locked.',
     isBlocked: true,
     retryAfterSeconds,
     lockRemaining,
     contactAdmin: true,
-    message: `Estas bloqueado temporalmente por demasiados intentos. Tiempo restante: ${lockRemaining}. Contacte al admin.`,
+    message: `Account temporarily locked due to too many attempts. Time remaining: ${lockRemaining}. Contact your admin.`,
     reason
   }), {
     status: 429,

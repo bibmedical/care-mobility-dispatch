@@ -5,7 +5,7 @@ export const metadata = {
 };
 
 const DriverContactsPage = () => {
-  return <ModulePage title="Driver Contacts" description="Agenda rapida de choferes, coordinadores, talleres y contactos operativos." stats={[{
+  return <ModulePage title="Driver Contacts" description="Quick directory of drivers, coordinators, repair shops and operational contacts." stats={[{
       label: 'Driver contacts',
       value: '24'
     }, {

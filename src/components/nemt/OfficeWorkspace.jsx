@@ -7,14 +7,14 @@ import { Button, Card, CardBody, Col, Row } from 'react-bootstrap';
 
 const OfficeWorkspace = () => {
   return <>
-      <PageTitle title="Office" subName="Configuraciones" />
+      <PageTitle title="Office" subName="Settings" />
       <Row className="g-3">
         <Col xl={4}>
           <Card>
             <CardBody>
               <h4 className="mb-2">Print Setup</h4>
               <p className="text-muted mb-3">Escoge el template que quieres usar al imprimir rutas.</p>
-              <Button as={Link} href="/settings/office/print-setup" variant="primary">Abrir Print Setup</Button>
+              <Button as={Link} href="/settings/office/print-setup" variant="primary">Open Print Setup</Button>
             </CardBody>
           </Card>
         </Col>

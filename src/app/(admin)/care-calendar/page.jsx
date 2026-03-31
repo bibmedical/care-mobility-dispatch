@@ -5,7 +5,7 @@ export const metadata = {
 };
 
 const CareCalendarPage = () => {
-  return <ModulePage title="Care Calendar" description="Agenda de citas, tratamientos y series de viajes recurrentes para coordinacion NEMT." stats={[{
+  return <ModulePage title="Care Calendar" description="Schedule of appointments, treatments and recurring trip series for NEMT coordination." stats={[{
       label: 'Appointments today',
       value: '33'
     }, {

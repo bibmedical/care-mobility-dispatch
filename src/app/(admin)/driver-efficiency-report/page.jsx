@@ -5,7 +5,7 @@ export const metadata = {
 };
 
 const DriverEfficiencyReportPage = () => {
-  return <ModulePage title="Driver Efficiency Report" description="Reporte de eficiencia por chofer, con enfoque en uso de tiempo, viajes y checkpoints." stats={[{
+  return <ModulePage title="Driver Efficiency Report" description="Driver efficiency report focused on time usage, trips and checkpoint compliance." stats={[{
       label: 'Avg trips/driver',
       value: '0'
     }, {

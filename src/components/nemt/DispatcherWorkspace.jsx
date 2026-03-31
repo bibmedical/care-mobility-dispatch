@@ -678,7 +678,7 @@ const DispatcherWorkspace = () => {
 
   const handleUnassign = () => {
     if (selectedTripIds.length === 0) {
-      setStatusMessage('Selecciona al menos un trip para quitar asignacion.');
+      setStatusMessage('Select at least one trip to remove assignment.');
       return;
     }
     unassignTrips();
@@ -698,7 +698,7 @@ const DispatcherWorkspace = () => {
 
   const handleCancelSelectedTrips = () => {
     if (selectedTripIds.length === 0) {
-      setStatusMessage('Selecciona al menos un trip para cancelar.');
+      setStatusMessage('Select at least one trip to cancel.');
       return;
     }
 
@@ -713,7 +713,7 @@ const DispatcherWorkspace = () => {
 
   const handleReinstateSelectedTrips = () => {
     if (selectedTripIds.length === 0) {
-      setStatusMessage('Selecciona al menos un trip para incorporar.');
+      setStatusMessage('Select at least one trip to incorporate.');
       return;
     }
 
@@ -771,7 +771,7 @@ const DispatcherWorkspace = () => {
   const handleSendConfirmationSms = async () => {
     const targetTripIds = selectedTripIds.length > 0 ? selectedTripIds : routeTrips.map(trip => trip.id);
     if (targetTripIds.length === 0) {
-      setStatusMessage('Selecciona al menos un trip o una ruta antes de mandar SMS de confirmacion.');
+      setStatusMessage('Select at least one trip or route before sending a confirmation SMS.');
       return;
     }
 
@@ -819,7 +819,7 @@ const DispatcherWorkspace = () => {
     }
 
     const title = targetDriver ? `Ruta de ${targetDriver.name}` : selectedRoute ? `Ruta ${selectedRoute.name}` : 'Ruta actual';
-    const message = [`Hola ${targetDriver.name},`, '', `Tu ruta: ${title}`, `Total de viajes: ${routeTrips.length}`, '', routeTrips.map((trip, index) => [`${index + 1}. ${trip.pickup} - ${trip.dropoff} | ${trip.rider}`,
+    const message = [`Hello ${targetDriver.name},`, '', `Your route: ${title}`, `Total trips: ${routeTrips.length}`, '', routeTrips.map((trip, index) => [`${index + 1}. ${trip.pickup} - ${trip.dropoff} | ${trip.rider}`,
       `PU: ${trip.address || 'No pickup address'}`,
       `DO: ${trip.destination || 'No dropoff address'}`
     ].join('\n')).join('\n\n')].join('\n');
@@ -835,7 +835,7 @@ const DispatcherWorkspace = () => {
       }
 
       if (whatsappResult.reason === 'popup-blocked') {
-        setStatusMessage('El navegador bloqueo la nueva pestaña de WhatsApp. Permite popups para esta pagina.');
+        setStatusMessage('The browser blocked the new WhatsApp tab. Allow pop-ups for this page.');
         return;
       }
 
@@ -1157,7 +1157,7 @@ const DispatcherWorkspace = () => {
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">Leg</span>
                     <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} disabled={mapLocked} title="Primer viaje a la cita">AL</Button>
-                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} disabled={mapLocked} title="Viajes de regreso a casa">BL</Button>
+                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} disabled={mapLocked} title="Return-leg trips">BL</Button>
                     <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} disabled={mapLocked} title="Tercer viaje o connector leg">CL</Button>
                   </div>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
@@ -1327,7 +1327,7 @@ const DispatcherWorkspace = () => {
                         {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
                         {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}
                       </tr>) : <tr>
-                        <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No hay viajes cargados. Esperando tus trips reales.</td>
+                        <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No trips loaded. Waiting for your real trips.</td>
                       </tr>}
                   </tbody>
                 </Table>
@@ -1368,7 +1368,7 @@ const DispatcherWorkspace = () => {
               <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} openFullChat={() => {
               refreshDrivers();
               router.push('/driver-chat');
-              setStatusMessage('Abriendo mensajeria completa de choferes.');
+              setStatusMessage('Opening full driver messaging panel.');
             }} />
             </CardBody>
           </Card>

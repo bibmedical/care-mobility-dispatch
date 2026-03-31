@@ -86,7 +86,7 @@ const useSignIn = () => {
             lockRemaining: preLoginData?.lockRemaining || null,
             retryAfterSeconds: preLoginData?.retryAfterSeconds || null,
             contactAdmin: Boolean(preLoginData?.contactAdmin),
-            message: preLoginData?.message || 'Estas bloqueado temporalmente. Contacte al admin.'
+            message: preLoginData?.message || 'Account temporarily locked. Contact your admin.'
           });
         }
 

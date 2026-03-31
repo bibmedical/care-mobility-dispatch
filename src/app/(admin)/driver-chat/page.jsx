@@ -5,7 +5,7 @@ export const metadata = {
 };
 
 const DriverChatPage = () => {
-  return <ModulePage title="Driver Chat" description="Bandeja operativa para seguimiento de mensajes de choferes y alertas de servicio." stats={[{
+  return <ModulePage title="Driver Chat" description="Operational inbox for tracking driver messages and service alerts." stats={[{
       label: 'Unread threads',
       value: '9'
     }, {

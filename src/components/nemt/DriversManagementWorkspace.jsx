@@ -103,7 +103,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const [showEditor, setShowEditor] = useState(false);
   const [editorTab, setEditorTab] = useState('profile');
   const [draftEntity, setDraftEntity] = useState(null);
-  const [message, setMessage] = useState('Administra choferes, carros, attendants y grouping desde la API persistente del sistema.');
+  const [message, setMessage] = useState('Manage drivers, vehicles, attendants and groupings from the persistent system API.');
   const [validationErrors, setValidationErrors] = useState([]);
 
   const state = useMemo(() => ({

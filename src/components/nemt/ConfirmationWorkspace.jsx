@@ -165,12 +165,12 @@ const ConfirmationWorkspace = () => {
         optOutList: nextOptOutList
       }
     });
-    setCustomStatus('Paciente agregado a Do Not Confirm. Se quedara bloqueado cada dia hasta que lo saques.');
+    setCustomStatus('Patient added to Do Not Confirm. Will be blocked every day until removed.');
   };
 
   const handleSendCustomMessage = async () => {
     if (selectedTripIds.length === 0) {
-      setCustomStatus('Selecciona al menos un trip para mandar Custom SMS.');
+      setCustomStatus('Select at least one trip to send a Custom SMS.');
       return;
     }
     if (!customMessage.trim()) {
@@ -213,7 +213,7 @@ const ConfirmationWorkspace = () => {
 
   const handleSendGroupConfirmation = async () => {
     if (selectedTripIds.length === 0) {
-      setCustomStatus('Selecciona al menos un trip para mandar confirmacion.');
+      setCustomStatus('Select at least one trip to send a confirmation.');
       return;
     }
     setConfirmationSending(true);

@@ -5,7 +5,7 @@ export const metadata = {
 };
 
 const DriverApplicationsPage = () => {
-  return <ModulePage title="Driver Applications" description="Revisa solicitudes nuevas, documentos pendientes y entrevistas de choferes." stats={[{
+  return <ModulePage title="Driver Applications" description="Review new applications, pending documents and driver interviews." stats={[{
       label: 'New applicants',
       value: '7'
     }, {

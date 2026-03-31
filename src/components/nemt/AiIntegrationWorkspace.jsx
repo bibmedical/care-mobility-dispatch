@@ -114,7 +114,7 @@ const AiIntegrationWorkspace = () => {
         ai: nextDraft
       });
       setDraft(payload.ai);
-      setMessage('Configuracion AI guardada. El widget ya puede usar esta clave.');
+      setMessage('AI configuration saved. The widget can now use this key.');
     } catch {
       return;
     }
@@ -241,7 +241,7 @@ const AiIntegrationWorkspace = () => {
                 }))} placeholder="sk-..." />
                   <Button style={surfaceStyles.button} onClick={() => setShowKey(current => !current)}>{showKey ? 'Hide' : 'Show'}</Button>
                 </div>
-                <div className="small text-secondary mt-2">La clave se guarda en tu almacenamiento local del proyecto para que el widget AI la use sin depender de `.env.local`.</div>
+                <div className="small text-secondary mt-2">The key is stored in your project's local storage so the AI widget can use it without depending on <code>.env.local</code>.</div>
               </Col>
               <Col md={12}>
                 <Form.Label className="small text-uppercase text-secondary fw-semibold">Notes</Form.Label>
@@ -259,7 +259,7 @@ const AiIntegrationWorkspace = () => {
                     </div>
                     <span style={buildStatusPillStyle(readiness === 'Ready')}>{readiness}</span>
                   </div>
-                  <div className="small text-secondary">Tip: desde este switch tambien puedes esconder o volver a mostrar la IA de la esquina sin salir de esta pagina.</div>
+                  <div className="small text-secondary">Tip: use this switch to hide or show the AI widget from the corner without leaving this page.</div>
                 </div>
               </Col>
             </Row>}

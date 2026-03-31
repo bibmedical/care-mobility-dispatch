@@ -45,7 +45,7 @@ const AvatarSettingsWorkspace = () => {
   const { changeTheme, themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const [draft, setDraft] = useState(buildDraft());
-  const [message, setMessage] = useState('Cambia el nombre y la foto del asistente local. El widget flotante lo leerá automaticamente.');
+  const [message, setMessage] = useState('Change the assistant name and photo. The floating widget will update automatically.');
 
   useEffect(() => {
     if (!data?.avatar) return;
@@ -63,7 +63,7 @@ const AvatarSettingsWorkspace = () => {
       memorySections: draft.memorySections
     });
     setDraft(buildDraft(payload.avatar));
-    setMessage('Avatar guardado. El widget ya puede mostrar el nuevo nombre y la nueva foto.');
+    setMessage('Avatar saved. The widget will now show the new name and photo.');
   };
 
   const handlePickFile = async event => {
@@ -77,7 +77,7 @@ const AvatarSettingsWorkspace = () => {
         ...current,
         image: result
       }));
-      setMessage(`Imagen cargada: ${file.name}. Guarda para aplicarla al widget.`);
+      setMessage(`Image loaded: ${file.name}. Save to apply it to the widget.`);
     };
     reader.readAsDataURL(file);
   };
