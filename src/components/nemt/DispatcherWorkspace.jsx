@@ -404,8 +404,7 @@ const DispatcherWorkspace = () => {
     if (!matchesStatus) return false;
     const tripDate = getTripServiceDateKey(trip);
     if (tripDate && tripDate !== tripDateFilter) return false;
-    if (!selectedDriverId) return true;
-    return !trip.driverId || trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId;
+    return true;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
     return getTripLegFilterKey(trip) === tripLegFilter;
@@ -720,6 +719,7 @@ const DispatcherWorkspace = () => {
     }
 
     assignTripsToDriver(driverId);
+    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage(`${selectedTripIds.length} trip(s) asignados a ${driver.name}.`);
   };
 
@@ -736,6 +736,7 @@ const DispatcherWorkspace = () => {
     }
 
     assignTripsToSecondaryDriver(driverId);
+    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage(`${selectedTripIds.length} trip(s) actualizados con segundo chofer: ${driver.name}.`);
   };
 
@@ -752,6 +753,7 @@ const DispatcherWorkspace = () => {
     }
 
     assignTripsToDriver(selectedDriverId, [tripId]);
+    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setSelectedTripIds([tripId]);
     setStatusMessage(`Trip ${tripId} asignado a ${driver.name}.`);
   };
@@ -791,17 +793,9 @@ const DispatcherWorkspace = () => {
     setSelectedRouteId('');
 
     if (!nextDriverId) {
-      setSelectedTripIds([]);
       setStatusMessage('Mostrando todos los trips otra vez.');
       return;
     }
-
-    const nextSelectedTripIds = selectedTripIds.filter(id => {
-      const trip = trips.find(item => item.id === id);
-      return trip && (!trip.driverId || trip.driverId === nextDriverId);
-    });
-
-    setSelectedTripIds(nextSelectedTripIds);
 
     const driver = drivers.find(item => item.id === nextDriverId);
     if (!driver) {
@@ -809,8 +803,8 @@ const DispatcherWorkspace = () => {
       return;
     }
 
-    const assignedCount = trips.filter(trip => trip.driverId === nextDriverId).length;
-    const openCount = trips.filter(trip => !trip.driverId).length;
+    const assignedCount = trips.filter(trip => trip.driverId === nextDriverId || trip.secondaryDriverId === nextDriverId).length;
+    const openCount = trips.filter(trip => !trip.driverId && !trip.secondaryDriverId).length;
     setStatusMessage(`Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.`);
   };
 

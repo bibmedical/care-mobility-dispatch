@@ -823,6 +823,7 @@ const TripDashboardWorkspace = () => {
       return;
     }
     assignTripsToDriver(selectedDriverId, [tripId]);
+    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setSelectedTripIds([tripId]);
     setStatusMessage(`Trip ${tripId} asignado.`);
   };
@@ -936,17 +937,9 @@ const TripDashboardWorkspace = () => {
     setSelectedRouteId('');
 
     if (!nextDriverId) {
-      setSelectedTripIds([]);
       setStatusMessage('Mostrando todos los trips otra vez.');
       return;
     }
-
-    const nextSelectedTripIds = selectedTripIds.filter(id => {
-      const trip = trips.find(item => item.id === id);
-      return trip && (!trip.driverId || trip.driverId === nextDriverId);
-    });
-
-    setSelectedTripIds(nextSelectedTripIds);
 
     const driver = drivers.find(item => item.id === nextDriverId);
     if (!driver) {
@@ -954,8 +947,8 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    const assignedCount = trips.filter(trip => trip.driverId === nextDriverId).length;
-    const openCount = trips.filter(trip => !trip.driverId).length;
+    const assignedCount = trips.filter(trip => trip.driverId === nextDriverId || trip.secondaryDriverId === nextDriverId).length;
+    const openCount = trips.filter(trip => !trip.driverId && !trip.secondaryDriverId).length;
     setStatusMessage(`Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.`);
   };
 
@@ -1007,6 +1000,7 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToDriver(driverId);
+    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage('Trips asignados al chofer seleccionado.');
   };
 
@@ -1017,6 +1011,7 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToSecondaryDriver(driverId);
+    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage('Trips actualizados con segundo chofer.');
   };
 
