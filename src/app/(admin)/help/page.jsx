@@ -206,6 +206,22 @@ const HelpPage = () => {
 
             <div className="border rounded p-3">
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="primary" className="fs-6 px-3 py-2">V7</Badge>
+                <span className="fw-semibold">Trip Dashboard — Flexible Docking Layouts</span>
+                <span className="text-muted small ms-auto">March 31, 2026 — Evening</span>
+              </div>
+              <ul className="mb-0 small text-muted ps-3">
+                <li>3 layout modes: <strong>Normal</strong>, <strong>Focus Right</strong> (map popout expands right column full height), <strong>Stacked</strong> (panels stacked vertically)</li>
+                <li>Map popout automatically activates Focus Right layout</li>
+                <li>Panel visibility controls: Both / VDRS / Routes / Hide bottom panels</li>
+                <li>Swap button to reverse VDRS ↔ Routes panel order</li>
+                <li>Restore button — one click returns to Normal layout</li>
+                <li>Layout preference, panel view, and panel order all saved to localStorage and restored on next visit</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3">
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V6</Badge>
                 <span className="fw-semibold">Scrollbar &amp; WillCall Polish</span>
                 <span className="text-muted small ms-auto">March 31, 2026 — PM</span>
