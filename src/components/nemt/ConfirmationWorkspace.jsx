@@ -50,7 +50,28 @@ const getTripLegFilterKey = trip => {
   if (legLabel.includes('outbound') || legLabel.includes('appointment') || legLabel.includes('appt')) return 'AL';
   if (legLabel.includes('return') || legLabel.includes('home') || legLabel.includes('house') || legLabel.includes('back')) return 'BL';
   if (legLabel.includes('3') || legLabel.includes('third') || legLabel.includes('connector') || legLabel.includes('cross')) return 'CL';
+  const tripId = String(trip?.id || '').trim();
+  if (/-2$/.test(tripId)) return 'BL';
+  if (/-1$/.test(tripId)) return 'AL';
   return 'CL';
+};
+
+const getTripPairKey = trip => {
+  const grouped = String(trip?.groupedTripKey || '').trim();
+  if (grouped) return grouped;
+  const broker = String(trip?.brokerTripId || '').trim();
+  if (broker) return broker;
+  const rideId = String(trip?.rideId || '').trim();
+  if (rideId) return rideId;
+  const id = String(trip?.id || '').trim();
+  if (!id) return '';
+  return id.replace(/-\d+$/, '');
+};
+
+const getSiblingLegTrips = (targetTrip, allTrips = []) => {
+  const pairKey = getTripPairKey(targetTrip);
+  if (!pairKey) return [];
+  return (Array.isArray(allTrips) ? allTrips : []).filter(item => String(item?.id) !== String(targetTrip?.id) && getTripPairKey(item) === pairKey);
 };
 
 const parseMilesValue = value => {
@@ -102,6 +123,7 @@ const ConfirmationWorkspace = () => {
   const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
+  const [cancelLegScope, setCancelLegScope] = useState('single');
   
   // Hospital/Rehab states
   const [hospitalRehabModal, setHospitalRehabModal] = useState(null);
@@ -118,6 +140,8 @@ const ConfirmationWorkspace = () => {
   const [confirmationMethodModal, setConfirmationMethodModal] = useState(null);
   const [confirmationMethod, setConfirmationMethod] = useState('whatsapp');
   const [isSendingConfirmation, setIsSendingConfirmation] = useState(false);
+  const [confirmationLegScope, setConfirmationLegScope] = useState('single');
+  const [confirmationSourceTrip, setConfirmationSourceTrip] = useState(null);
   const [tripUpdateModal, setTripUpdateModal] = useState(null);
   const [tripUpdateConfirmMethod, setTripUpdateConfirmMethod] = useState('call');
   const [tripUpdatePickupTime, setTripUpdatePickupTime] = useState('');
@@ -494,6 +518,8 @@ const ConfirmationWorkspace = () => {
   const handleManualConfirm = (tripId, trip) => {
     // Open confirmation method modal if trip info available
     if (trip) {
+      setConfirmationSourceTrip(trip);
+      setConfirmationLegScope('single');
       handleOpenConfirmationMethod([trip]);
     } else {
       // Local manual confirmation
@@ -512,25 +538,39 @@ const ConfirmationWorkspace = () => {
   const handleCancelWithNote = trip => {
     setCancelNoteModal(trip);
     setCancelNoteDraft('');
+    setCancelLegScope('single');
   };
 
   const handleSaveCancelNote = () => {
     if (!cancelNoteModal) return;
-    updateTripRecord(cancelNoteModal.id, {
-      notes: (cancelNoteModal.notes || '') + (cancelNoteModal.notes ? '\n' : '') + `[CANCELADO] ${new Date().toLocaleString()}: ${cancelNoteDraft}`
+
+    const siblingTrips = getSiblingLegTrips(cancelNoteModal, trips);
+    const targetTrips = cancelLegScope === 'both' ? [cancelNoteModal, ...siblingTrips] : [cancelNoteModal];
+
+    targetTrips.forEach(targetTrip => {
+      updateTripRecord(targetTrip.id, {
+        notes: (targetTrip.notes || '') + (targetTrip.notes ? '\n' : '') + `[CANCELADO] ${new Date().toLocaleString()}: ${cancelNoteDraft}`
+      });
     });
-    setManualConfirmations(current => ({
-      ...current,
-      [cancelNoteModal.id]: {
-        status: 'Cancelled',
-        method: 'MANUAL',
-        timestamp: new Date().toISOString(),
-        note: cancelNoteDraft
-      }
-    }));
+
+    setManualConfirmations(current => {
+      const next = {
+        ...current
+      };
+      targetTrips.forEach(targetTrip => {
+        next[targetTrip.id] = {
+          status: 'Cancelled',
+          method: 'MANUAL',
+          timestamp: new Date().toISOString(),
+          note: cancelNoteDraft
+        };
+      });
+      return next;
+    });
+
     setCancelNoteModal(null);
     setCancelNoteDraft('');
-    setCustomStatus(`Trip ${cancelNoteModal.id} cancelado con nota.`);
+    setCustomStatus(`${targetTrips.length} trip(s) cancelado(s) con nota.`);
   };
 
   const exportToPDF = () => {
@@ -749,11 +789,14 @@ const ConfirmationWorkspace = () => {
       return;
     }
 
+    const siblingTrips = confirmationSourceTrip ? getSiblingLegTrips(confirmationSourceTrip, trips) : [];
+    const targetTrips = confirmationSourceTrip && confirmationLegScope === 'both' ? Array.from(new Map([confirmationSourceTrip, ...siblingTrips].map(item => [item.id, item])).values()) : confirmationMethodModal;
+
     setIsSendingConfirmation(true);
     try {
       if (confirmationMethod === 'whatsapp') {
         // Open WhatsApp Web for each trip (or show list)
-        const tripsInfo = confirmationMethodModal.map(trip => 
+        const tripsInfo = targetTrips.map(trip => 
           `${trip.id} - ${trip.rider} (${trip.patientPhoneNumber})`
         ).join('\n');
         
@@ -764,7 +807,7 @@ const ConfirmationWorkspace = () => {
         window.open(`https://web.whatsapp.com/send?text=${encodedMessage}`, '_blank');
         
         // Also send via API for each trip
-        for (const trip of confirmationMethodModal) {
+        for (const trip of targetTrips) {
           if (trip.patientPhoneNumber) {
             await fetch('/api/extensions/send-message', {
               method: 'POST',
@@ -796,20 +839,20 @@ const ConfirmationWorkspace = () => {
           }));
         }
         
-        setCustomStatus(`WhatsApp confirmations sent to ${confirmationMethodModal.length} trips.`);
+        setCustomStatus(`WhatsApp confirmations sent to ${targetTrips.length} trip(s).`);
       } else if (confirmationMethod === 'sms') {
         // Send SMS in batch
         const response = await fetch('/api/integrations/sms/send-confirmation', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            tripIds: confirmationMethodModal.map(t => t.id)
+            tripIds: targetTrips.map(t => t.id)
           })
         });
         
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to send SMS');
-        confirmationMethodModal.forEach(trip => {
+        targetTrips.forEach(trip => {
           updateTripRecord(trip.id, {
             confirmation: {
               ...(trip.confirmation || {}),
@@ -825,7 +868,7 @@ const ConfirmationWorkspace = () => {
           const next = {
             ...current
           };
-          confirmationMethodModal.forEach(trip => {
+          targetTrips.forEach(trip => {
             next[trip.id] = {
               status: 'Confirmed',
               method: 'S',
@@ -837,7 +880,7 @@ const ConfirmationWorkspace = () => {
         
         setCustomStatus(`SMS confirmations sent: ${result.sentCount}. Failed: ${result.failedCount || 0}. Skipped: ${result.skippedCount || 0}.`);
       } else if (confirmationMethod === 'call') {
-        confirmationMethodModal.forEach(trip => {
+        targetTrips.forEach(trip => {
           updateTripRecord(trip.id, {
             confirmation: {
               ...(trip.confirmation || {}),
@@ -853,7 +896,7 @@ const ConfirmationWorkspace = () => {
           const next = {
             ...current
           };
-          confirmationMethodModal.forEach(trip => {
+          targetTrips.forEach(trip => {
             next[trip.id] = {
               status: 'Confirmed',
               method: 'C',
@@ -862,11 +905,13 @@ const ConfirmationWorkspace = () => {
           });
           return next;
         });
-        setCustomStatus(`Call confirmations saved for ${confirmationMethodModal.length} trip(s).`);
+        setCustomStatus(`Call confirmations saved for ${targetTrips.length} trip(s).`);
       }
       
       await refreshDispatchState({ forceServer: true });
       setConfirmationMethodModal(null);
+      setConfirmationSourceTrip(null);
+      setConfirmationLegScope('single');
     } catch (error) {
       setCustomStatus(`Error sending confirmation: ${error.message}`);
     } finally {
@@ -1176,6 +1221,13 @@ const ConfirmationWorkspace = () => {
         <Modal.Body>
           <div className="small text-muted mb-2">Trip: {cancelNoteModal?.id}</div>
           <div className="small text-muted mb-2">Rider: {cancelNoteModal?.rider}</div>
+          {cancelNoteModal && getSiblingLegTrips(cancelNoteModal, trips).length > 0 ? <>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Cancel Scope</Form.Label>
+              <Form.Select className="mb-3" value={cancelLegScope} onChange={event => setCancelLegScope(event.target.value)}>
+                <option value="single">Only this leg</option>
+                <option value="both">Both legs (A and B)</option>
+              </Form.Select>
+            </> : null}
           <Form.Label className="small text-uppercase text-muted fw-semibold">Cancel Reason / Note</Form.Label>
           <Form.Control as="textarea" rows={4} value={cancelNoteDraft} onChange={event => setCancelNoteDraft(event.target.value)} placeholder="Write the cancellation reason or note for the dispatcher..." />
         </Modal.Body>
@@ -1201,6 +1253,14 @@ const ConfirmationWorkspace = () => {
               </div>
             )}
           </div>
+
+          {confirmationSourceTrip && getSiblingLegTrips(confirmationSourceTrip, trips).length > 0 ? <>
+              <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Leg Scope</Form.Label>
+              <Form.Select className="mb-3" value={confirmationLegScope} onChange={event => setConfirmationLegScope(event.target.value)}>
+                <option value="single">Only this leg ({confirmationSourceTrip.id})</option>
+                <option value="both">Both legs (A and B)</option>
+              </Form.Select>
+            </> : null}
 
           <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Send Via</Form.Label>
           <div className="d-flex gap-3 mb-3">
