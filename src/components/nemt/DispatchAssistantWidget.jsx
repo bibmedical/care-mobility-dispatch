@@ -403,6 +403,10 @@ const DispatchAssistantWidget = () => {
             messages: remoteMessages
           } : currentState;
         });
+      } catch (error) {
+        if (active) {
+          console.warn('Assistant conversation hydration failed:', error?.message || error);
+        }
       } finally {
         if (active) {
           setIsHydrating(false);

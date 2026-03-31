@@ -7,6 +7,11 @@ import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 const STORAGE_DIR = getStorageRoot();
 const STORAGE_FILE = getStorageFilePath('system-users.json');
 
+const parseJsonSafe = raw => {
+  const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
+  return JSON.parse(normalized);
+};
+
 const normalizeUserRecord = user => ({
   id: user?.id || `user-${Date.now()}`,
   firstName: String(user?.firstName ?? ''),
@@ -172,7 +177,7 @@ const syncUsersToAdminState = async (users, previousUsers = []) => {
 export const readSystemUsersState = async () => {
   await ensureStorageFile();
   const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizeUsersState(JSON.parse(fileContents));
+  return normalizeUsersState(parseJsonSafe(fileContents));
 };
 
 export const readSystemUsersPayload = async () => {

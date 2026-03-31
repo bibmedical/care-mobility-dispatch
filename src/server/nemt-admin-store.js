@@ -5,6 +5,11 @@ import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 const STORAGE_DIR = getStorageRoot();
 const STORAGE_FILE = getStorageFilePath('nemt-admin.json');
 
+const parseJsonSafe = raw => {
+  const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
+  return JSON.parse(normalized);
+};
+
 const normalizeDrivers = drivers => {
   const seenIds = new Set();
 
@@ -43,7 +48,7 @@ const ensureStorageFile = async () => {
 export const readNemtAdminState = async () => {
   await ensureStorageFile();
   const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  const parsed = JSON.parse(fileContents);
+  const parsed = parseJsonSafe(fileContents);
   const normalized = normalizeState(parsed);
   if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
     await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');

@@ -43,6 +43,7 @@
     "leaflet": "^1.9.4",
     "next": "15.2.1",
     "next-auth": "^4.24.11",
+    "nodemailer": "^8.0.4",
     "nouislider-react": "^3.4.2",
     "npm": "^11.2.0",
     "otplib": "^13.4.0",

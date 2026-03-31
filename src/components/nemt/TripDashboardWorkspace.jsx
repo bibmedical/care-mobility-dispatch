@@ -11,7 +11,7 @@ import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whats
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
+import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
@@ -264,6 +264,8 @@ const TripDashboardWorkspace = () => {
   const [tripDateFilter, setTripDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
+  const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
+  const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
   const [pickupZipFilter, setPickupZipFilter] = useState('');
   const [dropoffZipFilter, setDropoffZipFilter] = useState('');
   const [zipFilter, setZipFilter] = useState('');
@@ -365,6 +367,44 @@ const TripDashboardWorkspace = () => {
     if (!dropoffCityValue) return true;
     return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
+  const mapQuickCityOptions = useMemo(() => {
+    const citySet = new Set();
+    for (const trip of cityOptionTrips) {
+      const pickupCity = getPickupCity(trip).trim();
+      const dropoffCity = getDropoffCity(trip).trim();
+      if (pickupCity) citySet.add(pickupCity);
+      if (dropoffCity) citySet.add(dropoffCity);
+    }
+    return Array.from(citySet).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips]);
+  const mapQuickZipOptions = useMemo(() => {
+    const selectedCity = mapCityQuickFilter.trim().toLowerCase();
+    const zipSet = new Set();
+    for (const trip of cityOptionTrips) {
+      const pickupCity = getPickupCity(trip).toLowerCase();
+      const dropoffCity = getDropoffCity(trip).toLowerCase();
+      if (selectedCity && pickupCity !== selectedCity && dropoffCity !== selectedCity) continue;
+      const pickupZip = getPickupZip(trip).trim();
+      const dropoffZip = getDropoffZip(trip).trim();
+      if (pickupZip) zipSet.add(pickupZip);
+      if (dropoffZip) zipSet.add(dropoffZip);
+    }
+    return Array.from(zipSet).sort((a, b) => a.localeCompare(b));
+  }, [cityOptionTrips, mapCityQuickFilter]);
+  const mapQuickTrips = useMemo(() => {
+    const selectedCity = mapCityQuickFilter.trim().toLowerCase();
+    const selectedZip = mapZipQuickFilter.trim();
+    if (!selectedCity && !selectedZip) return [];
+    return cityOptionTrips.filter(trip => {
+      const pickupCity = getPickupCity(trip).toLowerCase();
+      const dropoffCity = getDropoffCity(trip).toLowerCase();
+      const pickupZip = getPickupZip(trip);
+      const dropoffZip = getDropoffZip(trip);
+      const cityMatches = !selectedCity || pickupCity === selectedCity || dropoffCity === selectedCity;
+      const zipMatches = !selectedZip || pickupZip === selectedZip || dropoffZip === selectedZip;
+      return cityMatches && zipMatches;
+    });
+  }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIds.includes(trip.id)), [selectedTripIds, trips]);
   const visibleTripIds = filteredTrips.map(trip => trip.id);
   const filteredDrivers = drivers;
@@ -517,6 +557,12 @@ const TripDashboardWorkspace = () => {
     if (filteredRoutePlans.some(routePlan => routePlan.id === selectedRouteId)) return;
     setSelectedRouteId('');
   }, [filteredRoutePlans, selectedRouteId, setSelectedRouteId]);
+
+  useEffect(() => {
+    if (!mapZipQuickFilter) return;
+    if (mapQuickZipOptions.includes(mapZipQuickFilter)) return;
+    setMapZipQuickFilter('');
+  }, [mapQuickZipOptions, mapZipQuickFilter]);
 
   const handleOpenTripNote = trip => {
     setNoteModalTripId(trip.id);
@@ -1062,6 +1108,14 @@ const TripDashboardWorkspace = () => {
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
                   <Button variant="dark" size="sm" onClick={() => setShowRoute(current => !current)}>Route</Button>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
+                  <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                    <option value="">City</option>
+                    {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
+                  </Form.Select>
+                  <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} style={{ width: 130, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                    <option value="">ZIP Code</option>
+                    {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
+                  </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => setShowInfo(current => !current)}>{showInfo ? 'Hide Info' : 'Show Info'}</Button>
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
                     <option value="auto">Map: Auto</option>
@@ -1096,6 +1150,28 @@ const TripDashboardWorkspace = () => {
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
                   {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+                  {mapQuickTrips.flatMap(trip => {
+                  const points = [{
+                    key: `${trip.id}-pickup-mapquick`,
+                    tripId: trip.id,
+                    position: trip.position,
+                    color: '#0ea5e9',
+                    label: `PU ${trip.pickup}`
+                  }, {
+                    key: `${trip.id}-dropoff-mapquick`,
+                    tripId: trip.id,
+                    position: trip.destinationPosition ?? trip.position,
+                    color: '#22c55e',
+                    label: `DO ${trip.dropoff}`
+                  }];
+                  return points;
+                }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
+                  click: () => {
+                    toggleTripSelection(point.tripId);
+                  }
+                }}>
+                      <Popup>{point.label}</Popup>
+                    </CircleMarker>)}
                   {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
                       <Popup>
                         <div className="fw-semibold">{stop.title}</div>
@@ -1150,7 +1226,7 @@ const TripDashboardWorkspace = () => {
                   </Form.Select>
                   <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search Trip ID" style={{ width: 150 }} />
                   {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
-                  <span className="small">{selectedTripIds.length} sel.</span>
+                  <Badge bg={selectedTripIds.length > 0 ? 'dark' : 'light'} text={selectedTripIds.length > 0 ? 'light' : 'dark'}>{selectedTripIds.length} selected trips</Badge>
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}

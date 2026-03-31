@@ -214,6 +214,11 @@
                 background: #f8d7da;
                 color: #721c24;
               }
+
+              &.action-ACTION {
+                background: #e8ddff;
+                color: #4b2a8a;
+              }
             }
           }
 
@@ -286,6 +291,28 @@
         font-size: 0.85rem;
         text-transform: uppercase;
       }
+
+      .sessionBadge {
+        align-self: flex-start;
+        margin-top: 0.35rem;
+        padding: 0.3rem 0.7rem;
+        border-radius: 999px;
+        background: #d4edda;
+        color: #155724;
+        font-weight: 600;
+        font-size: 0.8rem;
+      }
+
+      .sessionBadgeOffline {
+        align-self: flex-start;
+        margin-top: 0.35rem;
+        padding: 0.3rem 0.7rem;
+        border-radius: 999px;
+        background: #f1f3f5;
+        color: #6c757d;
+        font-weight: 600;
+        font-size: 0.8rem;
+      }
     }
 
     .activityTimeline {
@@ -329,6 +356,10 @@
               &.dot-LOGOUT {
                 background: #dc3545;
               }
+
+              &.dot-ACTION {
+                background: #6f42c1;
+              }
             }
 
             .eventContent {
@@ -355,6 +386,16 @@
                 &.type-LOGOUT {
                   color: #dc3545;
                 }
+        
+                &.type-ACTION {
+                  color: #6f42c1;
+                }
+              }
+      
+              .eventMeta {
+                margin-top: 0.15rem;
+                color: #6c757d;
+                font-size: 0.78rem;
               }
             }
           }

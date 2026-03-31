@@ -40,6 +40,7 @@ const useSignIn = () => {
   const [requires2FA, setRequires2FA] = useState(false);
   const [twoFACode, setTwoFACode] = useState('');
   const [pendingLogin, setPendingLogin] = useState(null);
+  const [lockoutStatus, setLockoutStatus] = useState(null);
 
   const { push } = useRouter();
   const { showNotification } = useNotificationContext();
@@ -64,6 +65,7 @@ const useSignIn = () => {
 
   const login = handleSubmit(async values => {
     setLoading(true);
+    setLockoutStatus(null);
     try {
       // Step 1: Pre-login check to see if 2FA is required
       const preLoginResponse = await fetch('/api/auth/pre-login', {
@@ -78,8 +80,18 @@ const useSignIn = () => {
       const preLoginData = await preLoginResponse.json();
 
       if (!preLoginResponse.ok) {
+        if (preLoginData?.isBlocked) {
+          setLockoutStatus({
+            isBlocked: true,
+            lockRemaining: preLoginData?.lockRemaining || null,
+            retryAfterSeconds: preLoginData?.retryAfterSeconds || null,
+            contactAdmin: Boolean(preLoginData?.contactAdmin),
+            message: preLoginData?.message || 'Estas bloqueado temporalmente. Contacte al admin.'
+          });
+        }
+
         showNotification({
-          message: preLoginData.error || 'Login failed',
+          message: preLoginData.message || preLoginData.error || 'Login failed',
           variant: 'danger'
         });
         setLoading(false);
@@ -108,6 +120,7 @@ const useSignIn = () => {
       });
 
       if (response?.ok) {
+        setLockoutStatus(null);
         const targetPage = PAGE_OPTIONS.find(option => option.value === values?.portalPage)?.href ?? '/dispatcher';
         push(queryParams['redirectTo'] ?? targetPage);
         showNotification({
@@ -325,6 +338,7 @@ const useSignIn = () => {
     setEmailValue,
     codeValue,
     setCodeValue,
+    lockoutStatus,
     portalPageValue,
     setPortalPageValue,
     requires2FA,

@@ -76,6 +76,10 @@ export const MENU_ITEMS = [{
     key: 'configuraciones-office',
     label: 'Office',
     url: '/settings/office'
+  }, {
+    key: 'configuraciones-email-templates',
+    label: 'Email Templates',
+    url: '/settings/email-templates'
   }]
 }, {
   key: 'avatar',

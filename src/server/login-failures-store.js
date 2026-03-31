@@ -6,6 +6,11 @@ const STORAGE_FILE = getStorageFilePath('login-failures.json');
 const MAX_FAILURES_KEPT = 1000; // Keep last 1000 failures
 const FAILURE_LOG_RETENTION_DAYS = 30; // Delete logs older than 30 days
 
+const parseJsonSafe = raw => {
+  const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
+  return JSON.parse(normalized);
+};
+
 const ensureStorageFile = async () => {
   try {
     await mkdir(STORAGE_DIR, { recursive: true });
@@ -23,7 +28,7 @@ const readFailuresState = async () => {
   try {
     await ensureStorageFile();
     const content = await readFile(STORAGE_FILE, 'utf8');
-    return JSON.parse(content) || { failures: [] };
+    return parseJsonSafe(content) || { failures: [] };
   } catch (error) {
     console.error('Error reading login failures:', error);
     return { failures: [] };

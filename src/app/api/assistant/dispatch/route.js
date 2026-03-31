@@ -8,6 +8,7 @@ import { readAssistantConversation, readAssistantFacts, mergeAssistantFact, writ
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readIntegrationsState } from '@/server/integrations-store';
+import { logUserActionEvent } from '@/server/activity-logs-store';
 import { readSystemUsersPayload } from '@/server/system-users-store';
 
 const DEFAULT_MODEL = 'gpt-5.4-nano';
@@ -920,6 +921,20 @@ export async function POST(request) {
         updatedAt: Date.now(),
         path: pathname,
         messages: nextMessages.slice(-30)
+      });
+    }
+    if (session?.user?.id) {
+      await logUserActionEvent({
+        userId: session.user.id,
+        userName: `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim() || session.user.username || 'Unknown',
+        userRole: session.user.role,
+        userEmail: session.user.email,
+        eventLabel: `Assistant: ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`,
+        target: pathname || 'assistant-dispatch',
+        metadata: {
+          provider: result.provider,
+          action: result.action?.type || null
+        }
       });
     }
     return NextResponse.json({

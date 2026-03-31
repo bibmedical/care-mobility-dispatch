@@ -37,31 +37,55 @@ const writeActivityLogs = async state => {
   }
 };
 
+const buildBaseLogEntry = ({
+  userId,
+  userName,
+  userRole,
+  userEmail,
+  ipAddress = '',
+  eventType,
+  eventLabel = '',
+  metadata = null,
+  target = ''
+}) => {
+  const timestamp = new Date().toISOString();
+  return {
+    id: `${userId}-${timestamp}`,
+    userId,
+    userName,
+    userRole,
+    userEmail,
+    ipAddress,
+    eventType,
+    eventLabel,
+    target,
+    metadata,
+    timestamp,
+    date: new Date(timestamp).toISOString().split('T')[0],
+    time: new Date(timestamp).toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  };
+};
+
 /**
  * Log a login event
  */
 export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAddress = '') => {
   try {
     const state = await readActivityLogs();
-    const timestamp = new Date().toISOString();
-    
-    const logEntry = {
-      id: `${userId}-${timestamp}`,
+    const logEntry = buildBaseLogEntry({
       userId,
       userName,
       userRole,
       userEmail,
       ipAddress,
       eventType: 'LOGIN',
-      timestamp,
-      date: new Date(timestamp).toISOString().split('T')[0],
-      time: new Date(timestamp).toLocaleTimeString('en-US', { 
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
-    };
+      eventLabel: 'Signed in'
+    });
     
     state.logs.push(logEntry);
     await writeActivityLogs(state);
@@ -79,30 +103,20 @@ export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAdd
 export const logLogoutEvent = async (userId) => {
   try {
     const state = await readActivityLogs();
-    const timestamp = new Date().toISOString();
-    
     // Find the corresponding login entry to get user details
     const lastLoginEntry = state.logs
       .filter(log => log.userId === userId && log.eventType === 'LOGIN')
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
     
-    const logEntry = {
-      id: `${userId}-${timestamp}`,
+    const logEntry = buildBaseLogEntry({
       userId,
       userName: lastLoginEntry?.userName || 'Unknown',
       userRole: lastLoginEntry?.userRole || 'Unknown',
       userEmail: lastLoginEntry?.userEmail || 'Unknown',
       ipAddress: lastLoginEntry?.ipAddress || '',
       eventType: 'LOGOUT',
-      timestamp,
-      date: new Date(timestamp).toISOString().split('T')[0],
-      time: new Date(timestamp).toLocaleTimeString('en-US', { 
-        hour12: false,
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
-    };
+      eventLabel: 'Signed out'
+    });
     
     state.logs.push(logEntry);
     await writeActivityLogs(state);
@@ -123,6 +137,42 @@ export const getAllActivityLogs = async () => {
   } catch (error) {
     console.error('Error getting all activity logs:', error);
     return [];
+  }
+};
+
+/**
+ * Log a generic user action event (SMS, assistant, dispatch operations, etc)
+ */
+export const logUserActionEvent = async ({
+  userId,
+  userName,
+  userRole,
+  userEmail,
+  ipAddress = '',
+  eventLabel,
+  target = '',
+  metadata = null
+}) => {
+  try {
+    if (!userId) return null;
+    const state = await readActivityLogs();
+    const logEntry = buildBaseLogEntry({
+      userId,
+      userName: userName || 'Unknown',
+      userRole: userRole || 'Unknown',
+      userEmail: userEmail || 'Unknown',
+      ipAddress,
+      eventType: 'ACTION',
+      eventLabel: String(eventLabel || 'Action performed'),
+      target: String(target || ''),
+      metadata: metadata && typeof metadata === 'object' ? metadata : null
+    });
+    state.logs.push(logEntry);
+    await writeActivityLogs(state);
+    return logEntry;
+  } catch (error) {
+    console.error('Error logging user action event:', error);
+    return null;
   }
 };
 
@@ -199,6 +249,7 @@ export const getActivityLogsSummary = async () => {
     const onlineUsers = new Map();
     logs.forEach(log => {
       onlineUsers.set(log.userId, {
+        userId: log.userId,
         userName: log.userName,
         userRole: log.userRole,
         userEmail: log.userEmail,

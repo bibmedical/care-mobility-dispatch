@@ -20,6 +20,7 @@ const SystemLogsWorkspace = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [userDetailLogs, setUserDetailLogs] = useState([]);
   const [showUserDetail, setShowUserDetail] = useState(false);
+  const [clockTick, setClockTick] = useState(Date.now());
 
   // Fetch logs and summary
   const fetchLogs = async () => {
@@ -64,6 +65,11 @@ const SystemLogsWorkspace = () => {
     return () => clearInterval(interval);
   }, [filterRole]);
 
+  useEffect(() => {
+    const timer = setInterval(() => setClockTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Handle user detail view
   const handleUserClick = (log) => {
     setSelectedUser(log);
@@ -92,6 +98,37 @@ const SystemLogsWorkspace = () => {
       minute: '2-digit',
       second: '2-digit'
     });
+  };
+
+  const formatDuration = (fromIso) => {
+    const from = new Date(fromIso).getTime();
+    if (!Number.isFinite(from)) return '--:--:--';
+    const diffMs = Math.max(0, clockTick - from);
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+    const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+    const seconds = String(totalSeconds % 60).padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+  };
+
+  const onlineUserIdSet = new Set((stats.onlineUsers || []).map(user => user.userId).filter(Boolean));
+
+  const getSelectedUserSession = () => {
+    if (!selectedUser?.userId) return null;
+    const userLogs = allLogs.filter(log => log.userId === selectedUser.userId).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const lastLogin = userLogs.find(log => log.eventType === 'LOGIN');
+    if (!lastLogin) return null;
+    const hasLogoutAfterLastLogin = userLogs.some(log => log.eventType === 'LOGOUT' && new Date(log.timestamp) > new Date(lastLogin.timestamp));
+    if (hasLogoutAfterLastLogin) return null;
+    return lastLogin;
+  };
+
+  const selectedUserActiveSession = getSelectedUserSession();
+
+  const getActionLabel = log => {
+    if (log.eventType === 'LOGIN') return 'ENTRADA (Login)';
+    if (log.eventType === 'LOGOUT') return 'SALIDA (Logout)';
+    return log.eventLabel || 'ACCION';
   };
 
   return (
@@ -153,17 +190,18 @@ const SystemLogsWorkspace = () => {
                 <th>Rol</th>
                 <th>Correo</th>
                 <th>Acción</th>
+                <th>Tiempo</th>
                 <th>Fecha</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="6" className={styles.loading}>Cargando...</td>
+                  <td colSpan="7" className={styles.loading}>Cargando...</td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className={styles.noData}>No hay logs disponibles</td>
+                  <td colSpan="7" className={styles.noData}>No hay logs disponibles</td>
                 </tr>
               ) : (
                 logs.map((log, index) => (
@@ -182,9 +220,10 @@ const SystemLogsWorkspace = () => {
                     <td>{log.userEmail}</td>
                     <td>
                       <span className={`${styles.action} ${styles[`action-${log.eventType}`]}`}>
-                        {log.eventType === 'LOGIN' ? '🟢 ENTRADA' : '🔴 SALIDA'}
+                        {log.eventType === 'LOGIN' ? '🟢 ENTRADA' : log.eventType === 'LOGOUT' ? '🔴 SALIDA' : `🟣 ${log.eventLabel || 'ACCION'}`}
                       </span>
                     </td>
+                    <td>{onlineUserIdSet.has(log.userId) && log.eventType === 'LOGIN' ? formatDuration(log.timestamp) : '—'}</td>
                     <td>{log.date}</td>
                   </tr>
                 ))
@@ -205,6 +244,7 @@ const SystemLogsWorkspace = () => {
             <h2>{selectedUser?.userName}</h2>
             <p>{selectedUser?.userEmail}</p>
             <span className={styles.roleBadge}>{selectedUser?.userRole}</span>
+            {selectedUserActiveSession ? <div className={styles.sessionBadge}>Sesion activa: {formatDuration(selectedUserActiveSession.timestamp)}</div> : <div className={styles.sessionBadgeOffline}>Fuera de linea</div>}
           </div>
 
           <div className={styles.activityTimeline}>
@@ -227,8 +267,10 @@ const SystemLogsWorkspace = () => {
                         <div className={styles.eventContent}>
                           <span className={styles.eventTime}>{log.time}</span>
                           <span className={`${styles.eventType} ${styles[`type-${log.eventType}`]}`}>
-                            {log.eventType === 'LOGIN' ? 'ENTRADA (Login)' : 'SALIDA (Logout)'}
+                            {getActionLabel(log)}
                           </span>
+                          {log.target ? <span className={styles.eventMeta}>Target: {log.target}</span> : null}
+                          {log.metadata?.preview ? <span className={styles.eventMeta}>Detalle: {log.metadata.preview}</span> : null}
                         </div>
                       </div>
                     ))}

@@ -5,7 +5,7 @@ import TextFormInput from '@/components/form/TextFormInput';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
 import { Controller } from 'react-hook-form';
-import { Col, FormControl, FormLabel, FormGroup } from 'react-bootstrap';
+import { Alert, Col, FormControl, FormLabel, FormGroup } from 'react-bootstrap';
 import { useState } from 'react';
 import useSignIn, { PAGE_OPTIONS } from '../useSignIn';
 
@@ -24,11 +24,19 @@ const LoginForm = () => {
     emailValue,
     setEmailValue,
     codeValue,
-    setCodeValue
+    setCodeValue,
+    lockoutStatus
   } = useSignIn();
 
   return <>
       {loginMode === 'credentials' ? <form onSubmit={login} className="my-4">
+          {lockoutStatus?.isBlocked ? <Alert variant="danger" className="mb-3 py-2">
+              <div className="fw-semibold">Cuenta bloqueada temporalmente</div>
+              <div className="small">{lockoutStatus.message}</div>
+              {lockoutStatus.lockRemaining ? <div className="small mt-1">Tiempo restante: {lockoutStatus.lockRemaining}</div> : null}
+              <div className="small mt-1">Si necesita acceso inmediato, contacte al admin.</div>
+            </Alert> : null}
+
           <Controller name="companyKey" control={control} render={({
           field
         }) => <input {...field} type="hidden" />} />
