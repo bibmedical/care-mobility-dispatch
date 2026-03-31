@@ -11,6 +11,7 @@ const STORAGE_KEY = '__CARE_MOBILITY_AI_ASSISTANT__';
 const CLIENT_KEY = '__CARE_MOBILITY_AI_ASSISTANT_CLIENT__';
 const MODE_KEY = '__CARE_MOBILITY_AI_ASSISTANT_MODE__';
 const DRIVER_MESSAGES_KEY = '__CARE_MOBILITY_DISPATCH_MESSAGES__';
+const WIDGET_HIDDEN_KEY = '__CARE_MOBILITY_AI_WIDGET_HIDDEN__';
 
 const buildInitialState = assistantName => ({
   open: false,
@@ -193,6 +194,30 @@ const widgetStyles = {
     color: 'rgba(255,255,255,0.84)',
     fontSize: 10,
     textAlign: 'center'
+  },
+  iaTab: {
+    position: 'fixed',
+    right: 0,
+    bottom: 160,
+    zIndex: 1400,
+    background: 'rgba(12, 18, 28, 0.94)',
+    border: '1px solid rgba(148, 163, 184, 0.55)',
+    borderRight: 'none',
+    borderRadius: '12px 0 0 12px',
+    color: '#ffffff',
+    fontWeight: 800,
+    fontSize: 11,
+    letterSpacing: '0.12em',
+    padding: '12px 7px',
+    cursor: 'pointer',
+    boxShadow: '-4px 4px 14px rgba(0,0,0,0.35)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 4,
+    writingMode: 'vertical-rl',
+    textOrientation: 'mixed',
+    userSelect: 'none'
   }
 };
 
@@ -261,6 +286,7 @@ const DispatchAssistantWidget = () => {
   const [storedAssistantState, setStoredAssistantState] = useLocalStorage(STORAGE_KEY, buildInitialState(DEFAULT_ASSISTANT_AVATAR.name));
   const [clientId, setClientId] = useLocalStorage(CLIENT_KEY, `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
   const [assistantMode, setAssistantMode] = useLocalStorage(MODE_KEY, 'local');
+  const [widgetHidden, setWidgetHidden] = useLocalStorage(WIDGET_HIDDEN_KEY, false);
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -562,6 +588,19 @@ const DispatchAssistantWidget = () => {
 
   if (!assistantVisible) {
     return null;
+  }
+
+  if (widgetHidden) {
+    return (
+      <button
+        type="button"
+        aria-label="Mostrar asistente IA"
+        onClick={() => setWidgetHidden(false)}
+        style={widgetStyles.iaTab}
+      >
+        ◀ IA
+      </button>
+    );
   }
 
   const appendMessage = message => {
@@ -917,6 +956,16 @@ const DispatchAssistantWidget = () => {
           setVoiceEnabled(currentValue => !currentValue);
         }} style={widgetStyles.launcherModeButton}>
             {voiceEnabled ? 'Voz on' : 'Voz off'}
+          </Button>
+        </div>
+        <div style={widgetStyles.launcherModeRow}>
+          <Button
+            type="button"
+            variant="outline-secondary"
+            onClick={() => setWidgetHidden(true)}
+            style={{ ...widgetStyles.launcherModeButton, gridColumn: '1 / -1', opacity: 0.7 }}
+          >
+            Esconder
           </Button>
         </div>
       </div>
