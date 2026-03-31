@@ -179,7 +179,7 @@ const DispatcherMessagingPanel = ({
 
   return (
     <div className="h-100 d-flex flex-column">
-      <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
+      <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark flex-wrap gap-2">
         <div className="d-flex align-items-center gap-2 flex-wrap">
           <strong>Messaging</strong>
           <Badge bg="light" text="dark">{visibleThreads.length} threads</Badge>
