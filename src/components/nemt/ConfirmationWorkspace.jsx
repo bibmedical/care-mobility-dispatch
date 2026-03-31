@@ -97,10 +97,18 @@ const ConfirmationWorkspace = () => {
   const [confirmationMethodModal, setConfirmationMethodModal] = useState(null);
   const [confirmationMethod, setConfirmationMethod] = useState('whatsapp');
   const [isSendingConfirmation, setIsSendingConfirmation] = useState(false);
+  const [tripUpdateModal, setTripUpdateModal] = useState(null);
+  const [tripUpdateConfirmMethod, setTripUpdateConfirmMethod] = useState('call');
+  const [tripUpdatePickupTime, setTripUpdatePickupTime] = useState('');
+  const [tripUpdateDropoffTime, setTripUpdateDropoffTime] = useState('');
+  const [tripUpdateNote, setTripUpdateNote] = useState('');
+  const [tripUpdateCompanionNote, setTripUpdateCompanionNote] = useState('');
+  const [tripUpdateMobilityNote, setTripUpdateMobilityNote] = useState('');
 
   const optOutList = Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [];
   const blacklistEntries = Array.isArray(blacklistData?.entries) ? blacklistData.entries : [];
   const groupTemplates = smsData?.sms?.groupTemplates || {};
+  const riderProfiles = smsData?.sms?.riderProfiles || {};
   const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
     trip,
     optOutList,
@@ -428,6 +436,130 @@ const ConfirmationWorkspace = () => {
     setConfirmationMethod('whatsapp');
   };
 
+  const getMethodCode = method => {
+    if (method === 'whatsapp') return 'W';
+    if (method === 'sms') return 'S';
+    if (method === 'call') return 'C';
+    return 'M';
+  };
+
+  const getMethodLabel = method => {
+    if (method === 'whatsapp') return 'WhatsApp';
+    if (method === 'sms') return 'SMS';
+    if (method === 'call') return 'Call';
+    return 'Manual';
+  };
+
+  const getTripDisplayPickupTime = trip => {
+    if (trip?.scheduleChange?.newPickup) return `${trip.scheduleChange.newPickup} (NEW)`;
+    return trip?.scheduledPickup || trip?.pickup || '-';
+  };
+
+  const getRiderProfileKey = trip => {
+    const phoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
+    if (phoneKey) return `phone:${phoneKey}`;
+    const riderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
+    return riderKey ? `rider:${riderKey}` : '';
+  };
+
+  const getRiderProfile = trip => {
+    const key = getRiderProfileKey(trip);
+    if (!key) return null;
+    return riderProfiles[key] || null;
+  };
+
+  const handleOpenTripUpdateModal = trip => {
+    const profile = getRiderProfile(trip);
+    setTripUpdateModal(trip);
+    setTripUpdateConfirmMethod('call');
+    setTripUpdatePickupTime(String(trip?.scheduledPickup || trip?.pickup || ''));
+    setTripUpdateDropoffTime(String(trip?.scheduledDropoff || trip?.dropoff || ''));
+    setTripUpdateNote('');
+    setTripUpdateCompanionNote(String(profile?.companion || ''));
+    setTripUpdateMobilityNote(String(profile?.mobility || ''));
+  };
+
+  const handleSaveTripUpdate = async () => {
+    if (!tripUpdateModal) return;
+    const nowIso = new Date().toISOString();
+    const methodLabel = getMethodLabel(tripUpdateConfirmMethod);
+    const oldPickup = String(tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '').trim();
+    const oldDropoff = String(tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '').trim();
+    const newPickup = String(tripUpdatePickupTime || '').trim();
+    const newDropoff = String(tripUpdateDropoffTime || '').trim();
+    const pickupChanged = Boolean(newPickup) && newPickup !== oldPickup;
+    const dropoffChanged = Boolean(newDropoff) && newDropoff !== oldDropoff;
+
+    const detailLines = [];
+    detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
+    if (pickupChanged || dropoffChanged) {
+      detailLines.push(`[SCHEDULE NEW] Pickup: ${oldPickup || '-'} -> ${newPickup || oldPickup || '-'} | Dropoff: ${oldDropoff || '-'} -> ${newDropoff || oldDropoff || '-'}`);
+    }
+    if (tripUpdateCompanionNote.trim()) detailLines.push(`[PASSENGER NOTE] ${tripUpdateCompanionNote.trim()}`);
+    if (tripUpdateMobilityNote.trim()) detailLines.push(`[MOBILITY NOTE] ${tripUpdateMobilityNote.trim()}`);
+    if (tripUpdateNote.trim()) detailLines.push(`[DISPATCH NOTE] ${tripUpdateNote.trim()}`);
+
+    const mergedNotes = [String(tripUpdateModal.notes || '').trim(), detailLines.join('\n')].filter(Boolean).join('\n');
+
+    updateTripRecord(tripUpdateModal.id, {
+      scheduledPickup: newPickup || oldPickup,
+      scheduledDropoff: newDropoff || oldDropoff,
+      notes: mergedNotes,
+      confirmation: {
+        ...(tripUpdateModal.confirmation || {}),
+        status: 'Confirmed',
+        provider: tripUpdateConfirmMethod,
+        respondedAt: nowIso,
+        lastResponseText: `Confirmed via ${methodLabel}`,
+        lastResponseCode: getMethodCode(tripUpdateConfirmMethod)
+      },
+      scheduleChange: pickupChanged || dropoffChanged ? {
+        oldPickup,
+        newPickup: newPickup || oldPickup,
+        oldDropoff,
+        newDropoff: newDropoff || oldDropoff,
+        changedAt: nowIso,
+        marker: 'NEW'
+      } : tripUpdateModal.scheduleChange || null,
+      passengerProfile: {
+        ...(tripUpdateModal.passengerProfile || {}),
+        companion: tripUpdateCompanionNote.trim(),
+        mobility: tripUpdateMobilityNote.trim(),
+        updatedAt: nowIso
+      }
+    });
+
+    const riderProfileKey = getRiderProfileKey(tripUpdateModal);
+    if (riderProfileKey) {
+      await saveSmsData({
+        sms: {
+          ...(smsData?.sms || {}),
+          riderProfiles: {
+            ...riderProfiles,
+            [riderProfileKey]: {
+              companion: tripUpdateCompanionNote.trim(),
+              mobility: tripUpdateMobilityNote.trim(),
+              latestNote: tripUpdateNote.trim(),
+              updatedAt: nowIso
+            }
+          }
+        }
+      });
+    }
+
+    setManualConfirmations(current => ({
+      ...current,
+      [tripUpdateModal.id]: {
+        status: 'Confirmed',
+        method: getMethodCode(tripUpdateConfirmMethod),
+        timestamp: nowIso
+      }
+    }));
+
+    setCustomStatus(`Trip ${tripUpdateModal.id} updated. Method: ${methodLabel}${pickupChanged || dropoffChanged ? ' | Schedule marked NEW' : ''}.`);
+    setTripUpdateModal(null);
+  };
+
   const handleSendConfirmation = async () => {
     if (!confirmationMethodModal || confirmationMethodModal.length === 0) {
       setCustomStatus('No trips selected for confirmation.');
@@ -461,6 +593,24 @@ const ConfirmationWorkspace = () => {
               })
             });
           }
+          updateTripRecord(trip.id, {
+            confirmation: {
+              ...(trip.confirmation || {}),
+              status: 'Confirmed',
+              provider: 'whatsapp',
+              respondedAt: new Date().toISOString(),
+              lastResponseText: 'Confirmed via WhatsApp',
+              lastResponseCode: 'W'
+            }
+          });
+          setManualConfirmations(current => ({
+            ...current,
+            [trip.id]: {
+              status: 'Confirmed',
+              method: 'W',
+              timestamp: new Date().toISOString()
+            }
+          }));
         }
         
         setCustomStatus(`WhatsApp confirmations sent to ${confirmationMethodModal.length} trips.`);
@@ -476,8 +626,60 @@ const ConfirmationWorkspace = () => {
         
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to send SMS');
+        confirmationMethodModal.forEach(trip => {
+          updateTripRecord(trip.id, {
+            confirmation: {
+              ...(trip.confirmation || {}),
+              status: 'Confirmed',
+              provider: 'sms',
+              respondedAt: new Date().toISOString(),
+              lastResponseText: 'Confirmed via SMS',
+              lastResponseCode: 'S'
+            }
+          });
+        });
+        setManualConfirmations(current => {
+          const next = {
+            ...current
+          };
+          confirmationMethodModal.forEach(trip => {
+            next[trip.id] = {
+              status: 'Confirmed',
+              method: 'S',
+              timestamp: new Date().toISOString()
+            };
+          });
+          return next;
+        });
         
         setCustomStatus(`SMS confirmations sent: ${result.sentCount}. Failed: ${result.failedCount || 0}. Skipped: ${result.skippedCount || 0}.`);
+      } else if (confirmationMethod === 'call') {
+        confirmationMethodModal.forEach(trip => {
+          updateTripRecord(trip.id, {
+            confirmation: {
+              ...(trip.confirmation || {}),
+              status: 'Confirmed',
+              provider: 'call',
+              respondedAt: new Date().toISOString(),
+              lastResponseText: 'Confirmed via Call',
+              lastResponseCode: 'C'
+            }
+          });
+        });
+        setManualConfirmations(current => {
+          const next = {
+            ...current
+          };
+          confirmationMethodModal.forEach(trip => {
+            next[trip.id] = {
+              status: 'Confirmed',
+              method: 'C',
+              timestamp: new Date().toISOString()
+            };
+          });
+          return next;
+        });
+        setCustomStatus(`Call confirmations saved for ${confirmationMethodModal.length} trip(s).`);
       }
       
       await refreshDispatchState({ forceServer: true });
@@ -597,6 +799,7 @@ const ConfirmationWorkspace = () => {
                   <th>Trip ID</th>
                   <th>Rider</th>
                   <th>Phone</th>
+                  <th>Pickup Time</th>
                   <th>Leg</th>
                   <th>Type</th>
                   <th>Do Not Confirm</th>
@@ -614,11 +817,17 @@ const ConfirmationWorkspace = () => {
                   const blockingState = tripBlockingMap.get(trip.id) || { isBlocked: false };
                   const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
                   const isOptedOut = blockingState.isBlocked;
+                  const riderProfile = getRiderProfile(trip);
                   return <tr key={trip.id}>
                       <td><Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => toggleTripSelection(trip.id)} /></td>
                       <td className="fw-semibold">{trip.id}</td>
-                      <td>{trip.rider}</td>
+                      <td>
+                        <div>{trip.rider}</div>
+                        {riderProfile?.companion ? <div className="small text-info">Companion: {riderProfile.companion}</div> : null}
+                        {riderProfile?.mobility ? <div className="small text-warning">Mobility: {riderProfile.mobility}</div> : null}
+                      </td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
+                      <td>{getTripDisplayPickupTime(trip)}</td>
                       <td>{getTripLegFilterKey(trip)}</td>
                       <td>{getTripTypeLabel(trip)}</td>
                       <td>{isOptedOut ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>Blocked</Badge> : <Badge bg="success">Allowed</Badge>}</td>
@@ -640,7 +849,7 @@ const ConfirmationWorkspace = () => {
                           </Button>
                         )}
                       </td>
-                      <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}</td>
+                      <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}{trip.confirmation?.lastResponseCode ? <Badge bg="light" text="dark" className="ms-1">{trip.confirmation.lastResponseCode}</Badge> : null}</td>
                       <td>{trip.safeRideStatus || trip.status || '-'}</td>
                       <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td>
                       <td>{trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td>
@@ -653,6 +862,9 @@ const ConfirmationWorkspace = () => {
                           <Button size="sm" variant="outline-danger" onClick={() => handleCancelWithNote(trip)} title="Cancel with note" style={{ minWidth: 80 }}>
                             Cancel
                           </Button>
+                          <Button size="sm" variant="outline-info" onClick={() => handleOpenTripUpdateModal(trip)} title="Update confirmation, schedule and notes" style={{ minWidth: 80 }}>
+                            Update
+                          </Button>
                           <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 80 }} onClick={() => handleToggleOptOut(trip)}>{isOptedOut ? 'Allow' : 'Block'}</Button>
                           {trip.hospitalStatus && (
                             <Button size="sm" variant="outline-warning" onClick={() => handleRemoveHospitalRehab(trip)} title="Remove hospital/rehab status" style={{ minWidth: 80 }}>
@@ -663,7 +875,7 @@ const ConfirmationWorkspace = () => {
                       </td>
                     </tr>;
                 }) : <tr>
-                    <td colSpan={13} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
+                    <td colSpan={14} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
                   </tr>}
               </tbody>
             </Table>
@@ -722,6 +934,14 @@ const ConfirmationWorkspace = () => {
               checked={confirmationMethod === 'sms'}
               onChange={event => setConfirmationMethod(event.target.value)}
             />
+            <Form.Check
+              type="radio"
+              label="Call"
+              name="confirmationMethod"
+              value="call"
+              checked={confirmationMethod === 'call'}
+              onChange={event => setConfirmationMethod(event.target.value)}
+            />
           </div>
 
           {confirmationMethod === 'whatsapp' && (
@@ -734,12 +954,63 @@ const ConfirmationWorkspace = () => {
               SMS messages will be sent in batch to all {confirmationMethodModal?.length || 0} trips.
             </div>
           )}
+          {confirmationMethod === 'call' && (
+            <div className="alert alert-info small mb-0">
+              This saves a manual call confirmation even if SMS center is not configured.
+            </div>
+          )}
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setConfirmationMethodModal(null)} disabled={isSendingConfirmation}>Close</Button>
           <Button variant="primary" onClick={handleSendConfirmation} disabled={isSendingConfirmation}>
-            {isSendingConfirmation ? 'Sending...' : `Send via ${confirmationMethod === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
+            {isSendingConfirmation ? 'Sending...' : `Send via ${confirmationMethod === 'whatsapp' ? 'WhatsApp' : confirmationMethod === 'sms' ? 'SMS' : 'Call'}`}
           </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={Boolean(tripUpdateModal)} onHide={() => setTripUpdateModal(null)} centered size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Trip Update</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="small text-muted mb-2">Trip: {tripUpdateModal?.id} | Rider: {tripUpdateModal?.rider}</div>
+          <Row className="g-3">
+            <Col md={4}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Confirmed Via</Form.Label>
+              <Form.Select value={tripUpdateConfirmMethod} onChange={event => setTripUpdateConfirmMethod(event.target.value)}>
+                <option value="call">Call</option>
+                <option value="sms">SMS</option>
+                <option value="whatsapp">WhatsApp</option>
+              </Form.Select>
+            </Col>
+            <Col md={4}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Pickup Time (New)</Form.Label>
+              <Form.Control value={tripUpdatePickupTime} onChange={event => setTripUpdatePickupTime(event.target.value)} placeholder="e.g. 07:30 AM" />
+            </Col>
+            <Col md={4}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Dropoff Time (New)</Form.Label>
+              <Form.Control value={tripUpdateDropoffTime} onChange={event => setTripUpdateDropoffTime(event.target.value)} placeholder="e.g. 08:15 AM" />
+            </Col>
+            <Col md={12}>
+              <div className="small text-muted">Current pickup: {tripUpdateModal?.scheduledPickup || tripUpdateModal?.pickup || '-'} | Current dropoff: {tripUpdateModal?.scheduledDropoff || tripUpdateModal?.dropoff || '-'}</div>
+            </Col>
+            <Col md={6}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Companion Note</Form.Label>
+              <Form.Control value={tripUpdateCompanionNote} onChange={event => setTripUpdateCompanionNote(event.target.value)} placeholder="Patient goes with companion" />
+            </Col>
+            <Col md={6}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Mobility Note</Form.Label>
+              <Form.Control value={tripUpdateMobilityNote} onChange={event => setTripUpdateMobilityNote(event.target.value)} placeholder="Motorized wheelchair / equipment" />
+            </Col>
+            <Col md={12}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Dispatch Note</Form.Label>
+              <Form.Control as="textarea" rows={4} value={tripUpdateNote} onChange={event => setTripUpdateNote(event.target.value)} placeholder="Add new note (shown in Dispatcher and related views)" />
+            </Col>
+          </Row>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setTripUpdateModal(null)}>Close</Button>
+          <Button variant="primary" onClick={handleSaveTripUpdate}>Save Update</Button>
         </Modal.Footer>
       </Modal>
 
