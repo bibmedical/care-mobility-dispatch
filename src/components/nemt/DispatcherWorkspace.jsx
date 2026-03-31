@@ -1159,6 +1159,12 @@ const DispatcherWorkspace = () => {
     };
   }, [columnWidths, groupedFilteredTripRows, visibleTripColumns, showBottomPanels, expanded]);
 
+  useEffect(() => {
+    const handleAssistantAction = () => refreshDispatchState({ forceServer: true });
+    window.addEventListener('nemt-assistant-action', handleAssistantAction);
+    return () => window.removeEventListener('nemt-assistant-action', handleAssistantAction);
+  }, [refreshDispatchState]);
+
   const workspaceHeight = expanded ? 1100 : 980;
   const dividerSize = 10;
   const workspaceGridStyle = {

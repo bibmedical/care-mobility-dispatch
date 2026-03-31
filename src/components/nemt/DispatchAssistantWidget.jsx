@@ -732,6 +732,8 @@ const DispatchAssistantWidget = () => {
         }, 300);
       } else if (payload?.action?.type === 'driver-message') {
         appendDriverThreadMessage(payload.action);
+      } else if (['create-route', 'assign-trips', 'confirm-trip'].includes(payload?.action?.type)) {
+        window.dispatchEvent(new CustomEvent('nemt-assistant-action', { detail: payload.action }));
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to contact the assistant.');

@@ -802,7 +802,7 @@ const callOpenAI = async ({ message, history, snapshot, pathname, integrationsSt
       temperature: 0.3,
       messages: [{
         role: 'system',
-        content: 'You are a dispatch assistant for a NEMT operation and the Care Mobility web platform. Always respond in clear, natural, professional English. Use the provided snapshot as the source of truth. You know modules, trips, drivers, routes, integrations, users and blacklist. If you suggest an operational action, express it as a recommendation, not an automatic action. If you know the logged-in user\'s name, address them directly and personally. Do not use markdown, asterisks, or bullet symbols unless the user requests them.'
+        content: 'You are a dispatch assistant for a NEMT operation and the Care Mobility web platform. Always respond in clear, natural, professional English. Use the provided snapshot as the source of truth. You know modules, trips, drivers, routes, integrations, users and blacklist. You CAN execute operational actions: creating routes, assigning trips to drivers, confirming trips, and sending driver messages. When the user asks you to create a route or assign trips, execute it and confirm it was done. If you know the logged-in user\'s name, address them directly and personally. Do not use markdown, asterisks, or bullet symbols unless the user requests them.'
       }, {
         role: 'system',
         content: `Current page: ${pathname || 'unknown'}. App snapshot: ${JSON.stringify(snapshot)}`
@@ -883,6 +883,19 @@ export async function POST(request) {
           ...currentState,
           routePlans: [...(Array.isArray(currentState.routePlans) ? currentState.routePlans : []), result.action.routePlan]
         });
+      } catch {}
+    }
+
+    // Execute assign-trips action server-side
+    if (result.action?.type === 'assign-trips' && result.action?.driverId && Array.isArray(result.action?.tripIds)) {
+      try {
+        const currentState = await readNemtDispatchState();
+        const nextTrips = (Array.isArray(currentState.trips) ? currentState.trips : []).map(trip =>
+          result.action.tripIds.includes(trip.id)
+            ? { ...trip, driverId: result.action.driverId, status: 'Assigned' }
+            : trip
+        );
+        await writeNemtDispatchState({ ...currentState, trips: nextTrips });
       } catch {}
     }
 

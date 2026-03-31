@@ -325,6 +325,7 @@ const TripDashboardWorkspace = () => {
     createRoute,
     deleteRoute,
     refreshDrivers,
+    refreshDispatchState,
     getDriverName,
     updateTripNotes,
     updateTripRecord,
@@ -1187,6 +1188,12 @@ const TripDashboardWorkspace = () => {
     };
   }, [columnWidths, groupedFilteredTripRows, visibleTripColumns]);
 
+  useEffect(() => {
+    const handleAssistantAction = () => refreshDispatchState({ forceServer: true });
+    window.addEventListener('nemt-assistant-action', handleAssistantAction);
+    return () => window.removeEventListener('nemt-assistant-action', handleAssistantAction);
+  }, [refreshDispatchState]);
+
   const workspaceHeight = expanded ? 1120 : 1000;
   const dividerSize = 10;
   const workspaceGridStyle = {
@@ -1453,7 +1460,7 @@ const TripDashboardWorkspace = () => {
                 </div>
               </div>
                   {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'scroll', overflowY: 'hidden', height: 20, marginBottom: 6, scrollbarGutter: 'stable', scrollbarWidth: 'thin', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
-                    <div style={{ width: tripTableScrollWidth > 0 ? tripTableScrollWidth + 2 : 'calc(100% + 2px)', height: 18 }} />
+                    <div style={{ width: tripTableScrollWidth > 0 ? tripTableScrollWidth + 40 : 'calc(100% + 40px)', height: 18 }} />
                 </div> : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
                 <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content' }}>
