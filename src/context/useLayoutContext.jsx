@@ -11,7 +11,20 @@ const ThemeContext = createContext(undefined);
 const useLayoutContext = () => {
   const context = use(ThemeContext);
   if (!context) {
-    throw new Error('useLayoutContext can only be used within LayoutProvider');
+    return {
+      theme: 'light',
+      themeMode: 'light',
+      menu: {
+        theme: 'light',
+        size: 'default'
+      },
+      changeTheme: () => {},
+      changeMenu: {
+        theme: () => {},
+        size: () => {}
+      },
+      resetSettings: () => {}
+    };
   }
   return context;
 };
