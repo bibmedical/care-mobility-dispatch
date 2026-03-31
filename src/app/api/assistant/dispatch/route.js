@@ -422,7 +422,8 @@ const parseDateKeyword = text => {
   if (/man[aá]ana|tomorrow/.test(t)) {
     const d = new Date(today); d.setDate(d.getDate() + 1);
     return d.toISOString().slice(0, 10);
-  }\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
+  }
+  const dateMatch = text.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
   if (dateMatch) {
     const month = String(dateMatch[1]).padStart(2, '0');
     const day = String(dateMatch[2]).padStart(2, '0');
