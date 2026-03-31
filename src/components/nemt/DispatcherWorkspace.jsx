@@ -1395,7 +1395,7 @@ const DispatcherWorkspace = () => {
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
               </div>
-              {groupedFilteredTripRows.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'auto', overflowY: 'hidden', height: 14, marginBottom: 6 }}>
+              {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'scroll', overflowY: 'hidden', height: 18, marginBottom: 6, scrollbarGutter: 'stable', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)' }}>
                   <div style={{ width: tripTableScrollWidth || '100%', height: 1 }} />
                 </div> : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%', position: 'relative', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
@@ -1487,9 +1487,9 @@ const DispatcherWorkspace = () => {
                           </Button>
                         </td>
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-                          <Button variant={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(row.trip.id)} title={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
-                            WC
-                          </Button>
+                          {(getTripLegFilterKey(row.trip) !== 'AL' || getEffectiveTripStatus(row.trip) === 'WillCall') ? <Button variant={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(row.trip.id)} title={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
+                              WC
+                            </Button> : <span style={{ display: 'inline-block', minWidth: 40 }} />}
                         </td>
                         {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
                           <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
