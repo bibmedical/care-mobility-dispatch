@@ -404,11 +404,36 @@ export const authorizeSystemUser = ({
   password,
   clientType = 'web'
 }) => {
-  const normalizedIdentifier = normalizeAuthValue(identifier);
-  const normalizedPassword = normalizeAuthValue(password);
+  // Validate identifiers and credentials are provided
+  const trimmedIdentifier = String(identifier ?? '').trim();
+  const trimmedPassword = String(password ?? '').trim();
+
+  if (!trimmedIdentifier) {
+    throw new Error('Username or password is not valid');
+  }
+
+  if (!trimmedPassword) {
+    throw new Error('Username or password is not valid');
+  }
+
+  const normalizedIdentifier = normalizeAuthValue(trimmedIdentifier);
+  const normalizedPassword = normalizeAuthValue(trimmedPassword);
+
+  // Prevent empty credentials from matching
+  if (!normalizedIdentifier || !normalizedPassword) {
+    throw new Error('Username or password is not valid');
+  }
+
   const matchedUser = users.find(user => {
     const loginMatches = [user.email, user.username].some(value => normalizeAuthValue(value) === normalizedIdentifier);
-    return loginMatches && normalizeAuthValue(user.password) === normalizedPassword;
+    const storedPassword = String(user.password ?? '').trim();
+    
+    // Extra check: stored password must not be empty
+    if (!storedPassword) {
+      return false;
+    }
+    
+    return loginMatches && normalizeAuthValue(storedPassword) === normalizedPassword;
   });
 
   if (!matchedUser) {

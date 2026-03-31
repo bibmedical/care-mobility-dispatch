@@ -39,8 +39,8 @@ const useSignIn = () => {
   } = useNotificationContext();
   const queryParams = useQueryParams();
   const loginFormSchema = yup.object({
-    identifier: yup.string().required('Please enter your username or email'),
-    password: yup.string().required('Please enter your password'),
+    identifier: yup.string().trim().min(1, 'Please enter your username or email').required('Please enter your username or email'),
+    password: yup.string().trim().min(1, 'Please enter your password').required('Please enter your password'),
     companyKey: yup.string().transform(value => String(value ?? '').trim().toUpperCase()).oneOf([COMPANY_KEY], 'Please enter the company code correctly').required('Please enter the company code'),
     portalPage: yup.string().oneOf(PAGE_OPTIONS.map(option => option.value)).required('Please choose a page')
   });
