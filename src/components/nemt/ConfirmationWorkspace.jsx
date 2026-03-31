@@ -8,7 +8,7 @@ import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
-import { Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
+import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 
 const buildSurfaceStyles = isLight => ({
   card: {
@@ -56,7 +56,7 @@ const ConfirmationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const router = useRouter();
-  const { trips, refreshDispatchState } = useNemtContext();
+  const { trips, refreshDispatchState, updateTripRecord } = useNemtContext();
   const { data: smsData, saveData: saveSmsData } = useSmsIntegrationApi();
   const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
   const [statusFilter, setStatusFilter] = useState('all');
@@ -68,6 +68,18 @@ const ConfirmationWorkspace = () => {
   const [legFilter, setLegFilter] = useState('all');
   const [rideTypeFilter, setRideTypeFilter] = useState('all');
   const [confirmationSending, setConfirmationSending] = useState(false);
+  
+  // New states for date, time, and manual confirmation
+  const [confirmationDate, setConfirmationDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().slice(0, 10);
+  });
+  const [timeFromFilter, setTimeFromFilter] = useState('02:00');
+  const [timeToFilter, setTimeToFilter] = useState('08:00');
+  const [manualConfirmations, setManualConfirmations] = useState({});
+  const [cancelNoteModal, setCancelNoteModal] = useState(null);
+  const [cancelNoteDraft, setCancelNoteDraft] = useState('');
 
   const optOutList = Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [];
   const blacklistEntries = Array.isArray(blacklistData?.entries) ? blacklistData.entries : [];
@@ -101,11 +113,27 @@ const ConfirmationWorkspace = () => {
       if (statusFilter !== 'all' && confirmationStatus !== statusFilter) return false;
       if (legFilter !== 'all' && getTripLegFilterKey(trip) !== legFilter) return false;
       if (rideTypeFilter !== 'all' && getTripTypeLabel(trip) !== rideTypeFilter) return false;
+      
+      // Filter by date
+      const tripDate = trip.serviceDate || trip.dateOfService || trip.pickupDate || trip.appointmentDate || trip.tripDate;
+      if (tripDate && confirmationDate !== 'all') {
+        const tripDateStr = new Date(tripDate).toISOString().slice(0, 10);
+        if (tripDateStr !== confirmationDate) return false;
+      }
+      
+      // Filter by time range
+      const tripTime = trip.scheduledPickup || trip.pickupTime || trip.appointmentTime || trip.startTime || '';
+      if (tripTime && timeFromFilter && timeToFilter) {
+        const [hours, minutes] = tripTime.match(/\d+/g) || ['00', '00'];
+        const tripTimeStr = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+        if (tripTimeStr < timeFromFilter || tripTimeStr > timeToFilter) return false;
+      }
+      
       if (!normalizedSearch) return true;
       const haystack = [trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(normalizedSearch);
     });
-  }, [legFilter, rideTypeFilter, search, statusFilter, tripBlockingMap, trips]);
+  }, [confirmationDate, legFilter, rideTypeFilter, search, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
 
   const visibleTripIds = useMemo(() => filteredTrips.map(trip => trip.id), [filteredTrips]);
 
@@ -247,6 +275,76 @@ const ConfirmationWorkspace = () => {
     setCustomStatus('Mensaje predeterminado del grupo cargado en Custom SMS.');
   };
 
+  const handleManualConfirm = tripId => {
+    setManualConfirmations(current => ({
+      ...current,
+      [tripId]: {
+        status: 'Confirmed',
+        method: 'M',
+        timestamp: new Date().toISOString()
+      }
+    }));
+    setCustomStatus(`Trip ${tripId} marcado manualmente como Confirmado.`);
+  };
+
+  const handleCancelWithNote = trip => {
+    setCancelNoteModal(trip);
+    setCancelNoteDraft('');
+  };
+
+  const handleSaveCancelNote = () => {
+    if (!cancelNoteModal) return;
+    updateTripRecord(cancelNoteModal.id, {
+      notes: (cancelNoteModal.notes || '') + (cancelNoteModal.notes ? '\n' : '') + `[CANCELADO] ${new Date().toLocaleString()}: ${cancelNoteDraft}`
+    });
+    setManualConfirmations(current => ({
+      ...current,
+      [cancelNoteModal.id]: {
+        status: 'Cancelled',
+        method: 'MANUAL',
+        timestamp: new Date().toISOString(),
+        note: cancelNoteDraft
+      }
+    }));
+    setCancelNoteModal(null);
+    setCancelNoteDraft('');
+    setCustomStatus(`Trip ${cancelNoteModal.id} cancelado con nota.`);
+  };
+
+  const exportToPDF = () => {
+    if (filteredTrips.length === 0) {
+      setCustomStatus('No hay viajes para exportar con el filtro actual.');
+      return;
+    }
+
+    let htmlContent = '<h1>Confirmation Report</h1>';
+    htmlContent += `<p><strong>Date:</strong> ${confirmationDate}</p>`;
+    htmlContent += `<p><strong>Time Range:</strong> ${timeFromFilter} - ${timeToFilter}</p>`;
+    htmlContent += '<table border="1" cellpadding="8" cellspacing="0" style="width:100%; border-collapse:collapse;">';
+    htmlContent += '<tr style="background-color:#f0f0f0;"><th>Trip ID</th><th>Rider</th><th>Phone</th><th>Leg</th><th>Type</th><th>Status</th><th>Confirmation</th></tr>';
+
+    filteredTrips.forEach(trip => {
+      const blockingState = tripBlockingMap.get(trip.id) || { isBlocked: false };
+      const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
+      htmlContent += `<tr>
+        <td>${trip.id}</td>
+        <td>${trip.rider}</td>
+        <td>${trip.patientPhoneNumber || '-'}</td>
+        <td>${getTripLegFilterKey(trip)}</td>
+        <td>${getTripTypeLabel(trip)}</td>
+        <td>${confirmationStatus}</td>
+        <td>${trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td>
+      </tr>`;
+    });
+
+    htmlContent += '</table>';
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    printWindow.print();
+    setCustomStatus(`Exportando ${filteredTrips.length} viajes a PDF.`);
+  };
+
   return <>
       <PageTitle title="Confirmation" subName="Operations" />
 
@@ -309,6 +407,9 @@ const ConfirmationWorkspace = () => {
 
           <div className="d-flex flex-column flex-xl-row gap-2 justify-content-between mb-3">
             <div className="d-flex gap-2 flex-wrap">
+              <Form.Control type="date" value={confirmationDate} onChange={event => setConfirmationDate(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Confirmation date" />
+              <Form.Control type="time" value={timeFromFilter} onChange={event => setTimeFromFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="Start time" />
+              <Form.Control type="time" value={timeToFilter} onChange={event => setTimeToFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="End time" />
               <Form.Select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 220 }}>
                 <option value="all">All statuses</option>
                 <option value="Not Sent">Not Sent</option>
@@ -333,6 +434,7 @@ const ConfirmationWorkspace = () => {
               <Button style={surfaceStyles.button} onClick={handleSelectVisible}>Select Visible</Button>
               <Button style={surfaceStyles.button} onClick={handleClearSelection}>Clear</Button>
               <Button style={surfaceStyles.button} onClick={handleSendGroupConfirmation} disabled={confirmationSending}>{confirmationSending ? 'Sending...' : 'Send Confirmation'}</Button>
+              <Button style={surfaceStyles.button} onClick={exportToPDF} title="Export visible trips to PDF/Print">Export PDF</Button>
             </div>
             <Form.Control value={search} onChange={event => setSearch(event.target.value)} placeholder="Search trip, rider, phone or reply" style={{ ...surfaceStyles.input, width: 320, maxWidth: '100%' }} />
           </div>
@@ -374,7 +476,17 @@ const ConfirmationWorkspace = () => {
                       <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td>
                       <td>{trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td>
                       <td>{trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-'}</td>
-                      <td><Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 118 }} onClick={() => handleToggleOptOut(trip)}>{isOptedOut ? 'Allow Confirm' : 'Do Not Confirm'}</Button></td>
+                      <td>
+                        <div className="d-flex gap-1 flex-column">
+                          <Button size="sm" variant={manualConfirmations[trip.id]?.status === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id)} title="Manual confirmation" style={{ minWidth: 80 }}>
+                            {manualConfirmations[trip.id]?.method || 'Confirm'}
+                          </Button>
+                          <Button size="sm" variant="outline-danger" onClick={() => handleCancelWithNote(trip)} title="Cancel with note" style={{ minWidth: 80 }}>
+                            Cancel
+                          </Button>
+                          <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 80 }} onClick={() => handleToggleOptOut(trip)}>{isOptedOut ? 'Allow' : 'Block'}</Button>
+                        </div>
+                      </td>
                     </tr>;
                 }) : <tr>
                     <td colSpan={13} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
@@ -384,6 +496,22 @@ const ConfirmationWorkspace = () => {
           </div>
         </CardBody>
       </Card>
+
+      <Modal show={Boolean(cancelNoteModal)} onHide={() => setCancelNoteModal(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Cancel Trip - Add Note</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="small text-muted mb-2">Trip: {cancelNoteModal?.id}</div>
+          <div className="small text-muted mb-2">Rider: {cancelNoteModal?.rider}</div>
+          <Form.Label className="small text-uppercase text-muted fw-semibold">Cancel Reason / Note</Form.Label>
+          <Form.Control as="textarea" rows={4} value={cancelNoteDraft} onChange={event => setCancelNoteDraft(event.target.value)} placeholder="Write the cancellation reason or note for the dispatcher..." />
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setCancelNoteModal(null)}>Close</Button>
+          <Button variant="danger" onClick={handleSaveCancelNote}>Cancel Trip</Button>
+        </Modal.Footer>
+      </Modal>
     </>;
 };
 
