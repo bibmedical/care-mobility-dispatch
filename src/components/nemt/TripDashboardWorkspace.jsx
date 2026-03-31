@@ -122,6 +122,16 @@ const getTripTypeLabel = trip => {
   return 'A';
 };
 
+const extractCityFromAddress = address => {
+  const parts = String(address || '').split(',');
+  return parts.length >= 2 ? parts[1].trim() : '';
+};
+
+const getPickupCity = trip => extractCityFromAddress(trip?.address);
+const getDropoffCity = trip => extractCityFromAddress(trip?.destination);
+const getPickupZip = trip => String(trip?.fromZipcode || trip?.fromZip || trip?.pickupZipcode || trip?.pickupZip || trip?.originZip || '').trim();
+const getDropoffZip = trip => String(trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.dropoffZip || trip?.destinationZip || '').trim();
+
 const getTripLegFilterKey = trip => {
   const legLabel = String(trip?.legLabel || '').trim().toLowerCase();
   if (!legLabel) return 'AL';
@@ -161,8 +171,12 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
       return trip.rider;
     case 'address':
       return trip.address;
+    case 'puZip':
+      return getPickupZip(trip);
     case 'destination':
       return trip.destination;
+    case 'doZip':
+      return getDropoffZip(trip);
     case 'phone':
       return trip.patientPhoneNumber;
     case 'miles':
@@ -195,6 +209,10 @@ const getDisplayTripId = trip => {
 };
 
 const getTripNoteText = trip => String(trip?.notes || trip?.note || trip?.comments || '').trim();
+
+const getPickupZip = trip => String(trip?.fromZipcode || trip?.fromZip || trip?.pickupZipcode || trip?.pickupZip || trip?.originZip || '').trim();
+
+const getDropoffZip = trip => String(trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.dropoffZip || trip?.destinationZip || '').trim();
 
 const buildTripEditDraft = trip => ({
   notes: String(trip?.notes || '').trim(),
@@ -250,6 +268,9 @@ const TripDashboardWorkspace = () => {
   const [tripDateFilter, setTripDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
+  const [zipFilter, setZipFilter] = useState('');
+  const [puCityFilter, setPuCityFilter] = useState('');
+  const [doCityFilter, setDoCityFilter] = useState('');
   const [driverGrouping, setDriverGrouping] = useState('VDR Grouping');
   const [routeSearch, setRouteSearch] = useState('');
   const [showInfo, setShowInfo] = useState(false);
@@ -393,7 +414,6 @@ const TripDashboardWorkspace = () => {
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIds.includes(trip.id)) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => trip.driverId === selectedDriver.id) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIds.includes(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
-  const selectedDriverOpenTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => !trip.driverId && String(trip.status || '').toLowerCase() !== 'cancelled').length : 0, [selectedDriverId, trips]);
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
     const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && trip.driverId === selectedDriver.id);
@@ -926,10 +946,11 @@ const TripDashboardWorkspace = () => {
     position: 'relative'
   };
   const dividerBaseStyle = {
-    backgroundColor: '#1f2433',
+    backgroundColor: '#2d3448',
     borderRadius: 999,
     position: 'relative',
-    zIndex: 30
+    zIndex: 30,
+    transition: 'background-color 0.15s'
   };
 
   const handleOpenMapWindow = () => {
@@ -1022,7 +1043,7 @@ const TripDashboardWorkspace = () => {
         gridRow: '1 / span 3',
         display: showMapPane ? 'block' : 'none'
       }}>
-          <div className="position-absolute start-50 translate-middle-x rounded-pill" style={{ top: 10, bottom: 10, width: 4, backgroundColor: '#4c536a' }} />
+          <div className="position-absolute start-50 translate-middle-x rounded-pill" style={{ top: 10, bottom: 10, width: 6, backgroundColor: '#6b7280' }} />
         </div>
 
         <div style={{ minWidth: 0, minHeight: 0, gridColumn: showMapPane ? 3 : '1 / span 3', gridRow: 1 }}>
@@ -1049,17 +1070,12 @@ const TripDashboardWorkspace = () => {
                     <option value="cancelled">Cancelled</option>
                   </Form.Select>
                   <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search Trip ID" style={{ width: 150 }} />
-                  <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ width: 220 }}>
-                    <option value="">Select driver</option>
-                    {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
-                  </Form.Select>
                   {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
-                  {selectedDriver ? <Badge bg="warning" text="dark">{selectedDriverOpenTripCount} open</Badge> : null}
                   <span className="small">{selectedTripIds.length} sel.</span>
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto' }}>
                   {!showMapPane ? <Button variant="warning" size="sm" onClick={() => {
                   setShowMapPane(true);
                   setStatusMessage('Mapa visible otra vez en Trip Dashboard.');
@@ -1075,6 +1091,7 @@ const TripDashboardWorkspace = () => {
                   <Badge bg="info">{drivers.length} drivers</Badge>
                   <Badge bg="secondary">{liveDrivers} live</Badge>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)}>Columns</Button>
+                  
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map Screen' : 'Show Map Here'}</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/forms-safe-ride-import')}>Import Excel</Button>
@@ -1091,6 +1108,10 @@ const TripDashboardWorkspace = () => {
                 
                 {/* Row 3: Leg/Type filters and misc buttons */}
                 <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
+                  <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ width: 220 }}>
+                    <option value="">Select driver</option>
+                    {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+                  </Form.Select>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">Leg</span>
                     <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
@@ -1102,6 +1123,17 @@ const TripDashboardWorkspace = () => {
                     <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
                     <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
                     <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
+                  </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <span className="fw-semibold small">ZIP</span>
+                    <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="ZIP" style={{ width: 72 }} title="Filtra por PU o DO zip code" />
+                  </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <span className="fw-semibold small">City</span>
+                    <Form.Control size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} placeholder="PU city" style={{ width: 90 }} title="Ciudad de recogida" />
+                    <span className="text-muted small">→</span>
+                    <Form.Control size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} placeholder="DO city" style={{ width: 90 }} title="Ciudad de destino" />
+                    {(puCityFilter || doCityFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setZipFilter(''); }} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
                   </div>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
@@ -1154,7 +1186,9 @@ const TripDashboardWorkspace = () => {
                       {visibleTripColumns.includes('miles') ? renderTripHeader('miles', 'Miles') : null}
                       {visibleTripColumns.includes('rider') ? renderTripHeader('rider', 'Rider') : null}
                       {visibleTripColumns.includes('address') ? renderTripHeader('address', 'PU Address') : null}
+                      {visibleTripColumns.includes('puZip') ? renderTripHeader('puZip', 'PU ZIP') : null}
                       {visibleTripColumns.includes('destination') ? renderTripHeader('destination', 'DO Address') : null}
+                      {visibleTripColumns.includes('doZip') ? renderTripHeader('doZip', 'DO ZIP') : null}
                       {visibleTripColumns.includes('phone') ? renderTripHeader('phone', 'Phone') : null}
                       {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
                       {visibleTripColumns.includes('leg') ? renderTripHeader('leg', 'Leg') : null}
@@ -1208,7 +1242,9 @@ const TripDashboardWorkspace = () => {
                         {visibleTripColumns.includes('miles') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.miles || '-'}</td> : null}
                         {visibleTripColumns.includes('rider') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.rider}</td> : null}
                         {visibleTripColumns.includes('address') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.address}</td> : null}
+                        {visibleTripColumns.includes('puZip') ? <td style={{ whiteSpace: 'nowrap' }}>{getPickupZip(row.trip) || '-'}</td> : null}
                         {visibleTripColumns.includes('destination') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.destination || '-'}</td> : null}
+                        {visibleTripColumns.includes('doZip') ? <td style={{ whiteSpace: 'nowrap' }}>{getDropoffZip(row.trip) || '-'}</td> : null}
                         {visibleTripColumns.includes('phone') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.patientPhoneNumber || '-'}</td> : null}
                         {visibleTripColumns.includes('vehicle') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.vehicleType || '-'}</td> : null}
                         {visibleTripColumns.includes('leg') ? <td style={{ whiteSpace: 'nowrap' }}>{getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant}>{getLegBadge(row.trip).label}</Badge> : '-'}</td> : null}
@@ -1231,7 +1267,7 @@ const TripDashboardWorkspace = () => {
         gridRow: 2,
         display: showBottomPanels ? 'block' : 'none'
       }}>
-          <div className="position-absolute top-50 start-50 translate-middle rounded-pill" style={{ width: 42, height: 4, backgroundColor: '#4c536a' }} />
+          <div className="position-absolute top-50 start-50 translate-middle rounded-pill" style={{ width: 56, height: 6, backgroundColor: '#6b7280' }} />
         </div>
 
         <div onMouseDown={() => showBottomPanels ? setDragMode('both') : undefined} style={{

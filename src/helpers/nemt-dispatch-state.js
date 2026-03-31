@@ -134,8 +134,14 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   key: 'address',
   label: 'PU Address'
 }, {
+  key: 'puZip',
+  label: 'PU ZIP'
+}, {
   key: 'destination',
   label: 'DO Address'
+}, {
+  key: 'doZip',
+  label: 'DO ZIP'
 }, {
   key: 'phone',
   label: 'Phone'
@@ -156,7 +162,7 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   label: 'Late Min'
 }];
 
-export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['trip', 'status', 'driver', 'pickup', 'dropoff', 'punctuality', 'lateMinutes', 'rider', 'address', 'destination', 'miles'];
+export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['trip', 'status', 'driver', 'pickup', 'dropoff', 'punctuality', 'lateMinutes', 'rider', 'address', 'puZip', 'destination', 'doZip', 'miles'];
 
 export const normalizeMapProviderPreference = value => {
   const normalized = String(value ?? 'auto').trim().toLowerCase();
@@ -166,7 +172,7 @@ export const normalizeMapProviderPreference = value => {
 export const normalizeDispatcherVisibleTripColumns = value => {
   const allowedKeys = new Set(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key));
   const cleanedColumns = Array.isArray(value) ? value.filter(columnKey => allowedKeys.has(columnKey)) : [];
-  const requiredColumns = ['address', 'destination', 'miles'];
+  const requiredColumns = ['address', 'puZip', 'destination', 'doZip', 'miles'];
   const uniqueColumns = Array.from(new Set([...cleanedColumns, ...requiredColumns]));
   return uniqueColumns.length > 0 ? uniqueColumns : [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
 };

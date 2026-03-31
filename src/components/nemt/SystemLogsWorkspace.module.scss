@@ -465,3 +465,151 @@
     }
   }
 }
+
+:global(html[data-bs-theme='dark']) .systemLogsWorkspace {
+  background: #0f172a;
+
+  .header {
+    h1 {
+      color: #e2e8f0;
+    }
+
+    p {
+      color: #94a3b8;
+    }
+  }
+
+  .statsContainer .statCard,
+  .controls,
+  .logsTableContainer,
+  .detailView,
+  .onlineUsersSection {
+    background: #111827;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+    border: 1px solid #1f2937;
+  }
+
+  .statsContainer .statCard {
+    .statLabel {
+      color: #94a3b8;
+    }
+
+    .statValue {
+      color: #f8fafc;
+    }
+  }
+
+  .controls {
+    .filterGroup {
+      label {
+        color: #cbd5e1;
+      }
+
+      .select {
+        background: #0b1220;
+        color: #e2e8f0;
+        border-color: #334155;
+      }
+    }
+  }
+
+  .logsTableContainer {
+    .logsTable {
+      thead {
+        background: #0b1220;
+        border-bottom-color: #334155;
+
+        th {
+          color: #cbd5e1;
+        }
+      }
+
+      tbody {
+        tr {
+          border-bottom-color: #1f2937;
+
+          &:hover {
+            background: #172032;
+          }
+
+          &.clickableRow:hover {
+            background: #1a2438;
+          }
+
+          td {
+            color: #e2e8f0;
+          }
+        }
+
+        .loading,
+        .noData {
+          color: #94a3b8;
+        }
+      }
+    }
+  }
+
+  .detailView {
+    .userDetailHeader {
+      border-bottom-color: #334155;
+
+      h2 {
+        color: #f8fafc;
+      }
+
+      p {
+        color: #94a3b8;
+      }
+    }
+
+    .activityTimeline {
+      .dateGroup {
+        .dateHeader {
+          color: #e2e8f0;
+        }
+
+        .timelineEvents {
+          .timelineEvent {
+            background: #0b1220;
+            border-left-color: #334155;
+
+            .eventContent {
+              .eventTime {
+                color: #e2e8f0;
+              }
+            }
+          }
+        }
+      }
+
+      .noActivity {
+        color: #94a3b8;
+        background: #0b1220;
+      }
+    }
+  }
+
+  .onlineUsersSection {
+    h3 {
+      color: #f8fafc;
+    }
+
+    .onlineUsersList {
+      .onlineUser {
+        background: #0b1220;
+
+        .onlineUserName {
+          color: #e2e8f0;
+        }
+
+        .onlineUserTime {
+          color: #94a3b8;
+        }
+      }
+
+      .noOnlineUsers {
+        color: #94a3b8;
+      }
+    }
+  }
+}

@@ -118,6 +118,11 @@ const buildStatusMetrics = trips => {
 const PerformanceDashboardWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const panelStyles = useMemo(() => buildPanelStyles(themeMode === 'light'), [themeMode]);
+  const isLightMode = themeMode === 'light';
+  const primaryTextClass = isLightMode ? 'text-dark' : 'text-white';
+  const mutedTextStyle = {
+    color: isLightMode ? '#334155' : '#94a3b8'
+  };
   const { data, loading } = useNemtAdminApi();
   const { drivers: dispatchDrivers, trips, routePlans } = useNemtContext();
 
@@ -240,7 +245,7 @@ const PerformanceDashboardWorkspace = () => {
           detail: `${analytics.billableTripCount} billable trips`,
           accent: '#ffb04d',
           icon: 'iconoir:dollar-circle'
-        }].map(card => <Col md={6} xl={3} key={card.label}><div style={panelStyles.topStat}><div className="d-flex justify-content-between align-items-start gap-3"><div><div className="small text-secondary mb-2">{card.label}</div><div className="h3 mb-1 text-white">{card.value}</div><div className="small" style={{ color: card.accent }}>{card.detail}</div></div><div className="rounded-circle d-flex align-items-center justify-content-center" style={{ width: 44, height: 44, backgroundColor: `${card.accent}22`, color: card.accent }}><IconifyIcon icon={card.icon} className="fs-22" /></div></div></div></Col>)}
+        }].map(card => <Col md={6} xl={3} key={card.label}><div style={panelStyles.topStat}><div className="d-flex justify-content-between align-items-start gap-3"><div><div className="small mb-2" style={mutedTextStyle}>{card.label}</div><div className={`h3 mb-1 ${primaryTextClass}`}>{card.value}</div><div className="small" style={{ color: card.accent }}>{card.detail}</div></div><div className="rounded-circle d-flex align-items-center justify-content-center" style={{ width: 44, height: 44, backgroundColor: `${card.accent}22`, color: card.accent }}><IconifyIcon icon={card.icon} className="fs-22" /></div></div></div></Col>)}
       </Row>
 
       <Row className="g-3">
@@ -249,23 +254,23 @@ const PerformanceDashboardWorkspace = () => {
             <CardBody>
               <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                 <div>
-                  <h5 className="mb-1 text-white">Performance Overview</h5>
-                  <div className="small text-secondary">Pagina primaria conectada a choferes, viajes y billing real del sistema.</div>
+                  <h5 className={`mb-1 ${primaryTextClass}`}>Performance Overview</h5>
+                  <div className="small" style={mutedTextStyle}>Pagina primaria conectada a choferes, viajes y billing real del sistema.</div>
                 </div>
                 <Badge bg="dark" className="border border-secondary-subtle">This Month</Badge>
               </div>
-              {loading ? <div className="py-5 text-center text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading analytics...</div> : <>
+              {loading ? <div className="py-5 text-center" style={mutedTextStyle}><Spinner animation="border" size="sm" className="me-2" />Loading analytics...</div> : <>
                   <div style={panelStyles.chartShell}>
                     {analytics.monthlyProjection.map(item => {
                       const maxValue = Math.max(...analytics.monthlyProjection.map(entry => entry.value), 1);
-                      return <div style={panelStyles.chartBarWrap} key={item.month}><div className="small text-secondary text-center">{currencyFormatter.format(item.value)}</div><div style={panelStyles.chartTrack}><div className="w-100 d-flex align-items-end gap-2 h-100"><div style={{ ...panelStyles.chartBarSecondary, height: `${item.secondary / maxValue * 100}%`, opacity: 0.8 }} /><div style={{ ...panelStyles.chartBar, height: `${item.value / maxValue * 100}%` }} /></div></div><div className="small text-center text-secondary">{item.month}</div></div>;
+                      return <div style={panelStyles.chartBarWrap} key={item.month}><div className="small text-center" style={mutedTextStyle}>{currencyFormatter.format(item.value)}</div><div style={panelStyles.chartTrack}><div className="w-100 d-flex align-items-end gap-2 h-100"><div style={{ ...panelStyles.chartBarSecondary, height: `${item.secondary / maxValue * 100}%`, opacity: 0.8 }} /><div style={{ ...panelStyles.chartBar, height: `${item.value / maxValue * 100}%` }} /></div></div><div className="small text-center" style={mutedTextStyle}>{item.month}</div></div>;
                     })}
                   </div>
                   <Row className="g-3 mt-1">
-                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small text-secondary">Fleet Utilization</div><div className="h4 mb-1 text-white">{percentFormatter(analytics.utilization)}</div><ProgressBar now={analytics.utilization} variant="success" style={{ height: 8, backgroundColor: '#0d1421' }} /></div></Col>
-                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small text-secondary">Compliance Rate</div><div className="h4 mb-1 text-white">{percentFormatter(analytics.complianceRate)}</div><ProgressBar now={analytics.complianceRate} variant="info" style={{ height: 8, backgroundColor: '#0d1421' }} /></div></Col>
-                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small text-secondary">Avg Trips / Driver</div><div className="h4 mb-1 text-white">{analytics.avgTripsPerDriver.toFixed(1)}</div><div className="small text-secondary">Completed + active workload</div></div></Col>
-                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small text-secondary">Routes Saved</div><div className="h4 mb-1 text-white">{analytics.routePlans.length}</div><div className="small text-secondary">Dispatch plans created</div></div></Col>
+                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Fleet Utilization</div><div className={`h4 mb-1 ${primaryTextClass}`}>{percentFormatter(analytics.utilization)}</div><ProgressBar now={analytics.utilization} variant="success" style={{ height: 8, backgroundColor: '#0d1421' }} /></div></Col>
+                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Compliance Rate</div><div className={`h4 mb-1 ${primaryTextClass}`}>{percentFormatter(analytics.complianceRate)}</div><ProgressBar now={analytics.complianceRate} variant="info" style={{ height: 8, backgroundColor: '#0d1421' }} /></div></Col>
+                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Avg Trips / Driver</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.avgTripsPerDriver.toFixed(1)}</div><div className="small" style={mutedTextStyle}>Completed + active workload</div></div></Col>
+                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Routes Saved</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.routePlans.length}</div><div className="small" style={mutedTextStyle}>Dispatch plans created</div></div></Col>
                   </Row>
                 </>}
             </CardBody>
@@ -276,21 +281,21 @@ const PerformanceDashboardWorkspace = () => {
           <Card style={panelStyles.panel} className="h-100">
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="mb-0 text-white">Trip Mix</h5>
+                <h5 className={`mb-0 ${primaryTextClass}`}>Trip Mix</h5>
                 <Badge bg="dark" className="border border-secondary-subtle">All</Badge>
               </div>
               <div style={donutStyle}>
                 <div style={panelStyles.donutCenter}>
-                  <div className="small text-secondary">Trips tracked</div>
-                  <div className="h3 mb-0 text-white">{trips.length}</div>
+                  <div className="small" style={mutedTextStyle}>Trips tracked</div>
+                  <div className={`h3 mb-0 ${primaryTextClass}`}>{trips.length}</div>
                 </div>
               </div>
               <div className="d-flex justify-content-center gap-3 mt-3 flex-wrap small">
-                <span className="text-secondary"><span className="me-1" style={{ color: '#7d82ff' }}>●</span>Completed {donutCompleted}</span>
-                <span className="text-secondary"><span className="me-1" style={{ color: '#21b8ff' }}>●</span>Canceled {donutCanceled}</span>
-                <span className="text-secondary"><span className="me-1" style={{ color: '#ffb04d' }}>●</span>Active {donutAssigned}</span>
+                <span style={mutedTextStyle}><span className="me-1" style={{ color: '#7d82ff' }}>●</span>Completed {donutCompleted}</span>
+                <span style={mutedTextStyle}><span className="me-1" style={{ color: '#21b8ff' }}>●</span>Canceled {donutCanceled}</span>
+                <span style={mutedTextStyle}><span className="me-1" style={{ color: '#ffb04d' }}>●</span>Active {donutAssigned}</span>
               </div>
-              <div className="mt-4 small text-secondary text-center">Las metricas de billing quedan en 0 hasta que empieces a marcar trips o rutas en billing.</div>
+              <div className="mt-4 small text-center" style={mutedTextStyle}>Las metricas de billing quedan en 0 hasta que empieces a marcar trips o rutas en billing.</div>
             </CardBody>
           </Card>
         </Col>
@@ -299,13 +304,13 @@ const PerformanceDashboardWorkspace = () => {
           <Card style={panelStyles.panel}>
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="mb-0 text-white">Driver Performance</h5>
+                <h5 className={`mb-0 ${primaryTextClass}`}>Driver Performance</h5>
                 <Link href="/drivers" className="small text-decoration-none">Open Drivers</Link>
               </div>
               <div className="table-responsive">
-                <Table className="align-middle mb-0 text-white">
+                <Table className={`align-middle mb-0 ${primaryTextClass}`}>
                   <thead>
-                    <tr className="text-secondary small">
+                    <tr className="small" style={mutedTextStyle}>
                       <th>Driver</th>
                       <th>Vehicle</th>
                       <th>Completed</th>
@@ -315,7 +320,7 @@ const PerformanceDashboardWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {analytics.leaderboard.length > 0 ? analytics.leaderboard.map(item => <tr key={item.id}><td><div className="fw-semibold">{item.name}</div></td><td>{item.vehicle}</td><td>{item.completed}</td><td>{formatMinutesAsHours(item.serviceMinutes)}</td><td>{item.activeTrips}</td><td>{item.alerts > 0 ? <Badge bg="warning" text="dark">{item.alerts}</Badge> : <Badge bg="success">0</Badge>}</td></tr>) : <tr><td colSpan={6} className="text-center text-secondary py-4">No driver performance yet. Load trips to start hours and trip counts.</td></tr>}
+                    {analytics.leaderboard.length > 0 ? analytics.leaderboard.map(item => <tr key={item.id}><td><div className="fw-semibold">{item.name}</div></td><td>{item.vehicle}</td><td>{item.completed}</td><td>{formatMinutesAsHours(item.serviceMinutes)}</td><td>{item.activeTrips}</td><td>{item.alerts > 0 ? <Badge bg="warning" text="dark">{item.alerts}</Badge> : <Badge bg="success">0</Badge>}</td></tr>) : <tr><td colSpan={6} className="text-center py-4" style={mutedTextStyle}>No driver performance yet. Load trips to start hours and trip counts.</td></tr>}
                   </tbody>
                 </Table>
               </div>
@@ -327,16 +332,16 @@ const PerformanceDashboardWorkspace = () => {
           <Card style={panelStyles.panel}>
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="mb-0 text-white">Financial Snapshot</h5>
+                <h5 className={`mb-0 ${primaryTextClass}`}>Financial Snapshot</h5>
                 <Badge bg="dark" className="border border-secondary-subtle">Live</Badge>
               </div>
               <Row className="g-3 mb-3">
-                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Revenue Captured</div><div className="h4 mb-1 text-white">{currencyFormatter.format(analytics.completedRevenue)}</div><div className="small text-secondary">Completed trips only</div></div></Col>
-                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Pipeline Revenue</div><div className="h4 mb-1 text-white">{currencyFormatter.format(analytics.assignedRevenue)}</div><div className="small text-secondary">Assigned and completed</div></div></Col>
-                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Projected Revenue</div><div className="h4 mb-1 text-white">{currencyFormatter.format(analytics.projectedRevenue)}</div><div className="small text-secondary">Real billable trips only</div></div></Col>
-                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small text-secondary">Fleet Units</div><div className="h4 mb-1 text-white">{analytics.vehicles.length}</div><div className="small text-secondary">Cars available in system</div></div></Col>
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Revenue Captured</div><div className={`h4 mb-1 ${primaryTextClass}`}>{currencyFormatter.format(analytics.completedRevenue)}</div><div className="small" style={mutedTextStyle}>Completed trips only</div></div></Col>
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Pipeline Revenue</div><div className={`h4 mb-1 ${primaryTextClass}`}>{currencyFormatter.format(analytics.assignedRevenue)}</div><div className="small" style={mutedTextStyle}>Assigned and completed</div></div></Col>
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Projected Revenue</div><div className={`h4 mb-1 ${primaryTextClass}`}>{currencyFormatter.format(analytics.projectedRevenue)}</div><div className="small" style={mutedTextStyle}>Real billable trips only</div></div></Col>
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Fleet Units</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.vehicles.length}</div><div className="small" style={mutedTextStyle}>Cars available in system</div></div></Col>
               </Row>
-              <div className="small text-secondary">Revenue now stays at 0 until a trip is really billable or has captured revenue. No fallback money is injected anymore.</div>
+              <div className="small" style={mutedTextStyle}>Revenue now stays at 0 until a trip is really billable or has captured revenue. No fallback money is injected anymore.</div>
             </CardBody>
           </Card>
         </Col>
@@ -345,11 +350,11 @@ const PerformanceDashboardWorkspace = () => {
           <Card style={panelStyles.panel}>
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="mb-0 text-white">Compliance Alerts</h5>
+                <h5 className={`mb-0 ${primaryTextClass}`}>Compliance Alerts</h5>
                 <Link href="/drivers" className="small text-decoration-none">Resolve</Link>
               </div>
               <div className="d-flex flex-column gap-3">
-                {analytics.driverAlerts.length > 0 ? analytics.driverAlerts.slice(0, 6).map(item => <div key={item.id} className="d-flex justify-content-between align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#232c40'}` }}><div><div className="fw-semibold text-white">{item.name}</div><div className="small text-secondary">{item.alerts[0]?.text}</div></div><Badge bg={item.alerts[0]?.severity === 'danger' ? 'danger' : 'warning'}>{item.alerts.length} alert{item.alerts.length === 1 ? '' : 's'}</Badge></div>) : <div className="text-secondary small">No compliance alerts right now.</div>}
+                {analytics.driverAlerts.length > 0 ? analytics.driverAlerts.slice(0, 6).map(item => <div key={item.id} className="d-flex justify-content-between align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#232c40'}` }}><div><div className={`fw-semibold ${primaryTextClass}`}>{item.name}</div><div className="small" style={mutedTextStyle}>{item.alerts[0]?.text}</div></div><Badge bg={item.alerts[0]?.severity === 'danger' ? 'danger' : 'warning'}>{item.alerts.length} alert{item.alerts.length === 1 ? '' : 's'}</Badge></div>) : <div className="small" style={mutedTextStyle}>No compliance alerts right now.</div>}
               </div>
             </CardBody>
           </Card>
@@ -359,11 +364,11 @@ const PerformanceDashboardWorkspace = () => {
           <Card style={panelStyles.panel}>
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className="mb-0 text-white">Quick Actions</h5>
+                <h5 className={`mb-0 ${primaryTextClass}`}>Quick Actions</h5>
                 <Badge bg="dark" className="border border-secondary-subtle">Operations</Badge>
               </div>
               <div className="d-flex flex-column gap-3">
-                {analytics.activity.map(item => <Link key={item.label} href={item.href} className="text-decoration-none"><div className="d-flex justify-content-between align-items-center gap-3 p-3 rounded-3" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#232c40'}` }}><div><div className="fw-semibold text-white">{item.label}</div><div className="small text-secondary">{item.detail}</div></div><IconifyIcon icon="iconoir:nav-arrow-right" className="text-secondary" /></div></Link>)}
+                {analytics.activity.map(item => <Link key={item.label} href={item.href} className="text-decoration-none"><div className="d-flex justify-content-between align-items-center gap-3 p-3 rounded-3" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#232c40'}` }}><div><div className={`fw-semibold ${primaryTextClass}`}>{item.label}</div><div className="small" style={mutedTextStyle}>{item.detail}</div></div><IconifyIcon icon="iconoir:nav-arrow-right" style={mutedTextStyle} /></div></Link>)}
               </div>
             </CardBody>
           </Card>

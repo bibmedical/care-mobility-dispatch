@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sendEmailAuthCode } from '@/server/email-auth-store';
+import { readSystemUsersPayload } from '@/server/system-users-store';
 
 export const POST = async req => {
   try {
@@ -9,11 +10,23 @@ export const POST = async req => {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    const result = await sendEmailAuthCode(email);
+    const normalizedEmail = String(email).toLowerCase().trim();
+    const state = await readSystemUsersPayload();
+    const user = state.users.find(entry => String(entry.email || '').toLowerCase().trim() === normalizedEmail);
+
+    if (!user) {
+      return NextResponse.json({ error: 'User with this email not found' }, { status: 404 });
+    }
+
+    if (!user.webAccess) {
+      return NextResponse.json({ error: 'User does not have web access' }, { status: 403 });
+    }
+
+    const result = await sendEmailAuthCode(normalizedEmail);
     
     return NextResponse.json({
       success: true,
-      message: `Verification code sent to ${email}`,
+      message: `Verification code sent to ${normalizedEmail}`,
       expiresIn: result.expiresIn,
       // In development only - remove in production
       developerCode: process.env.NODE_ENV === 'development' ? result.developerCode : undefined

@@ -3,7 +3,6 @@ import React, { Suspense } from 'react';
 import AppMenu from './components/AppMenu';
 import { getMenuItems } from '@/helpers/menu';
 import FallbackLoading from '@/components/FallbackLoading';
-import Image from 'next/image';
 import SimplebarReactClient from '@/components/wrappers/SimplebarReactClient';
 const LeftSideBar = () => {
   const menuItems = getMenuItems();
@@ -17,14 +16,6 @@ const LeftSideBar = () => {
             <Suspense fallback={<FallbackLoading />}>
               <AppMenu menuItems={menuItems} />
             </Suspense>
-            <div className="update-msg text-center">
-              <div className="d-flex justify-content-center align-items-center thumb-lg update-icon-box  rounded-circle mx-auto">
-                <Image src="/app.png" alt="Care Mobility logo" className="d-inline-block me-1" width={30} height={30} />
-              </div>
-              <h5 className="mt-3">Dispatch Center</h5>
-              <p className="mb-3 text-muted">Acceso rapido a viajes, choferes, pasajeros y cargas CSV.</p>
-              <a href="/forms-safe-ride-import" className="btn bg-black text-white shadow-sm rounded-pill">Import CSV</a>
-            </div>
           </div>
         </SimplebarReactClient>
       </div>

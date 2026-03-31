@@ -40,7 +40,7 @@ const writeActivityLogs = async state => {
 /**
  * Log a login event
  */
-export const logLoginEvent = async (userId, userName, userRole, userEmail) => {
+export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAddress = '') => {
   try {
     const state = await readActivityLogs();
     const timestamp = new Date().toISOString();
@@ -51,6 +51,7 @@ export const logLoginEvent = async (userId, userName, userRole, userEmail) => {
       userName,
       userRole,
       userEmail,
+      ipAddress,
       eventType: 'LOGIN',
       timestamp,
       date: new Date(timestamp).toISOString().split('T')[0],
@@ -91,6 +92,7 @@ export const logLogoutEvent = async (userId) => {
       userName: lastLoginEntry?.userName || 'Unknown',
       userRole: lastLoginEntry?.userRole || 'Unknown',
       userEmail: lastLoginEntry?.userEmail || 'Unknown',
+      ipAddress: lastLoginEntry?.ipAddress || '',
       eventType: 'LOGOUT',
       timestamp,
       date: new Date(timestamp).toISOString().split('T')[0],

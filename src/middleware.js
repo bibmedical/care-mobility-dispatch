@@ -3,6 +3,22 @@ import { withAuth } from 'next-auth/middleware';
 
 const AUTH_ROUTES = ['/auth/login', '/auth/register', '/auth/reset-pass', '/auth/lock-screen'];
 
+const normalizeIp = value => {
+  const raw = String(value ?? '').split(',')[0].trim();
+  if (!raw) return '';
+  if (raw === '::1' || raw === '127.0.0.1' || raw === '::ffff:127.0.0.1') return 'localhost';
+  return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+};
+
+const getRequestIp = req => {
+  const forwarded = req?.headers?.get('x-forwarded-for');
+  const realIp = req?.headers?.get('x-real-ip');
+  const directIp = req?.ip;
+  const host = req?.headers?.get('host') || '';
+  const localFallback = host.includes('localhost') || host.includes('127.0.0.1') ? 'localhost' : '';
+  return normalizeIp(forwarded || realIp || directIp || localFallback);
+};
+
 export default withAuth(
   function middleware(request) {
     const { pathname } = request.nextUrl;
@@ -26,12 +42,33 @@ export default withAuth(
     callbacks: {
       authorized: ({ req, token }) => {
         const pathname = req.nextUrl.pathname;
+        const reauthWindowMinutes = 15;
 
         if (AUTH_ROUTES.some(route => pathname.startsWith(route))) {
           return true;
         }
 
-        return Boolean(token);
+        if (!token) {
+          return false;
+        }
+
+        if (token?.user?.webAccess === false) {
+          return false;
+        }
+
+        const authenticatedAt = Number(token.authenticatedAt || 0);
+        if (!Number.isFinite(authenticatedAt) || authenticatedAt <= 0) {
+          return false;
+        }
+
+        const tokenIp = normalizeIp(token.loginIp || '');
+        const currentIp = getRequestIp(req);
+        if (!tokenIp || !currentIp || tokenIp !== currentIp) {
+          return false;
+        }
+
+        const sessionAgeMs = Date.now() - authenticatedAt;
+        return sessionAgeMs <= reauthWindowMinutes * 60 * 1000;
       }
     },
     pages: {

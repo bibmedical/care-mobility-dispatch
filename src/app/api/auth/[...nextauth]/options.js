@@ -4,6 +4,21 @@ import { authorizePersistedSystemUser } from '@/server/system-users-store';
 import { logLoginFailure } from '@/server/login-failures-store';
 import { logLoginEvent } from '@/server/activity-logs-store';
 
+const normalizeIp = value => {
+  const raw = String(value ?? '').split(',')[0].trim();
+  if (!raw) return '';
+  if (raw === '::1' || raw === '127.0.0.1' || raw === '::ffff:127.0.0.1') return 'localhost';
+  return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+};
+
+const getRequestIp = req => {
+  const headers = req?.headers;
+  const forwarded = typeof headers?.get === 'function' ? headers.get('x-forwarded-for') : headers?.['x-forwarded-for'];
+  const realIp = typeof headers?.get === 'function' ? headers.get('x-real-ip') : headers?.['x-real-ip'];
+  const socketIp = req?.socket?.remoteAddress;
+  return normalizeIp(forwarded || realIp || socketIp || '');
+};
+
 export const options = {
   providers: [CredentialsProvider({
     name: 'credentials',
@@ -24,6 +39,7 @@ export const options = {
     },
     async authorize(credentials, req) {
       try {
+        const requestIp = getRequestIp(req);
         const result = await authorizePersistedSystemUser({
           identifier: credentials?.identifier,
           password: credentials?.password,
@@ -40,7 +56,10 @@ export const options = {
           });
         }
 
-        return result;
+        return result ? {
+          ...result,
+          loginIp: requestIp
+        } : null;
       } catch (error) {
         // Log failed attempt on error
         await logLoginFailure({
@@ -72,6 +91,7 @@ export const options = {
     async authorize(credentials, req) {
       // User has already been verified by email verification endpoint
       try {
+        const requestIp = getRequestIp(req);
         const user = JSON.parse(credentials?.user || '{}');
         if (!user.id || !user.email) {
           // Log failed attempt
@@ -83,7 +103,10 @@ export const options = {
           });
           throw new Error('Invalid user data');
         }
-        return user;
+        return {
+          ...user,
+          loginIp: requestIp
+        };
       } catch (error) {
         // Log failed attempt
         await logLoginFailure({
@@ -114,7 +137,8 @@ export const options = {
           user.id,
           user.username || user.email,
           user.role || 'unknown',
-          user.email
+          user.email,
+          normalizeIp(user.loginIp || '')
         ).catch(err => console.error('Failed to log login event:', err));
       }
       return true;
@@ -135,6 +159,8 @@ export const options = {
           androidAccess: user.androidAccess,
           inactivityTimeoutMinutes: user.inactivityTimeoutMinutes || 15
         };
+        token.loginIp = normalizeIp(user.loginIp || '');
+        token.authenticatedAt = Date.now();
       }
       return token;
     },
@@ -151,7 +177,8 @@ export const options = {
     }
   },
   session: {
-    maxAge: 24 * 60 * 60,
+    maxAge: 15 * 60,
+    updateAge: 0,
     generateSessionToken: () => {
       return randomBytes(32).toString('hex');
     }
