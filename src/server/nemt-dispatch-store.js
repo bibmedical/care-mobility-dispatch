@@ -20,9 +20,28 @@ export const readNemtDispatchState = async () => {
   return normalizePersistentDispatchState(JSON.parse(fileContents));
 };
 
+const getTripUpdatedAt = trip => {
+  const value = Number(trip?.updatedAt);
+  return Number.isFinite(value) ? value : 0;
+};
+
+const mergeTripsByLatestUpdate = (currentTrips, incomingTrips) => {
+  const currentTripMap = new Map((Array.isArray(currentTrips) ? currentTrips : []).map(trip => [String(trip?.id || ''), trip]));
+  return (Array.isArray(incomingTrips) ? incomingTrips : []).map(incomingTrip => {
+    const tripId = String(incomingTrip?.id || '');
+    const currentTrip = currentTripMap.get(tripId);
+    if (!currentTrip) return incomingTrip;
+    return getTripUpdatedAt(incomingTrip) >= getTripUpdatedAt(currentTrip) ? incomingTrip : currentTrip;
+  });
+};
+
 export const writeNemtDispatchState = async nextState => {
   await ensureStorageFile();
-  const normalized = normalizePersistentDispatchState(nextState);
+  const currentState = await readNemtDispatchState();
+  const normalized = normalizePersistentDispatchState({
+    ...nextState,
+    trips: mergeTripsByLatestUpdate(currentState?.trips, nextState?.trips)
+  });
   await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
   return normalized;
 };

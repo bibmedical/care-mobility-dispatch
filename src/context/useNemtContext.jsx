@@ -40,6 +40,7 @@ const createPersistedSnapshot = state => normalizePersistentDispatchState({
 
 const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#0891b2'];
 const NemtContext = createContext(undefined);
+const getMutationTimestamp = () => Date.now();
 
 export const useNemtContext = () => {
   const context = use(NemtContext);
@@ -243,12 +244,14 @@ export const NemtProvider = ({
 
   const assignTripsToDriver = (driverId, tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
       selectedDriverId: driverId,
       trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
         ...trip,
         driverId,
+        updatedAt,
         status: 'Assigned'
       } : trip)
     };
@@ -256,11 +259,13 @@ export const NemtProvider = ({
 
   const assignTripsToSecondaryDriver = (driverId, tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
       trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
         ...trip,
         secondaryDriverId: driverId,
+        updatedAt,
         status: trip.driverId || driverId ? 'Assigned' : trip.status
       } : trip)
     };
@@ -268,6 +273,7 @@ export const NemtProvider = ({
 
   const unassignTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const updatedAt = getMutationTimestamp();
     const updatedRoutePlans = currentState.routePlans.map(routePlan => ({
       ...routePlan,
       tripIds: routePlan.tripIds.filter(id => !targetTripIds.includes(id))
@@ -280,6 +286,7 @@ export const NemtProvider = ({
         driverId: null,
         secondaryDriverId: null,
         routeId: null,
+        updatedAt,
         status: 'Unassigned'
       } : trip)
     };
@@ -287,6 +294,7 @@ export const NemtProvider = ({
 
   const cancelTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const updatedAt = getMutationTimestamp();
     const updatedRoutePlans = currentState.routePlans.map(routePlan => ({
       ...routePlan,
       tripIds: routePlan.tripIds.filter(id => !targetTripIds.includes(id))
@@ -300,6 +308,7 @@ export const NemtProvider = ({
         driverId: null,
         secondaryDriverId: null,
         routeId: null,
+        updatedAt,
         status: 'Cancelled'
       } : trip)
     };
@@ -307,6 +316,7 @@ export const NemtProvider = ({
 
   const reinstateTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
       selectedTripIds: currentState.selectedTripIds.filter(id => !targetTripIds.includes(id)),
@@ -315,6 +325,7 @@ export const NemtProvider = ({
         driverId: null,
         secondaryDriverId: null,
         routeId: null,
+        updatedAt,
         status: 'Unassigned'
       } : trip)
     };
@@ -328,6 +339,7 @@ export const NemtProvider = ({
     serviceDate
   }) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const updatedAt = getMutationTimestamp();
     const routeId = `route-${Date.now()}`;
     const firstTripInRoute = currentState.trips.find(trip => targetTripIds.includes(trip.id));
     const routeServiceDate = String(serviceDate || getTripServiceDateKey(firstTripInRoute) || '').trim();
@@ -353,24 +365,29 @@ export const NemtProvider = ({
         ...trip,
         driverId,
         routeId,
+        updatedAt,
         status: 'Assigned'
       } : trip),
       selectedTripIds: targetTripIds
     };
   }, { markDispatchDirty: true });
 
-  const deleteRoute = routeId => updateState(currentState => ({
-    ...currentState,
-    selectedRouteId: currentState.selectedRouteId === routeId ? null : currentState.selectedRouteId,
-    routePlans: currentState.routePlans.filter(routePlan => routePlan.id !== routeId),
-    trips: currentState.trips.map(trip => trip.routeId === routeId ? {
-      ...trip,
-      driverId: null,
-      secondaryDriverId: null,
-      routeId: null,
-      status: 'Unassigned'
-    } : trip)
-  }), { markDispatchDirty: true });
+  const deleteRoute = routeId => updateState(currentState => {
+    const updatedAt = getMutationTimestamp();
+    return {
+      ...currentState,
+      selectedRouteId: currentState.selectedRouteId === routeId ? null : currentState.selectedRouteId,
+      routePlans: currentState.routePlans.filter(routePlan => routePlan.id !== routeId),
+      trips: currentState.trips.map(trip => trip.routeId === routeId ? {
+        ...trip,
+        driverId: null,
+        secondaryDriverId: null,
+        routeId: null,
+        updatedAt,
+        status: 'Unassigned'
+      } : trip)
+    };
+  }, { markDispatchDirty: true });
 
   const addDriver = () => updateState(currentState => {
     const nextIndex = currentState.drivers.length + 19;
@@ -415,10 +432,12 @@ export const NemtProvider = ({
   const updateTripNotes = (tripId, notes) => updateState(currentState => {
     const normalizedTripId = String(tripId || '').trim();
     const normalizedNotes = String(notes ?? '').trim();
+    const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
       trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? {
         ...trip,
+        updatedAt,
         notes: normalizedNotes
       } : trip)
     };
@@ -427,10 +446,12 @@ export const NemtProvider = ({
   const updateTripRecord = (tripId, updates) => updateState(currentState => {
     const normalizedTripId = String(tripId || '').trim();
     if (!normalizedTripId) return currentState;
+    const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
       trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? normalizeTripRecord({
         ...trip,
+        updatedAt,
         ...(updates || {})
       }) : trip)
     };
