@@ -85,6 +85,27 @@ const TRIP_COLUMN_MIN_WIDTHS = {
   lateMinutes: 68
 };
 
+const TRIP_DASHBOARD_LAYOUT_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_LAYOUT__';
+const TRIP_DASHBOARD_PANEL_VIEW_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_VIEW__';
+const TRIP_DASHBOARD_PANEL_ORDER_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_ORDER__';
+
+const TRIP_DASHBOARD_LAYOUTS = {
+  normal: 'normal',
+  focusRight: 'focus-right',
+  stacked: 'stacked'
+};
+
+const TRIP_DASHBOARD_PANEL_VIEWS = {
+  both: 'both',
+  drivers: 'drivers',
+  routes: 'routes'
+};
+
+const TRIP_DASHBOARD_PANEL_ORDERS = {
+  driversFirst: 'drivers-first',
+  routesFirst: 'routes-first'
+};
+
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
   if (status === 'In Progress') return 'success';
@@ -360,6 +381,9 @@ const TripDashboardWorkspace = () => {
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [layoutMode, setLayoutMode] = useState(TRIP_DASHBOARD_LAYOUTS.normal);
+  const [panelView, setPanelView] = useState(TRIP_DASHBOARD_PANEL_VIEWS.both);
+  const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
   const [tripOrderMode, setTripOrderMode] = useState('original');
   const [tripSort, setTripSort] = useState({
     key: 'pickup',
@@ -1181,6 +1205,40 @@ const TripDashboardWorkspace = () => {
   }, [dragMode]);
 
   useEffect(() => {
+    const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
+    if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) return;
+    setLayoutMode(storedLayout);
+    if (storedLayout !== TRIP_DASHBOARD_LAYOUTS.normal) {
+      setShowMapPane(false);
+      setShowBottomPanels(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const storedPanelView = window.localStorage.getItem(TRIP_DASHBOARD_PANEL_VIEW_KEY);
+    if (storedPanelView && Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(storedPanelView)) {
+      setPanelView(storedPanelView);
+    }
+
+    const storedPanelOrder = window.localStorage.getItem(TRIP_DASHBOARD_PANEL_ORDER_KEY);
+    if (storedPanelOrder && Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(storedPanelOrder)) {
+      setPanelOrder(storedPanelOrder);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(TRIP_DASHBOARD_LAYOUT_KEY, layoutMode);
+  }, [layoutMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TRIP_DASHBOARD_PANEL_VIEW_KEY, panelView);
+  }, [panelView]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TRIP_DASHBOARD_PANEL_ORDER_KEY, panelOrder);
+  }, [panelOrder]);
+
+  useEffect(() => {
     const updateTripTableScrollWidth = () => {
       const scrollContainer = tripTableBottomScrollerRef.current;
       const tableNode = tripTableElementRef.current;
@@ -1217,10 +1275,14 @@ const TripDashboardWorkspace = () => {
 
   const workspaceHeight = expanded ? 1120 : 1000;
   const dividerSize = 10;
+  const isFocusRightLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && showBottomPanels;
+  const isStackedLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked && showBottomPanels;
+  const isStandardLayout = !isFocusRightLayout && !isStackedLayout;
+  const focusRightColumnSplit = clamp(columnSplit, 28, 40);
   const workspaceGridStyle = {
     display: 'grid',
-    gridTemplateColumns: showMapPane ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
-    gridTemplateRows: showBottomPanels ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
+    gridTemplateColumns: isFocusRightLayout ? `${focusRightColumnSplit}% ${dividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
+    gridTemplateRows: isFocusRightLayout ? '1fr' : isStackedLayout ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : showBottomPanels ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
     height: workspaceHeight,
     minHeight: workspaceHeight,
     position: 'relative'
@@ -1240,17 +1302,195 @@ const TripDashboardWorkspace = () => {
     if (popup) {
       popup.focus();
       setShowInlineMap(false);
+      applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
       setStatusMessage('Mapa abierto en otra pantalla.');
       return;
     }
     window.open(mapUrl, '_blank', 'noopener,noreferrer');
     setShowInlineMap(false);
+    applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
     setStatusMessage('Mapa abierto en otra pestana.');
   };
 
+  const applyLayoutMode = nextLayoutMode => {
+    setLayoutMode(nextLayoutMode);
+
+    if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.normal) {
+      setShowMapPane(true);
+      setShowBottomPanels(true);
+      setColumnSplit(58);
+      setRowSplit(68);
+      setStatusMessage('Layout normal restaurado en Trip Dashboard.');
+      return;
+    }
+
+    setShowMapPane(false);
+    setShowBottomPanels(true);
+
+    if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight) {
+      setColumnSplit(current => clamp(current, 28, 40));
+      setStatusMessage('Layout Focus Right activado en Trip Dashboard.');
+      return;
+    }
+
+    setRowSplit(current => clamp(current, 48, 74));
+    setStatusMessage('Layout apilado activado en Trip Dashboard.');
+  };
+
+  const handlePanelViewChange = nextView => {
+    if (nextView === 'hidden') {
+      setShowBottomPanels(false);
+      setStatusMessage('Paneles inferiores ocultos.');
+      return;
+    }
+    setShowBottomPanels(true);
+    setPanelView(nextView);
+    setStatusMessage(`Paneles inferiores en modo ${nextView}.`);
+  };
+
+  const driverPanelCard = <Card className="h-100 overflow-hidden">
+      <CardBody className="p-0 d-flex flex-column h-100">
+        <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <strong>VDRS: {drivers.length}</strong>
+            <Form.Select size="sm" value={driverGrouping} onChange={event => setDriverGrouping(event.target.value)} style={{ width: 150 }}>
+              <option>VDR Grouping</option>
+              <option>By Live Status</option>
+              <option>By Vehicle</option>
+            </Form.Select>
+            <span>{liveDrivers} live</span>
+          </div>
+          <div className="d-flex gap-2">
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+            refreshDrivers();
+            router.push('/drivers/grouping');
+            setStatusMessage('Abriendo billing grouping del roster real.');
+          }}>Open Grouping</Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+            refreshDrivers();
+            router.push('/drivers');
+            setStatusMessage('Abriendo Drivers para administrar el roster real.');
+          }}>Manage Drivers</Button>
+          </div>
+        </div>
+        <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
+          <Table size="sm" className="align-middle mb-0 small" style={{ lineHeight: 1.1 }}>
+            <thead className="table-light">
+              <tr>
+                <th className="py-1" style={{ width: 60 }}>ACT</th>
+                <th className="py-1">#</th>
+                <th className="py-1">VID</th>
+                <th className="py-1">Vehicle</th>
+                <th className="py-1">Driver</th>
+                <th className="py-1">Checkpoint</th>
+                <th className="py-1">Attendant</th>
+                <th className="py-1">Info</th>
+                <th className="py-1">Live</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDrivers.length > 0 ? filteredDrivers.map((driver, index) => <tr key={driver.id} className={selectedDriverId === driver.id ? 'table-primary' : ''}>
+                  <td className="py-1">
+                    <div className="d-flex align-items-center gap-1">
+                      <Form.Check type="radio" checked={selectedDriverId === driver.id} onChange={() => setSelectedDriverId(driver.id)} />
+                      <Button variant="light" size="sm" onClick={() => handleAssign(driver.id)}>
+                        <IconifyIcon icon="la:arrow-right" />
+                      </Button>
+                    </div>
+                  </td>
+                  <td className="py-1">{index + 1}</td>
+                  <td className="py-1">{driver.code}</td>
+                  <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.vehicle}</td>
+                  <td className="py-1" style={{ whiteSpace: 'nowrap' }}><div className="fw-semibold">{driver.name}</div></td>
+                  <td className="py-1">
+                    <div className="d-flex align-items-center gap-2">
+                      <IconifyIcon icon="iconoir:maps-arrow-diagonal" className={driver.live === 'Online' ? 'text-success' : 'text-muted'} />
+                      <div>
+                        <div className="fw-medium small">{getDriverCheckpoint(driver)}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td>
+                  <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td>
+                  <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.live}</td>
+                </tr>) : <tr>
+                  <td colSpan={9} className="text-center text-muted py-4">No hay choferes ni vehiculos cargados.</td>
+                </tr>}
+            </tbody>
+          </Table>
+        </div>
+      </CardBody>
+    </Card>;
+
+  const routePanelCard = <Card className="h-100 overflow-hidden">
+      <CardBody className="p-0 d-flex flex-column h-100">
+        <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
+          <div className="d-flex align-items-center gap-2 flex-wrap">
+            <Form.Select size="sm" value={selectedRouteId ?? ''} onChange={event => setSelectedRouteId(event.target.value)} style={{ width: 220 }}>
+              <option value="">Current selection</option>
+              {filteredRoutePlans.map(routePlan => <option key={routePlan.id} value={routePlan.id}>{routePlan.name}{getRouteServiceDateKey(routePlan, trips) ? ` • ${formatTripDateLabel(getRouteServiceDateKey(routePlan, trips))}` : ''}</option>)}
+            </Form.Select>
+            <Badge bg="light" text="dark">{filteredRoutePlans.length} route(s)</Badge>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
+          </div>
+          <Form.Control size="sm" value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Search" style={{ width: 180 }} />
+        </div>
+        <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
+          <Table className="align-middle mb-0">
+            <thead className="table-light">
+              <tr>
+                <th style={{ width: 48 }} />
+                <th>Trip ID</th>
+                <th>Miles</th>
+                <th>PU</th>
+                <th>DO</th>
+                <th>Rider</th>
+                <th>Patient Phone</th>
+              </tr>
+            </thead>
+            <tbody>
+              {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIds.includes(trip.id) ? 'table-success' : ''}>
+                  <td>
+                    <div className="d-flex align-items-center gap-1">
+                      <Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => toggleTripSelection(trip.id)} />
+                      <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
+                    </div>
+                  </td>
+                  <td className="fw-semibold">{trip.id}</td>
+                  <td>{trip.miles || '-'}</td>
+                  <td>{trip.pickup}</td>
+                  <td>{trip.dropoff}</td>
+                  <td>{trip.rider}</td>
+                  <td>{trip.patientPhoneNumber || '-'}</td>
+                </tr>) : <tr>
+                  <td colSpan={7} className="text-center text-muted py-4">Selecciona una ruta, un chofer o trips para ver el menu de ruta.</td>
+                </tr>}
+            </tbody>
+          </Table>
+        </div>
+      </CardBody>
+    </Card>;
+
+  const dockPanelsOrdered = panelOrder === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? [{
+    key: 'drivers',
+    node: driverPanelCard
+  }, {
+    key: 'routes',
+    node: routePanelCard
+  }] : [{
+    key: 'routes',
+    node: routePanelCard
+  }, {
+    key: 'drivers',
+    node: driverPanelCard
+  }];
+
+  const dockPanelsVisible = panelView === TRIP_DASHBOARD_PANEL_VIEWS.drivers ? dockPanelsOrdered.filter(panel => panel.key === 'drivers') : panelView === TRIP_DASHBOARD_PANEL_VIEWS.routes ? dockPanelsOrdered.filter(panel => panel.key === 'routes') : dockPanelsOrdered;
+
   return <>
       <div ref={workspaceRef} style={workspaceGridStyle}>
-        <div style={{ minWidth: 0, minHeight: 0, display: showMapPane ? 'block' : 'none' }}>
+        <div style={{ minWidth: 0, minHeight: 0, display: showMapPane && isStandardLayout ? 'block' : 'none' }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               {showInlineMap ? <div className="position-relative h-100">
@@ -1346,17 +1586,22 @@ const TripDashboardWorkspace = () => {
           </Card>
         </div>
 
-        <div onMouseDown={() => showMapPane ? setDragMode('column') : undefined} style={{
+        <div onMouseDown={() => showMapPane || isFocusRightLayout ? setDragMode('column') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'col-resize',
         gridColumn: 2,
-        gridRow: '1 / span 3',
-        display: showMapPane ? 'block' : 'none'
+        gridRow: isFocusRightLayout ? 1 : '1 / span 3',
+        display: showMapPane || isFocusRightLayout ? 'block' : 'none'
       }}>
           <div className="position-absolute start-50 translate-middle-x rounded-pill" style={{ top: 10, bottom: 10, width: 6, backgroundColor: '#6b7280' }} />
         </div>
 
-        <div style={{ minWidth: 0, minHeight: 0, gridColumn: showMapPane ? 3 : '1 / span 3', gridRow: 1 }}>
+        <div style={{
+        minWidth: 0,
+        minHeight: 0,
+        gridColumn: isFocusRightLayout ? 3 : showMapPane ? 3 : isStackedLayout ? 1 : '1 / span 3',
+        gridRow: isFocusRightLayout ? '1 / span 3' : 1
+      }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
@@ -1401,8 +1646,26 @@ const TripDashboardWorkspace = () => {
                   <Badge bg="info">{drivers.length} drivers</Badge>
                   <Badge bg="secondary">{liveDrivers} live</Badge>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)}>Columns</Button>
-                  
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map Screen' : 'Show Map Here'}</Button>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <span className="fw-semibold small">Layout</span>
+                    <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Normal</Button>
+                    <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)}>Focus Right</Button>
+                    <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.stacked)}>Stacked</Button>
+                    {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
+                  </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <span className="fw-semibold small">Panels</span>
+                    <Form.Select size="sm" value={showBottomPanels ? panelView : 'hidden'} onChange={event => handlePanelViewChange(event.target.value)} style={{ width: 112 }}>
+                      <option value="both">Both</option>
+                      <option value="drivers">VDRS</option>
+                      <option value="routes">Routes</option>
+                      <option value="hidden">Hide</option>
+                    </Form.Select>
+                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setPanelOrder(current => current === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? TRIP_DASHBOARD_PANEL_ORDERS.routesFirst : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst)}>
+                      Swap
+                    </Button>
+                  </div>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
@@ -1603,17 +1866,17 @@ const TripDashboardWorkspace = () => {
           </Card>
         </div>
 
-        <div onMouseDown={() => showBottomPanels ? setDragMode('row') : undefined} style={{
+        <div onMouseDown={() => showBottomPanels && !isFocusRightLayout ? setDragMode('row') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'row-resize',
-        gridColumn: '1 / span 3',
+        gridColumn: isStackedLayout ? 1 : '1 / span 3',
         gridRow: 2,
-        display: showBottomPanels ? 'block' : 'none'
+        display: showBottomPanels && !isFocusRightLayout ? 'block' : 'none'
       }}>
           <div className="position-absolute top-50 start-50 translate-middle rounded-pill" style={{ width: 56, height: 6, backgroundColor: '#6b7280' }} />
         </div>
 
-        <div onMouseDown={() => showBottomPanels ? setDragMode('both') : undefined} style={{
+        <div onMouseDown={() => showBottomPanels && isStandardLayout ? setDragMode('both') : undefined} style={{
         width: 18,
         height: 18,
         borderRadius: '50%',
@@ -1626,144 +1889,65 @@ const TripDashboardWorkspace = () => {
         cursor: 'move',
         zIndex: 50,
         boxShadow: '0 0 0 2px rgba(88, 96, 122, 0.25)',
-        display: showBottomPanels ? 'block' : 'none'
+        display: showBottomPanels && isStandardLayout ? 'block' : 'none'
       }} />
 
-        <div style={{
-          display: showBottomPanels ? 'grid' : 'none',
-          minWidth: 0, minHeight: 0,
-          gridColumn: '1 / span 3',
-          gridRow: 3,
-          gridTemplateColumns: showMapPane ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : '1fr 1fr',
-        }}>
-        <div style={{ minWidth: 0, minHeight: 0, gridColumn: 1 }}>
-          <Card className="h-100 overflow-hidden">
-            <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
-                <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <strong>VDRS: {drivers.length}</strong>
-                  <Form.Select size="sm" value={driverGrouping} onChange={event => setDriverGrouping(event.target.value)} style={{ width: 150 }}>
-                    <option>VDR Grouping</option>
-                    <option>By Live Status</option>
-                    <option>By Vehicle</option>
-                  </Form.Select>
-                  <span>{liveDrivers} live</span>
+        {isStandardLayout ? <div style={{
+        display: showBottomPanels ? 'grid' : 'none',
+        minWidth: 0,
+        minHeight: 0,
+        gridColumn: '1 / span 3',
+        gridRow: 3,
+        gridTemplateColumns: dockPanelsVisible.length === 1 ? 'minmax(0, 1fr)' : showMapPane ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : '1fr 1fr'
+      }}>
+            {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridColumn: 1 }}>
+                {dockPanelsVisible[0].node}
+              </div> : null}
+            {dockPanelsVisible.length > 1 ? <>
+                {showMapPane ? <div style={{ gridColumn: 2, backgroundColor: '#2d3448', borderRadius: 999 }} /> : null}
+                <div style={{ minWidth: 0, minHeight: 0, gridColumn: showMapPane ? 3 : 2 }}>
+                  {dockPanelsVisible[1].node}
                 </div>
-                <div className="d-flex gap-2">
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-                refreshDrivers();
-                router.push('/drivers/grouping');
-                setStatusMessage('Abriendo billing grouping del roster real.');
-              }}>Open Grouping</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-                refreshDrivers();
-                router.push('/drivers');
-                setStatusMessage('Abriendo Drivers para administrar el roster real.');
-              }}>Manage Drivers</Button>
+              </> : null}
+          </div> : null}
+
+        {isFocusRightLayout ? <div style={{
+        display: 'grid',
+        minWidth: 0,
+        minHeight: 0,
+        gridColumn: 1,
+        gridRow: 1,
+        gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 8px minmax(0, 1fr)' : 'minmax(0, 1fr)'
+      }}>
+            {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridRow: 1 }}>
+                {dockPanelsVisible[0].node}
+              </div> : null}
+            {dockPanelsVisible.length > 1 ? <>
+                <div style={{ gridRow: 2, backgroundColor: '#2d3448', borderRadius: 999 }} />
+                <div style={{ minWidth: 0, minHeight: 0, gridRow: 3 }}>
+                  {dockPanelsVisible[1].node}
                 </div>
-              </div>
-              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
-                <Table size="sm" className="align-middle mb-0 small" style={{ lineHeight: 1.1 }}>
-                  <thead className="table-light">
-                    <tr>
-                      <th className="py-1" style={{ width: 60 }}>ACT</th>
-                      <th className="py-1">#</th>
-                      <th className="py-1">VID</th>
-                      <th className="py-1">Vehicle</th>
-                      <th className="py-1">Driver</th>
-                      <th className="py-1">Checkpoint</th>
-                      <th className="py-1">Attendant</th>
-                      <th className="py-1">Info</th>
-                      <th className="py-1">Live</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDrivers.length > 0 ? filteredDrivers.map((driver, index) => <tr key={driver.id} className={selectedDriverId === driver.id ? 'table-primary' : ''}>
-                        <td className="py-1">
-                          <div className="d-flex align-items-center gap-1">
-                            <Form.Check type="radio" checked={selectedDriverId === driver.id} onChange={() => setSelectedDriverId(driver.id)} />
-                            <Button variant="light" size="sm" onClick={() => handleAssign(driver.id)}>
-                              <IconifyIcon icon="la:arrow-right" />
-                            </Button>
-                          </div>
-                        </td>
-                        <td className="py-1">{index + 1}</td>
-                        <td className="py-1">{driver.code}</td>
-                        <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.vehicle}</td>
-                        <td className="py-1" style={{ whiteSpace: 'nowrap' }}><div className="fw-semibold">{driver.name}</div></td>
-                        <td className="py-1">
-                          <div className="d-flex align-items-center gap-2">
-                            <IconifyIcon icon="iconoir:maps-arrow-diagonal" className={driver.live === 'Online' ? 'text-success' : 'text-muted'} />
-                            <div>
-                              <div className="fw-medium small">{getDriverCheckpoint(driver)}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td>
-                        <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td>
-                        <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.live}</td>
-                      </tr>) : <tr>
-                        <td colSpan={9} className="text-center text-muted py-4">No hay choferes ni vehiculos cargados.</td>
-                      </tr>}
-                  </tbody>
-                </Table>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-        {showMapPane ? <div style={{ gridColumn: 2, backgroundColor: '#2d3448', borderRadius: 999 }} /> : null}
-        <div style={{ minWidth: 0, minHeight: 0, gridColumn: showMapPane ? 3 : 2 }}>
-          <Card className="h-100 overflow-hidden">
-            <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
-                <div className="d-flex align-items-center gap-2 flex-wrap">
-                  <Form.Select size="sm" value={selectedRouteId ?? ''} onChange={event => setSelectedRouteId(event.target.value)} style={{ width: 220 }}>
-                    <option value="">Current selection</option>
-                    {filteredRoutePlans.map(routePlan => <option key={routePlan.id} value={routePlan.id}>{routePlan.name}{getRouteServiceDateKey(routePlan, trips) ? ` • ${formatTripDateLabel(getRouteServiceDateKey(routePlan, trips))}` : ''}</option>)}
-                  </Form.Select>
-                  <Badge bg="light" text="dark">{filteredRoutePlans.length} route(s)</Badge>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
+              </> : null}
+          </div> : null}
+
+        {isStackedLayout ? <div style={{
+        display: 'grid',
+        minWidth: 0,
+        minHeight: 0,
+        gridColumn: 1,
+        gridRow: 3,
+        gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 8px minmax(0, 1fr)' : 'minmax(0, 1fr)'
+      }}>
+            {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridRow: 1 }}>
+                {dockPanelsVisible[0].node}
+              </div> : null}
+            {dockPanelsVisible.length > 1 ? <>
+                <div style={{ gridRow: 2, backgroundColor: '#2d3448', borderRadius: 999 }} />
+                <div style={{ minWidth: 0, minHeight: 0, gridRow: 3 }}>
+                  {dockPanelsVisible[1].node}
                 </div>
-                <Form.Control size="sm" value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Search" style={{ width: 180 }} />
-              </div>
-              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
-                <Table className="align-middle mb-0">
-                  <thead className="table-light">
-                    <tr>
-                      <th style={{ width: 48 }} />
-                      <th>Trip ID</th>
-                      <th>Miles</th>
-                      <th>PU</th>
-                      <th>DO</th>
-                      <th>Rider</th>
-                      <th>Patient Phone</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIds.includes(trip.id) ? 'table-success' : ''}>
-                        <td>
-                          <div className="d-flex align-items-center gap-1">
-                            <Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => toggleTripSelection(trip.id)} />
-                            <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
-                          </div>
-                        </td>
-                        <td className="fw-semibold">{trip.id}</td>
-                        <td>{trip.miles || '-'}</td>
-                        <td>{trip.pickup}</td>
-                        <td>{trip.dropoff}</td>
-                        <td>{trip.rider}</td>
-                        <td>{trip.patientPhoneNumber || '-'}</td>
-                      </tr>) : <tr>
-                        <td colSpan={7} className="text-center text-muted py-4">Selecciona una ruta, un chofer o trips para ver el menu de ruta.</td>
-                      </tr>}
-                  </tbody>
-                </Table>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-        </div>
+              </> : null}
+          </div> : null}
 
         <Modal show={Boolean(noteModalTrip)} onHide={handleCloseTripNote} centered>
           <Modal.Header closeButton>
