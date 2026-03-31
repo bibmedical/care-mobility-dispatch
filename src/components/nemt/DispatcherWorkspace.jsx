@@ -1629,7 +1629,7 @@ const DispatcherWorkspace = () => {
 
         <div style={{ minWidth: 0, minHeight: 0, display: showBottomPanels ? 'block' : 'none' }}>
           <Card className="h-100">
-            <CardBody className="p-0">
+            <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
                 <div className="d-flex gap-2 flex-wrap align-items-center">
                     <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
@@ -1642,7 +1642,7 @@ const DispatcherWorkspace = () => {
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
                 </div>
               </div>
-              <div className="table-responsive" style={{ minHeight: 360, maxHeight: 360 }}>
+              <div className="table-responsive flex-grow-1" style={{ minHeight: 0 }}>
                 <Table className="align-middle mb-0">
                   <thead className="table-light">
                     <tr>
