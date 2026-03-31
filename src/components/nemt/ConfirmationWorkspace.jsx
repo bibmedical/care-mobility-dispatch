@@ -402,8 +402,7 @@ const ConfirmationWorkspace = () => {
       setMilesMaxFilter('25');
       return;
     }
-    const cappedDefault = Math.min(25, detectedMaxMilesForWindow);
-    setMilesMaxFilter(String(Number(cappedDefault.toFixed(2))));
+    setMilesMaxFilter(String(Number(detectedMaxMilesForWindow.toFixed(2))));
   }, [detectedMaxMilesForWindow, isMilesMaxManual]);
 
   const baseFilteredTrips = useMemo(() => {
