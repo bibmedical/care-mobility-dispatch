@@ -604,9 +604,8 @@ const buildDispatchSnapshot = async session => {
     modules: flattenMenuItems(MENU_ITEMS).filter(item => !item.isTitle).map(item => ({
       key: item.key,
       label: item.label,
-      name: String(driver.name || '').trim(),
-      vehicle: String(driver.vehicle || '').trim(),
-      live: String(driver.live || '').trim()
+      url: item.url || '',
+      isTitle: Boolean(item.isTitle)
     })),
     sampleTrips: trips.slice(0, 25).map(trip => ({
       id: trip.id,

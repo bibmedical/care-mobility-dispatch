@@ -262,6 +262,10 @@ const DispatchAssistantWidget = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [isHydrating, setIsHydrating] = useState(false);
   const recognitionRef = useRef(null);
+  const recognitionRunningRef = useRef(false);
+  const recognitionRestartTimeoutRef = useRef(null);
+  const lastSubmittedTranscriptRef = useRef('');
+  const lastSubmittedAtRef = useRef(0);
   const preferredVoiceRef = useRef(null);
   const speechUtteranceRef = useRef(null);
   const [lastTranscript, setLastTranscript] = useState('');
@@ -415,36 +419,95 @@ const DispatchAssistantWidget = () => {
 
     const recognition = new Recognition();
     recognition.lang = 'es-MX';
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.continuous = true;
     recognition.maxAlternatives = 1;
+    recognition.onstart = () => {
+      recognitionRunningRef.current = true;
+      setIsListening(true);
+      setErrorMessage('');
+    };
     recognition.onresult = event => {
-      const transcript = Array.from(event.results || []).map(result => result?.[0]?.transcript || '').join(' ').trim();
+      const startIndex = typeof event.resultIndex === 'number' ? event.resultIndex : 0;
+      const finalChunks = [];
+      const interimChunks = [];
+      for (let index = startIndex; index < (event.results?.length || 0); index += 1) {
+        const result = event.results?.[index];
+        const piece = String(result?.[0]?.transcript || '').trim();
+        if (!piece) continue;
+        if (result?.isFinal) {
+          finalChunks.push(piece);
+        } else {
+          interimChunks.push(piece);
+        }
+      }
+
+      const interimTranscript = interimChunks.join(' ').trim();
+      if (interimTranscript) {
+        setTextInput(interimTranscript);
+      }
+
+      const transcript = finalChunks.join(' ').trim();
       if (transcript) {
+        const normalizedTranscript = transcript.toLowerCase();
+        const now = Date.now();
+        if (normalizedTranscript === lastSubmittedTranscriptRef.current && now - lastSubmittedAtRef.current < 2000) {
+          return;
+        }
+        lastSubmittedTranscriptRef.current = normalizedTranscript;
+        lastSubmittedAtRef.current = now;
         setLastTranscript(transcript);
+        setTextInput('');
         void sendVoiceMessage(transcript);
       }
     };
-    recognition.onerror = () => {
-      setIsListening(false);
+    recognition.onerror = event => {
+      const errorCode = String(event?.error || '').toLowerCase();
+      const permissionError = errorCode === 'not-allowed' || errorCode === 'service-not-allowed';
+      if (permissionError) {
+        setListeningMode(false);
+        setIsListening(false);
+        setErrorMessage('El navegador bloqueo el microfono. Activa permisos de microfono para este sitio.');
+        return;
+      }
+      const noSpeechError = errorCode === 'no-speech' || errorCode === 'aborted';
+      if (noSpeechError) {
+        // Keep listening mode alive; onend will restart recognition.
+        return;
+      }
+      if (!listeningModeRef.current) {
+        setIsListening(false);
+      }
     };
     recognition.onend = () => {
-      setIsListening(false);
+      recognitionRunningRef.current = false;
       if (listeningModeRef.current && !isSpeakingRef.current && !isSendingRef.current) {
-        window.setTimeout(() => {
+        if (recognitionRestartTimeoutRef.current) {
+          window.clearTimeout(recognitionRestartTimeoutRef.current);
+        }
+        setIsListening(true);
+        recognitionRestartTimeoutRef.current = window.setTimeout(() => {
           if (!recognitionRef.current || !listeningModeRef.current || isSpeakingRef.current || isSendingRef.current) return;
           try {
+            if (recognitionRunningRef.current) return;
             recognitionRef.current.start();
+            recognitionRunningRef.current = true;
             setIsListening(true);
           } catch {}
         }, 350);
+      } else {
+        setIsListening(false);
       }
     };
     recognitionRef.current = recognition;
 
     return () => {
+      if (recognitionRestartTimeoutRef.current) {
+        window.clearTimeout(recognitionRestartTimeoutRef.current);
+      }
       recognition.stop();
       recognitionRef.current = null;
+      recognitionRunningRef.current = false;
     };
   }, [speechRecognitionSupported]);
 
@@ -553,6 +616,7 @@ const DispatchAssistantWidget = () => {
       .replace(/`([^`]+)`/g, '$1')
       .replace(/[•*-]\s+/g, '')
       .trim();
+    if (!cleanText) return;
     const utterance = new SpeechSynthesisUtterance(cleanText);
     speechUtteranceRef.current = utterance;
     utterance.lang = 'es-MX';
@@ -563,6 +627,7 @@ const DispatchAssistantWidget = () => {
       utterance.lang = preferredVoiceRef.current.lang || utterance.lang;
     }
     utterance.onstart = () => {
+      setErrorMessage('');
       setIsSpeaking(true);
     };
     utterance.onend = () => {
@@ -581,7 +646,9 @@ const DispatchAssistantWidget = () => {
     utterance.onerror = () => {
       setIsSpeaking(false);
       speechUtteranceRef.current = null;
+      setErrorMessage('No pude reproducir voz ahora mismo. Verifica audio del navegador y que Voz esté encendido.');
     };
+    window.speechSynthesis.resume?.();
     window.speechSynthesis.speak(utterance);
   };
 
@@ -656,7 +723,11 @@ const DispatchAssistantWidget = () => {
     if (!recognitionRef.current) return;
     if (listeningModeRef.current || isListening) {
       setListeningMode(false);
+      if (recognitionRestartTimeoutRef.current) {
+        window.clearTimeout(recognitionRestartTimeoutRef.current);
+      }
       recognitionRef.current.stop();
+      recognitionRunningRef.current = false;
       setIsListening(false);
       return;
     }
@@ -667,7 +738,16 @@ const DispatchAssistantWidget = () => {
     }
     setListeningMode(true);
     setIsListening(true);
-    recognitionRef.current.start();
+    try {
+      if (!recognitionRunningRef.current) {
+        recognitionRef.current.start();
+        recognitionRunningRef.current = true;
+      }
+    } catch {
+      setIsListening(false);
+      setListeningMode(false);
+      setErrorMessage('No pude iniciar el microfono. Revisa permisos y vuelve a intentar.');
+    }
   };
 
   const handleSendText = async () => {
@@ -777,7 +857,7 @@ const DispatchAssistantWidget = () => {
                 {listeningMode || isListening ? 'Escucha on' : 'Escucha off'}
               </Button>
               <Button type="button" variant={voiceEnabled ? 'light' : 'outline-light'} onClick={() => setVoiceEnabled(currentValue => !currentValue)} style={widgetStyles.miniButton}>
-                {voiceEnabled ? 'Voz on' : 'Mute'}
+                {voiceEnabled ? 'Voz on' : 'Voz off'}
               </Button>
               <Button type="button" variant="outline-light" onClick={handleClearMemory} style={widgetStyles.miniButton}>
                 Borrar
@@ -813,7 +893,7 @@ const DispatchAssistantWidget = () => {
           }
           setVoiceEnabled(currentValue => !currentValue);
         }} style={widgetStyles.launcherModeButton}>
-            {voiceEnabled ? 'Voz on' : 'Mute'}
+            {voiceEnabled ? 'Voz on' : 'Voz off'}
           </Button>
         </div>
       </div>
