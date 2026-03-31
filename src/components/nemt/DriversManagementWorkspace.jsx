@@ -54,6 +54,43 @@ const readFileAsDataUrl = file => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
+const toLocalFileProxyUrl = rawPath => {
+  const normalized = String(rawPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  return normalized ? `/api/files/local?path=${encodeURIComponent(normalized)}` : null;
+};
+
+const resolveDocumentAsset = value => {
+  if (!value) return null;
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/\\/g, '/');
+    const isDataUrl = normalized.startsWith('data:');
+    const name = normalized.split('/').pop() || 'uploaded-file';
+
+    return {
+      name,
+      type: '',
+      dataUrl: isDataUrl ? normalized : toLocalFileProxyUrl(normalized),
+      source: 'path'
+    };
+  }
+
+  if (typeof value === 'object') {
+    const name = value.name || value.fileName || 'uploaded-file';
+    const dataUrl = value.dataUrl || value.url || (typeof value.path === 'string' ? toLocalFileProxyUrl(value.path) : null);
+    return dataUrl ? {
+      ...value,
+      name,
+      dataUrl,
+      source: value.source || 'object'
+    } : null;
+  }
+
+  return null;
+};
+
+const isImageAsset = asset => Boolean(asset?.dataUrl) && !String(asset.dataUrl).toLowerCase().endsWith('.pdf');
+
 const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const { themeMode } = useLayoutContext();
   const shellStyles = useMemo(() => buildShellStyles(themeMode === 'light'), [themeMode]);
@@ -119,6 +156,9 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const collectionKey = getCollectionKey(activeTab);
   const selectedEntity = state[collectionKey].find(entity => entity.id === selectedRowId) ?? null;
   const driverAlerts = activeTab === 'drivers' && draftEntity ? getDocumentAlerts(draftEntity) : [];
+  const profilePhotoAsset = resolveDocumentAsset(draftEntity?.documents?.profilePhoto);
+  const licenseFrontAsset = resolveDocumentAsset(draftEntity?.documents?.licenseFront);
+  const primaryPhotoAsset = profilePhotoAsset || licenseFrontAsset;
 
   const openEditor = entity => {
     const nextDraft = entity ? JSON.parse(JSON.stringify(entity)) : activeTab === 'drivers' ? createBlankDriver() : activeTab === 'attendants' ? createBlankAttendant() : activeTab === 'vehicles' ? createBlankVehicle() : createBlankGrouping();
@@ -271,8 +311,20 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
               <div className={formLabelClassName}>Driver Photo</div>
               <div className="d-flex flex-column align-items-center gap-3">
                 <div className="rounded-circle overflow-hidden border" style={{ width: 120, height: 120, borderColor: '#2a3144' }}>
-                  {draftEntity.documents.profilePhoto?.dataUrl ? <img src={draftEntity.documents.profilePhoto.dataUrl} alt="Driver profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div className="w-100 h-100 d-flex align-items-center justify-content-center text-secondary bg-dark-subtle"><IconifyIcon icon="iconoir:user" className="fs-32" /></div>}
+                  {isImageAsset(primaryPhotoAsset) ? <img src={primaryPhotoAsset.dataUrl} alt="Driver profile" style={profilePhotoAsset ? {
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                } : {
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  objectPosition: '22% 38%',
+                  transform: 'scale(1.45)',
+                  transformOrigin: '22% 38%'
+                }} /> : <div className="w-100 h-100 d-flex align-items-center justify-content-center text-secondary bg-dark-subtle"><IconifyIcon icon="iconoir:user" className="fs-32" /></div>}
                 </div>
+                {!profilePhotoAsset && isImageAsset(licenseFrontAsset) ? <div className="small text-warning text-center">Primary photo usando License Front (face zoom).</div> : null}
                 <Form.Control type="file" accept="image/*" style={shellStyles.modalInput} onChange={async event => updateDraftDocument('profilePhoto', event.target.files?.[0])} />
               </div>
             </div>
@@ -313,7 +365,11 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
       return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Insurance Carrier</Form.Label><Form.Control value={draftEntity.insuranceCarrier} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceCarrier', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Number</Form.Label><Form.Control value={draftEntity.insurancePolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('insurancePolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Expiration</Form.Label><Form.Control type="date" value={draftEntity.insuranceExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Policy</Form.Label><Form.Control value={draftEntity.workersCompPolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompPolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Exp.</Form.Label><Form.Control type="date" value={draftEntity.workersCompExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Company Tax ID</Form.Label><Form.Control value={draftEntity.taxId} style={shellStyles.modalInput} onChange={event => updateDraftField('taxId', event.target.value)} /></Col><Col md={3}><Form.Check label="Insurance Accredited" checked={draftEntity.insuranceAccredited} onChange={event => updateDraftField('insuranceAccredited', event.target.checked)} /></Col><Col md={3}><Form.Check label="Tax ID Verified" checked={draftEntity.taxIdVerified} onChange={event => updateDraftField('taxIdVerified', event.target.checked)} /></Col><Col md={3}><Form.Check label="W9 On File" checked={draftEntity.w9OnFile} onChange={event => updateDraftField('w9OnFile', event.target.checked)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Tracking</Form.Label><div className="small text-secondary pt-2">Android only. Web admin cannot mark drivers online manually.</div></Col></Row></div>;
     }
 
-    return <div style={shellStyles.modalSection}><Row className="g-3">{[['profilePhoto', 'Profile Photo', 'image/*'], ['licenseFront', 'License Front', 'image/*,.pdf'], ['licenseBack', 'License Back', 'image/*,.pdf'], ['insuranceCertificate', 'Insurance Certificate', 'image/*,.pdf'], ['w9Document', 'W9 / Tax Document', '.pdf,image/*'], ['trainingCertificate', 'Training Certificate', '.pdf,image/*']].map(([field, label, accept]) => <Col md={6} key={field}><Form.Label className={formLabelClassName}>{label}</Form.Label><Form.Control type="file" accept={accept} style={shellStyles.modalInput} onChange={async event => updateDraftDocument(field, event.target.files?.[0])} /><div className="small text-secondary mt-2">{draftEntity.documents[field]?.name ?? 'No file uploaded'}</div></Col>)}</Row></div>;
+    return <div style={shellStyles.modalSection}><Row className="g-3">{[['profilePhoto', 'Profile Photo', 'image/*'], ['licenseFront', 'License Front', 'image/*,.pdf'], ['licenseBack', 'License Back', 'image/*,.pdf'], ['insuranceCertificate', 'Insurance Certificate', 'image/*,.pdf'], ['w9Document', 'W9 / Tax Document', '.pdf,image/*'], ['trainingCertificate', 'Training Certificate', '.pdf,image/*']].map(([field, label, accept]) => {
+      const asset = resolveDocumentAsset(draftEntity.documents[field]);
+      const isPdf = String(asset?.name || '').toLowerCase().endsWith('.pdf');
+      return <Col md={6} key={field}><Form.Label className={formLabelClassName}>{label}</Form.Label><Form.Control type="file" accept={accept} style={shellStyles.modalInput} onChange={async event => updateDraftDocument(field, event.target.files?.[0])} /><div className="small text-secondary mt-2">{asset?.name ?? 'No file uploaded'}</div>{isImageAsset(asset) ? <div className="mt-2 border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 140, backgroundColor: '#0c111b' }}><img src={asset.dataUrl} alt={label} style={{ width: '100%', height: '100%', objectFit: field === 'profilePhoto' ? 'cover' : 'contain' }} /></div> : null}{isPdf && asset?.dataUrl ? <div className="small mt-2"><a href={asset.dataUrl} target="_blank" rel="noreferrer">Open PDF</a></div> : null}</Col>;
+    })}</Row></div>;
   };
 
   const renderGenericEditor = () => {

@@ -444,7 +444,7 @@ export const getDocumentAlerts = driver => {
     }
   };
 
-  if (!driver.documents?.licenseFront || !driver.documents?.licenseBack) alerts.push({ severity: 'warning', text: 'Driver license images are incomplete' });
+  if (!driver.documents?.licenseFront || !driver.documents?.licenseBack) alerts.push({ severity: 'warning', text: 'License photos not uploaded' });
   if (!driver.documents?.insuranceCertificate) alerts.push({ severity: 'warning', text: 'Insurance certificate missing' });
   if (!driver.w9OnFile || !driver.documents?.w9Document) alerts.push({ severity: 'warning', text: 'W9 / tax document missing' });
   pushDateAlert(driver.licenseExpirationDate, 'Driver license');

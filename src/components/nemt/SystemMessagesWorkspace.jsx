@@ -149,15 +149,44 @@ const SystemMessagesWorkspace = () => {
           borderRadius: 6, padding: '10px 14px', marginBottom: 14, fontSize: 13
         }}>
           {checkResult.ok ? (
-            <span style={{ color: '#2ecc71' }}>
-              ✓ Check complete — checked: <strong>{checkResult.checked}</strong>,
-              created: <strong>{checkResult.created}</strong>,
-              emailed: <strong>{checkResult.emailed}</strong>,
-              resolved: <strong>{checkResult.resolved}</strong>
-              {checkResult.errors?.length > 0 && (
-                <span style={{ color: '#e67e22' }}> | Errors: {checkResult.errors.join('; ')}</span>
+            <>
+              <span style={{ color: '#2ecc71' }}>
+                ✓ Check complete — checked: <strong>{checkResult.checked}</strong>,
+                created: <strong>{checkResult.created}</strong>,
+                emailed: <strong>{checkResult.emailed}</strong>,
+                resolved: <strong>{checkResult.resolved}</strong>
+                {checkResult.errors?.length > 0 && (
+                  <span style={{ color: '#e67e22' }}> | Errors: {checkResult.errors.join('; ')}</span>
+                )}
+              </span>
+              {checkResult.driverSummary?.length > 0 && (
+                <div style={{ marginTop: 10, overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#ccc' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #2a4a2a' }}>
+                        <th style={{ padding: '4px 10px', textAlign: 'left', color: '#aaa' }}>Driver</th>
+                        <th style={{ padding: '4px 10px', textAlign: 'center', color: '#aaa' }}>Expiration Date</th>
+                        <th style={{ padding: '4px 10px', textAlign: 'center', color: '#aaa' }}>Remaining Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {checkResult.driverSummary.map((d, i) => {
+                        const days = d.daysUntilExpiry;
+                        const color = days === null ? '#666' : days <= 0 ? '#e74c3c' : days <= 7 ? '#e67e22' : days <= 30 ? '#f39c12' : '#2ecc71';
+                        const label = days === null ? 'No date' : days <= 0 ? 'EXPIRED' : `${days} days`;
+                        return (
+                          <tr key={i} style={{ borderBottom: '1px solid #1a2e1a' }}>
+                            <td style={{ padding: '4px 10px' }}>{d.name}</td>
+                            <td style={{ padding: '4px 10px', textAlign: 'center', color: '#aaa' }}>{d.expirationDate || '—'}</td>
+                            <td style={{ padding: '4px 10px', textAlign: 'center', fontWeight: 600, color }}>{label}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
-            </span>
+            </>
           ) : (
             <span style={{ color: '#e74c3c' }}>Error: {checkResult.error || JSON.stringify(checkResult)}</span>
           )}

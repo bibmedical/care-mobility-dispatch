@@ -46,7 +46,7 @@ export async function GET(request) {
   const state = await readNemtAdminState();
   const drivers = state.drivers || [];
 
-  const results = { checked: 0, created: 0, emailed: 0, resolved: 0, errors: [] };
+  const results = { checked: 0, created: 0, emailed: 0, resolved: 0, errors: [], driverSummary: [] };
 
   // Load all messages once to bulk-update
   const allMessages = await readSystemMessages();
@@ -58,6 +58,13 @@ export async function GET(request) {
     results.checked++;
 
     const daysUntilExpiry = getDaysUntilExpiry(licenseExpirationDate);
+
+    // Track all drivers in summary (regardless of expiry window)
+    results.driverSummary.push({
+      name: driverName,
+      expirationDate: licenseExpirationDate || null,
+      daysUntilExpiry
+    });
 
     // No expiry date at all → skip silently
     if (daysUntilExpiry === null) continue;
