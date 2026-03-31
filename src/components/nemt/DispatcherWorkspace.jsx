@@ -3,7 +3,7 @@
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel';
 import { useNemtContext } from '@/context/useNemtContext';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
@@ -191,7 +191,7 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
     case 'trip':
       return trip.brokerTripId || trip.id;
     case 'status':
-      return trip.status;
+      return getEffectiveTripStatus(trip);
     case 'driver':
       return getDriverName(trip.driverId);
     case 'pickup':
@@ -239,6 +239,30 @@ const getTripLegFilterKey = trip => {
   if (legLabel.includes('return') || legLabel.includes('home') || legLabel.includes('house') || legLabel.includes('back')) return 'BL';
   if (legLabel.includes('3') || legLabel.includes('third') || legLabel.includes('connector') || legLabel.includes('cross')) return 'CL';
   return 'CL';
+};
+
+const hasMissingTripTime = trip => {
+  const scheduledPickup = String(trip?.scheduledPickup || trip?.pickup || '').trim();
+  const parsedPickupMinutes = parseTripClockMinutes(scheduledPickup);
+  if (!scheduledPickup) return true;
+  if (['tbd', 'willcall', 'will call', '23:', '23'].includes(scheduledPickup.toLowerCase())) return true;
+  if (parsedPickupMinutes != null) return false;
+  return !Number.isFinite(trip?.pickupSortValue) || trip?.pickupSortValue === Number.MAX_SAFE_INTEGER;
+};
+
+const getEffectiveTripStatus = trip => {
+  const normalizedStatus = String(trip?.status || '').trim();
+  const normalizedOverride = String(trip?.willCallOverride || '').trim().toLowerCase();
+  if (['cancelled', 'canceled'].includes(normalizedStatus.toLowerCase())) return normalizedStatus || 'Cancelled';
+  if (normalizedOverride === 'off') return normalizedStatus === 'WillCall' ? 'Unassigned' : normalizedStatus || 'Unassigned';
+  if (normalizedOverride === 'manual') return 'WillCall';
+  if (normalizedStatus === 'WillCall') return 'WillCall';
+  if (getTripLegFilterKey(trip) !== 'AL' && hasMissingTripTime(trip)) return 'WillCall';
+  return normalizedStatus || 'Unassigned';
+};
+
+const stopInputEventPropagation = event => {
+  event.stopPropagation();
 };
 
 const getTripTargetPosition = trip => trip?.status === 'In Progress' ? trip?.destinationPosition ?? trip?.position : trip?.position;
@@ -324,6 +348,7 @@ const DispatcherWorkspace = () => {
   const workspaceRef = useRef(null);
   const tripTableTopScrollerRef = useRef(null);
   const tripTableBottomScrollerRef = useRef(null);
+  const tripTableElementRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
@@ -350,7 +375,7 @@ const DispatcherWorkspace = () => {
   const hasSelectedTrips = selectedTripIds.length > 0;
 
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
-    const normalizedStatus = String(trip.status || '').toLowerCase();
+    const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase();
     const matchesStatus = tripStatusFilter === 'all' ? normalizedStatus !== 'cancelled' : normalizedStatus === tripStatusFilter;
     if (!matchesStatus) return false;
     const tripDate = getTripServiceDateKey(trip);
@@ -797,11 +822,19 @@ const DispatcherWorkspace = () => {
   const handleToggleWillCall = tripId => {
     const trip = trips.find(t => t.id === tripId);
     if (!trip) return;
-    
-    const newStatus = trip.status === 'WillCall' ? 'Unassigned' : 'WillCall';
-    updateTripRecord(tripId, { status: newStatus });
-    
-    if (newStatus === 'WillCall') {
+
+    const currentStatus = getEffectiveTripStatus(trip);
+    const isAutoWillCallCandidate = getTripLegFilterKey(trip) !== 'AL' && hasMissingTripTime(trip);
+    const updatePayload = currentStatus === 'WillCall' ? {
+      status: 'Unassigned',
+      willCallOverride: isAutoWillCallCandidate ? 'off' : null
+    } : {
+      status: 'WillCall',
+      willCallOverride: 'manual'
+    };
+    updateTripRecord(tripId, updatePayload);
+
+    if (updatePayload.status === 'WillCall') {
       setStatusMessage(`Trip ${tripId} marcado como WillCall - Notificación enviada al chofer.`);
       // Send notification to driver via app
       if (trip.driverId) {
@@ -1096,17 +1129,31 @@ const DispatcherWorkspace = () => {
   useEffect(() => {
     const updateTripTableScrollWidth = () => {
       const scrollContainer = tripTableBottomScrollerRef.current;
-      setTripTableScrollWidth(scrollContainer?.scrollWidth || 0);
+      const tableNode = tripTableElementRef.current;
+      const containerWidth = scrollContainer?.scrollWidth || 0;
+      const tableWidth = tableNode?.scrollWidth || 0;
+      setTripTableScrollWidth(Math.max(containerWidth, tableWidth));
     };
 
     updateTripTableScrollWidth();
     const timeoutId = window.setTimeout(updateTripTableScrollWidth, 0);
     window.addEventListener('resize', updateTripTableScrollWidth);
+
+    let resizeObserver;
+    if (typeof window !== 'undefined' && 'ResizeObserver' in window) {
+      resizeObserver = new window.ResizeObserver(() => {
+        updateTripTableScrollWidth();
+      });
+      if (tripTableBottomScrollerRef.current) resizeObserver.observe(tripTableBottomScrollerRef.current);
+      if (tripTableElementRef.current) resizeObserver.observe(tripTableElementRef.current);
+    }
+
     return () => {
       window.clearTimeout(timeoutId);
       window.removeEventListener('resize', updateTripTableScrollWidth);
+      if (resizeObserver) resizeObserver.disconnect();
     };
-  }, [columnWidths, groupedFilteredTripRows, visibleTripColumns]);
+  }, [columnWidths, groupedFilteredTripRows, visibleTripColumns, showBottomPanels, expanded]);
 
   const workspaceHeight = expanded ? 1100 : 980;
   const dividerSize = 10;
@@ -1348,9 +1395,9 @@ const DispatcherWorkspace = () => {
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
               </div>
-              <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'auto', overflowY: 'hidden', height: 14, marginBottom: 6 }}>
-                <div style={{ width: tripTableScrollWidth || '100%', height: 1 }} />
-              </div>
+              {groupedFilteredTripRows.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'auto', overflowY: 'hidden', height: 14, marginBottom: 6 }}>
+                  <div style={{ width: tripTableScrollWidth || '100%', height: 1 }} />
+                </div> : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%', position: 'relative', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
                 {mapLocked && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 45, borderRadius: '4px', backdropFilter: 'blur(1px)' }}>
                   <div style={{ backgroundColor: 'rgba(15,23,42,0.95)', color: '#fff', padding: '16px 32px', borderRadius: '8px', textAlign: 'center', border: '2px solid #ef4444', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
@@ -1358,7 +1405,7 @@ const DispatcherWorkspace = () => {
                     <div style={{ fontSize: '12px', color: '#d1d5db' }}>Click "Unlock" to make changes</div>
                   </div>
                 </div>}
-                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', opacity: mapLocked ? 0.6 : 1 }}>
+                <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', opacity: mapLocked ? 0.6 : 1 }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 48 }}>
@@ -1440,7 +1487,7 @@ const DispatcherWorkspace = () => {
                           </Button>
                         </td>
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-                          <Button variant={row.trip.status === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(row.trip.id)} title={row.trip.status === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
+                          <Button variant={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(row.trip.id)} title={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
                             WC
                           </Button>
                         </td>
@@ -1448,7 +1495,7 @@ const DispatcherWorkspace = () => {
                           <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
                             {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1">{getLegBadge(row.trip).label}</Badge> : null}
                           </td> : null}
-                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={row.trip.driverId && row.trip.driverId === selectedDriverId ? 'success' : getStatusBadge(row.trip.status)}>{row.trip.driverId && row.trip.driverId === selectedDriverId ? 'Assigned Here' : row.trip.status}</Badge>{row.trip.safeRideStatus && row.trip.status !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
+                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={row.trip.driverId && row.trip.driverId === selectedDriverId ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{row.trip.driverId && row.trip.driverId === selectedDriverId ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
                         {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}>{getDriverName(row.trip.driverId)}</td> : null}
                         {visibleTripColumns.includes('pickup') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.pickup}</td> : null}
                         {visibleTripColumns.includes('dropoff') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.dropoff}</td> : null}
@@ -1560,7 +1607,7 @@ const DispatcherWorkspace = () => {
                         <td>
                           <div className="d-flex align-items-center gap-1">
                             <Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => handleTripSelectionToggle(trip.id)} disabled={mapLocked} />
-                            <Badge bg={trip.status === 'Assigned' ? 'primary' : 'secondary'}>{trip.status === 'Assigned' ? 'A' : 'U'}</Badge>
+                            <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
                           </div>
                         </td>
                         <td className="fw-semibold">{getDriverName(trip.driverId)}</td>
@@ -1591,42 +1638,42 @@ const DispatcherWorkspace = () => {
                 <Form.Control value={tripEditDraft.scheduledPickup} onChange={event => setTripEditDraft(current => ({
                 ...current,
                 scheduledPickup: event.target.value
-              }))} placeholder="10:30 AM" />
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="10:30 AM" />
               </Col>
               <Col md={6}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Actual pickup</Form.Label>
                 <Form.Control value={tripEditDraft.actualPickup} onChange={event => setTripEditDraft(current => ({
                 ...current,
                 actualPickup: event.target.value
-              }))} placeholder="10:42 AM" />
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="10:42 AM" />
               </Col>
               <Col md={6}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Scheduled dropoff</Form.Label>
                 <Form.Control value={tripEditDraft.scheduledDropoff} onChange={event => setTripEditDraft(current => ({
                 ...current,
                 scheduledDropoff: event.target.value
-              }))} placeholder="11:00 AM" />
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="11:00 AM" />
               </Col>
               <Col md={6}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Actual dropoff</Form.Label>
                 <Form.Control value={tripEditDraft.actualDropoff} onChange={event => setTripEditDraft(current => ({
                 ...current,
                 actualDropoff: event.target.value
-              }))} placeholder="11:08 AM" />
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="11:08 AM" />
               </Col>
               <Col md={6}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Late minutes</Form.Label>
                 <Form.Control value={tripEditDraft.delay} onChange={event => setTripEditDraft(current => ({
                 ...current,
                 delay: event.target.value
-              }))} placeholder="8" />
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="8" />
               </Col>
               <Col md={6}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Punctuality</Form.Label>
                 <Form.Select value={tripEditDraft.onTimeStatus} onChange={event => setTripEditDraft(current => ({
                 ...current,
                 onTimeStatus: event.target.value
-              }))}>
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation}>
                   <option value="">Auto</option>
                   <option value="On Time">On Time</option>
                   <option value="Late">Late</option>
@@ -1635,7 +1682,7 @@ const DispatcherWorkspace = () => {
               </Col>
               <Col md={12}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Trip note</Form.Label>
-                <Form.Control as="textarea" rows={5} value={noteDraft} onChange={event => setNoteDraft(event.target.value)} placeholder="Write the note for the driver here." />
+                <Form.Control as="textarea" rows={5} value={noteDraft} onChange={event => setNoteDraft(event.target.value)} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="Write the note for the driver here." />
               </Col>
             </Row>
           </Modal.Body>

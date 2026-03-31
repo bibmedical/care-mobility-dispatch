@@ -114,6 +114,16 @@ const parseSpreadsheetTimeMinutes = value => {
   return Math.min(1439, Math.max(0, minutes));
 };
 
+const formatMinutesAsClock = minutes => {
+  if (!Number.isFinite(minutes)) return '';
+  const safeMinutes = Math.min(1439, Math.max(0, Math.round(minutes)));
+  const hours24 = Math.floor(safeMinutes / 60);
+  const mins = safeMinutes % 60;
+  const suffix = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  return `${String(hours12).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${suffix}`;
+};
+
 const getTripTimeMinutesForFilter = trip => {
   const tripTime = trip?.scheduledPickup || trip?.pickupTime || trip?.appointmentTime || trip?.startTime || trip?.pickup || '';
   const parsedClockMinutes = parseTripClockMinutes(tripTime);
@@ -189,10 +199,12 @@ const ConfirmationWorkspace = () => {
   });
   const [timeFromFilter, setTimeFromFilter] = useState('02:00');
   const [timeToFilter, setTimeToFilter] = useState('08:00');
+  const [primaryFilterMode, setPrimaryFilterMode] = useState('none');
   const [milesMinFilter, setMilesMinFilter] = useState('');
   const [milesMaxFilter, setMilesMaxFilter] = useState('25');
   const [milesSortOrder, setMilesSortOrder] = useState('miles-desc');
   const [isMilesMaxManual, setIsMilesMaxManual] = useState(false);
+  const [showDetectedMaxBadge, setShowDetectedMaxBadge] = useState(false);
   const [resultViewMode, setResultViewMode] = useState('trips');
   const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
@@ -334,7 +346,7 @@ const ConfirmationWorkspace = () => {
       current.trips.push({
         id: trip.id,
         dateKey,
-        pickup: trip.scheduledPickup || trip.pickup || '-',
+        pickup: formatMinutesAsClock(getTripTimeMinutesForFilter(trip)) || trip.scheduledPickup || trip.pickup || '-',
         dropoff: trip.scheduledDropoff || trip.dropoff || '-',
         status,
         completion: isTripCompleted(trip) ? 'Completed' : 'Open',
@@ -366,8 +378,9 @@ const ConfirmationWorkspace = () => {
 
   const detectedMaxMilesForWindow = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
-    const fromMinutes = timeFromFilter ? parseTripClockMinutes(timeFromFilter) : null;
-    const toMinutes = timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
+    const applyTimeFilter = primaryFilterMode === 'time';
+    const fromMinutes = applyTimeFilter && timeFromFilter ? parseTripClockMinutes(timeFromFilter) : null;
+    const toMinutes = applyTimeFilter && timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
 
     const candidateMiles = trips.filter(trip => {
       const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
@@ -394,7 +407,7 @@ const ConfirmationWorkspace = () => {
 
     if (candidateMiles.length === 0) return null;
     return Math.max(...candidateMiles);
-  }, [confirmationDate, legFilter, rideTypeFilter, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
+  }, [confirmationDate, legFilter, primaryFilterMode, rideTypeFilter, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
 
   useEffect(() => {
     if (isMilesMaxManual) return;
@@ -503,9 +516,9 @@ const ConfirmationWorkspace = () => {
   }, [baseFilteredTrips, milesMaxFilter, milesMinFilter]);
 
   const filteredTrips = useMemo(() => {
-    const intersectedTrips = baseFilteredTrips.filter(trip => timeWindowMatchedTripIds.has(trip.id) && milesRangeMatchedTripIds.has(trip.id));
+    const sourceTrips = primaryFilterMode === 'time' ? baseFilteredTrips.filter(trip => timeWindowMatchedTripIds.has(trip.id)) : primaryFilterMode === 'miles' ? baseFilteredTrips.filter(trip => milesRangeMatchedTripIds.has(trip.id)) : baseFilteredTrips;
 
-    const dedupedTrips = Array.from(new Map(intersectedTrips.map(trip => [buildTripDedupKey(trip), trip])).values());
+    const dedupedTrips = Array.from(new Map(sourceTrips.map(trip => [buildTripDedupKey(trip), trip])).values());
 
     return [...dedupedTrips].sort((leftTrip, rightTrip) => {
       const leftMiles = getTripMilesValue(leftTrip);
@@ -521,7 +534,7 @@ const ConfirmationWorkspace = () => {
       if (milesSortOrder === 'trip-desc') return String(rightTrip.id || '').localeCompare(String(leftTrip.id || ''));
       return rightValue - leftValue;
     });
-  }, [baseFilteredTrips, milesSortOrder, milesRangeMatchedTripIds, timeWindowMatchedTripIds]);
+  }, [baseFilteredTrips, milesSortOrder, milesRangeMatchedTripIds, primaryFilterMode, timeWindowMatchedTripIds]);
 
   const visibleTripIds = useMemo(() => filteredTrips.map(trip => trip.id), [filteredTrips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(tripId => selectedTripIds.includes(tripId));
@@ -827,6 +840,8 @@ const ConfirmationWorkspace = () => {
 
   const getTripDisplayPickupTime = trip => {
     if (trip?.scheduleChange?.newPickup) return `${trip.scheduleChange.newPickup} (NEW)`;
+    const formatted = formatMinutesAsClock(getTripTimeMinutesForFilter(trip));
+    if (formatted) return formatted;
     return trip?.scheduledPickup || trip?.pickup || '-';
   };
 
@@ -1307,22 +1322,27 @@ const ConfirmationWorkspace = () => {
           <div className="d-flex flex-column flex-xl-row gap-2 justify-content-between mb-3">
             <div className="d-flex gap-2 flex-wrap">
               <Form.Control type="date" value={confirmationDate} onChange={event => setConfirmationDate(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Confirmation date" />
-              <Form.Control type="time" value={timeFromFilter} onChange={event => setTimeFromFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="Start time" />
-              <Form.Control type="time" value={timeToFilter} onChange={event => setTimeToFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="End time" />
+              <Form.Select value={primaryFilterMode} onChange={event => setPrimaryFilterMode(event.target.value)} style={{ ...surfaceStyles.input, width: 170 }} title="Primary filter mode">
+                <option value="none">No time/miles</option>
+                <option value="time">Time only</option>
+                <option value="miles">Miles only</option>
+              </Form.Select>
+              <Form.Control type="time" value={timeFromFilter} onChange={event => setTimeFromFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="Start time" disabled={primaryFilterMode !== 'time'} />
+              <Form.Control type="time" value={timeToFilter} onChange={event => setTimeToFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="End time" disabled={primaryFilterMode !== 'time'} />
               <Form.Select value={milesMaxFilter} onChange={event => {
                 setMilesMaxFilter(event.target.value);
                 setIsMilesMaxManual(true);
-              }} style={{ ...surfaceStyles.input, width: 140 }} title="Highest miles (real list)">
+              }} style={{ ...surfaceStyles.input, width: 140 }} title="Highest miles (real list)" disabled={primaryFilterMode !== 'miles'}>
                 <option value="">Max miles</option>
                 {milesOptionValuesDesc.map(value => <option key={`max-mi-${value}`} value={String(value)}>{value} mi</option>)}
               </Form.Select>
-              <Form.Select value={milesMinFilter} onChange={event => setMilesMinFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Lowest miles (real list)">
+              <Form.Select value={milesMinFilter} onChange={event => setMilesMinFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Lowest miles (real list)" disabled={primaryFilterMode !== 'miles'}>
                 <option value="">Min miles</option>
                 {milesOptionValuesAsc.map(value => <option key={`min-mi-${value}`} value={String(value)}>{value} mi</option>)}
               </Form.Select>
               <Button style={surfaceStyles.button} onClick={() => {
                 setIsMilesMaxManual(false);
-              }} title="Auto max miles from loaded trips">
+              }} title="Auto max miles from loaded trips" disabled={primaryFilterMode !== 'miles'}>
                 Auto Max
               </Button>
               <Form.Select value={milesSortOrder} onChange={event => setMilesSortOrder(event.target.value)} style={{ ...surfaceStyles.input, width: 180 }} title="Sort by miles">
@@ -1336,11 +1356,19 @@ const ConfirmationWorkspace = () => {
               <Button style={surfaceStyles.button} onClick={() => {
                 setTimeFromFilter('');
                 setTimeToFilter('');
-              }} title="Show all hours">
+              }} title="Show all hours" disabled={primaryFilterMode !== 'time'}>
                 All Day
               </Button>
-              {detectedMaxMilesForWindow != null ? <Badge bg="info">Detected max {Number(detectedMaxMilesForWindow.toFixed(2))} mi</Badge> : null}
-              <Badge bg="light" text="dark" title="Internal filter split">Time {timeWindowMatchedTripIds.size} | Miles {milesRangeMatchedTripIds.size} | Final {filteredTrips.length}</Badge>
+              <Form.Check
+                type="checkbox"
+                id="show-detected-max"
+                label="Detected max"
+                checked={showDetectedMaxBadge}
+                onChange={event => setShowDetectedMaxBadge(event.target.checked)}
+                className="d-flex align-items-center px-2"
+              />
+              {showDetectedMaxBadge && primaryFilterMode === 'miles' && detectedMaxMilesForWindow != null ? <Badge bg="info">Detected max {Number(detectedMaxMilesForWindow.toFixed(2))} mi</Badge> : null}
+              <Badge bg="light" text="dark">Total shown {filteredTrips.length}</Badge>
               <Form.Select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 220 }}>
                 <option value="all">All statuses</option>
                 <option value="Not Sent">Not Sent</option>
