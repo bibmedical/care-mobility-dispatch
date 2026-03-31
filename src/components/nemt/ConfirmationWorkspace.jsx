@@ -8,7 +8,7 @@ import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import { useRouter } from 'next/navigation';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 
 const buildSurfaceStyles = isLight => ({
@@ -89,9 +89,10 @@ const ConfirmationWorkspace = () => {
   });
   const [timeFromFilter, setTimeFromFilter] = useState('02:00');
   const [timeToFilter, setTimeToFilter] = useState('08:00');
-  const [milesMinFilter, setMilesMinFilter] = useState('');
+  const [milesMinFilter, setMilesMinFilter] = useState('0');
   const [milesMaxFilter, setMilesMaxFilter] = useState('25');
   const [milesSortOrder, setMilesSortOrder] = useState('desc');
+  const [isMilesMaxManual, setIsMilesMaxManual] = useState(false);
   const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
@@ -144,6 +145,55 @@ const ConfirmationWorkspace = () => {
     notSent: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Not Sent').length,
     optedOut: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length
   }), [tripBlockingMap, trips]);
+
+  const detectedMaxMilesForWindow = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const fromMinutes = timeFromFilter ? parseTripClockMinutes(timeFromFilter) : null;
+    const toMinutes = timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
+
+    const candidateMiles = trips.filter(trip => {
+      const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+      if (statusFilter !== 'all' && confirmationStatus !== statusFilter) return false;
+      if (legFilter !== 'all' && getTripLegFilterKey(trip) !== legFilter) return false;
+      if (rideTypeFilter !== 'all' && getTripTypeLabel(trip) !== rideTypeFilter) return false;
+
+      const tripDateKey = getTripServiceDateKey(trip);
+      if (confirmationDate !== 'all' && (!tripDateKey || tripDateKey !== confirmationDate)) return false;
+
+      const tripTime = trip.scheduledPickup || trip.pickupTime || trip.appointmentTime || trip.startTime || trip.pickup || '';
+      const parsedTripTimeMinutes = parseTripClockMinutes(tripTime);
+      const pickupSortTimestamp = Number(trip.pickupSortValue);
+      const pickupSortMinutes = Number.isFinite(pickupSortTimestamp) ? (() => {
+        const d = new Date(pickupSortTimestamp);
+        return Number.isNaN(d.getTime()) ? null : d.getHours() * 60 + d.getMinutes();
+      })() : null;
+      const tripTimeMinutes = parsedTripTimeMinutes != null ? parsedTripTimeMinutes : pickupSortMinutes;
+      const hasTimeFilter = fromMinutes != null || toMinutes != null;
+      if (hasTimeFilter) {
+        if (tripTimeMinutes == null) return false;
+        if (fromMinutes != null && tripTimeMinutes < fromMinutes) return false;
+        if (toMinutes != null && tripTimeMinutes > toMinutes) return false;
+      }
+
+      const isInHospitalRehab = trip.hospitalStatus && trip.hospitalStatus.startDate <= today && today <= trip.hospitalStatus.endDate;
+      if (isInHospitalRehab) return false;
+
+      return parseMilesValue(trip.miles) != null;
+    }).map(trip => parseMilesValue(trip.miles)).filter(value => value != null);
+
+    if (candidateMiles.length === 0) return null;
+    return Math.max(...candidateMiles);
+  }, [confirmationDate, legFilter, rideTypeFilter, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
+
+  useEffect(() => {
+    if (isMilesMaxManual) return;
+    if (detectedMaxMilesForWindow == null) {
+      setMilesMaxFilter('25');
+      return;
+    }
+    const cappedDefault = Math.min(25, detectedMaxMilesForWindow);
+    setMilesMaxFilter(String(Number(cappedDefault.toFixed(2))));
+  }, [detectedMaxMilesForWindow, isMilesMaxManual]);
 
   const filteredTrips = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -201,7 +251,9 @@ const ConfirmationWorkspace = () => {
       return haystack.includes(normalizedSearch);
     });
 
-    return [...matchedTrips].sort((leftTrip, rightTrip) => {
+    const dedupedTrips = Array.from(new Map(matchedTrips.map(trip => [String(trip.id), trip])).values());
+
+    return [...dedupedTrips].sort((leftTrip, rightTrip) => {
       const leftMiles = parseMilesValue(leftTrip.miles);
       const rightMiles = parseMilesValue(rightTrip.miles);
       const leftValue = leftMiles == null ? Number.NEGATIVE_INFINITY : leftMiles;
@@ -790,7 +842,15 @@ const ConfirmationWorkspace = () => {
               <Form.Control type="time" value={timeFromFilter} onChange={event => setTimeFromFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="Start time" />
               <Form.Control type="time" value={timeToFilter} onChange={event => setTimeToFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="End time" />
               <Form.Control type="number" min="0" step="0.1" value={milesMinFilter} onChange={event => setMilesMinFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 110 }} placeholder="Min mi" title="Minimum miles" />
-              <Form.Control type="number" min="0" step="0.1" value={milesMaxFilter} onChange={event => setMilesMaxFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 110 }} placeholder="Max mi" title="Maximum miles" />
+              <Form.Control type="number" min="0" step="0.1" value={milesMaxFilter} onChange={event => {
+                setMilesMaxFilter(event.target.value);
+                setIsMilesMaxManual(true);
+              }} style={{ ...surfaceStyles.input, width: 110 }} placeholder="Max mi" title="Maximum miles" />
+              <Button style={surfaceStyles.button} onClick={() => {
+                setIsMilesMaxManual(false);
+              }} title="Auto max miles from loaded trips">
+                Auto Max
+              </Button>
               <Form.Select value={milesSortOrder} onChange={event => setMilesSortOrder(event.target.value)} style={{ ...surfaceStyles.input, width: 180 }} title="Sort by miles">
                 <option value="desc">Miles: High to Low</option>
                 <option value="asc">Miles: Low to High</option>
@@ -801,6 +861,7 @@ const ConfirmationWorkspace = () => {
               }} title="Show all hours">
                 All Day
               </Button>
+              {detectedMaxMilesForWindow != null ? <Badge bg="info">Detected max {Number(detectedMaxMilesForWindow.toFixed(2))} mi</Badge> : null}
               <Form.Select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 220 }}>
                 <option value="all">All statuses</option>
                 <option value="Not Sent">Not Sent</option>
