@@ -91,6 +91,11 @@ const ConfirmationWorkspace = () => {
     return date.toISOString().slice(0, 10);
   });
   const [hospitalRehabNotes, setHospitalRehabNotes] = useState('');
+  
+  // Confirmation method modal
+  const [confirmationMethodModal, setConfirmationMethodModal] = useState(null);
+  const [confirmationMethod, setConfirmationMethod] = useState('whatsapp');
+  const [isSendingConfirmation, setIsSendingConfirmation] = useState(false);
 
   const optOutList = Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [];
   const blacklistEntries = Array.isArray(blacklistData?.entries) ? blacklistData.entries : [];
@@ -259,31 +264,21 @@ const ConfirmationWorkspace = () => {
     setCustomStatus('Seleccion limpia.');
   };
 
-  const handleSendGroupConfirmation = async () => {
+  const handleSendGroupConfirmation = () => {
     if (selectedTripIds.length === 0) {
       setCustomStatus('Select at least one trip to send a confirmation.');
       return;
     }
-    setConfirmationSending(true);
-    try {
-      const response = await fetch('/api/integrations/sms/send-confirmation', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          tripIds: selectedTripIds
-        })
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Unable to send confirmation SMS');
-      await refreshDispatchState({ forceServer: true });
-      setCustomStatus(`Confirmaciones enviadas: ${payload.sentCount}. Saltadas: ${payload.skippedCount || 0}. Fallidas: ${payload.failedCount}.`);
-    } catch (error) {
-      setCustomStatus(error.message || 'No se pudo mandar la confirmacion por grupo.');
-    } finally {
-      setConfirmationSending(false);
+    
+    // Get the actual trip objects
+    const tripsToConfirm = filteredTrips.filter(trip => selectedTripIds.includes(trip.id));
+    if (tripsToConfirm.length === 0) {
+      setCustomStatus('No matching trips found for selected IDs.');
+      return;
     }
+    
+    // Open confirmation method modal
+    handleOpenConfirmationMethod(tripsToConfirm);
   };
 
   const handleLoadGroupTemplate = () => {
@@ -295,16 +290,22 @@ const ConfirmationWorkspace = () => {
     setCustomStatus('Mensaje predeterminado del grupo cargado en Custom SMS.');
   };
 
-  const handleManualConfirm = tripId => {
-    setManualConfirmations(current => ({
-      ...current,
-      [tripId]: {
-        status: 'Confirmed',
-        method: 'M',
-        timestamp: new Date().toISOString()
-      }
-    }));
-    setCustomStatus(`Trip ${tripId} marcado manualmente como Confirmado.`);
+  const handleManualConfirm = (tripId, trip) => {
+    // Open confirmation method modal if trip info available
+    if (trip) {
+      handleOpenConfirmationMethod([trip]);
+    } else {
+      // Local manual confirmation
+      setManualConfirmations(current => ({
+        ...current,
+        [tripId]: {
+          status: 'Confirmed',
+          method: 'M',
+          timestamp: new Date().toISOString()
+        }
+      }));
+      setCustomStatus(`Trip ${tripId} marcado manualmente como Confirmado.`);
+    }
   };
 
   const handleCancelWithNote = trip => {
@@ -410,6 +411,72 @@ const ConfirmationWorkspace = () => {
     if (!trip.hospitalStatus) return false;
     const today = new Date().toISOString().slice(0, 10);
     return trip.hospitalStatus.startDate <= today && today <= trip.hospitalStatus.endDate;
+  };
+
+  const handleOpenConfirmationMethod = trips => {
+    setConfirmationMethodModal(trips);
+    setConfirmationMethod('whatsapp');
+  };
+
+  const handleSendConfirmation = async () => {
+    if (!confirmationMethodModal || confirmationMethodModal.length === 0) {
+      setCustomStatus('No trips selected for confirmation.');
+      return;
+    }
+
+    setIsSendingConfirmation(true);
+    try {
+      if (confirmationMethod === 'whatsapp') {
+        // Open WhatsApp Web for each trip (or show list)
+        const tripsInfo = confirmationMethodModal.map(trip => 
+          `${trip.id} - ${trip.rider} (${trip.patientPhoneNumber})`
+        ).join('\n');
+        
+        const message = `CONFIRMATION REQUEST\n\nTrips to confirm:\n${tripsInfo}\n\nPlease confirm receipt.`;
+        const encodedMessage = encodeURIComponent(message);
+        
+        // Open WhatsApp Web (generic for all)
+        window.open(`https://web.whatsapp.com/send?text=${encodedMessage}`, '_blank');
+        
+        // Also send via API for each trip
+        for (const trip of confirmationMethodModal) {
+          if (trip.patientPhoneNumber) {
+            await fetch('/api/extensions/send-message', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                method: 'whatsapp',
+                phoneNumber: trip.patientPhoneNumber,
+                message: `Hi ${trip.rider}, this is a confirmation for trip ${trip.id}. Aguarda nuestra confirmacion.`
+              })
+            });
+          }
+        }
+        
+        setCustomStatus(`WhatsApp confirmations sent to ${confirmationMethodModal.length} trips.`);
+      } else if (confirmationMethod === 'sms') {
+        // Send SMS in batch
+        const response = await fetch('/api/integrations/sms/send-confirmation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tripIds: confirmationMethodModal.map(t => t.id)
+          })
+        });
+        
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to send SMS');
+        
+        setCustomStatus(`SMS confirmations sent: ${result.sentCount}. Failed: ${result.failedCount || 0}. Skipped: ${result.skippedCount || 0}.`);
+      }
+      
+      await refreshDispatchState({ forceServer: true });
+      setConfirmationMethodModal(null);
+    } catch (error) {
+      setCustomStatus(`Error sending confirmation: ${error.message}`);
+    } finally {
+      setIsSendingConfirmation(false);
+    }
   };
 
   return <>
@@ -564,7 +631,7 @@ const ConfirmationWorkspace = () => {
                       <td>{trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-'}</td>
                       <td>
                         <div className="d-flex gap-1 flex-column">
-                          <Button size="sm" variant={manualConfirmations[trip.id]?.status === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id)} title="Manual confirmation" style={{ minWidth: 80 }}>
+                          <Button size="sm" variant={manualConfirmations[trip.id]?.status === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title="Confirm via SMS/WhatsApp" style={{ minWidth: 80 }}>
                             {manualConfirmations[trip.id]?.method || 'Confirm'}
                           </Button>
                           <Button size="sm" variant="outline-danger" onClick={() => handleCancelWithNote(trip)} title="Cancel with note" style={{ minWidth: 80 }}>
@@ -601,6 +668,62 @@ const ConfirmationWorkspace = () => {
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setCancelNoteModal(null)}>Close</Button>
           <Button variant="danger" onClick={handleSaveCancelNote}>Cancel Trip</Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={Boolean(confirmationMethodModal)} onHide={() => setConfirmationMethodModal(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Send Confirmation</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="small text-muted mb-3 pb-2 border-bottom">
+            <strong>{confirmationMethodModal?.length || 0} trip(s) selected</strong>
+            {confirmationMethodModal?.length > 0 && (
+              <div className="small mt-2">
+                {confirmationMethodModal.slice(0, 5).map(trip => (
+                  <div key={trip.id}>{trip.id} - {trip.rider}</div>
+                ))}
+                {confirmationMethodModal.length > 5 && <div className="text-muted">+ {confirmationMethodModal.length - 5} more</div>}
+              </div>
+            )}
+          </div>
+
+          <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Send Via</Form.Label>
+          <div className="d-flex gap-3 mb-3">
+            <Form.Check
+              type="radio"
+              label="WhatsApp"
+              name="confirmationMethod"
+              value="whatsapp"
+              checked={confirmationMethod === 'whatsapp'}
+              onChange={event => setConfirmationMethod(event.target.value)}
+            />
+            <Form.Check
+              type="radio"
+              label="SMS"
+              name="confirmationMethod"
+              value="sms"
+              checked={confirmationMethod === 'sms'}
+              onChange={event => setConfirmationMethod(event.target.value)}
+            />
+          </div>
+
+          {confirmationMethod === 'whatsapp' && (
+            <div className="alert alert-info small mb-0">
+              WhatsApp Web will open. Messages will also be sent via API to each patient's WhatsApp.
+            </div>
+          )}
+          {confirmationMethod === 'sms' && (
+            <div className="alert alert-info small mb-0">
+              SMS messages will be sent in batch to all {confirmationMethodModal?.length || 0} trips.
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setConfirmationMethodModal(null)} disabled={isSendingConfirmation}>Close</Button>
+          <Button variant="primary" onClick={handleSendConfirmation} disabled={isSendingConfirmation}>
+            {isSendingConfirmation ? 'Sending...' : `Send via ${confirmationMethod === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
+          </Button>
         </Modal.Footer>
       </Modal>
 
