@@ -4,7 +4,7 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
@@ -39,6 +39,7 @@ const DispatcherMapResizer = ({ resizeKey }) => {
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
   if (status === 'In Progress') return 'success';
+  if (status === 'WillCall') return 'danger';
   if (status === 'Cancelled') return 'danger';
   return 'secondary';
 };
@@ -244,6 +245,7 @@ const DispatcherWorkspace = () => {
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
+  const [tripDateFilter, setTripDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
   const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
   const [pickupZipFilter, setPickupZipFilter] = useState('');
@@ -287,6 +289,8 @@ const DispatcherWorkspace = () => {
     const normalizedStatus = String(trip.status || '').toLowerCase();
     const matchesStatus = tripStatusFilter === 'all' ? normalizedStatus !== 'cancelled' : normalizedStatus === tripStatusFilter;
     if (!matchesStatus) return false;
+    const tripDate = getTripServiceDateKey(trip);
+    if (tripDate && tripDate !== tripDateFilter) return false;
     if (!selectedDriverId) return true;
     return !trip.driverId || trip.driverId === selectedDriverId;
   }).filter(trip => {
@@ -311,7 +315,7 @@ const DispatcherWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, tripDateFilter, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -570,6 +574,11 @@ const DispatcherWorkspace = () => {
     setStatusMessage('Trips visibles deseleccionados.');
   };
 
+  const handleShiftTripDate = offsetDays => {
+    const nextDate = shiftTripDateKey(tripDateFilter, offsetDays);
+    if (nextDate) setTripDateFilter(nextDate);
+  };
+
   const handleTripSelectionToggle = tripId => {
     const trip = trips.find(item => item.id === tripId);
     const isSelecting = !selectedTripIds.includes(tripId);
@@ -719,6 +728,49 @@ const DispatcherWorkspace = () => {
 
     reinstateTrips(selectedTripIds);
     setStatusMessage(`${selectedTripIds.length} trip(s) incorporados otra vez.`);
+  };
+
+  const handleToggleWillCall = tripId => {
+    const trip = trips.find(t => t.id === tripId);
+    if (!trip) return;
+    
+    const newStatus = trip.status === 'WillCall' ? 'Unassigned' : 'WillCall';
+    updateTripRecord(tripId, { status: newStatus });
+    
+    if (newStatus === 'WillCall') {
+      setStatusMessage(`Trip ${tripId} marcado como WillCall - Notificación enviada al chofer.`);
+      // Send notification to driver via app
+      if (trip.driverId) {
+        const driver = drivers.find(d => d.id === trip.driverId);
+        if (driver) {
+          sendWillCallNotification(driver, trip);
+        }
+      }
+    } else {
+      setStatusMessage(`Trip ${tripId} removido de WillCall.`);
+    }
+  };
+
+  const sendWillCallNotification = async (driver, trip) => {
+    try {
+      const message = `⚠️ WILL CALL - Trip ${trip.id}: Patient ${trip.rider || 'N/A'} from ${trip.pickup || 'N/A'} to ${trip.dropoff || 'N/A'}. Aguarda la llamada del seguro para instrucciones.`;
+      
+      await fetch('/api/extensions/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'whatsapp',
+          phoneNumber: driver.phone,
+          driverId: driver.id,
+          driverName: driver.name,
+          message: message
+        })
+      });
+      
+      console.log(`WillCall notification sent to ${driver.name} for trip ${trip.id}`);
+    } catch (error) {
+      console.error('Error sending WillCall notification:', error);
+    }
   };
 
   const handleTripSortChange = columnKey => {
@@ -1122,8 +1174,15 @@ const DispatcherWorkspace = () => {
                     <option value="all">All</option>
                     <option value="assigned">Assigned</option>
                     <option value="unassigned">Unassigned</option>
+                    <option value="willcall">WillCall</option>
                     <option value="cancelled">Cancelled</option>
                   </Form.Select>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(-1)} title="Previous day" style={greenToolbarButtonStyle}>Prev</Button>
+                    <Form.Control size="sm" type="date" value={tripDateFilter} onChange={event => setTripDateFilter(event.target.value)} style={{ width: 150 }} title="Filter trips by date" />
+                    <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(1)} title="Next day" style={greenToolbarButtonStyle}>Next</Button>
+                    <Button variant="outline-dark" size="sm" onClick={() => setTripDateFilter(new Date().toISOString().slice(0, 10))} title="Today" style={greenToolbarButtonStyle}>Today</Button>
+                  </div>
                   <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search Trip ID" disabled={mapLocked} style={{ width: 150 }} />
                   <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
                     <option value="">Select driver</option>
@@ -1305,6 +1364,11 @@ const DispatcherWorkspace = () => {
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
                           <Button variant="outline-secondary" size="sm" disabled={mapLocked} onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent', opacity: mapLocked ? 0.5 : 1 }}>
                             N
+                          </Button>
+                        </td>
+                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                          <Button variant={row.trip.status === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(row.trip.id)} title={row.trip.status === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
+                            WC
                           </Button>
                         </td>
                         {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
