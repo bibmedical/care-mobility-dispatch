@@ -166,9 +166,9 @@ const SystemLogsWorkspace = () => {
                   <td colSpan="6" className={styles.noData}>No hay logs disponibles</td>
                 </tr>
               ) : (
-                logs.map((log) => (
+                logs.map((log, index) => (
                   <tr 
-                    key={log.id}
+                    key={`${log.id || 'log'}-${log.userId || 'user'}-${log.timestamp || log.time || 'time'}-${index}`}
                     onClick={() => handleUserClick(log)}
                     className={styles.clickableRow}
                   >
@@ -221,8 +221,8 @@ const SystemLogsWorkspace = () => {
                   })}</h3>
                   
                   <div className={styles.timelineEvents}>
-                    {dateLogs.map((log) => (
-                      <div key={log.id} className={styles.timelineEvent}>
+                    {dateLogs.map((log, index) => (
+                      <div key={`${log.id || 'timeline'}-${log.userId || 'user'}-${log.timestamp || log.time || 'time'}-${index}`} className={styles.timelineEvent}>
                         <div className={`${styles.eventDot} ${styles[`dot-${log.eventType}`]}`}></div>
                         <div className={styles.eventContent}>
                           <span className={styles.eventTime}>{log.time}</span>
@@ -245,8 +245,8 @@ const SystemLogsWorkspace = () => {
         <h3>Actualmente en Línea ({stats.onlineUsers?.length || 0})</h3>
         <div className={styles.onlineUsersList}>
           {stats.onlineUsers && stats.onlineUsers.length > 0 ? (
-            stats.onlineUsers.map((user) => (
-              <div key={user.userId} className={styles.onlineUser}>
+            stats.onlineUsers.map((user, index) => (
+              <div key={`${user.userId || 'online-user'}-${user.lastTimestamp || 'ts'}-${index}`} className={styles.onlineUser}>
                 <span className={styles.onlineDot}></span>
                 <span className={styles.onlineUserName}>{user.userName}</span>
                 <span className={styles.onlineUserRole}>{user.userRole}</span>
