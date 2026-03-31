@@ -1016,7 +1016,22 @@ const DispatcherWorkspace = () => {
                 <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
-                      <th style={{ width: 48 }}><Form.Check checked={allVisibleSelected} onChange={event => handleSelectAll(event.target.checked)} /></th>
+                      <th style={{ width: 48 }}>
+                        <input
+                          type="checkbox"
+                          checked={allVisibleSelected}
+                          onChange={event => handleSelectAll(event.target.checked)}
+                          style={{
+                            width: 16,
+                            height: 16,
+                            borderRadius: 4,
+                            border: '1px solid #6b7280',
+                            backgroundColor: '#6b7280',
+                            accentColor: '#8b5cf6',
+                            cursor: 'pointer'
+                          }}
+                        />
+                      </th>
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
                       {visibleTripColumns.includes('trip') ? renderTripHeader('trip', 'Trip / Ride') : null}
@@ -1039,7 +1054,22 @@ const DispatcherWorkspace = () => {
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} className="table-light">
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
                       </tr> : <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : row.trip.driverId && row.trip.driverId === selectedDriverId ? 'table-success' : ''}>
-                        <td><Form.Check checked={selectedTripIds.includes(row.trip.id)} onChange={() => handleTripSelectionToggle(row.trip.id)} /></td>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedTripIds.includes(row.trip.id)}
+                            onChange={() => handleTripSelectionToggle(row.trip.id)}
+                            style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: 4,
+                              border: '1px solid #6b7280',
+                              backgroundColor: '#6b7280',
+                              accentColor: '#8b5cf6',
+                              cursor: 'pointer'
+                            }}
+                          />
+                        </td>
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
                             <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" onClick={() => {
