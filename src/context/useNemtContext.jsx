@@ -188,7 +188,7 @@ export const NemtProvider = ({
 
     const timeoutId = window.setTimeout(async () => {
       await flushPersistQueue();
-    }, 50);
+    }, 120);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -218,12 +218,7 @@ export const NemtProvider = ({
       if (shouldMarkDispatchDirty) {
         hasLocalDispatchChangesRef.current = true;
       }
-      const nextState = updater(baseState);
-      if (shouldMarkDispatchDirty) {
-        pendingPersistSnapshotRef.current = JSON.stringify(createPersistedSnapshot(nextState));
-        void flushPersistQueue();
-      }
-      return nextState;
+      return updater(baseState);
     });
   };
 
