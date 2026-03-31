@@ -37,6 +37,9 @@ const useSignIn = () => {
   const [emailValue, setEmailValue] = useState('');
   const [codeValue, setCodeValue] = useState('');
   const [portalPageValue, setPortalPageValue] = useState(PAGE_OPTIONS[0].value);
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [twoFACode, setTwoFACode] = useState('');
+  const [pendingLogin, setPendingLogin] = useState(null);
 
   const { push } = useRouter();
   const { showNotification } = useNotificationContext();
@@ -61,28 +64,70 @@ const useSignIn = () => {
 
   const login = handleSubmit(async values => {
     setLoading(true);
-    const response = await signIn('credentials', {
-      redirect: false,
-      identifier: values?.identifier,
-      password: values?.password,
-      clientType: 'web'
-    });
-
-    if (response?.ok) {
-      const targetPage = PAGE_OPTIONS.find(option => option.value === values?.portalPage)?.href ?? '/dispatcher';
-      push(queryParams['redirectTo'] ?? targetPage);
-      showNotification({
-        message: 'Successfully logged in. Redirecting....',
-        variant: 'success'
+    try {
+      // Step 1: Pre-login check to see if 2FA is required
+      const preLoginResponse = await fetch('/api/auth/pre-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: values?.identifier,
+          password: values?.password
+        })
       });
-    } else {
+
+      const preLoginData = await preLoginResponse.json();
+
+      if (!preLoginResponse.ok) {
+        showNotification({
+          message: preLoginData.error || 'Login failed',
+          variant: 'danger'
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (preLoginData.requires2FA) {
+        // Store info for 2FA verification
+        setPendingLogin({
+          identifier: values?.identifier,
+          password: values?.password,
+          tempToken: preLoginData.tempToken,
+          portalPage: values?.portalPage
+        });
+        setRequires2FA(true);
+        setLoading(false);
+        return;
+      }
+
+      // If no 2FA required, proceed with normal signin
+      const response = await signIn('credentials', {
+        redirect: false,
+        identifier: values?.identifier,
+        password: values?.password,
+        clientType: 'web'
+      });
+
+      if (response?.ok) {
+        const targetPage = PAGE_OPTIONS.find(option => option.value === values?.portalPage)?.href ?? '/dispatcher';
+        push(queryParams['redirectTo'] ?? targetPage);
+        showNotification({
+          message: 'Successfully logged in. Redirecting....',
+          variant: 'success'
+        });
+      } else {
+        showNotification({
+          message: response?.error ?? 'Unable to sign in',
+          variant: 'danger'
+        });
+      }
+    } catch (error) {
       showNotification({
-        message: response?.error ?? 'Unable to sign in',
+        message: error.message || 'Login failed',
         variant: 'danger'
       });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   });
 
   const sendEmailCode = async e => {
@@ -128,6 +173,88 @@ const useSignIn = () => {
     } finally {
       setEmailLoading(false);
     }
+  };
+
+  const verify2FALogin = async e => {
+    e?.preventDefault();
+
+    if (!twoFACode || twoFACode.length !== 6) {
+      showNotification({
+        message: 'Please enter a 6-digit code',
+        variant: 'danger'
+      });
+      return;
+    }
+
+    if (!pendingLogin) {
+      showNotification({
+        message: '2FA session expired',
+        variant: 'danger'
+      });
+      setRequires2FA(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Verify 2FA code
+      const verifyResponse = await fetch('/api/auth/2fa/login-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tempToken: pendingLogin.tempToken,
+          code: twoFACode
+        })
+      });
+
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok) {
+        showNotification({
+          message: verifyData.error || '2FA verification failed',
+          variant: 'danger'
+        });
+        return;
+      }
+
+      // 2FA verified, now do the actual signin
+      const signInResponse = await signIn('credentials', {
+        redirect: false,
+        identifier: pendingLogin.identifier,
+        password: pendingLogin.password,
+        clientType: 'web'
+      });
+
+      if (signInResponse?.ok) {
+        const targetPage = PAGE_OPTIONS.find(option => option.value === pendingLogin.portalPage)?.href ?? '/dispatcher';
+        push(queryParams['redirectTo'] ?? targetPage);
+        showNotification({
+          message: 'Successfully logged in. Redirecting....',
+          variant: 'success'
+        });
+        setRequires2FA(false);
+        setPendingLogin(null);
+        setTwoFACode('');
+      } else {
+        showNotification({
+          message: signInResponse?.error ?? 'Unable to complete signin',
+          variant: 'danger'
+        });
+      }
+    } catch (error) {
+      showNotification({
+        message: error.message || '2FA verification failed',
+        variant: 'danger'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cancel2FA = () => {
+    setRequires2FA(false);
+    setPendingLogin(null);
+    setTwoFACode('');
   };
 
   const verifyEmailCode = async e => {
@@ -199,7 +326,12 @@ const useSignIn = () => {
     codeValue,
     setCodeValue,
     portalPageValue,
-    setPortalPageValue
+    setPortalPageValue,
+    requires2FA,
+    twoFACode,
+    setTwoFACode,
+    verify2FALogin,
+    cancel2FA
   };
 };
 
