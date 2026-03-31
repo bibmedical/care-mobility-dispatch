@@ -98,7 +98,9 @@ export const NemtProvider = ({
           const serverMapProvider = normalizeMapProviderPreference(payload.uiPreferences?.mapProvider);
           const localPrintSetup = normalizePrintSetup(localState.uiPreferences?.printSetup);
           const serverPrintSetup = normalizePrintSetup(payload.uiPreferences?.printSetup);
-          const useLocalPreferences = !forceServer && hasLocalDispatchChangesRef.current && (JSON.stringify(localColumns) !== JSON.stringify(serverColumns) || localMapProvider !== serverMapProvider || JSON.stringify(localPrintSetup) !== JSON.stringify(serverPrintSetup));
+          // Keep operator UI preferences stable across day switches and route reloads.
+          // Server payload can arrive with stale defaults, so local preferences win when they differ.
+          const useLocalPreferences = !forceServer && (JSON.stringify(localColumns) !== JSON.stringify(serverColumns) || localMapProvider !== serverMapProvider || JSON.stringify(localPrintSetup) !== JSON.stringify(serverPrintSetup));
           const nextState = buildClientState({
             ...localState,
             trips: useLocalTrips ? localState.trips : payload.trips,

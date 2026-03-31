@@ -172,8 +172,7 @@ export const normalizeMapProviderPreference = value => {
 export const normalizeDispatcherVisibleTripColumns = value => {
   const allowedKeys = new Set(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key));
   const cleanedColumns = Array.isArray(value) ? value.filter(columnKey => allowedKeys.has(columnKey)) : [];
-  const requiredColumns = ['address', 'puZip', 'destination', 'doZip', 'miles'];
-  const uniqueColumns = Array.from(new Set([...cleanedColumns, ...requiredColumns]));
+  const uniqueColumns = Array.from(new Set(cleanedColumns));
   return uniqueColumns.length > 0 ? uniqueColumns : [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
 };
 

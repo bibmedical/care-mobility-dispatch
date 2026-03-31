@@ -100,6 +100,17 @@ const getTripMilesDisplay = trip => {
   return Number(miles.toFixed(2)).toString();
 };
 
+const buildTripDedupKey = trip => {
+  const pairKey = getTripPairKey(trip) || String(trip?.id || '').trim();
+  const legKey = getTripLegFilterKey(trip);
+  const dateKey = getTripServiceDateKey(trip) || '';
+  const tripTime = trip?.scheduledPickup || trip?.pickupTime || trip?.appointmentTime || trip?.startTime || trip?.pickup || '';
+  const timeKey = parseTripClockMinutes(tripTime);
+  const miles = getTripMilesValue(trip);
+  const milesKey = miles == null ? '' : String(Number(miles.toFixed(2)));
+  return [pairKey, legKey, dateKey, timeKey == null ? '' : String(timeKey), milesKey].join('|');
+};
+
 const isTripCompleted = trip => {
   const status = String(trip?.status || '').trim().toLowerCase();
   if (status.includes('complete') || status.includes('completed') || status.includes('done') || status.includes('finished')) return true;
@@ -151,6 +162,7 @@ const ConfirmationWorkspace = () => {
   const [milesMaxFilter, setMilesMaxFilter] = useState('25');
   const [milesSortOrder, setMilesSortOrder] = useState('miles-desc');
   const [isMilesMaxManual, setIsMilesMaxManual] = useState(false);
+  const [resultViewMode, setResultViewMode] = useState('trips');
   const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
@@ -370,13 +382,11 @@ const ConfirmationWorkspace = () => {
     setMilesMaxFilter(String(Number(cappedDefault.toFixed(2))));
   }, [detectedMaxMilesForWindow, isMilesMaxManual]);
 
-  const filteredTrips = useMemo(() => {
+  const tripsBeforeMilesFilter = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const today = new Date().toISOString().slice(0, 10);
     const fromMinutes = timeFromFilter ? parseTripClockMinutes(timeFromFilter) : null;
     const toMinutes = timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
-    const minMiles = milesMinFilter === '' ? null : Number(milesMinFilter);
-    const maxMiles = milesMaxFilter === '' ? null : Number(milesMaxFilter);
 
     const matchedTrips = trips.filter(trip => {
       // Check if trip is in hospital/rehab (should be excluded from normal confirmation)
@@ -416,20 +426,51 @@ const ConfirmationWorkspace = () => {
         if (toMinutes != null && tripTimeMinutes > toMinutes) return false;
       }
 
-      const tripMiles = getTripMilesValue(trip);
-      const hasMilesFilter = minMiles != null || maxMiles != null;
-      if (hasMilesFilter) {
-        if (tripMiles == null) return false;
-        if (minMiles != null && tripMiles < minMiles) return false;
-        if (maxMiles != null && tripMiles > maxMiles) return false;
-      }
-      
       if (!normalizedSearch) return true;
       const haystack = [trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(normalizedSearch);
     });
 
-    const dedupedTrips = Array.from(new Map(matchedTrips.map(trip => [String(trip.id), trip])).values());
+    return Array.from(new Map(matchedTrips.map(trip => [String(trip.id), trip])).values());
+  }, [confirmationDate, legFilter, rideTypeFilter, search, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
+
+  const existingMilesRows = useMemo(() => {
+    const milesMap = new Map();
+    tripsBeforeMilesFilter.forEach(trip => {
+      const milesValue = getTripMilesValue(trip);
+      if (milesValue == null) return;
+      const key = Number(milesValue.toFixed(2)).toString();
+      milesMap.set(key, (milesMap.get(key) || 0) + 1);
+    });
+    return Array.from(milesMap.entries()).map(([miles, tripsCount]) => ({
+      miles: Number(miles),
+      tripsCount
+    })).sort((a, b) => b.miles - a.miles);
+  }, [tripsBeforeMilesFilter]);
+
+  const filteredTrips = useMemo(() => {
+    const rawMinMiles = milesMinFilter === '' ? null : Number(milesMinFilter);
+    const rawMaxMiles = milesMaxFilter === '' ? null : Number(milesMaxFilter);
+    const hasMinMiles = Number.isFinite(rawMinMiles);
+    const hasMaxMiles = Number.isFinite(rawMaxMiles);
+    const minMiles = hasMinMiles && hasMaxMiles ? Math.min(rawMinMiles, rawMaxMiles) : rawMinMiles;
+    const maxMiles = hasMinMiles && hasMaxMiles ? Math.max(rawMinMiles, rawMaxMiles) : rawMaxMiles;
+    const normalizedMinMiles = Number.isFinite(minMiles) ? Number(minMiles.toFixed(2)) : null;
+    const normalizedMaxMiles = Number.isFinite(maxMiles) ? Number(maxMiles.toFixed(2)) : null;
+    const epsilon = 0.0001;
+
+    const milesFilteredTrips = tripsBeforeMilesFilter.filter(trip => {
+      const tripMiles = getTripMilesValue(trip);
+      const hasMilesFilter = minMiles != null || maxMiles != null;
+      if (!hasMilesFilter) return true;
+      if (tripMiles == null) return false;
+      const normalizedTripMiles = Number(tripMiles.toFixed(2));
+      if (normalizedMinMiles != null && normalizedTripMiles < normalizedMinMiles - epsilon) return false;
+      if (normalizedMaxMiles != null && normalizedTripMiles > normalizedMaxMiles + epsilon) return false;
+      return true;
+    });
+
+    const dedupedTrips = Array.from(new Map(milesFilteredTrips.map(trip => [buildTripDedupKey(trip), trip])).values());
 
     return [...dedupedTrips].sort((leftTrip, rightTrip) => {
       const leftMiles = getTripMilesValue(leftTrip);
@@ -445,7 +486,7 @@ const ConfirmationWorkspace = () => {
       if (milesSortOrder === 'trip-desc') return String(rightTrip.id || '').localeCompare(String(leftTrip.id || ''));
       return rightValue - leftValue;
     });
-  }, [confirmationDate, legFilter, milesMaxFilter, milesMinFilter, milesSortOrder, rideTypeFilter, search, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
+  }, [milesMaxFilter, milesMinFilter, milesSortOrder, tripsBeforeMilesFilter]);
 
   const visibleTripIds = useMemo(() => filteredTrips.map(trip => trip.id), [filteredTrips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(tripId => selectedTripIds.includes(tripId));
@@ -1228,11 +1269,17 @@ const ConfirmationWorkspace = () => {
               <Form.Control type="date" value={confirmationDate} onChange={event => setConfirmationDate(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Confirmation date" />
               <Form.Control type="time" value={timeFromFilter} onChange={event => setTimeFromFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="Start time" />
               <Form.Control type="time" value={timeToFilter} onChange={event => setTimeToFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="End time" />
-              <Form.Control type="number" min="0" step="0.1" value={milesMinFilter} onChange={event => setMilesMinFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 110 }} placeholder="Min mi" title="Minimum miles" />
-              <Form.Control type="number" min="0" step="0.1" value={milesMaxFilter} onChange={event => {
+              <Form.Select value={milesMaxFilter} onChange={event => {
                 setMilesMaxFilter(event.target.value);
                 setIsMilesMaxManual(true);
-              }} style={{ ...surfaceStyles.input, width: 110 }} placeholder="Max mi" title="Maximum miles" />
+              }} style={{ ...surfaceStyles.input, width: 140 }} title="Highest miles (real list)">
+                <option value="">Max miles</option>
+                {existingMilesRows.map(item => <option key={`max-mi-${item.miles}`} value={String(Number(item.miles.toFixed(2)))}>{Number(item.miles.toFixed(2))} mi</option>)}
+              </Form.Select>
+              <Form.Select value={milesMinFilter} onChange={event => setMilesMinFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Lowest miles (real list)">
+                <option value="">Min miles</option>
+                {[...existingMilesRows].reverse().map(item => <option key={`min-mi-${item.miles}`} value={String(Number(item.miles.toFixed(2)))}>{Number(item.miles.toFixed(2))} mi</option>)}
+              </Form.Select>
               <Button style={surfaceStyles.button} onClick={() => {
                 setIsMilesMaxManual(false);
               }} title="Auto max miles from loaded trips">
@@ -1274,6 +1321,10 @@ const ConfirmationWorkspace = () => {
                 <option value="W">W</option>
                 <option value="STR">STR</option>
               </Form.Select>
+              <Form.Select value={resultViewMode} onChange={event => setResultViewMode(event.target.value)} style={{ ...surfaceStyles.input, width: 190 }} title="Result view mode">
+                <option value="miles">Existing Miles List</option>
+                <option value="trips">Trips Table</option>
+              </Form.Select>
               <Button style={surfaceStyles.button} onClick={handleSelectVisible}>Select Visible</Button>
               <Button style={surfaceStyles.button} onClick={handleClearSelection}>Clear</Button>
               <Button style={surfaceStyles.button} onClick={handleSendGroupConfirmation} disabled={confirmationSending}>{confirmationSending ? 'Sending...' : 'Send Confirmation'}</Button>
@@ -1282,7 +1333,40 @@ const ConfirmationWorkspace = () => {
             <Form.Control value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => event.stopPropagation()} placeholder="Search trip, rider, phone or reply" style={{ ...surfaceStyles.input, width: 320, maxWidth: '100%' }} />
           </div>
 
-          <div className="table-responsive">
+          {resultViewMode === 'miles' ? <div className="border rounded-3 p-3" style={surfaceStyles.input}>
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <div className="fw-semibold">Existing Miles (from loaded/filtered trips)</div>
+                <div className="small text-secondary">{existingMilesRows.length} unique mile value(s)</div>
+              </div>
+              <div className="table-responsive" style={{ maxHeight: 420, overflowY: 'auto' }}>
+                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+                  <thead className="table-light">
+                    <tr>
+                      <th>Miles</th>
+                      <th>Trips Count</th>
+                      <th>Quick Use</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {existingMilesRows.length > 0 ? existingMilesRows.map(item => <tr key={`miles-row-${item.miles}`}>
+                        <td>{Number(item.miles.toFixed(2))}</td>
+                        <td>{item.tripsCount}</td>
+                        <td>
+                          <Button size="sm" style={surfaceStyles.button} onClick={() => {
+                            setMilesMinFilter('0');
+                            setMilesMaxFilter(String(Number(item.miles.toFixed(2))));
+                            setIsMilesMaxManual(true);
+                          }}>
+                            Use as Max
+                          </Button>
+                        </td>
+                      </tr>) : <tr>
+                        <td colSpan={3} className="text-center text-muted py-4">No miles found for current filters.</td>
+                      </tr>}
+                  </tbody>
+                </Table>
+              </div>
+            </div> : <div className="table-responsive">
             <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
               <thead className="table-light">
                 <tr>
@@ -1387,7 +1471,7 @@ const ConfirmationWorkspace = () => {
                   </tr>}
               </tbody>
             </Table>
-          </div>
+          </div>}
         </CardBody>
       </Card>
 
