@@ -998,6 +998,13 @@ const DispatcherWorkspace = () => {
                     <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} disabled={mapLocked} title="Wheelchair">W</Button>
                     <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} disabled={mapLocked} title="Stretcher">STR</Button>
                   </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked}>I</Button> : <>
+                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)} disabled={mapLocked}>A</Button>
+                      <Button variant="secondary" size="sm" onClick={handleUnassign} disabled={mapLocked}>U</Button>
+                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} disabled={mapLocked}>C</Button>
+                    </>}
+                  </div>
                   <Button
                     variant="outline-dark"
                     size="sm"
@@ -1176,13 +1183,6 @@ const DispatcherWorkspace = () => {
                     <option value="">Reassign to active driver</option>
                     {activeDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked}>I</Button> : <>
-                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)} disabled={mapLocked}>A</Button>
-                      <Button variant="secondary" size="sm" onClick={handleUnassign} disabled={mapLocked}>U</Button>
-                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} disabled={mapLocked}>C</Button>
-                    </>}
-                  </div>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>

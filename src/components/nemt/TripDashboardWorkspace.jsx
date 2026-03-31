@@ -1103,6 +1103,13 @@ const TripDashboardWorkspace = () => {
                     <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
                     <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
                   </div>
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
+                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
+                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
+                      <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
+                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+                    </>}
+                  </div>
                   <Button
                     variant="outline-dark"
                     size="sm"
