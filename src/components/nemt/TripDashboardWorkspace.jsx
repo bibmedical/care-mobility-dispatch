@@ -1029,6 +1029,7 @@ const TripDashboardWorkspace = () => {
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+                {/* Row 1: Date selection and trip filters */}
                 <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
                   <strong>Trips</strong>
                   <Badge bg="light" text="dark">{assignedTripsCount}/{trips.length}</Badge>
@@ -1055,14 +1056,9 @@ const TripDashboardWorkspace = () => {
                   {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
                   {selectedDriver ? <Badge bg="warning" text="dark">{selectedDriverOpenTripCount} open</Badge> : null}
                   <span className="small">{selectedTripIds.length} sel.</span>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
-                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-                        <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
-                        <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
-                      </>}
-                  </div>
                 </div>
+                
+                {/* Row 2: Statistics and main action buttons */}
                 <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
                   {!showMapPane ? <Button variant="warning" size="sm" onClick={() => {
                   setShowMapPane(true);
@@ -1082,6 +1078,19 @@ const TripDashboardWorkspace = () => {
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map Screen' : 'Show Map Here'}</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/forms-safe-ride-import')}>Import Excel</Button>
+                  {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 35, width: 240 }}>
+                      <CardBody className="p-3 text-dark">
+                        <div className="fw-semibold mb-2">Escoge que quieres ver</div>
+                        <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
+                        <div className="d-flex flex-column gap-2">
+                          {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dashboard-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+                        </div>
+                      </CardBody>
+                    </Card> : null}
+                </div>
+                
+                {/* Row 3: Leg/Type filters and misc buttons */}
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">Leg</span>
                     <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
@@ -1106,15 +1115,6 @@ const TripDashboardWorkspace = () => {
                   </Button>
                   {routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null}
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
-                  {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 35, width: 240 }}>
-                      <CardBody className="p-3 text-dark">
-                        <div className="fw-semibold mb-2">Escoge que quieres ver</div>
-                        <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
-                        <div className="d-flex flex-column gap-2">
-                          {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`trip-dashboard-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
-                        </div>
-                      </CardBody>
-                    </Card> : null}
                 </div>
               </div>
               <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', maxHeight: '100%' }}>
