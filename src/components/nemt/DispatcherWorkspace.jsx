@@ -2,7 +2,6 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel';
-import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
 import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
@@ -216,7 +215,6 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const DispatcherWorkspace = () => {
   const router = useRouter();
-  const { changeTheme, themeMode } = useLayoutContext();
   const {
     drivers,
     trips,
@@ -1264,16 +1262,6 @@ const DispatcherWorkspace = () => {
                     </Form.Select>
                     {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
                   </div>
-                  <Button
-                    variant="outline-dark"
-                    size="sm"
-                    style={greenToolbarButtonStyle}
-                    onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')}
-                    title={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
-                    aria-label={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
-                  >
-                    <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
-                  </Button>
                   {routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null}
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
