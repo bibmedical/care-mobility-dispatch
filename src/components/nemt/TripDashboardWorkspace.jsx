@@ -34,6 +34,30 @@ const addressClampStyle = {
   lineHeight: 1.2
 };
 
+const riderNameStackStyle = {
+  maxWidth: 170,
+  minWidth: 140,
+  lineHeight: 1.15,
+  whiteSpace: 'normal'
+};
+
+const splitRiderName = value => {
+  const text = String(value || '').trim();
+  if (!text) return {
+    firstName: '-',
+    lastName: ''
+  };
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return {
+    firstName: parts[0],
+    lastName: ''
+  };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+};
+
 const yellowMapTabStyle = {
   position: 'absolute',
   top: 18,
@@ -1348,7 +1372,7 @@ const TripDashboardWorkspace = () => {
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
               </div>
-              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges' }}>
+              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'scroll', overflowY: 'auto', scrollbarGutter: 'stable both-edges' }}>
                 <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content' }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
@@ -1432,7 +1456,18 @@ const TripDashboardWorkspace = () => {
                         {visibleTripColumns.includes('pickup') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.pickup}</td> : null}
                         {visibleTripColumns.includes('dropoff') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.dropoff}</td> : null}
                         {visibleTripColumns.includes('miles') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.miles || '-'}</td> : null}
-                        {visibleTripColumns.includes('rider') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.rider}</td> : null}
+                        {visibleTripColumns.includes('rider') ? <td>
+                            {(() => {
+                          const {
+                            firstName,
+                            lastName
+                          } = splitRiderName(row.trip.rider);
+                          return <div style={riderNameStackStyle}>
+                                  <div className="fw-semibold">{firstName}</div>
+                                  {lastName ? <div className="small text-secondary">{lastName}</div> : null}
+                                </div>;
+                        })()}
+                          </td> : null}
                         {visibleTripColumns.includes('address') ? <td><div style={addressClampStyle}>{row.trip.address}</div></td> : null}
                         {visibleTripColumns.includes('puZip') ? <td style={{ whiteSpace: 'nowrap' }}>{getPickupZip(row.trip) || '-'}</td> : null}
                         {visibleTripColumns.includes('destination') ? <td><div style={addressClampStyle}>{row.trip.destination || '-'}</div></td> : null}

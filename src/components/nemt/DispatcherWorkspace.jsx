@@ -43,6 +43,30 @@ const addressClampStyle = {
   lineHeight: 1.2
 };
 
+const riderNameStackStyle = {
+  maxWidth: 170,
+  minWidth: 140,
+  lineHeight: 1.15,
+  whiteSpace: 'normal'
+};
+
+const splitRiderName = value => {
+  const text = String(value || '').trim();
+  if (!text) return {
+    firstName: '-',
+    lastName: ''
+  };
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return {
+    firstName: parts[0],
+    lastName: ''
+  };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+};
+
 const DispatcherMapResizer = ({ resizeKey }) => {
   const map = useMap();
 
@@ -1289,7 +1313,7 @@ const DispatcherWorkspace = () => {
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
               </div>
-              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%', position: 'relative', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges' }}>
+              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%', position: 'relative', overflowX: 'scroll', overflowY: 'auto', scrollbarGutter: 'stable both-edges' }}>
                 {mapLocked && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 45, borderRadius: '4px', backdropFilter: 'blur(1px)' }}>
                   <div style={{ backgroundColor: 'rgba(15,23,42,0.95)', color: '#fff', padding: '16px 32px', borderRadius: '8px', textAlign: 'center', border: '2px solid #ef4444', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
                     <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>🔒 PANEL LOCKED</div>
@@ -1391,7 +1415,18 @@ const DispatcherWorkspace = () => {
                         {visibleTripColumns.includes('pickup') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.pickup}</td> : null}
                         {visibleTripColumns.includes('dropoff') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.dropoff}</td> : null}
                         {visibleTripColumns.includes('miles') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.miles || '-'}</td> : null}
-                        {visibleTripColumns.includes('rider') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.rider}</td> : null}
+                        {visibleTripColumns.includes('rider') ? <td>
+                            {(() => {
+                          const {
+                            firstName,
+                            lastName
+                          } = splitRiderName(row.trip.rider);
+                          return <div style={riderNameStackStyle}>
+                                  <div className="fw-semibold">{firstName}</div>
+                                  {lastName ? <div className="small text-secondary">{lastName}</div> : null}
+                                </div>;
+                        })()}
+                          </td> : null}
                         {visibleTripColumns.includes('address') ? <td><div style={addressClampStyle}>{row.trip.address}</div></td> : null}
                         {visibleTripColumns.includes('puZip') ? <td style={{ whiteSpace: 'nowrap' }}>{getPickupZip(row.trip) || '-'}</td> : null}
                         {visibleTripColumns.includes('destination') ? <td><div style={addressClampStyle}>{row.trip.destination || '-'}</div></td> : null}
