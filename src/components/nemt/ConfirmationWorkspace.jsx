@@ -53,6 +53,17 @@ const getTripLegFilterKey = trip => {
   return 'CL';
 };
 
+const parseMilesValue = value => {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const normalized = text.replace(/,/g, '');
+  const match = normalized.match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const miles = Number(match[0]);
+  return Number.isFinite(miles) ? miles : null;
+};
+
 const ConfirmationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
@@ -76,8 +87,11 @@ const ConfirmationWorkspace = () => {
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().slice(0, 10);
   });
-  const [timeFromFilter, setTimeFromFilter] = useState('');
-  const [timeToFilter, setTimeToFilter] = useState('');
+  const [timeFromFilter, setTimeFromFilter] = useState('02:00');
+  const [timeToFilter, setTimeToFilter] = useState('08:00');
+  const [milesMinFilter, setMilesMinFilter] = useState('');
+  const [milesMaxFilter, setMilesMaxFilter] = useState('25');
+  const [milesSortOrder, setMilesSortOrder] = useState('desc');
   const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
@@ -136,8 +150,10 @@ const ConfirmationWorkspace = () => {
     const today = new Date().toISOString().slice(0, 10);
     const fromMinutes = timeFromFilter ? parseTripClockMinutes(timeFromFilter) : null;
     const toMinutes = timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
-    
-    return trips.filter(trip => {
+    const minMiles = milesMinFilter === '' ? null : Number(milesMinFilter);
+    const maxMiles = milesMaxFilter === '' ? null : Number(milesMaxFilter);
+
+    const matchedTrips = trips.filter(trip => {
       // Check if trip is in hospital/rehab (should be excluded from normal confirmation)
       const isInHospitalRehab = trip.hospitalStatus && trip.hospitalStatus.startDate <= today && today <= trip.hospitalStatus.endDate;
       
@@ -171,12 +187,29 @@ const ConfirmationWorkspace = () => {
         if (fromMinutes != null && tripTimeMinutes < fromMinutes) return false;
         if (toMinutes != null && tripTimeMinutes > toMinutes) return false;
       }
+
+      const tripMiles = parseMilesValue(trip.miles);
+      const hasMilesFilter = minMiles != null || maxMiles != null;
+      if (hasMilesFilter) {
+        if (tripMiles == null) return false;
+        if (minMiles != null && tripMiles < minMiles) return false;
+        if (maxMiles != null && tripMiles > maxMiles) return false;
+      }
       
       if (!normalizedSearch) return true;
       const haystack = [trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(normalizedSearch);
     });
-  }, [confirmationDate, legFilter, rideTypeFilter, search, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
+
+    return [...matchedTrips].sort((leftTrip, rightTrip) => {
+      const leftMiles = parseMilesValue(leftTrip.miles);
+      const rightMiles = parseMilesValue(rightTrip.miles);
+      const leftValue = leftMiles == null ? Number.NEGATIVE_INFINITY : leftMiles;
+      const rightValue = rightMiles == null ? Number.NEGATIVE_INFINITY : rightMiles;
+      if (milesSortOrder === 'asc') return leftValue - rightValue;
+      return rightValue - leftValue;
+    });
+  }, [confirmationDate, legFilter, milesMaxFilter, milesMinFilter, milesSortOrder, rideTypeFilter, search, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
 
   const visibleTripIds = useMemo(() => filteredTrips.map(trip => trip.id), [filteredTrips]);
 
@@ -756,6 +789,12 @@ const ConfirmationWorkspace = () => {
               <Form.Control type="date" value={confirmationDate} onChange={event => setConfirmationDate(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Confirmation date" />
               <Form.Control type="time" value={timeFromFilter} onChange={event => setTimeFromFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="Start time" />
               <Form.Control type="time" value={timeToFilter} onChange={event => setTimeToFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="End time" />
+              <Form.Control type="number" min="0" step="0.1" value={milesMinFilter} onChange={event => setMilesMinFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 110 }} placeholder="Min mi" title="Minimum miles" />
+              <Form.Control type="number" min="0" step="0.1" value={milesMaxFilter} onChange={event => setMilesMaxFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 110 }} placeholder="Max mi" title="Maximum miles" />
+              <Form.Select value={milesSortOrder} onChange={event => setMilesSortOrder(event.target.value)} style={{ ...surfaceStyles.input, width: 180 }} title="Sort by miles">
+                <option value="desc">Miles: High to Low</option>
+                <option value="asc">Miles: Low to High</option>
+              </Form.Select>
               <Button style={surfaceStyles.button} onClick={() => {
                 setTimeFromFilter('');
                 setTimeToFilter('');
