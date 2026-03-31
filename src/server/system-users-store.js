@@ -20,7 +20,7 @@ const normalizeUserRecord = user => ({
   role: String(user?.role ?? ''),
   username: String(user?.username ?? ''),
   password: String(user?.password || buildPasswordForUser(user)),
-  webAccess: typeof user?.webAccess === 'boolean' ? user.webAccess : !isDriverRole(user?.role),
+  webAccess: typeof user?.webAccess === 'boolean' ? user.webAccess : true,
   androidAccess: typeof user?.androidAccess === 'boolean' ? user.androidAccess : true,
   lastEventTime: String(user?.lastEventTime ?? ''),
   eventType: String(user?.eventType ?? '')
@@ -40,10 +40,23 @@ const normalizeProtectedIds = (protectedUserIds, users) => {
 };
 
 const normalizeUsersState = value => {
-  const users = Array.isArray(value?.users) ? value.users.map(normalizeUserRecord) : [];
+  const sourceVersion = Number(value?.version || 0);
+  const users = Array.isArray(value?.users) ? value.users.map(user => {
+    const normalizedUser = normalizeUserRecord(user);
+
+    // Legacy version 4 auto-disabled web login for drivers. Lift that restriction.
+    if (sourceVersion > 0 && sourceVersion < 5 && isDriverRole(normalizedUser.role) && normalizedUser.webAccess === false) {
+      return {
+        ...normalizedUser,
+        webAccess: true
+      };
+    }
+
+    return normalizedUser;
+  }) : [];
 
   return {
-    version: 4,
+    version: 5,
     protectedUserIds: normalizeProtectedIds(value?.protectedUserIds, users),
     users
   };
@@ -55,7 +68,7 @@ const ensureStorageFile = async () => {
     await readFile(STORAGE_FILE, 'utf8');
   } catch {
     await writeFile(STORAGE_FILE, JSON.stringify({
-      version: 4,
+      version: 5,
       protectedUserIds: normalizeProtectedIds(DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED),
       users: USER_SEED.map(normalizeUserRecord)
     }, null, 2), 'utf8');

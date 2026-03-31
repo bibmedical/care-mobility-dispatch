@@ -391,7 +391,7 @@ export const enrichSystemUser = (user, protectedUserIds = DEFAULT_PROTECTED_SYST
   taxId: String(user.taxId ?? ''),
   email: user.email || buildFallbackEmail(user),
   password: String(user.password || buildPasswordForUser(user)),
-  webAccess: typeof user.webAccess === 'boolean' ? user.webAccess : !isDriverRole(user.role),
+  webAccess: typeof user.webAccess === 'boolean' ? user.webAccess : true,
   androidAccess: typeof user.androidAccess === 'boolean' ? user.androidAccess : true,
   isProtected: isProtectedSystemUser(user, protectedUserIds)
 });

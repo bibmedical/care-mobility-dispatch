@@ -147,7 +147,7 @@ const UserManagementWorkspace = () => {
     setDraftUser(user ? {
       ...user,
       password: user.password || buildPasswordForUser(user),
-      webAccess: typeof user.webAccess === 'boolean' ? user.webAccess : !user.role.includes('Driver'),
+      webAccess: typeof user.webAccess === 'boolean' ? user.webAccess : true,
       androidAccess: typeof user.androidAccess === 'boolean' ? user.androidAccess : true
     } : {
       ...createBlankUser(),

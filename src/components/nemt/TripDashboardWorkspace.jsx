@@ -1023,11 +1023,11 @@ const TripDashboardWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0, gridColumn: showMapPane ? 3 : '1 / span 3', gridRow: 1 }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2 flex-shrink-0">
-                <div className="d-flex align-items-center gap-2 flex-wrap">
+              <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+                <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
                   <strong>Trips</strong>
                   <Badge bg="light" text="dark">{assignedTripsCount}/{trips.length}</Badge>
-                  <div className="d-flex align-items-center gap-1 flex-wrap">
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(-1)} title="Previous day">Prev</Button>
                     <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || 'all')} style={{ width: 150 }} />
                     <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(1)} title="Next day">Next</Button>
@@ -1050,7 +1050,7 @@ const TripDashboardWorkspace = () => {
                   {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
                   {selectedDriver ? <Badge bg="warning" text="dark">{selectedDriverOpenTripCount} open</Badge> : null}
                   <span className="small">{selectedTripIds.length} sel.</span>
-                  <div className="d-flex align-items-center gap-1 flex-wrap">
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
                     {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
                       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
                         <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
@@ -1058,7 +1058,7 @@ const TripDashboardWorkspace = () => {
                       </>}
                   </div>
                 </div>
-                <div className="d-flex gap-2 small flex-wrap position-relative">
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
                   {!showMapPane ? <Button variant="warning" size="sm" onClick={() => {
                   setShowMapPane(true);
                   setStatusMessage('Mapa visible otra vez en Trip Dashboard.');
@@ -1083,13 +1083,13 @@ const TripDashboardWorkspace = () => {
                   </Form.Select>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/forms-safe-ride-import')}>Import Excel</Button>
-                  <div className="d-flex align-items-center gap-1 flex-wrap">
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">Leg</span>
                     <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
                     <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Viajes de regreso a casa">BL</Button>
                     <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Tercer viaje o connector leg">CL</Button>
                   </div>
-                  <div className="d-flex align-items-center gap-1 flex-wrap">
+                  <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">Type</span>
                     <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
                     <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
