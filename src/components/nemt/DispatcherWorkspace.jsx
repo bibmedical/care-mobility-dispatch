@@ -1,12 +1,3 @@
-const TRIP_COLUMN_MIN_WIDTHS = {
-  pickup: 56,
-  dropoff: 56,
-  miles: 56,
-  puZip: 64,
-  doZip: 64,
-  leg: 52,
-  lateMinutes: 68
-};
 'use client';
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
@@ -23,6 +14,16 @@ import { CircleMarker, MapContainer, Marker, Polyline, Popup, useMap } from 'rea
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
+
+const TRIP_COLUMN_MIN_WIDTHS = {
+  pickup: 56,
+  dropoff: 56,
+  miles: 56,
+  puZip: 64,
+  doZip: 64,
+  leg: 52,
+  lateMinutes: 68
+};
 
 const greenToolbarButtonStyle = {
   color: '#08131a',
