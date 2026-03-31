@@ -1372,8 +1372,8 @@ const TripDashboardWorkspace = () => {
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
               </div>
-              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'scroll', overflowY: 'auto', scrollbarGutter: 'stable both-edges' }}>
-                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content' }}>
+              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
+                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content' }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 48 }}>
