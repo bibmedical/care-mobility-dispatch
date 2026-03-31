@@ -56,6 +56,8 @@ export const NemtProvider = ({
   const [isDispatchLoaded, setIsDispatchLoaded] = useState(false);
   const lastPersistedSnapshotRef = useRef('');
   const hasLocalDispatchChangesRef = useRef(false);
+  const persistInFlightRef = useRef(false);
+  const pendingPersistSnapshotRef = useRef('');
 
   const syncDriversFromServer = async () => {
     try {
@@ -151,21 +153,40 @@ export const NemtProvider = ({
     const snapshot = JSON.stringify(createPersistedSnapshot(state));
     if (snapshot === lastPersistedSnapshotRef.current) return;
 
-    const timeoutId = window.setTimeout(async () => {
+    pendingPersistSnapshotRef.current = snapshot;
+
+    const flushPersistQueue = async () => {
+      if (persistInFlightRef.current) return;
+      const nextSnapshot = pendingPersistSnapshotRef.current;
+      if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return;
+
+      persistInFlightRef.current = true;
+      pendingPersistSnapshotRef.current = '';
+
       try {
         const response = await fetch('/api/nemt/dispatch', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: snapshot
+          body: nextSnapshot
         });
-        if (!response.ok) return;
-        lastPersistedSnapshotRef.current = snapshot;
-        hasLocalDispatchChangesRef.current = false;
+        if (response.ok) {
+          lastPersistedSnapshotRef.current = nextSnapshot;
+          hasLocalDispatchChangesRef.current = false;
+        }
       } catch {
         // Keep local state if the server is temporarily unavailable.
+      } finally {
+        persistInFlightRef.current = false;
+        if (pendingPersistSnapshotRef.current && pendingPersistSnapshotRef.current !== lastPersistedSnapshotRef.current) {
+          void flushPersistQueue();
+        }
       }
+    };
+
+    const timeoutId = window.setTimeout(async () => {
+      await flushPersistQueue();
     }, 250);
 
     return () => {

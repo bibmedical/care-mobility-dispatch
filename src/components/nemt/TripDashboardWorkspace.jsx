@@ -1018,12 +1018,13 @@ const TripDashboardWorkspace = () => {
   };
 
   const handleUnassign = () => {
-    if (selectedTripIds.length === 0) {
+    const targetTripIds = [...selectedTripIds];
+    if (targetTripIds.length === 0) {
       setStatusMessage('Select at least one trip to remove assignment.');
       return;
     }
 
-    unassignTrips();
+    unassignTrips(targetTripIds);
     setStatusMessage('Trips desasignados.');
   };
 
