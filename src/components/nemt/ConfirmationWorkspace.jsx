@@ -7,6 +7,7 @@ import { getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dis
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import { openWhatsAppConversation } from '@/utils/whatsapp';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
@@ -1034,18 +1035,24 @@ const ConfirmationWorkspace = () => {
     setIsSendingConfirmation(true);
     try {
       if (confirmationMethod === 'whatsapp') {
-        // Open WhatsApp Web for each trip (or show list)
         const tripsInfo = targetTrips.map(trip => 
           `${trip.id} - ${trip.rider} (${trip.patientPhoneNumber})`
         ).join('\n');
-        
+
         const message = `CONFIRMATION REQUEST\n\nTrips to confirm:\n${tripsInfo}\n\nPlease confirm receipt.`;
-        const encodedMessage = encodeURIComponent(message);
-        
-        // Open WhatsApp Web (generic for all)
-        window.open(`https://web.whatsapp.com/send?text=${encodedMessage}`, '_blank');
-        
-        // Also send via API for each trip
+        const firstTripWithPhone = targetTrips.find(trip => trip.patientPhoneNumber);
+
+        if (firstTripWithPhone) {
+          const whatsappResult = openWhatsAppConversation({
+            phoneNumber: firstTripWithPhone.patientPhoneNumber,
+            message
+          });
+
+          if (!whatsappResult.ok && whatsappResult.reason === 'popup-blocked') {
+            setCustomStatus('El navegador bloqueo la pestaña de WhatsApp. Permite pop-ups para esta pagina.');
+          }
+        }
+
         for (const trip of targetTrips) {
           if (trip.patientPhoneNumber) {
             await fetch('/api/extensions/send-message', {
@@ -1077,7 +1084,7 @@ const ConfirmationWorkspace = () => {
             }
           }));
         }
-        
+
         setCustomStatus(`WhatsApp confirmations sent to ${targetTrips.length} trip(s).`);
       } else if (confirmationMethod === 'sms') {
         // Send SMS in batch
