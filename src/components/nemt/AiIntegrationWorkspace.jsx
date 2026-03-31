@@ -53,8 +53,8 @@ const buildConnectionStatus = draft => {
   return 'Ready';
 };
 
-const buildStatusPillStyle = active => ({
-  ...surfaceStyles.pill,
+const buildStatusPillStyle = (pillStyle, active) => ({
+  ...pillStyle,
   backgroundColor: active ? 'rgba(33, 186, 115, 0.18)' : 'rgba(255, 193, 7, 0.18)',
   borderColor: active ? 'rgba(33, 186, 115, 0.42)' : 'rgba(255, 193, 7, 0.42)',
   color: active ? '#7ef0b1' : '#ffd76a'
@@ -196,7 +196,7 @@ const AiIntegrationWorkspace = () => {
               <div className="small text-secondary">{pageSaving ? 'Saving AI integration...' : message}</div>
             </div>
             <div className="d-flex flex-wrap gap-2 align-items-start">
-              <span style={buildStatusPillStyle(draft.enabled)}>{draft.enabled ? 'Enabled' : 'Disabled'}</span>
+              <span style={buildStatusPillStyle(surfaceStyles.pill, draft.enabled)}>{draft.enabled ? 'Enabled' : 'Disabled'}</span>
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleRefresh} disabled={pageLoading || pageSaving}><IconifyIcon icon="iconoir:refresh-double" className="me-2" />Refresh</Button>
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => handleSave({
               ...draft,
@@ -257,7 +257,7 @@ const AiIntegrationWorkspace = () => {
                       <div className="small text-secondary">Assistant behavior</div>
                       <div>Cuando esta integracion este activa, el widget flotante usara esta llave y este modelo. Si la IA esta desactivada o no hay llave, seguira usando el modo basico.</div>
                     </div>
-                    <span style={buildStatusPillStyle(readiness === 'Ready')}>{readiness}</span>
+                    <span style={buildStatusPillStyle(surfaceStyles.pill, readiness === 'Ready')}>{readiness}</span>
                   </div>
                   <div className="small text-secondary">Tip: use this switch to hide or show the AI widget from the corner without leaving this page.</div>
                 </div>
