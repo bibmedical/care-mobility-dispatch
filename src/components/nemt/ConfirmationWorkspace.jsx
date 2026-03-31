@@ -517,6 +517,11 @@ const ConfirmationWorkspace = () => {
 
   const visibleTripIds = useMemo(() => filteredTrips.map(trip => trip.id), [filteredTrips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(tripId => selectedTripIds.includes(tripId));
+  const visibleSelectedTripIds = useMemo(() => selectedTripIds.filter(tripId => visibleTripIds.includes(tripId)), [selectedTripIds, visibleTripIds]);
+
+  useEffect(() => {
+    setSelectedTripIds(current => current.filter(tripId => visibleTripIds.includes(tripId)));
+  }, [visibleTripIds]);
 
   const toggleTripSelection = tripId => {
     setSelectedTripIds(current => current.includes(tripId) ? current.filter(id => id !== tripId) : [...current, tripId]);
@@ -586,7 +591,7 @@ const ConfirmationWorkspace = () => {
   };
 
   const handleSendCustomMessage = async () => {
-    if (selectedTripIds.length === 0) {
+    if (visibleSelectedTripIds.length === 0) {
       setCustomStatus('Select at least one trip to send a Custom SMS.');
       return;
     }
@@ -602,7 +607,7 @@ const ConfirmationWorkspace = () => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          tripIds: selectedTripIds,
+          tripIds: visibleSelectedTripIds,
           message: customMessage
         })
       });
@@ -629,13 +634,13 @@ const ConfirmationWorkspace = () => {
   };
 
   const handleSendGroupConfirmation = () => {
-    if (selectedTripIds.length === 0) {
+    if (visibleSelectedTripIds.length === 0) {
       setCustomStatus('Select at least one trip to send a confirmation.');
       return;
     }
     
     // Get the actual trip objects
-    const tripsToConfirm = filteredTrips.filter(trip => selectedTripIds.includes(trip.id));
+    const tripsToConfirm = filteredTrips.filter(trip => visibleSelectedTripIds.includes(trip.id));
     if (tripsToConfirm.length === 0) {
       setCustomStatus('No matching trips found for selected IDs.');
       return;
@@ -1281,7 +1286,7 @@ const ConfirmationWorkspace = () => {
                 <div className="fw-semibold">Custom SMS</div>
                 <div className="small text-secondary">Selecciona trips y manda un mensaje manual. Esto no depende del flujo de confirmacion automatica.</div>
               </div>
-              <div className="small text-secondary">{selectedTripIds.length} selected</div>
+              <div className="small text-secondary">{visibleSelectedTripIds.length} selected</div>
             </div>
             <div className="d-flex flex-column flex-xl-row gap-2">
               <Form.Control as="textarea" rows={2} value={customMessage} onChange={event => setCustomMessage(event.target.value)} placeholder="Write a custom SMS for selected patients" style={{ ...surfaceStyles.input, minHeight: 72 }} />
