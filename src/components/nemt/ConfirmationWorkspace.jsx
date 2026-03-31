@@ -100,6 +100,37 @@ const getTripMilesDisplay = trip => {
   return Number(miles.toFixed(2)).toString();
 };
 
+const parseSpreadsheetTimeMinutes = value => {
+  if (value == null) return null;
+  const raw = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isFinite(raw)) return null;
+
+  // Excel-style datetime serial (e.g. 46112.3222) or time-only fraction (e.g. 0.5)
+  const fraction = raw >= 1 ? raw - Math.floor(raw) : raw;
+  if (!Number.isFinite(fraction) || fraction < 0 || fraction >= 1) return null;
+
+  const minutes = Math.round(fraction * 24 * 60);
+  if (!Number.isFinite(minutes)) return null;
+  return Math.min(1439, Math.max(0, minutes));
+};
+
+const getTripTimeMinutesForFilter = trip => {
+  const tripTime = trip?.scheduledPickup || trip?.pickupTime || trip?.appointmentTime || trip?.startTime || trip?.pickup || '';
+  const parsedClockMinutes = parseTripClockMinutes(tripTime);
+  if (parsedClockMinutes != null) return parsedClockMinutes;
+
+  const parsedSpreadsheetMinutes = parseSpreadsheetTimeMinutes(tripTime);
+  if (parsedSpreadsheetMinutes != null) return parsedSpreadsheetMinutes;
+
+  const pickupSortTimestamp = Number(trip?.pickupSortValue);
+  if (Number.isFinite(pickupSortTimestamp)) {
+    const date = new Date(pickupSortTimestamp);
+    if (!Number.isNaN(date.getTime())) return date.getHours() * 60 + date.getMinutes();
+  }
+
+  return null;
+};
+
 const buildTripDedupKey = trip => {
   const pairKey = getTripPairKey(trip) || String(trip?.id || '').trim();
   const legKey = getTripLegFilterKey(trip);
@@ -347,14 +378,7 @@ const ConfirmationWorkspace = () => {
       const tripDateKey = getTripServiceDateKey(trip);
       if (confirmationDate !== 'all' && (!tripDateKey || tripDateKey !== confirmationDate)) return false;
 
-      const tripTime = trip.scheduledPickup || trip.pickupTime || trip.appointmentTime || trip.startTime || trip.pickup || '';
-      const parsedTripTimeMinutes = parseTripClockMinutes(tripTime);
-      const pickupSortTimestamp = Number(trip.pickupSortValue);
-      const pickupSortMinutes = Number.isFinite(pickupSortTimestamp) ? (() => {
-        const d = new Date(pickupSortTimestamp);
-        return Number.isNaN(d.getTime()) ? null : d.getHours() * 60 + d.getMinutes();
-      })() : null;
-      const tripTimeMinutes = parsedTripTimeMinutes != null ? parsedTripTimeMinutes : pickupSortMinutes;
+      const tripTimeMinutes = getTripTimeMinutesForFilter(trip);
       const hasTimeFilter = fromMinutes != null || toMinutes != null;
       if (hasTimeFilter) {
         if (tripTimeMinutes == null) return false;
@@ -411,14 +435,7 @@ const ConfirmationWorkspace = () => {
       if (isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
       
       // Filter by time range
-      const tripTime = trip.scheduledPickup || trip.pickupTime || trip.appointmentTime || trip.startTime || trip.pickup || '';
-      const parsedTripTimeMinutes = parseTripClockMinutes(tripTime);
-      const pickupSortTimestamp = Number(trip.pickupSortValue);
-      const pickupSortMinutes = Number.isFinite(pickupSortTimestamp) ? (() => {
-        const d = new Date(pickupSortTimestamp);
-        return Number.isNaN(d.getTime()) ? null : d.getHours() * 60 + d.getMinutes();
-      })() : null;
-      const tripTimeMinutes = parsedTripTimeMinutes != null ? parsedTripTimeMinutes : pickupSortMinutes;
+      const tripTimeMinutes = getTripTimeMinutesForFilter(trip);
       const hasTimeFilter = fromMinutes != null || toMinutes != null;
       if (hasTimeFilter) {
         if (tripTimeMinutes == null) return false;
