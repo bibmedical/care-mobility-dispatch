@@ -106,6 +106,22 @@ const isTripCompleted = trip => {
   return Boolean(String(trip?.actualDropoff || '').trim());
 };
 
+const isPatientExclusionActiveForDate = (exclusion, dateKey, fallbackDateKey) => {
+  if (!exclusion) return false;
+  const mode = String(exclusion.mode || '').trim().toLowerCase();
+  const targetDate = String(dateKey || fallbackDateKey || '').trim();
+  if (mode === 'always') return true;
+  if (!targetDate) return false;
+  if (mode === 'single-day') return targetDate === String(exclusion.startDate || '').trim();
+  if (mode === 'range') {
+    const start = String(exclusion.startDate || '').trim();
+    const end = String(exclusion.endDate || '').trim();
+    if (!start || !end) return false;
+    return targetDate >= start && targetDate <= end;
+  }
+  return false;
+};
+
 const ConfirmationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
@@ -168,11 +184,28 @@ const ConfirmationWorkspace = () => {
   const [patientFromDate, setPatientFromDate] = useState('');
   const [patientToDate, setPatientToDate] = useState('');
   const [selectedPatientKey, setSelectedPatientKey] = useState('');
+  const [patientStatusModalOpen, setPatientStatusModalOpen] = useState(false);
+  const [patientStatusMode, setPatientStatusMode] = useState('always');
+  const [patientStatusStartDate, setPatientStatusStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [patientStatusEndDate, setPatientStatusEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [patientStatusReason, setPatientStatusReason] = useState('Rehab stay');
+  const [patientStatusSourceNote, setPatientStatusSourceNote] = useState('');
 
   const optOutList = Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [];
   const blacklistEntries = Array.isArray(blacklistData?.entries) ? blacklistData.entries : [];
   const groupTemplates = smsData?.sms?.groupTemplates || {};
   const riderProfiles = smsData?.sms?.riderProfiles || {};
+  const buildPatientProfileKey = trip => {
+    const phoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
+    if (phoneKey) return `phone:${phoneKey}`;
+    const riderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
+    return riderKey ? `rider:${riderKey}` : '';
+  };
+  const getPatientProfileForTrip = trip => {
+    const key = buildPatientProfileKey(trip);
+    if (!key) return null;
+    return riderProfiles[key] || null;
+  };
   const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
     trip,
     optOutList,
@@ -202,7 +235,7 @@ const ConfirmationWorkspace = () => {
     trips.forEach(trip => {
       const rider = String(trip?.rider || '').trim();
       const phone = String(trip?.patientPhoneNumber || '').trim();
-      const key = `${rider.toLowerCase()}|${phone.replace(/\D/g, '')}`;
+      const key = buildPatientProfileKey(trip);
       if (!key || key === '|') return;
 
       const dateKey = getTripServiceDateKey(trip);
@@ -221,6 +254,8 @@ const ConfirmationWorkspace = () => {
       const hospitalType = String(trip?.hospitalStatus?.type || '').trim().toLowerCase();
       const isRehab = hospitalType.includes('rehab');
       const isHospital = Boolean(trip?.hospitalStatus) && !isRehab;
+      const exclusion = riderProfiles[key]?.exclusion || null;
+      const excludedNow = isPatientExclusionActiveForDate(exclusion, dateKey, new Date().toISOString().slice(0, 10));
 
       const current = groups.get(key) || {
         key,
@@ -235,6 +270,7 @@ const ConfirmationWorkspace = () => {
         whatsappConfirmedTrips: 0,
         rehabTrips: 0,
         hospitalTrips: 0,
+        excludedTrips: 0,
         hasTravelled: false,
         notes: [],
         trips: []
@@ -250,6 +286,7 @@ const ConfirmationWorkspace = () => {
       if (responseCode === 'W') current.whatsappConfirmedTrips += 1;
       if (isRehab) current.rehabTrips += 1;
       if (isHospital) current.hospitalTrips += 1;
+      if (excludedNow) current.excludedTrips += 1;
       if (notes) current.notes.push(`[${dateKey || 'No date'}] ${notes}`);
       current.trips.push({
         id: trip.id,
@@ -260,6 +297,7 @@ const ConfirmationWorkspace = () => {
         completion: isTripCompleted(trip) ? 'Completed' : 'Open',
         confirmationStatus,
         responseCode,
+        excluded: excludedNow ? 'Excluded' : 'Active',
         rehabHospital: trip?.hospitalStatus ? `${trip.hospitalStatus.type || 'Hospital'} until ${trip.hospitalStatus.endDate || '-'}` : '-',
         note: notes || '-'
       });
@@ -358,6 +396,9 @@ const ConfirmationWorkspace = () => {
       if (confirmationDate !== 'all') {
         if (!tripDateKey || tripDateKey !== confirmationDate) return false;
       }
+
+      const riderProfile = getPatientProfileForTrip(trip);
+      if (isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
       
       // Filter by time range
       const tripTime = trip.scheduledPickup || trip.pickupTime || trip.appointmentTime || trip.startTime || trip.pickup || '';
@@ -721,6 +762,78 @@ const ConfirmationWorkspace = () => {
     return riderProfiles[key] || null;
   };
 
+  const handleOpenPatientStatusModal = () => {
+    if (!selectedPatientHistory) return;
+    const currentExclusion = riderProfiles[selectedPatientHistory.key]?.exclusion;
+    setPatientStatusMode(currentExclusion?.mode || 'always');
+    setPatientStatusStartDate(currentExclusion?.startDate || new Date().toISOString().slice(0, 10));
+    setPatientStatusEndDate(currentExclusion?.endDate || new Date().toISOString().slice(0, 10));
+    setPatientStatusReason(currentExclusion?.reason || 'Rehab stay');
+    setPatientStatusSourceNote(currentExclusion?.sourceNote || '');
+    setPatientStatusModalOpen(true);
+  };
+
+  const handleSavePatientStatus = async () => {
+    if (!selectedPatientHistory) return;
+    const nowIso = new Date().toISOString();
+    const existingProfile = riderProfiles[selectedPatientHistory.key] || {};
+    const nextExclusion = {
+      mode: patientStatusMode,
+      startDate: patientStatusStartDate,
+      endDate: patientStatusMode === 'range' ? patientStatusEndDate : patientStatusMode === 'single-day' ? patientStatusStartDate : '',
+      reason: patientStatusReason,
+      sourceNote: patientStatusSourceNote,
+      updatedAt: nowIso
+    };
+
+    await saveSmsData({
+      sms: {
+        ...(smsData?.sms || {}),
+        riderProfiles: {
+          ...riderProfiles,
+          [selectedPatientHistory.key]: {
+            ...existingProfile,
+            exclusion: nextExclusion,
+            updatedAt: nowIso
+          }
+        }
+      }
+    });
+
+    const matchingTrips = trips.filter(trip => buildPatientProfileKey(trip) === selectedPatientHistory.key);
+    matchingTrips.forEach(trip => {
+      const noteLine = `[PATIENT EXCLUSION] ${new Date().toLocaleString()}: ${patientStatusReason} (${patientStatusMode}). ${patientStatusSourceNote}`;
+      updateTripRecord(trip.id, {
+        status: 'Cancelled',
+        notes: [String(trip.notes || '').trim(), noteLine].filter(Boolean).join('\n')
+      });
+    });
+
+    setPatientStatusModalOpen(false);
+    setCustomStatus(`Patient rule saved for ${selectedPatientHistory.rider}. Mode: ${patientStatusMode}. Applied to ${matchingTrips.length} trip(s).`);
+  };
+
+  const handleClearPatientStatus = async () => {
+    if (!selectedPatientHistory) return;
+    const existingProfile = riderProfiles[selectedPatientHistory.key] || {};
+    const nextProfile = {
+      ...existingProfile
+    };
+    delete nextProfile.exclusion;
+
+    await saveSmsData({
+      sms: {
+        ...(smsData?.sms || {}),
+        riderProfiles: {
+          ...riderProfiles,
+          [selectedPatientHistory.key]: nextProfile
+        }
+      }
+    });
+
+    setCustomStatus(`Patient rule cleared for ${selectedPatientHistory.rider}.`);
+  };
+
   const handleOpenTripUpdateModal = trip => {
     const profile = getRiderProfile(trip);
     setTripUpdateModal(trip);
@@ -1002,7 +1115,7 @@ const ConfirmationWorkspace = () => {
           </div>
 
           <div className="d-flex flex-column flex-xl-row gap-2 mb-3">
-            <Form.Control value={patientSearch} onChange={event => setPatientSearch(event.target.value)} placeholder="Search patient, phone, trip ID or notes" style={{ ...surfaceStyles.input, minWidth: 260 }} />
+            <Form.Control value={patientSearch} onChange={event => setPatientSearch(event.target.value)} onKeyDown={event => event.stopPropagation()} placeholder="Search patient, phone, trip ID or notes" style={{ ...surfaceStyles.input, minWidth: 260 }} />
             <Form.Control type="date" value={patientFromDate} onChange={event => setPatientFromDate(event.target.value)} style={{ ...surfaceStyles.input, width: 170 }} title="From date" />
             <Form.Control type="date" value={patientToDate} onChange={event => setPatientToDate(event.target.value)} style={{ ...surfaceStyles.input, width: 170 }} title="To date" />
             <Button style={surfaceStyles.button} onClick={() => {
@@ -1023,6 +1136,12 @@ const ConfirmationWorkspace = () => {
                 <Button style={surfaceStyles.button} onClick={() => setSelectedPatientKey('')}>
                   No Patient Selected
                 </Button>
+                <Button style={surfaceStyles.button} onClick={handleOpenPatientStatusModal} disabled={!selectedPatientHistory}>
+                  Set Patient Rule
+                </Button>
+                <Button style={surfaceStyles.button} onClick={handleClearPatientStatus} disabled={!selectedPatientHistory}>
+                  Clear Rule
+                </Button>
               </div>
 
               {selectedPatientHistory ? <>
@@ -1033,6 +1152,7 @@ const ConfirmationWorkspace = () => {
                     <Badge bg="secondary">Not Confirmed: {selectedPatientHistory.notConfirmedTrips}</Badge>
                     <Badge bg="warning">Rehab: {selectedPatientHistory.rehabTrips}</Badge>
                     <Badge bg="dark">Hospital: {selectedPatientHistory.hospitalTrips}</Badge>
+                    <Badge bg="danger">Excluded: {selectedPatientHistory.excludedTrips}</Badge>
                     <Badge bg="light" text="dark">Call C: {selectedPatientHistory.callConfirmedTrips}</Badge>
                     <Badge bg="light" text="dark">SMS S: {selectedPatientHistory.smsConfirmedTrips}</Badge>
                     <Badge bg="light" text="dark">WhatsApp W: {selectedPatientHistory.whatsappConfirmedTrips}</Badge>
@@ -1058,6 +1178,7 @@ const ConfirmationWorkspace = () => {
                           <th>Completed</th>
                           <th>Confirmation</th>
                           <th>Method</th>
+                          <th>Excluded</th>
                           <th>Rehab/Hospital</th>
                           <th>Note</th>
                         </tr>
@@ -1072,6 +1193,7 @@ const ConfirmationWorkspace = () => {
                             <td>{item.completion}</td>
                             <td>{item.confirmationStatus}</td>
                             <td>{item.responseCode || '-'}</td>
+                            <td>{item.excluded}</td>
                             <td style={{ color: themeMode === 'light' ? '#0f172a' : '#e6ecff' }}>{item.rehabHospital}</td>
                             <td style={{ maxWidth: 360, whiteSpace: 'normal' }}>{item.note}</td>
                           </tr>)}
@@ -1157,7 +1279,7 @@ const ConfirmationWorkspace = () => {
               <Button style={surfaceStyles.button} onClick={handleSendGroupConfirmation} disabled={confirmationSending}>{confirmationSending ? 'Sending...' : 'Send Confirmation'}</Button>
               <Button style={surfaceStyles.button} onClick={exportToPDF} title="Export visible trips to PDF/Print">Export PDF</Button>
             </div>
-            <Form.Control value={search} onChange={event => setSearch(event.target.value)} placeholder="Search trip, rider, phone or reply" style={{ ...surfaceStyles.input, width: 320, maxWidth: '100%' }} />
+            <Form.Control value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => event.stopPropagation()} placeholder="Search trip, rider, phone or reply" style={{ ...surfaceStyles.input, width: 320, maxWidth: '100%' }} />
           </div>
 
           <div className="table-responsive">
@@ -1412,6 +1534,40 @@ const ConfirmationWorkspace = () => {
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setTripUpdateModal(null)}>Close</Button>
           <Button variant="primary" onClick={handleSaveTripUpdate}>Save Update</Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={patientStatusModalOpen} onHide={() => setPatientStatusModalOpen(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Patient Rule (Cancel/Exclude)</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="small text-muted mb-3">Patient: {selectedPatientHistory?.rider || '-'} {selectedPatientHistory?.phone ? `• ${selectedPatientHistory.phone}` : ''}</div>
+          <Form.Label className="small text-uppercase text-muted fw-semibold">Duration</Form.Label>
+          <Form.Select className="mb-3" value={patientStatusMode} onChange={event => setPatientStatusMode(event.target.value)}>
+            <option value="single-day">One Day</option>
+            <option value="range">Date Range</option>
+            <option value="always">Always</option>
+          </Form.Select>
+
+          {patientStatusMode !== 'always' ? <>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Start Date</Form.Label>
+              <Form.Control className="mb-3" type="date" value={patientStatusStartDate} onChange={event => setPatientStatusStartDate(event.target.value)} />
+            </> : null}
+          {patientStatusMode === 'range' ? <>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">End Date</Form.Label>
+              <Form.Control className="mb-3" type="date" value={patientStatusEndDate} onChange={event => setPatientStatusEndDate(event.target.value)} />
+            </> : null}
+
+          <Form.Label className="small text-uppercase text-muted fw-semibold">Reason</Form.Label>
+          <Form.Control className="mb-3" value={patientStatusReason} onChange={event => setPatientStatusReason(event.target.value)} placeholder="Rehab / Hospital / Requested hold" />
+
+          <Form.Label className="small text-uppercase text-muted fw-semibold">Who Notified / Source</Form.Label>
+          <Form.Control as="textarea" rows={3} value={patientStatusSourceNote} onChange={event => setPatientStatusSourceNote(event.target.value)} placeholder="Caller name, relation, details" />
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setPatientStatusModalOpen(false)}>Close</Button>
+          <Button variant="danger" onClick={handleSavePatientStatus}>Save Rule</Button>
         </Modal.Footer>
       </Modal>
 
