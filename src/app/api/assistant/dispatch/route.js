@@ -27,6 +27,12 @@ const normalizeLookupValue = value => String(value || '')
   .toLowerCase()
   .trim();
 
+const detectLanguage = message => {
+  const m = normalizeLookupValue(String(message || ''));
+  const hits = (m.match(/\b(hola|buenos|gracias|viaje|viajes|ruta|rutas|chofer|choferes|asigna|confirma|crea|crear|dame|muestra|abre|cierra|salir|ayuda|cuantos|cuantas|paciente|todos|todas|pues|manda|mandale|envia|enviale|hay|sin|asignados|busca|dime|pon|dale|que|como|quien|donde|cuando)\b/g) || []).length;
+  return hits >= 1 ? 'es' : 'en';
+};
+
 const getSessionFirstName = session => String(session?.user?.firstName || session?.user?.name || session?.user?.username || '').trim().split(/\s+/)[0] || 'jefe';
 
 const buildPersonalizedLead = session => {
@@ -319,6 +325,7 @@ const findMatchingTrips = (message, snapshot) => {
 
 const findTripReply = (message, snapshot) => {
   const prompt = normalizeLookupValue(message);
+  const es = detectLanguage(message) === 'es';
   const matches = findMatchingTrips(message, snapshot);
   if (matches.length === 0) return null;
 
@@ -332,34 +339,52 @@ const findTripReply = (message, snapshot) => {
   const wantsDriver = /driver|chofer/.test(prompt);
 
   if (wantsPhone) {
-    return trip.patientPhoneNumber ? `Phone number for ${trip.rider || 'that patient'} is ${trip.patientPhoneNumber}.` : `No phone number loaded for ${trip.rider || 'that patient'}.`;
+    return trip.patientPhoneNumber
+      ? (es ? `Telefono de ${trip.rider || 'ese paciente'}: ${trip.patientPhoneNumber}.` : `Phone number for ${trip.rider || 'that patient'} is ${trip.patientPhoneNumber}.`)
+      : (es ? `No hay numero de telefono guardado para ${trip.rider || 'ese paciente'}.` : `No phone number loaded for ${trip.rider || 'that patient'}.`);
   }
   if (wantsStatus) {
-    return `Status for ${trip.rider || 'that trip'} is ${trip.status || 'no status'}${trip.rideId ? ` and ride id is ${trip.rideId}` : ''}.`;
+    return es
+      ? `Estado de ${trip.rider || 'ese viaje'}: ${trip.status || 'sin estado'}${trip.rideId ? `, ride id ${trip.rideId}` : ''}.`
+      : `Status for ${trip.rider || 'that trip'} is ${trip.status || 'no status'}${trip.rideId ? ` and ride id is ${trip.rideId}` : ''}.`;
   }
   if (wantsPickup) {
-    return `Pickup for ${trip.rider || 'that trip'} is ${trip.address || 'no address'}${trip.pickup ? ` at ${trip.pickup}` : ''}.`;
+    return es
+      ? `Recogida de ${trip.rider || 'ese viaje'}: ${trip.address || 'sin direccion'}${trip.pickup ? ` a las ${trip.pickup}` : ''}.`
+      : `Pickup for ${trip.rider || 'that trip'} is ${trip.address || 'no address'}${trip.pickup ? ` at ${trip.pickup}` : ''}.`;
   }
   if (wantsDropoff) {
-    return `Dropoff for ${trip.rider || 'that trip'} is ${trip.destination || 'no destination'}${trip.dropoff ? ` at ${trip.dropoff}` : ''}.`;
+    return es
+      ? `Destino de ${trip.rider || 'ese viaje'}: ${trip.destination || 'sin destino'}${trip.dropoff ? ` a las ${trip.dropoff}` : ''}.`
+      : `Dropoff for ${trip.rider || 'that trip'} is ${trip.destination || 'no destination'}${trip.dropoff ? ` at ${trip.dropoff}` : ''}.`;
   }
   if (wantsNotes) {
-    return trip.notes ? `Note for ${trip.rider || 'that trip'}: ${trip.notes}.` : `That trip has no saved note.`;
+    return trip.notes
+      ? (es ? `Nota de ${trip.rider || 'ese viaje'}: ${trip.notes}.` : `Note for ${trip.rider || 'that trip'}: ${trip.notes}.`)
+      : (es ? `Ese viaje no tiene nota guardada.` : `That trip has no saved note.`);
   }
   if (wantsDriver) {
-    return trip.driverId ? `Trip for ${trip.rider || 'that patient'} is assigned to ${trip.driverId}.` : `Trip for ${trip.rider || 'that patient'} has no driver assigned.`;
+    return trip.driverId
+      ? (es ? `El viaje de ${trip.rider || 'ese paciente'} esta asignado a ${trip.driverId}.` : `Trip for ${trip.rider || 'that patient'} is assigned to ${trip.driverId}.`)
+      : (es ? `El viaje de ${trip.rider || 'ese paciente'} no tiene chofer asignado.` : `Trip for ${trip.rider || 'that patient'} has no driver assigned.`);
   }
 
   if (sameRiderMatches.length > 1) {
     const rideList = sameRiderMatches.map(item => `${item.rideId || item.id} (${item.status || 'no status'})`).join(', ');
-    return `${trip.rider || 'That patient'} has ${sameRiderMatches.length} trips loaded: ${rideList}.`;
+    return es
+      ? `${trip.rider || 'Ese paciente'} tiene ${sameRiderMatches.length} viajes cargados: ${rideList}.`
+      : `${trip.rider || 'That patient'} has ${sameRiderMatches.length} trips loaded: ${rideList}.`;
   }
 
   if (matches.length > 1 && !wantsPhone && !wantsStatus && !wantsPickup && !wantsDropoff && !wantsNotes && !wantsDriver) {
-    return `Found multiple similar patients: ${matches.slice(0, 5).map(item => item.rider || item.rideId || item.id).join(', ')}. Tell me which one you want to review.`;
+    return es
+      ? `Encontre varios pacientes similares: ${matches.slice(0, 5).map(item => item.rider || item.rideId || item.id).join(', ')}. Dime cual quieres revisar.`
+      : `Found multiple similar patients: ${matches.slice(0, 5).map(item => item.rider || item.rideId || item.id).join(', ')}. Tell me which one you want to review.`;
   }
 
-  return `Found ${trip.rider || 'that patient'}${trip.rideId ? ` with ride id ${trip.rideId}` : ''}. Status ${trip.status || 'no status'}, pickup ${trip.pickup || '-'}, dropoff ${trip.dropoff || '-'}${trip.patientPhoneNumber ? `, phone ${trip.patientPhoneNumber}` : ''}.`;
+  return es
+    ? `Encontre a ${trip.rider || 'ese paciente'}${trip.rideId ? ` con ride id ${trip.rideId}` : ''}. Estado ${trip.status || 'sin estado'}, recogida ${trip.pickup || '-'}, destino ${trip.dropoff || '-'}${trip.patientPhoneNumber ? `, telefono ${trip.patientPhoneNumber}` : ''}.`
+    : `Found ${trip.rider || 'that patient'}${trip.rideId ? ` with ride id ${trip.rideId}` : ''}. Status ${trip.status || 'no status'}, pickup ${trip.pickup || '-'}, dropoff ${trip.dropoff || '-'}${trip.patientPhoneNumber ? `, phone ${trip.patientPhoneNumber}` : ''}.`;
 };
 
 const findModuleAction = (message, snapshot) => {
@@ -378,7 +403,7 @@ const findModuleAction = (message, snapshot) => {
       href: match.url,
       label: match.label
     },
-    reply: `${match.label}. Opening now.`
+    reply: detectLanguage(message) === 'es' ? `${match.label}. Abriendo ahora.` : `${match.label}. Opening now.`
   };
 };
 
@@ -411,7 +436,7 @@ const findDriverMessageAction = (message, snapshot) => {
       driverName: matchedDriver.name,
       message: messageText
     },
-    reply: `Done. Sent message to ${matchedDriver.name}: ${messageText}`
+    reply: detectLanguage(message) === 'es' ? `Listo. Mensaje enviado a ${matchedDriver.name}: ${messageText}` : `Done. Sent message to ${matchedDriver.name}: ${messageText}`
   };
 };
 
@@ -468,6 +493,7 @@ const findCreateRouteAction = (message, snapshot) => {
   }
 
   const routeId = `route-${Date.now()}`;
+  const lang = detectLanguage(message);
   return {
     action: {
       type: 'create-route',
@@ -475,9 +501,13 @@ const findCreateRouteAction = (message, snapshot) => {
       assignDriverId: targetDriverId,
       assignTripIds: targetTripIds
     },
-    reply: targetDriverName
-      ? `Done. Route created for ${serviceDate} assigned to ${targetDriverName} with ${targetTripIds.length} trip${targetTripIds.length !== 1 ? 's' : ''}. Offline status does not affect assignment.`
-      : `Done. Route created for ${serviceDate} with ${targetTripIds.length} unassigned trip${targetTripIds.length !== 1 ? 's' : ''}.`
+    reply: lang === 'es'
+      ? (targetDriverName
+          ? `Listo. Ruta creada para ${serviceDate} asignada a ${targetDriverName} con ${targetTripIds.length} viaje${targetTripIds.length !== 1 ? 's' : ''}. El estado offline del chofer no afecta la asignacion.`
+          : `Listo. Ruta creada para ${serviceDate} con ${targetTripIds.length} viaje${targetTripIds.length !== 1 ? 's' : ''} sin asignar.`)
+      : (targetDriverName
+          ? `Done. Route created for ${serviceDate} assigned to ${targetDriverName} with ${targetTripIds.length} trip${targetTripIds.length !== 1 ? 's' : ''}. Offline status does not affect assignment.`
+          : `Done. Route created for ${serviceDate} with ${targetTripIds.length} unassigned trip${targetTripIds.length !== 1 ? 's' : ''}.`)
   };
 };
 
@@ -511,14 +541,18 @@ const findAssignTripToDriverAction = (message, snapshot) => {
     const unassigned = trips.filter(t => !['cancelled', 'canceled'].includes(String(t.status || '').toLowerCase()));
     return {
       action: { type: 'assign-trips', driverId: matchedDriver.id, tripIds: unassigned.map(t => t.id) },
-      reply: `Done. Assigned ${unassigned.length} trip${unassigned.length !== 1 ? 's' : ''} to ${matchedDriver.name}. Offline status does not affect assignments.`
+      reply: detectLanguage(message) === 'es'
+        ? `Listo. ${unassigned.length} viaje${unassigned.length !== 1 ? 's' : ''} asignado${unassigned.length !== 1 ? 's' : ''} a ${matchedDriver.name}. El estado offline no afecta las asignaciones.`
+        : `Done. Assigned ${unassigned.length} trip${unassigned.length !== 1 ? 's' : ''} to ${matchedDriver.name}. Offline status does not affect assignments.`
     };
   }
 
   const { trip } = scoredTrips[0];
   return {
     action: { type: 'assign-trips', driverId: matchedDriver.id, tripIds: [trip.id] },
-    reply: `Done. Trip for ${trip.rider || trip.id} has been assigned to ${matchedDriver.name}.`
+    reply: detectLanguage(message) === 'es'
+      ? `Listo. El viaje de ${trip.rider || trip.id} fue asignado a ${matchedDriver.name}.`
+      : `Done. Trip for ${trip.rider || trip.id} has been assigned to ${matchedDriver.name}.`
   };
 };
 
@@ -546,7 +580,9 @@ const findConfirmTripAction = (message, snapshot) => {
       tripId: trip.id,
       riderName: trip.rider
     },
-    reply: `Done. Trip for ${trip.rider || trip.id} has been confirmed.`
+    reply: detectLanguage(message) === 'es'
+      ? `Listo. El viaje de ${trip.rider || trip.id} fue confirmado.`
+      : `Done. Trip for ${trip.rider || trip.id} has been confirmed.`
   };
 };
 
@@ -653,6 +689,7 @@ const buildDispatchSnapshot = async session => {
 
 const buildFallbackReply = (message, snapshot, pathname = '', history = [], session = null, integrationsState = null) => {
   const prompt = String(message || '').toLowerCase();
+  const es = detectLanguage(message) === 'es';
   const myName = snapshot?.integrations?.assistantName || 'Balby';
   const personalizedLead = buildPersonalizedLead(session);
 
@@ -663,21 +700,25 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
   if (learnedFactReply) return learnedFactReply;
 
   if (/cual es tu nombre|como te llamas|tu nombre|what.*your name|who are you/.test(prompt)) {
-    return `I'm ${myName}, your dispatch assistant.`;
+    return es ? `Soy ${myName}, tu asistente de despacho.` : `I'm ${myName}, your dispatch assistant.`;
   }
   if (/who am i|my name|what.*my name/.test(prompt)) {
     const firstName = getSessionFirstName(session);
-    return `${personalizedLead}your name is ${firstName}.`;
+    return es ? `${personalizedLead}tu nombre es ${firstName}.` : `${personalizedLead}your name is ${firstName}.`;
   }
   if (/hola|buenos dias|buenas tardes|buenas noches|hey|hi\b/.test(prompt)) {
     const firstName = getSessionFirstName(session);
-    return `Hi ${firstName}, I'm ${myName}. I can create routes, confirm trips, send messages to drivers, search for patients and answer dispatch questions. How can I help?`;
+    return es
+      ? `Hola ${firstName}, soy ${myName}. Puedo crear rutas, confirmar viajes, mandar mensajes a choferes, buscar pacientes y responder preguntas de despacho. ¿En que te ayudo?`
+      : `Hi ${firstName}, I'm ${myName}. I can create routes, confirm trips, send messages to drivers, search for patients and answer dispatch questions. How can I help?`;
   }
   if (/what can you do|que puedes hacer|que sabes|como me ayudas|ayuda|help/.test(prompt)) {
-    return `I'm ${myName} and I can: create routes for the day, confirm trips, send messages to drivers, look up patient and trip info, navigate to any module, and remember things you tell me. Just ask.`;
+    return es
+      ? `Soy ${myName} y puedo: crear rutas, confirmar viajes, mandar mensajes a choferes, buscar info de pacientes y viajes, navegar a cualquier modulo, y recordar cosas que me digas. Solo pregunta.`
+      : `I'm ${myName} and I can: create routes for the day, confirm trips, send messages to drivers, look up patient and trip info, navigate to any module, and remember things you tell me. Just ask.`;
   }
   if (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(prompt)) {
-    return `${personalizedLead}signing you out now.`;
+    return es ? `${personalizedLead}cerrando tu sesion ahora.` : `${personalizedLead}signing you out now.`;
   }
 
   const moduleAction = findModuleAction(message, snapshot);
@@ -705,50 +746,78 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
     return buildDriverDelayReply(snapshot);
   }
   if (/phone|cell|tel/.test(prompt)) {
-    return "I can look up a phone number. Tell me the patient's name or say: phone for [name] is [number].";
+    return es
+      ? "Puedo buscar un numero de telefono. Dame el nombre del paciente, o di: telefono de [nombre] es [numero]."
+      : "I can look up a phone number. Tell me the patient's name or say: phone for [name] is [number].";
   }
   if (/address|location|where/.test(prompt)) {
-    return "I can look up addresses. Tell me the patient name, or say: address for [name] is [address].";
+    return es
+      ? "Puedo buscar direcciones. Dame el nombre del paciente, o di: direccion de [nombre] es [direccion]."
+      : "I can look up addresses. Tell me the patient name, or say: address for [name] is [address].";
   }
   if (/cuantos|cuantas|cantidad|total|how many/.test(prompt) && /viajes|trips/.test(prompt)) {
-    return `${personalizedLead}there are currently ${snapshot.totals.trips} trips loaded and ${snapshot.totals.unassignedTrips} are still unassigned.`;
+    return es
+      ? `${personalizedLead}hay ${snapshot.totals.trips} viajes cargados y ${snapshot.totals.unassignedTrips} sin asignar.`
+      : `${personalizedLead}there are currently ${snapshot.totals.trips} trips loaded and ${snapshot.totals.unassignedTrips} are still unassigned.`;
   }
   if (/rutas?|route/.test(prompt)) {
     const routeCount = Array.isArray(snapshot?.routePlans) ? snapshot.routePlans.length : 0;
-    return `There are ${routeCount} route plan${routeCount !== 1 ? 's' : ''} saved. To create a new one say: create route for tomorrow, or create route for [driver name].`;
+    return es
+      ? `Hay ${routeCount} plan${routeCount !== 1 ? 'es' : ''} de ruta guardado${routeCount !== 1 ? 's' : ''}. Para crear uno nuevo di: crea ruta para manana, o crea ruta para [nombre del chofer].`
+      : `There are ${routeCount} route plan${routeCount !== 1 ? 's' : ''} saved. To create a new one say: create route for tomorrow, or create route for [driver name].`;
   }
   if (/paciente|rider|member|trip|viaje|ride/.test(prompt)) {
-    return "I can look up trip data, but I need the patient's name or ride ID to find it. Try: find trip for [name].";
+    return es
+      ? "Puedo buscar datos de viajes, pero necesito el nombre del paciente o el ride ID. Intenta: busca viaje de [nombre]."
+      : "I can look up trip data, but I need the patient's name or ride ID to find it. Try: find trip for [name].";
   }
   if (prompt.includes('sin asign') || prompt.includes('unassigned')) {
-    return `There are currently ${snapshot.totals.unassignedTrips} unassigned trips.`;
+    return es
+      ? `Hay ${snapshot.totals.unassignedTrips} viajes sin asignar en este momento.`
+      : `There are currently ${snapshot.totals.unassignedTrips} unassigned trips.`;
   }
   if (prompt.includes('cancel')) {
-    return `There are currently ${snapshot.totals.cancelledTrips} cancelled trips.`;
+    return es
+      ? `Hay ${snapshot.totals.cancelledTrips} viajes cancelados en este momento.`
+      : `There are currently ${snapshot.totals.cancelledTrips} cancelled trips.`;
   }
   if (/offline|online|en linea|en l.nea/.test(prompt) && /chofer|driver/.test(prompt)) {
-    return `A driver's online/offline status only shows whether they have GPS active in the Android app. It does not affect trip assignment or route creation. You can assign trips and create routes for any driver regardless of their status.`;
+    return es
+      ? `El estado online/offline de un chofer solo indica si tiene el GPS activo en la app Android. No afecta la asignacion de viajes ni la creacion de rutas. Puedes asignar viajes y crear rutas para cualquier chofer sin importar su estado.`
+      : `A driver's online/offline status only shows whether they have GPS active in the Android app. It does not affect trip assignment or route creation. You can assign trips and create routes for any driver regardless of their status.`;
   }
   if (prompt.includes('driver') || prompt.includes('chofer')) {
-    return `${personalizedLead}there are ${snapshot.totals.drivers} drivers in the roster. ${snapshot.totals.onlineDrivers} have GPS active now. Offline drivers can still receive trips and routes — offline just means they have the app closed.`;
+    return es
+      ? `${personalizedLead}hay ${snapshot.totals.drivers} choferes en el roster. ${snapshot.totals.onlineDrivers} tienen GPS activo ahora. Los choferes offline igual pueden recibir viajes y rutas — offline solo significa que tienen la app cerrada.`
+      : `${personalizedLead}there are ${snapshot.totals.drivers} drivers in the roster. ${snapshot.totals.onlineDrivers} have GPS active now. Offline drivers can still receive trips and routes — offline just means they have the app closed.`;
   }
   if (prompt.includes('trip') || prompt.includes('viaje')) {
-    return `${personalizedLead}there are ${snapshot.totals.trips} trips loaded and ${snapshot.totals.unassignedTrips} are still open.`;
+    return es
+      ? `${personalizedLead}hay ${snapshot.totals.trips} viajes cargados y ${snapshot.totals.unassignedTrips} siguen abiertos.`
+      : `${personalizedLead}there are ${snapshot.totals.trips} trips loaded and ${snapshot.totals.unassignedTrips} are still open.`;
   }
   if (prompt.includes('modul') || prompt.includes('screen') || prompt.includes('page')) {
     const moduleLabels = snapshot.modules.map(module => module.label).join(', ');
-    return `This app includes these main modules: ${moduleLabels}. Current page: ${pathname || 'unknown'}.`;
+    return es
+      ? `La app tiene estos modulos principales: ${moduleLabels}. Pagina actual: ${pathname || 'desconocida'}.`
+      : `This app includes these main modules: ${moduleLabels}. Current page: ${pathname || 'unknown'}.`;
   }
   if (prompt.includes('user') || prompt.includes('user management')) {
-    return `There are ${snapshot.totals.users} system users: ${snapshot.totals.adminUsers} admin and ${snapshot.totals.driverUsers} drivers.`;
+    return es
+      ? `Hay ${snapshot.totals.users} usuarios del sistema: ${snapshot.totals.adminUsers} admin y ${snapshot.totals.driverUsers} choferes.`
+      : `There are ${snapshot.totals.users} system users: ${snapshot.totals.adminUsers} admin and ${snapshot.totals.driverUsers} drivers.`;
   }
   if (prompt.includes('integr') || prompt.includes('sms') || prompt.includes('uber')) {
-    return `Integration summary: Uber configured ${snapshot.integrations.uberConfigured ? 'yes' : 'no'}. AI configured ${snapshot.integrations.aiConfigured ? `yes, using ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no'}. Active SMS providers: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'none'}.`;
+    return es
+      ? `Resumen de integraciones: Uber ${snapshot.integrations.uberConfigured ? 'configurado' : 'no configurado'}. IA ${snapshot.integrations.aiConfigured ? `configurada, usando ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no configurada'}. Proveedores SMS activos: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'ninguno'}.`
+      : `Integration summary: Uber configured ${snapshot.integrations.uberConfigured ? 'yes' : 'no'}. AI configured ${snapshot.integrations.aiConfigured ? `yes, using ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no'}. Active SMS providers: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'none'}.`;
   }
   if (/remember|learn|save|recuerda|aprende|guarda/.test(prompt)) {
-    return `Got it. I'll save that and remember it next time.`;
+    return es ? `Listo. Lo recordare para la proxima vez.` : `Got it. I'll save that and remember it next time.`;
   }
-  return `${personalizedLead}how can I help? I can create routes, confirm trips, send messages, search for patients and answer dispatch questions.`;
+  return es
+    ? `${personalizedLead}¿en que te ayudo? Puedo crear rutas, confirmar viajes, mandar mensajes, buscar pacientes y responder preguntas de despacho.`
+    : `${personalizedLead}how can I help? I can create routes, confirm trips, send messages, search for patients and answer dispatch questions.`;
 };
 
 const extractLearnFacts = message => {
@@ -802,7 +871,7 @@ const callOpenAI = async ({ message, history, snapshot, pathname, integrationsSt
       temperature: 0.3,
       messages: [{
         role: 'system',
-        content: 'You are a dispatch assistant for a NEMT operation and the Care Mobility web platform. Always respond in clear, natural, professional English. Use the provided snapshot as the source of truth. You know modules, trips, drivers, routes, integrations, users and blacklist. You CAN execute operational actions: creating routes, assigning trips to drivers, confirming trips, and sending driver messages. When the user asks you to create a route or assign trips, execute it and confirm it was done. If you know the logged-in user\'s name, address them directly and personally. Do not use markdown, asterisks, or bullet symbols unless the user requests them.'
+        content: 'You are a dispatch assistant for a NEMT operation and the Care Mobility web platform. Always respond in the SAME language the user writes in \u2014 if they write in Spanish respond in Spanish, if in English respond in English. You know modules, trips, drivers, routes, integrations, users and blacklist. You CAN execute operational actions: creating routes, assigning trips to drivers, confirming trips, and sending driver messages. When the user asks you to create a route or assign trips, execute it and confirm it was done. If you know the logged-in user\'s name, address them directly. Do not use markdown, asterisks, or bullet symbols unless the user requests them.'
       }, {
         role: 'system',
         content: `Current page: ${pathname || 'unknown'}. App snapshot: ${JSON.stringify(snapshot)}`
