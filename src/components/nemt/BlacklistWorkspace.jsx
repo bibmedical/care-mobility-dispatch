@@ -1,27 +1,28 @@
 'use client';
 
 import PageTitle from '@/components/PageTitle';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import React, { useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner, Table } from 'react-bootstrap';
 
-const surfaceStyles = {
+const buildSurfaceStyles = isLight => ({
   card: {
-    backgroundColor: '#171b27',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#ffffff' : '#171b27',
+    borderColor: isLight ? '#d5deea' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   input: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f8fbff' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   button: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f3f7fc' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   }
-};
+});
 
 const CATEGORY_OPTIONS = ['Do Not Schedule', 'Deceased', 'This Week Only', 'Legal / Claim', 'Safety Risk', 'Other'];
 const STATUS_OPTIONS = ['Active', 'Resolved'];
@@ -45,6 +46,8 @@ const getCategoryVariant = category => {
 };
 
 const BlacklistWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const { data, loading, saving, error, saveData, refresh } = useBlacklistApi();
   const [draft, setDraft] = useState(createEmptyEntry());
   const [message, setMessage] = useState('Administra personas que no deben viajar con nosotros o que deben pausarse temporalmente. Las entradas activas bloquean confirmaciones automaticamente cada dia hasta que las resuelvas.');

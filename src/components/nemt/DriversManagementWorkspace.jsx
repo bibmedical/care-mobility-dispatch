@@ -4,29 +4,35 @@ import { buildAttendantsRows, buildDriversRows, buildGroupingRows, buildVehicles
 import { formatMinutesAsHours, getTripServiceMinutes } from '@/helpers/nemt-billing';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import { useNemtContext } from '@/context/useNemtContext';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 
-const shellStyles = {
-  windowHeader: { backgroundColor: '#23324a' },
-  body: { backgroundColor: '#171b27' },
-  toolbarButton: { backgroundColor: '#101521', borderColor: '#2a3144', color: '#e6ecff' },
+const buildShellStyles = isLight => ({
+  windowHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a' },
+  body: { backgroundColor: isLight ? '#ffffff' : '#171b27' },
+  toolbarButton: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
   activeTab: { backgroundColor: '#8dc63f', borderColor: '#8dc63f', color: '#08131a' },
-  inactiveTab: { backgroundColor: '#101521', borderColor: '#2a3144', color: '#d7deef' },
-  search: { width: 230, paddingLeft: 38, backgroundColor: '#101521', borderColor: '#2a3144', color: '#e6ecff' },
+  inactiveTab: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#d7deef' },
+  search: { width: 230, paddingLeft: 38, backgroundColor: isLight ? '#f8fbff' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
   dangerButton: { backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff' },
-  tableShell: { borderColor: '#2a3144', backgroundColor: '#171b27' },
+  tableShell: { borderColor: isLight ? '#d5deea' : '#2a3144', backgroundColor: isLight ? '#ffffff' : '#171b27' },
   tableHead: { position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#8dc63f', color: '#08131a' },
   tableHeadCell: { backgroundColor: '#8dc63f', color: '#08131a', borderColor: 'rgba(8,19,26,0.14)' },
-  pageBadge: { backgroundColor: '#101521', borderColor: '#2a3144', color: '#e6ecff' },
-  modalContent: { backgroundColor: '#171b27', color: '#e6ecff', borderColor: '#2a3144' },
-  modalHeader: { backgroundColor: '#23324a', borderColor: '#2a3144' },
-  modalSection: { backgroundColor: '#101521', border: '1px solid #2a3144', borderRadius: 12, padding: 16 },
-  modalInput: { backgroundColor: '#0c111b', borderColor: '#2a3144', color: '#e6ecff' }
-};
+  pageBadge: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
+  modalContent: { backgroundColor: isLight ? '#ffffff' : '#171b27', color: isLight ? '#0f172a' : '#e6ecff', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
+  modalHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
+  modalSection: { backgroundColor: isLight ? '#f8fbff' : '#101521', border: `1px solid ${isLight ? '#c8d4e6' : '#2a3144'}`, borderRadius: 12, padding: 16 },
+  modalInput: { backgroundColor: isLight ? '#f8fbff' : '#0c111b', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
+  rowBackground: {
+    selected: isLight ? '#e8f2ff' : '#202c42',
+    default: isLight ? '#ffffff' : '#171b27'
+  },
+  rowTextColor: isLight ? '#0f172a' : '#e6ecff'
+});
 
 const TABS = [{ key: 'drivers', label: 'Drivers', href: '/drivers' }, { key: 'attendants', label: 'Attendants', href: '/drivers/attendants' }, { key: 'vehicles', label: 'Vehicles', href: '/drivers/vehicles' }, { key: 'grouping', label: 'Grouping', href: '/drivers/grouping' }];
 const DRIVER_EDITOR_TABS = [{ key: 'profile', label: 'Profile' }, { key: 'credentials', label: 'Credentials' }, { key: 'license', label: 'License' }, { key: 'compliance', label: 'Compliance' }, { key: 'documents', label: 'Documents' }];
@@ -49,6 +55,8 @@ const readFileAsDataUrl = file => new Promise((resolve, reject) => {
 });
 
 const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
+  const { themeMode } = useLayoutContext();
+  const shellStyles = useMemo(() => buildShellStyles(themeMode === 'light'), [themeMode]);
   const pathname = usePathname();
   const { data, loading, saving, error, refresh, saveData } = useNemtAdminApi();
   const { trips } = useNemtContext();
@@ -368,7 +376,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? <tr><td colSpan={config.columns.length + 1} className="text-center py-5 text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading records...</td></tr> : visibleRows.length ? visibleRows.map(row => <tr key={row.id} onClick={() => setSelectedRowId(row.id)} style={{ cursor: 'pointer', backgroundColor: selectedRowId === row.id ? '#202c42' : '#171b27', color: '#e6ecff' }}><td><Form.Check checked={selectedRowId === row.id} onChange={() => setSelectedRowId(row.id)} /></td>{renderRowCells(row)}</tr>) : <tr><td colSpan={config.columns.length + 1} className="text-center py-5 text-secondary">No records yet. Usa Add para crear el primer expediente.</td></tr>}
+                  {loading ? <tr><td colSpan={config.columns.length + 1} className="text-center py-5 text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading records...</td></tr> : visibleRows.length ? visibleRows.map(row => <tr key={row.id} onClick={() => setSelectedRowId(row.id)} style={{ cursor: 'pointer', backgroundColor: selectedRowId === row.id ? shellStyles.rowBackground.selected : shellStyles.rowBackground.default, color: shellStyles.rowTextColor }}><td><Form.Check checked={selectedRowId === row.id} onChange={() => setSelectedRowId(row.id)} /></td>{renderRowCells(row)}</tr>) : <tr><td colSpan={config.columns.length + 1} className="text-center py-5 text-secondary">No records yet. Usa Add para crear el primer expediente.</td></tr>}
                 </tbody>
               </Table>
             </div>

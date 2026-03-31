@@ -1,12 +1,9 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-import { authenticator } from 'otplib';
+import { generateSecret, generateURI, verify } from 'otplib';
 
 const STORAGE_DIR = getStorageRoot();
 const STORAGE_FILE = getStorageFilePath('2fa-secrets.json');
-
-// Configure authenticator
-authenticator.options = { window: 1 }; // Allow 1 step window (30 seconds tolerance)
 
 const ensureStorageFile = async () => {
   try {
@@ -47,12 +44,16 @@ const write2FAState = async state => {
  */
 export const generate2FASecret = async (userId, userName, issuer = 'Assistant App') => {
   try {
-    const secret = authenticator.generateSecret();
-    const otpauth_url = authenticator.keyuri(
-      userName,
+    const secret = generateSecret();
+    const otpauth_url = generateURI({
+      strategy: 'totp',
       issuer,
-      secret
-    );
+      label: userName,
+      secret,
+      digits: 6,
+      period: 30,
+      algorithm: 'sha1'
+    });
 
     // Don't save yet - user must verify first
     return {
@@ -71,7 +72,15 @@ export const generate2FASecret = async (userId, userName, issuer = 'Assistant Ap
  */
 export const verify2FASecretAndEnable = async (userId, secret, token) => {
   try {
-    const isValid = authenticator.check(token, secret);
+    const isValid = await verify({
+      strategy: 'totp',
+      token,
+      secret,
+      digits: 6,
+      period: 30,
+      algorithm: 'sha1',
+      epochTolerance: 1
+    });
     if (!isValid) {
       return { success: false, error: 'Invalid verification code' };
     }
@@ -104,7 +113,15 @@ export const verify2FAToken = async (userId, token) => {
       return { valid: false, error: 'No 2FA secret found' };
     }
 
-    const isValid = authenticator.check(token, userSecret.secret);
+    const isValid = await verify({
+      strategy: 'totp',
+      token,
+      secret: userSecret.secret,
+      digits: 6,
+      period: 30,
+      algorithm: 'sha1',
+      epochTolerance: 1
+    });
     return { valid: isValid };
   } catch (error) {
     console.error('Error verifying 2FA token:', error);

@@ -2,27 +2,28 @@
 
 import PageTitle from '@/components/PageTitle';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
 
-const surfaceStyles = {
+const buildSurfaceStyles = isLight => ({
   card: {
-    backgroundColor: '#171b27',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#ffffff' : '#171b27',
+    borderColor: isLight ? '#d5deea' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   input: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f8fbff' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   button: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f3f7fc' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   }
-};
+});
 
 const PROVIDER_LABELS = {
   disabled: 'Disabled',
@@ -114,6 +115,8 @@ const buildStatusBadge = ready => ({
 });
 
 const SmsIntegrationWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const { data, loading, saving, error, refresh, saveData } = useSmsIntegrationApi();
   const [draft, setDraft] = useState(buildBlankDraft());
   const [message, setMessage] = useState('Configura el proveedor SMS activo y deja listos los webhooks para recibir respuestas del paciente.');

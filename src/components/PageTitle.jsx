@@ -7,7 +7,7 @@ const PageTitle = ({
 }) => {
   return <Row>
       <Col sm={12}>
-        <div className="page-title-box d-md-flex justify-content-md-between align-items-center">
+        <div className="page-title-box d-md-flex justify-content-md-between align-items-center" style={{ paddingLeft: 16 }}>
           <h4 className="page-title">{title}</h4>
             <Breadcrumb className="mb-0">
               <BreadcrumbItem className='content-none'>Care Mobility</BreadcrumbItem>

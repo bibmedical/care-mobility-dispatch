@@ -1,6 +1,7 @@
 'use client';
 
 import PageTitle from '@/components/PageTitle';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
@@ -9,23 +10,23 @@ import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
 
-const surfaceStyles = {
+const buildSurfaceStyles = isLight => ({
   card: {
-    backgroundColor: '#171b27',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#ffffff' : '#171b27',
+    borderColor: isLight ? '#d5deea' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   input: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f8fbff' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   button: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f3f7fc' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   }
-};
+});
 
 const STATUS_VARIANTS = {
   Confirmed: 'success',
@@ -52,6 +53,8 @@ const getTripLegFilterKey = trip => {
 };
 
 const ConfirmationWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const router = useRouter();
   const { trips, refreshDispatchState } = useNemtContext();
   const { data: smsData, saveData: saveSmsData } = useSmsIntegrationApi();

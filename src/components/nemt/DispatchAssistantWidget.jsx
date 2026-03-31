@@ -107,24 +107,29 @@ const widgetStyles = {
     gap: 4
   },
   launcherModeButton: {
-    minHeight: 20,
+    minHeight: 22,
     borderRadius: 999,
     padding: '0 6px',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 800,
-    lineHeight: 1.1
+    lineHeight: 1.1,
+    color: '#f8fafc',
+    backgroundColor: 'rgba(15, 23, 42, 0.94)',
+    border: '1px solid rgba(148, 163, 184, 0.55)',
+    textShadow: '0 1px 0 rgba(0, 0, 0, 0.42)'
   },
   launcherStatus: {
     minWidth: 42,
-    height: 18,
+    height: 20,
     borderRadius: 999,
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(15, 23, 42, 0.95)',
+    border: '1px solid rgba(148, 163, 184, 0.65)',
+    color: '#f8fafc',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     padding: '0 8px',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 800,
     letterSpacing: '0.08em',
     textTransform: 'uppercase'

@@ -3,26 +3,32 @@
 import { getCurrentRosterWeekKey, getDocumentAlerts, getFullName, getUpcomingDocumentExpirations, isDriverOnActiveRoster, normalizeRouteRoster } from '@/helpers/nemt-admin-model';
 import { isDriverRole } from '@/helpers/system-users';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import * as XLSX from 'xlsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 
-const shellStyles = {
-  windowHeader: { backgroundColor: '#23324a' },
-  body: { backgroundColor: '#171b27' },
-  toolbarButton: { backgroundColor: '#101521', borderColor: '#2a3144', color: '#e6ecff' },
+const buildShellStyles = isLight => ({
+  windowHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a' },
+  body: { backgroundColor: isLight ? '#ffffff' : '#171b27' },
+  toolbarButton: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
   primaryButton: { backgroundColor: '#8dc63f', borderColor: '#8dc63f', color: '#08131a' },
   activePill: { backgroundColor: '#1565c0', borderColor: '#1565c0', color: '#ffffff' },
   dangerButton: { backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff' },
-  tableShell: { borderColor: '#2a3144', backgroundColor: '#171b27' },
+  tableShell: { borderColor: isLight ? '#d5deea' : '#2a3144', backgroundColor: isLight ? '#ffffff' : '#171b27' },
   tableHead: { backgroundColor: '#8dc63f', color: '#08131a' },
   tableHeadCell: { backgroundColor: '#8dc63f', color: '#08131a', borderColor: 'rgba(8,19,26,0.14)' },
-  cardShell: { backgroundColor: '#101521', border: '1px solid #2a3144', color: '#e6ecff', borderRadius: 16 },
-  input: { backgroundColor: '#0c111b', borderColor: '#2a3144', color: '#e6ecff' },
-  modalContent: { backgroundColor: '#171b27', color: '#e6ecff', borderColor: '#2a3144' },
-  modalHeader: { backgroundColor: '#23324a', borderColor: '#2a3144' }
-};
+  cardShell: { backgroundColor: isLight ? '#f8fbff' : '#101521', border: `1px solid ${isLight ? '#c8d4e6' : '#2a3144'}`, color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 16 },
+  input: { backgroundColor: isLight ? '#f8fbff' : '#0c111b', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
+  modalContent: { backgroundColor: isLight ? '#ffffff' : '#171b27', color: isLight ? '#0f172a' : '#e6ecff', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
+  modalHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
+  rowBackground: {
+    selected: isLight ? '#e8f2ff' : '#202c42',
+    default: isLight ? '#ffffff' : '#171b27'
+  },
+  rowTextColor: isLight ? '#0f172a' : '#e6ecff'
+});
 
 const defaultState = {
   drivers: [],
@@ -90,6 +96,8 @@ const fromInputTimeValue = value => {
 };
 
 const BillingGroupingWorkspace = ({ title = 'Driver Grouping' }) => {
+  const { themeMode } = useLayoutContext();
+  const shellStyles = useMemo(() => buildShellStyles(themeMode === 'light'), [themeMode]);
   const { data, loading, saving, error, refresh, saveData } = useNemtAdminApi();
   const [selectedDriverId, setSelectedDriverId] = useState(null);
   const [driverToAssign, setDriverToAssign] = useState('');
@@ -320,7 +328,7 @@ const BillingGroupingWorkspace = ({ title = 'Driver Grouping' }) => {
                         const routeRoster = normalizeRouteRoster(driver.routeRoster, driver);
                         const driverAlerts = getDocumentAlerts(driver);
                         const licenseAlert = driverAlerts.find(alert => alert.text.toLowerCase().includes('driver license'));
-                        return <tr key={driver.id} onClick={() => setSelectedDriverId(driver.id)} style={{ cursor: 'pointer', backgroundColor: selectedDriver?.id === driver.id ? '#202c42' : '#171b27', color: '#e6ecff' }}>
+                        return <tr key={driver.id} onClick={() => setSelectedDriverId(driver.id)} style={{ cursor: 'pointer', backgroundColor: selectedDriver?.id === driver.id ? shellStyles.rowBackground.selected : shellStyles.rowBackground.default, color: shellStyles.rowTextColor }}>
                               <td>{index + 1}</td>
                               <td>
                                 <div className="fw-semibold">{getDriverName(driver)}</div>

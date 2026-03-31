@@ -29,17 +29,17 @@ const AppProvidersWrapper = ({
     }
   }, []);
   return <SessionProvider>
-      <InactivityLogoutWrapper>
-        <LayoutProvider>
-          <NotificationProvider>
+      <LayoutProvider>
+        <NotificationProvider>
+          <InactivityLogoutWrapper>
             <NemtProvider>
               {children}
               <DispatchAssistantWidget />
               <Toaster richColors />
             </NemtProvider>
-          </NotificationProvider>
-        </LayoutProvider>
-      </InactivityLogoutWrapper>
+          </InactivityLogoutWrapper>
+        </NotificationProvider>
+      </LayoutProvider>
     </SessionProvider>;
 };
 export default AppProvidersWrapper;

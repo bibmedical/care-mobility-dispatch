@@ -1,22 +1,23 @@
 'use client';
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
 import { RATE_TABLES, getTripBillingAmount, isTripBillable } from '@/helpers/nemt-billing';
 import React, { useMemo, useState } from 'react';
 import { Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
 
-const shellStyles = {
+const buildShellStyles = isLight => ({
   windowHeader: {
-    backgroundColor: '#23324a'
+    backgroundColor: isLight ? '#2b3f60' : '#23324a'
   },
   body: {
-    backgroundColor: '#171b27'
+    backgroundColor: isLight ? '#ffffff' : '#171b27'
   },
   toolbarButton: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f3f7fc' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   primaryPill: {
     backgroundColor: '#2f60c9',
@@ -29,13 +30,13 @@ const shellStyles = {
     color: '#fff'
   },
   inactiveTab: {
-    backgroundColor: '#f6f7fb',
-    borderColor: '#cfd6e4',
+    backgroundColor: isLight ? '#f6f7fb' : '#101521',
+    borderColor: isLight ? '#cfd6e4' : '#2a3144',
     color: '#08131a'
   },
   tableShell: {
-    borderColor: '#2a3144',
-    backgroundColor: '#171b27'
+    borderColor: isLight ? '#d5deea' : '#2a3144',
+    backgroundColor: isLight ? '#ffffff' : '#171b27'
   },
   tableHead: {
     position: 'sticky',
@@ -49,8 +50,13 @@ const shellStyles = {
     color: '#fff',
     borderColor: 'rgba(255,255,255,0.2)',
     fontWeight: 400
-  }
-};
+  },
+  rowBackground: {
+    selected: isLight ? '#e8f2ff' : '#202c42',
+    default: isLight ? '#ffffff' : '#171b27'
+  },
+  rowTextColor: isLight ? '#0f172a' : '#e6ecff'
+});
 
 const TABS = [{
   key: 'bucket-pricing',
@@ -74,6 +80,8 @@ const actionButtonsByTab = {
 };
 
 const RatesWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const shellStyles = useMemo(() => buildShellStyles(themeMode === 'light'), [themeMode]);
   const [activeTab, setActiveTab] = useState('bucket-pricing');
   const [selectedRowIndex, setSelectedRowIndex] = useState(3);
   const { trips } = useNemtContext();
@@ -114,7 +122,7 @@ const RatesWorkspace = () => {
             label: 'Pending Billing',
             value: `$${billingSummary.pendingRevenue.toFixed(2)}`,
             detail: 'Trips ready to bill'
-          }].map(card => <Col md={4} key={card.label}><div className="rounded-3 p-3 h-100" style={{ backgroundColor: '#101521', border: '1px solid #2a3144', color: '#e6ecff' }}><div className="small text-secondary text-uppercase">{card.label}</div><div className="fs-4 fw-semibold mt-2">{card.value}</div><div className="small text-secondary mt-1">{card.detail}</div></div></Col>)}
+          }].map(card => <Col md={4} key={card.label}><div className="rounded-3 p-3 h-100" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#c8d4e6' : '#2a3144'}`, color: themeMode === 'light' ? '#0f172a' : '#e6ecff' }}><div className="small text-secondary text-uppercase">{card.label}</div><div className="fs-4 fw-semibold mt-2">{card.value}</div><div className="small text-secondary mt-1">{card.detail}</div></div></Col>)}
         </Row>
 
         <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -159,7 +167,7 @@ const RatesWorkspace = () => {
               <tbody>
                 {rows.map((row, index) => {
                 const isSelected = index === selectedRowIndex || row.selected;
-                return <tr key={`${row.label}-${index}`} onClick={() => setSelectedRowIndex(index)} style={{ cursor: 'pointer', backgroundColor: isSelected ? '#202c42' : '#171b27', color: '#e6ecff' }}>
+                return <tr key={`${row.label}-${index}`} onClick={() => setSelectedRowIndex(index)} style={{ cursor: 'pointer', backgroundColor: isSelected ? shellStyles.rowBackground.selected : shellStyles.rowBackground.default, color: shellStyles.rowTextColor }}>
                       <td className="text-danger fw-bold">×</td>
                       <td>{row.label}</td>
                       {row.values.map((value, valueIndex) => <td key={`${row.label}-${valueIndex}`}>{value}</td>)}

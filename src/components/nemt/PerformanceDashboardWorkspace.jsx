@@ -1,6 +1,7 @@
 'use client';
 
 import PageTitle from '@/components/PageTitle';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import { getDocumentAlerts, isDriverOnline } from '@/helpers/nemt-admin-model';
 import { formatMinutesAsHours, getTripBillingAmount, getTripServiceMinutes, isTripBillable } from '@/helpers/nemt-billing';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
@@ -18,18 +19,18 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 
 const percentFormatter = value => `${Math.round(value)}%`;
 
-const panelStyles = {
+const buildPanelStyles = isLight => ({
   page: {
-    color: '#e6ecff'
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   panel: {
-    background: 'linear-gradient(180deg, #171b27 0%, #121722 100%)',
-    border: '1px solid #232c40',
-    boxShadow: '0 12px 40px rgba(5, 9, 18, 0.28)'
+    background: isLight ? 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)' : 'linear-gradient(180deg, #171b27 0%, #121722 100%)',
+    border: `1px solid ${isLight ? '#d5deea' : '#232c40'}`,
+    boxShadow: isLight ? '0 12px 30px rgba(15, 23, 42, 0.08)' : '0 12px 40px rgba(5, 9, 18, 0.28)'
   },
   topStat: {
-    background: 'linear-gradient(180deg, rgba(26,31,47,0.96) 0%, rgba(19,24,37,0.96) 100%)',
-    border: '1px solid #232c40',
+    background: isLight ? 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)' : 'linear-gradient(180deg, rgba(26,31,47,0.96) 0%, rgba(19,24,37,0.96) 100%)',
+    border: `1px solid ${isLight ? '#d5deea' : '#232c40'}`,
     borderRadius: 16,
     padding: 18,
     height: '100%'
@@ -50,8 +51,8 @@ const panelStyles = {
   },
   chartTrack: {
     borderRadius: 16,
-    backgroundColor: '#0f1522',
-    border: '1px solid #222b41',
+    backgroundColor: isLight ? '#f8fbff' : '#0f1522',
+    border: `1px solid ${isLight ? '#d5deea' : '#222b41'}`,
     height: 180,
     padding: 8,
     display: 'flex',
@@ -78,20 +79,20 @@ const panelStyles = {
     position: 'absolute',
     inset: 28,
     borderRadius: '50%',
-    backgroundColor: '#171b27',
-    border: '1px solid #232c40',
+    backgroundColor: isLight ? '#ffffff' : '#171b27',
+    border: `1px solid ${isLight ? '#d5deea' : '#232c40'}`,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'column'
   },
   miniMetric: {
-    backgroundColor: '#101521',
-    border: '1px solid #232c40',
+    backgroundColor: isLight ? '#f8fbff' : '#101521',
+    border: `1px solid ${isLight ? '#d5deea' : '#232c40'}`,
     borderRadius: 14,
     padding: 14
   }
-};
+});
 
 const buildStatusMetrics = trips => {
   const counts = {
@@ -115,6 +116,8 @@ const buildStatusMetrics = trips => {
 };
 
 const PerformanceDashboardWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const panelStyles = useMemo(() => buildPanelStyles(themeMode === 'light'), [themeMode]);
   const { data, loading } = useNemtAdminApi();
   const { drivers: dispatchDrivers, trips, routePlans } = useNemtContext();
 
@@ -346,7 +349,7 @@ const PerformanceDashboardWorkspace = () => {
                 <Link href="/drivers" className="small text-decoration-none">Resolve</Link>
               </div>
               <div className="d-flex flex-column gap-3">
-                {analytics.driverAlerts.length > 0 ? analytics.driverAlerts.slice(0, 6).map(item => <div key={item.id} className="d-flex justify-content-between align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: '#101521', border: '1px solid #232c40' }}><div><div className="fw-semibold text-white">{item.name}</div><div className="small text-secondary">{item.alerts[0]?.text}</div></div><Badge bg={item.alerts[0]?.severity === 'danger' ? 'danger' : 'warning'}>{item.alerts.length} alert{item.alerts.length === 1 ? '' : 's'}</Badge></div>) : <div className="text-secondary small">No compliance alerts right now.</div>}
+                {analytics.driverAlerts.length > 0 ? analytics.driverAlerts.slice(0, 6).map(item => <div key={item.id} className="d-flex justify-content-between align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#232c40'}` }}><div><div className="fw-semibold text-white">{item.name}</div><div className="small text-secondary">{item.alerts[0]?.text}</div></div><Badge bg={item.alerts[0]?.severity === 'danger' ? 'danger' : 'warning'}>{item.alerts.length} alert{item.alerts.length === 1 ? '' : 's'}</Badge></div>) : <div className="text-secondary small">No compliance alerts right now.</div>}
               </div>
             </CardBody>
           </Card>
@@ -360,7 +363,7 @@ const PerformanceDashboardWorkspace = () => {
                 <Badge bg="dark" className="border border-secondary-subtle">Operations</Badge>
               </div>
               <div className="d-flex flex-column gap-3">
-                {analytics.activity.map(item => <Link key={item.label} href={item.href} className="text-decoration-none"><div className="d-flex justify-content-between align-items-center gap-3 p-3 rounded-3" style={{ backgroundColor: '#101521', border: '1px solid #232c40' }}><div><div className="fw-semibold text-white">{item.label}</div><div className="small text-secondary">{item.detail}</div></div><IconifyIcon icon="iconoir:nav-arrow-right" className="text-secondary" /></div></Link>)}
+                {analytics.activity.map(item => <Link key={item.label} href={item.href} className="text-decoration-none"><div className="d-flex justify-content-between align-items-center gap-3 p-3 rounded-3" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#232c40'}` }}><div><div className="fw-semibold text-white">{item.label}</div><div className="small text-secondary">{item.detail}</div></div><IconifyIcon icon="iconoir:nav-arrow-right" className="text-secondary" /></div></Link>)}
               </div>
             </CardBody>
           </Card>

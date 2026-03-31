@@ -3,27 +3,28 @@
 import { buildPasswordForUser, getUserManagementRows, normalizePhoneDigits } from '@/helpers/system-users';
 import useSystemUsersApi from '@/hooks/useSystemUsersApi';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 
-const userShellStyles = {
+const buildUserShellStyles = isLight => ({
   windowHeader: {
-    backgroundColor: '#23324a'
+    backgroundColor: isLight ? '#2b3f60' : '#23324a'
   },
   body: {
-    backgroundColor: '#171b27'
+    backgroundColor: isLight ? '#ffffff' : '#171b27'
   },
   button: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f3f7fc' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   search: {
     width: 220,
     paddingLeft: 38,
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f8fbff' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   deleteButton: {
     backgroundColor: '#ff4d4f',
@@ -31,8 +32,8 @@ const userShellStyles = {
     color: '#fff'
   },
   tableShell: {
-    borderColor: '#2a3144',
-    backgroundColor: '#171b27'
+    borderColor: isLight ? '#d5deea' : '#2a3144',
+    backgroundColor: isLight ? '#ffffff' : '#171b27'
   },
   tableHead: {
     position: 'sticky',
@@ -47,25 +48,30 @@ const userShellStyles = {
     borderColor: 'rgba(8,19,26,0.14)'
   },
   pageBadge: {
-    backgroundColor: '#101521',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
+    backgroundColor: isLight ? '#f3f7fc' : '#101521',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
   },
   modalContent: {
-    backgroundColor: '#171b27',
-    color: '#e6ecff',
-    borderColor: '#2a3144'
+    backgroundColor: isLight ? '#ffffff' : '#171b27',
+    color: isLight ? '#0f172a' : '#e6ecff',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144'
   },
   modalHeader: {
-    backgroundColor: '#23324a',
-    borderColor: '#2a3144'
+    backgroundColor: isLight ? '#2b3f60' : '#23324a',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144'
   },
   modalInput: {
-    backgroundColor: '#0c111b',
-    borderColor: '#2a3144',
-    color: '#e6ecff'
-  }
-};
+    backgroundColor: isLight ? '#f8fbff' : '#0c111b',
+    borderColor: isLight ? '#c8d4e6' : '#2a3144',
+    color: isLight ? '#0f172a' : '#e6ecff'
+  },
+  rowBackground: {
+    selected: isLight ? '#e8f2ff' : '#202c42',
+    default: isLight ? '#ffffff' : '#171b27'
+  },
+  rowTextColor: isLight ? '#0f172a' : '#e6ecff'
+});
 
 const formLabelClassName = 'text-uppercase small fw-semibold text-secondary mb-2';
 
@@ -93,6 +99,8 @@ const createBlankUser = () => ({
 });
 
 const UserManagementWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const userShellStyles = useMemo(() => buildUserShellStyles(themeMode === 'light'), [themeMode]);
   const { data, loading, saving, error, refresh, saveData } = useSystemUsersApi();
   const [search, setSearch] = useState('');
   const [syncFilter, setSyncFilter] = useState('all');
@@ -307,7 +315,7 @@ const UserManagementWorkspace = () => {
               <tbody>
                 {loading ? <tr><td colSpan={14} className="text-center py-5 text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading users...</td></tr> : visibleRows.length ? visibleRows.map(row => {
                 const isSelected = selectedRowIds.includes(row.id);
-                return <tr key={row.id} onClick={() => toggleRow(row.id)} onDoubleClick={() => openEditorForRow(row.id)} style={{ cursor: 'pointer', backgroundColor: isSelected ? '#202c42' : '#171b27', color: '#e6ecff' }}>
+                return <tr key={row.id} onClick={() => toggleRow(row.id)} onDoubleClick={() => openEditorForRow(row.id)} style={{ cursor: 'pointer', backgroundColor: isSelected ? userShellStyles.rowBackground.selected : userShellStyles.rowBackground.default, color: userShellStyles.rowTextColor }}>
                       <td onClick={event => event.stopPropagation()} onDoubleClick={event => event.stopPropagation()}><Form.Check checked={isSelected} onChange={() => toggleRow(row.id)} /></td>
                       <td>{row.firstName}</td>
                       <td>{row.middleInitial}</td>
