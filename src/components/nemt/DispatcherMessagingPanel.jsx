@@ -2,7 +2,7 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import useLocalStorage from '@/hooks/useLocalStorage';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Badge, Button, Form } from 'react-bootstrap';
 
 const DAILY_DRIVERS_KEY = '__CARE_MOBILITY_DAILY_DRIVERS__';
@@ -51,6 +51,8 @@ const DispatcherMessagingPanel = ({
   const [draftMessage, setDraftMessage] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
   const [showAddDriver, setShowAddDriver] = useState(false);
+  const photoInputRef = useRef(null);
+  const documentInputRef = useRef(null);
 
   const allDrivers = useMemo(() => [
     ...drivers,
@@ -88,21 +90,54 @@ const DispatcherMessagingPanel = ({
     } : thread));
   };
 
-  const handleSendMessage = text => {
+  const handleSendMessage = (text, options = {}) => {
     const messageText = text.trim();
-    if (!activeDriverId || !messageText) return;
+    const attachments = Array.isArray(options.attachments) ? options.attachments : [];
+    if (!activeDriverId || (!messageText && attachments.length === 0)) return;
     const outgoingMessage = {
       id: `${activeDriverId}-${Date.now()}`,
       direction: 'outgoing',
-      text: messageText,
+      text: messageText || (attachments.length > 0 ? 'Attachment sent.' : ''),
       timestamp: new Date().toISOString(),
-      status: 'sent'
+      status: 'sent',
+      attachments
     };
     setThreads(currentThreads => mergeThreads(currentThreads, allDrivers).map(thread => thread.driverId === activeDriverId ? {
       ...thread,
       messages: [...thread.messages, outgoingMessage]
     } : thread));
     setDraftMessage('');
+  };
+
+  const readFileAsDataUrl = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Unable to read file.'));
+    reader.readAsDataURL(file);
+  });
+
+  const handleAttachmentPick = async (event, kind) => {
+    const file = event?.target?.files?.[0];
+    event.target.value = '';
+    if (!file || !activeDriverId) return;
+    if (file.size > 5 * 1024 * 1024) {
+      handleSendMessage('Attachment blocked: file exceeds 5MB limit.');
+      return;
+    }
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      handleSendMessage('', {
+        attachments: [{
+          id: `${kind}-${Date.now()}`,
+          kind,
+          name: file.name,
+          mimeType: file.type || '',
+          dataUrl
+        }]
+      });
+    } catch {
+      handleSendMessage('Attachment failed: unable to read selected file.');
+    }
   };
 
   const handleHideDriver = driverId => {
@@ -235,17 +270,43 @@ const DispatcherMessagingPanel = ({
             <div className="fw-semibold">{activeDriver?.name ?? 'Select a driver'}</div>
             <div className="small text-muted">{activeDriver ? `${activeDriver.live} | ${activeDriver.vehicle}` : 'Choose a thread to start dispatch messaging.'}</div>
           </div>
-          <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', maxHeight: 260 }}>
+          <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', minHeight: 0 }}>
             {activeThread?.messages?.length ? activeThread.messages.map(message => (
               <div key={message.id} className={`d-flex mb-3 ${message.direction === 'outgoing' ? 'justify-content-end' : 'justify-content-start'}`}>
                 <div className={`rounded-3 px-3 py-2 ${message.direction === 'outgoing' ? 'bg-primary text-white' : 'bg-light border'}`} style={{ maxWidth: '80%' }}>
                   <div>{message.text}</div>
+                  {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
+                    <div className="mt-2 d-flex flex-column gap-2">
+                      {message.attachments.map(attachment => (
+                        <div key={attachment.id} className="small">
+                          {attachment.kind === 'photo' ? (
+                            <a href={attachment.dataUrl} target="_blank" rel="noreferrer" className="d-inline-flex flex-column text-reset text-decoration-none">
+                              <img src={attachment.dataUrl} alt={attachment.name} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
+                              <span className="mt-1">{attachment.name}</span>
+                            </a>
+                          ) : (
+                            <a href={attachment.dataUrl} download={attachment.name} className="text-reset">Document: {attachment.name}</a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   <div className={`small mt-1 ${message.direction === 'outgoing' ? 'text-white-50' : 'text-muted'}`}>{formatTime(message.timestamp)} {message.direction === 'outgoing' ? `| ${message.status}` : ''}</div>
                 </div>
               </div>
             )) : <div className="text-center text-muted py-5">No messages yet for this driver.</div>}
           </div>
           <div className="p-3 border-top bg-light">
+            <div className="d-flex gap-2 mb-2">
+              <Button variant="outline-secondary" size="sm" disabled={!activeDriver} onClick={() => photoInputRef.current?.click()}>Foto</Button>
+              <Button variant="outline-secondary" size="sm" disabled={!activeDriver} onClick={() => documentInputRef.current?.click()}>Documento</Button>
+              <input ref={photoInputRef} type="file" accept="image/*" className="d-none" onChange={event => {
+                void handleAttachmentPick(event, 'photo');
+              }} />
+              <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" className="d-none" onChange={event => {
+                void handleAttachmentPick(event, 'document');
+              }} />
+            </div>
             <div className="d-flex gap-2">
               <Form.Control value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder={activeDriver ? `Message ${activeDriver.name}` : 'Select a driver first'} disabled={!activeDriver} onKeyDown={event => {
                 if (event.key === 'Enter') {
