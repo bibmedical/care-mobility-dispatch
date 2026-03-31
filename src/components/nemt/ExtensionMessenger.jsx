@@ -4,14 +4,14 @@ import React, { useState } from 'react';
 import { Button, Modal, Form, Spinner, Alert } from 'react-bootstrap';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 
-export default function ExtensionMessenger({ driver, onClose, isOpen = true }) {
-  const [selectedMethod, setSelectedMethod] = useState(null);
+export default function ExtensionMessenger({ driver, onClose, initialMethod = null, isOpen = true }) {
+  const [selectedMethod, setSelectedMethod] = useState(initialMethod);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
   const METHODS = [
-    { key: 'whatsapp', label: 'WhatsApp', icon: 'mdi:whatsapp', color: '#25D366', value: driver?.whatsappNumber },
+    { key: 'whatsapp', label: 'WhatsApp', icon: 'mdi:whatsapp', color: '#25D366', value: driver?.whatsappNumber || driver?.phone },
     { key: 'telegram', label: 'Telegram', icon: 'mdi:telegram', color: '#0088cc', value: driver?.telegramHandle },
     { key: 'viber', label: 'Viber', icon: 'mdi:viber', color: '#7B519C', value: driver?.viberNumber },
     { key: 'signal', label: 'Signal', icon: 'mdi:shield', color: '#3A96D6', value: driver?.signalNumber },

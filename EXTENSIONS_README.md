@@ -2,6 +2,16 @@
 
 Este módulo permite enviar mensajes a los choferes a través de múltiples canales de comunicación directamente desde Care Mobility.
 
+## 🚀 Auto-Liga con Números Existentes
+
+**¡Buena noticia!** El sistema automáticamente usa los números de teléfono que ya tienes guardados:
+
+- **WhatsApp**: Usa `whatsappNumber` si está guardado, sino usa `phone`
+- **SMS**: Usa `phone` directamente
+- **Telegram/Viber/Signal**: Usa los campos específicos si están configurados
+
+Esto significa que **ya puedes enviar WhatsApp a todos tus choferes sin hacer nada** - el sistema detecta automáticamente el número. ✅
+
 ## Canales Soportados
 
 ### 1. **WhatsApp** 🟢
