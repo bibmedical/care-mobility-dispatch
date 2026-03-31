@@ -60,7 +60,7 @@ const splitRiderName = value => {
 
 const yellowMapTabStyle = {
   position: 'absolute',
-  top: 18,
+  top: 28,
   right: -14,
   zIndex: 720,
   minWidth: 118,
