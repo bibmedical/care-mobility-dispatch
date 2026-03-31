@@ -1629,7 +1629,14 @@ const TripDashboardWorkspace = () => {
         display: showBottomPanels ? 'block' : 'none'
       }} />
 
-        <div style={{ minWidth: 0, minHeight: 0, display: showBottomPanels ? 'block' : 'none' }}>
+        <div style={{
+          display: showBottomPanels ? 'grid' : 'none',
+          minWidth: 0, minHeight: 0,
+          gridColumn: '1 / span 3',
+          gridRow: 3,
+          gridTemplateColumns: showMapPane ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : '1fr 1fr',
+        }}>
+        <div style={{ minWidth: 0, minHeight: 0, gridColumn: 1 }}>
           <Card className="h-100 overflow-hidden">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
@@ -1704,8 +1711,8 @@ const TripDashboardWorkspace = () => {
             </CardBody>
           </Card>
         </div>
-
-        <div style={{ minWidth: 0, minHeight: 0, display: showBottomPanels ? 'block' : 'none' }}>
+        {showMapPane ? <div style={{ gridColumn: 2, backgroundColor: '#2d3448', borderRadius: 999 }} /> : null}
+        <div style={{ minWidth: 0, minHeight: 0, gridColumn: showMapPane ? 3 : 2 }}>
           <Card className="h-100 overflow-hidden">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
@@ -1755,6 +1762,7 @@ const TripDashboardWorkspace = () => {
               </div>
             </CardBody>
           </Card>
+        </div>
         </div>
 
         <Modal show={Boolean(noteModalTrip)} onHide={handleCloseTripNote} centered>
