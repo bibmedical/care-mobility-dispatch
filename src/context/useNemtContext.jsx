@@ -222,10 +222,13 @@ export const NemtProvider = ({
     });
   };
 
-  const setSelectedTripIds = tripIds => updateState(currentState => ({
-    ...currentState,
-    selectedTripIds: tripIds
-  }));
+  const setSelectedTripIds = tripIdsOrUpdater => updateState(currentState => {
+    const nextTripIds = typeof tripIdsOrUpdater === 'function' ? tripIdsOrUpdater(Array.isArray(currentState.selectedTripIds) ? currentState.selectedTripIds : []) : tripIdsOrUpdater;
+    return {
+      ...currentState,
+      selectedTripIds: Array.isArray(nextTripIds) ? nextTripIds.filter(Boolean) : []
+    };
+  });
 
   const setSelectedDriverId = driverId => updateState(currentState => ({
     ...currentState,
