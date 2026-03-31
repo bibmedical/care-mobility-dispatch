@@ -868,21 +868,21 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0">
               {showInlineMap ? <div className="position-relative h-100">
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
-                  <Button variant="dark" size="sm" onClick={() => setShowRoute(current => !current)}>Route</Button>
-                  <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
-                  <Button variant="dark" size="sm" onClick={() => setShowInfo(current => !current)}>{showInfo ? 'Hide Info' : 'Show Info'}</Button>
-                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                  <Button variant="dark" size="sm" onClick={() => setShowRoute(current => !current)} disabled={mapLocked}>Route</Button>
+                  <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapLocked}>Clear</Button>
+                  <Button variant="dark" size="sm" onClick={() => setShowInfo(current => !current)} disabled={mapLocked}>{showInfo ? 'Hide Info' : 'Show Info'}</Button>
+                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapLocked} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
-                  <Button variant="dark" size="sm" onClick={() => router.push('/drivers/grouping')}>Grouping</Button>
+                  <Button variant="dark" size="sm" onClick={() => router.push('/drivers/grouping')} disabled={mapLocked}>Grouping</Button>
                   <Button variant="dark" size="sm" onClick={() => {
                   setShowBottomPanels(current => !current);
                   setStatusMessage(showBottomPanels ? 'Paneles inferiores ocultos.' : 'Paneles inferiores visibles.');
-                }}>{showBottomPanels ? 'Hide SMS' : 'SMS'}</Button>
-                  <Button variant="dark" size="sm" onClick={() => setMapLocked(current => !current)}>{mapLocked ? 'Unlock' : 'Lock'}</Button>
-                  <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button>
+                }} disabled={mapLocked}>{showBottomPanels ? 'Hide SMS' : 'SMS'}</Button>
+                  <Button variant={mapLocked ? 'danger' : 'dark'} size="sm" onClick={() => setMapLocked(current => !current)} style={{ fontWeight: 'bold' }}>{mapLocked ? '🔒 LOCKED' : 'Unlock'}</Button>
+                  <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
                 {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
                     <div className="small text-uppercase text-secondary">Driver ETA</div>
@@ -947,8 +947,8 @@ const DispatcherWorkspace = () => {
                     <option value="unassigned">Unassigned</option>
                     <option value="cancelled">Cancelled</option>
                   </Form.Select>
-                  <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search Trip ID" style={{ width: 150 }} />
-                  <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ width: 220 }}>
+                  <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search Trip ID" disabled={mapLocked} style={{ width: 150 }} />
+                  <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
                     <option value="">Select driver</option>
                     {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
@@ -956,10 +956,10 @@ const DispatcherWorkspace = () => {
                   {selectedDriver ? <Badge bg="warning" text="dark">{selectedDriverOpenTripCount} open</Badge> : null}
                   <span className="small">{selectedTripIds.length} sel.</span>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
-                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-                        <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
-                        <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked}>I</Button> : <>
+                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)} disabled={mapLocked}>A</Button>
+                        <Button variant="secondary" size="sm" onClick={handleUnassign} disabled={mapLocked}>U</Button>
+                        <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} disabled={mapLocked}>C</Button>
                       </>}
                   </div>
                 </div>
@@ -967,27 +967,27 @@ const DispatcherWorkspace = () => {
                   <Badge bg="primary">{trips.length} trips</Badge>
                   <Badge bg="info">{drivers.length} drivers</Badge>
                   <Badge bg="secondary">{liveDrivers} live</Badge>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)}>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)} disabled={mapLocked}>
                     Columns
                   </Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)} disabled={mapLocked}>
                     {showInlineMap ? 'Map Screen' : 'Show Map Here'}
                   </Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle} disabled={mapLocked}>
                     {tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}
                   </Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/forms-safe-ride-import')}>Import Excel</Button>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => router.push('/forms-safe-ride-import')} disabled={mapLocked}>Import Excel</Button>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">Leg</span>
-                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
-                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Viajes de regreso a casa">BL</Button>
-                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Tercer viaje o connector leg">CL</Button>
+                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} disabled={mapLocked} title="Primer viaje a la cita">AL</Button>
+                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} disabled={mapLocked} title="Viajes de regreso a casa">BL</Button>
+                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} disabled={mapLocked} title="Tercer viaje o connector leg">CL</Button>
                   </div>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <span className="fw-semibold small">Type</span>
-                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
-                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
-                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
+                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} disabled={mapLocked} title="Ambulatory">A</Button>
+                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} disabled={mapLocked} title="Wheelchair">W</Button>
+                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} disabled={mapLocked} title="Stretcher">STR</Button>
                   </div>
                   <Button
                     variant="outline-dark"
@@ -1006,14 +1006,20 @@ const DispatcherWorkspace = () => {
                         <div className="fw-semibold mb-2">Escoge que quieres ver</div>
                         <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
                         <div className="d-flex flex-column gap-2">
-                          {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dispatcher-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+                          {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dispatcher-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
                         </div>
                       </CardBody>
                     </Card> : null}
                 </div>
               </div>
-              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%' }}>
-                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
+              <div className="table-responsive flex-grow-1" style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%', position: 'relative' }}>
+                {mapLocked && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 45, borderRadius: '4px', backdropFilter: 'blur(1px)' }}>
+                  <div style={{ backgroundColor: 'rgba(15,23,42,0.95)', color: '#fff', padding: '16px 32px', borderRadius: '8px', textAlign: 'center', border: '2px solid #ef4444', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
+                    <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>🔒 PANEL LOCKED</div>
+                    <div style={{ fontSize: '12px', color: '#d1d5db' }}>Click "Unlock" to make changes</div>
+                  </div>
+                </div>}
+                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', opacity: mapLocked ? 0.6 : 1 }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 48 }}>
@@ -1021,6 +1027,7 @@ const DispatcherWorkspace = () => {
                           type="checkbox"
                           checked={allVisibleSelected}
                           onChange={event => handleSelectAll(event.target.checked)}
+                          disabled={mapLocked}
                           style={{
                             width: 16,
                             height: 16,
@@ -1028,7 +1035,8 @@ const DispatcherWorkspace = () => {
                             border: '1px solid #6b7280',
                             backgroundColor: '#6b7280',
                             accentColor: '#8b5cf6',
-                            cursor: 'pointer'
+                            cursor: mapLocked ? 'not-allowed' : 'pointer',
+                            opacity: mapLocked ? 0.5 : 1
                           }}
                         />
                       </th>
@@ -1059,6 +1067,7 @@ const DispatcherWorkspace = () => {
                             type="checkbox"
                             checked={selectedTripIds.includes(row.trip.id)}
                             onChange={() => handleTripSelectionToggle(row.trip.id)}
+                            disabled={mapLocked}
                             style={{
                               width: 16,
                               height: 16,
@@ -1066,13 +1075,14 @@ const DispatcherWorkspace = () => {
                               border: '1px solid #6b7280',
                               backgroundColor: '#6b7280',
                               accentColor: '#8b5cf6',
-                              cursor: 'pointer'
+                              cursor: mapLocked ? 'not-allowed' : 'pointer',
+                              opacity: mapLocked ? 0.5 : 1
                             }}
                           />
                         </td>
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
-                            <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" onClick={() => {
+                            <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => {
                           setSelectedTripIds([row.trip.id]);
                           setSelectedDriverId(row.trip.driverId ?? selectedDriverId);
                           setSelectedRouteId(row.trip.routeId);
@@ -1084,7 +1094,7 @@ const DispatcherWorkspace = () => {
                           </div>
                         </td>
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-                          <Button variant="outline-secondary" size="sm" onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent' }}>
+                          <Button variant="outline-secondary" size="sm" disabled={mapLocked} onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent', opacity: mapLocked ? 0.5 : 1 }}>
                             N
                           </Button>
                         </td>
@@ -1158,20 +1168,20 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0">
               <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
                 <div className="d-flex gap-2 flex-wrap align-items-center">
-                  <Form.Select size="sm" value={selectedRouteId ?? ''} onChange={event => setSelectedRouteId(event.target.value)} style={{ width: 180 }}>
+                  <Form.Select size="sm" value={selectedRouteId ?? ''} onChange={event => setSelectedRouteId(event.target.value)} disabled={mapLocked} style={{ width: 180 }}>
                     <option value="">Current selection</option>
                     {routePlans.map(routePlan => <option key={routePlan.id} value={routePlan.id}>{routePlan.name}</option>)}
                   </Form.Select>
-                  <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} style={{ width: 220 }}>
+                  <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
                     <option value="">Reassign to active driver</option>
                     {activeDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips}>Reassign</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleSendConfirmationSms}>Confirm SMS</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
                 </div>
-                <Form.Control size="sm" value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Search" style={{ width: 180 }} />
+                <Form.Control size="sm" value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Search" disabled={mapLocked} style={{ width: 180 }} />
               </div>
               <div className="table-responsive" style={{ minHeight: 360, maxHeight: 360 }}>
                 <Table className="align-middle mb-0">
@@ -1190,7 +1200,7 @@ const DispatcherWorkspace = () => {
                     {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIds.includes(trip.id) ? 'table-success' : ''}>
                         <td>
                           <div className="d-flex align-items-center gap-1">
-                            <Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => handleTripSelectionToggle(trip.id)} />
+                            <Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => handleTripSelectionToggle(trip.id)} disabled={mapLocked} />
                             <Badge bg={trip.status === 'Assigned' ? 'primary' : 'secondary'}>{trip.status === 'Assigned' ? 'A' : 'U'}</Badge>
                           </div>
                         </td>
