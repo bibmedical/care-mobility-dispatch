@@ -3,6 +3,7 @@
 import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
+import { getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
@@ -75,8 +76,8 @@ const ConfirmationWorkspace = () => {
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().slice(0, 10);
   });
-  const [timeFromFilter, setTimeFromFilter] = useState('02:00');
-  const [timeToFilter, setTimeToFilter] = useState('08:00');
+  const [timeFromFilter, setTimeFromFilter] = useState('');
+  const [timeToFilter, setTimeToFilter] = useState('');
   const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
@@ -125,6 +126,8 @@ const ConfirmationWorkspace = () => {
   const filteredTrips = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const today = new Date().toISOString().slice(0, 10);
+    const fromMinutes = timeFromFilter ? parseTripClockMinutes(timeFromFilter) : null;
+    const toMinutes = timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
     
     return trips.filter(trip => {
       // Check if trip is in hospital/rehab (should be excluded from normal confirmation)
@@ -140,18 +143,16 @@ const ConfirmationWorkspace = () => {
       // if (isInHospitalRehab) return false;
       
       // Filter by date
-      const tripDate = trip.serviceDate || trip.dateOfService || trip.pickupDate || trip.appointmentDate || trip.tripDate;
-      if (tripDate && confirmationDate !== 'all') {
-        const tripDateStr = new Date(tripDate).toISOString().slice(0, 10);
-        if (tripDateStr !== confirmationDate) return false;
+      const tripDateKey = getTripServiceDateKey(trip);
+      if (confirmationDate !== 'all' && tripDateKey && tripDateKey !== confirmationDate) {
+        return false;
       }
       
       // Filter by time range
       const tripTime = trip.scheduledPickup || trip.pickupTime || trip.appointmentTime || trip.startTime || '';
-      if (tripTime && timeFromFilter && timeToFilter) {
-        const [hours, minutes] = tripTime.match(/\d+/g) || ['00', '00'];
-        const tripTimeStr = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
-        if (tripTimeStr < timeFromFilter || tripTimeStr > timeToFilter) return false;
+      const tripTimeMinutes = parseTripClockMinutes(tripTime);
+      if (tripTimeMinutes != null && fromMinutes != null && toMinutes != null) {
+        if (tripTimeMinutes < fromMinutes || tripTimeMinutes > toMinutes) return false;
       }
       
       if (!normalizedSearch) return true;
@@ -544,6 +545,12 @@ const ConfirmationWorkspace = () => {
               <Form.Control type="date" value={confirmationDate} onChange={event => setConfirmationDate(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Confirmation date" />
               <Form.Control type="time" value={timeFromFilter} onChange={event => setTimeFromFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="Start time" />
               <Form.Control type="time" value={timeToFilter} onChange={event => setTimeToFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 120 }} title="End time" />
+              <Button style={surfaceStyles.button} onClick={() => {
+                setTimeFromFilter('');
+                setTimeToFilter('');
+              }} title="Show all hours">
+                All Day
+              </Button>
               <Form.Select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 220 }}>
                 <option value="all">All statuses</option>
                 <option value="Not Sent">Not Sent</option>
