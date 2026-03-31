@@ -1363,11 +1363,6 @@ const TripDashboardWorkspace = () => {
           <div className="d-flex gap-2">
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
             refreshDrivers();
-            router.push('/drivers/grouping');
-            setStatusMessage('Abriendo billing grouping del roster real.');
-          }}>Open Grouping</Button>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-            refreshDrivers();
             router.push('/drivers');
             setStatusMessage('Abriendo Drivers para administrar el roster real.');
           }}>Manage Drivers</Button>
@@ -1426,15 +1421,9 @@ const TripDashboardWorkspace = () => {
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
           <div className="d-flex align-items-center gap-2 flex-wrap">
-            <Form.Select size="sm" value={selectedRouteId ?? ''} onChange={event => setSelectedRouteId(event.target.value)} style={{ width: 220 }}>
-              <option value="">Current selection</option>
-              {filteredRoutePlans.map(routePlan => <option key={routePlan.id} value={routePlan.id}>{routePlan.name}{getRouteServiceDateKey(routePlan, trips) ? ` • ${formatTripDateLabel(getRouteServiceDateKey(routePlan, trips))}` : ''}</option>)}
-            </Form.Select>
-            <Badge bg="light" text="dark">{filteredRoutePlans.length} route(s)</Badge>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
           </div>
-          <Form.Control size="sm" value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Search" style={{ width: 180 }} />
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
           <Table className="align-middle mb-0">
