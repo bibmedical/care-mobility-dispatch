@@ -1632,11 +1632,7 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0">
               <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
                 <div className="d-flex gap-2 flex-wrap align-items-center">
-                  <Form.Select size="sm" value={selectedRouteId ?? ''} onChange={event => setSelectedRouteId(event.target.value)} disabled={mapLocked} style={{ width: 180 }}>
-                    <option value="">Current selection</option>
-                    {routePlans.map(routePlan => <option key={routePlan.id} value={routePlan.id}>{routePlan.name}</option>)}
-                  </Form.Select>
-                  <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
+                    <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
                     <option value="">Reassign to active driver</option>
                     {activeDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
@@ -1645,7 +1641,6 @@ const DispatcherWorkspace = () => {
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
                   <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
                 </div>
-                <Form.Control size="sm" value={routeSearch} onChange={event => setRouteSearch(event.target.value)} placeholder="Search" disabled={mapLocked} style={{ width: 180 }} />
               </div>
               <div className="table-responsive" style={{ minHeight: 360, maxHeight: 360 }}>
                 <Table className="align-middle mb-0">
