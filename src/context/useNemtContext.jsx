@@ -235,6 +235,18 @@ export const NemtProvider = ({
     };
   }, { markDispatchDirty: true });
 
+  const assignTripsToSecondaryDriver = (driverId, tripIds = []) => updateState(currentState => {
+    const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    return {
+      ...currentState,
+      trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
+        ...trip,
+        secondaryDriverId: driverId,
+        status: trip.driverId || driverId ? 'Assigned' : trip.status
+      } : trip)
+    };
+  }, { markDispatchDirty: true });
+
   const unassignTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
     const updatedRoutePlans = currentState.routePlans.map(routePlan => ({
@@ -247,6 +259,7 @@ export const NemtProvider = ({
       trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
         ...trip,
         driverId: null,
+        secondaryDriverId: null,
         routeId: null,
         status: 'Unassigned'
       } : trip)
@@ -266,6 +279,7 @@ export const NemtProvider = ({
       trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
         ...trip,
         driverId: null,
+        secondaryDriverId: null,
         routeId: null,
         status: 'Cancelled'
       } : trip)
@@ -280,6 +294,7 @@ export const NemtProvider = ({
       trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
         ...trip,
         driverId: null,
+        secondaryDriverId: null,
         routeId: null,
         status: 'Unassigned'
       } : trip)
@@ -332,6 +347,7 @@ export const NemtProvider = ({
     trips: currentState.trips.map(trip => trip.routeId === routeId ? {
       ...trip,
       driverId: null,
+      secondaryDriverId: null,
       routeId: null,
       status: 'Unassigned'
     } : trip)
@@ -446,6 +462,7 @@ export const NemtProvider = ({
     setSelectedRouteId,
     toggleTripSelection,
     assignTripsToDriver,
+    assignTripsToSecondaryDriver,
     unassignTrips,
     cancelTrips,
     reinstateTrips,

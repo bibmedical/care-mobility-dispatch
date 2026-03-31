@@ -302,6 +302,7 @@ const DispatcherWorkspace = () => {
     uiPreferences,
     toggleTripSelection,
     assignTripsToDriver,
+    assignTripsToSecondaryDriver,
     unassignTrips,
     cancelTrips,
     reinstateTrips,
@@ -318,6 +319,7 @@ const DispatcherWorkspace = () => {
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
   const [tripDateFilter, setTripDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
   const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
   const [pickupZipFilter, setPickupZipFilter] = useState('');
@@ -384,6 +386,17 @@ const DispatcherWorkspace = () => {
   const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const hasSelectedTrips = selectedTripIds.length > 0;
+  const isTripAssignedToSelectedDriver = trip => Boolean(selectedDriverId && (trip?.driverId === selectedDriverId || trip?.secondaryDriverId === selectedDriverId));
+  const getTripDriverDisplay = trip => {
+    const primaryDriverName = getDriverName(trip?.driverId);
+    const hasPrimary = Boolean(trip?.driverId);
+    const hasSecondary = Boolean(trip?.secondaryDriverId);
+    if (!hasPrimary && !hasSecondary) return primaryDriverName;
+    if (!hasSecondary) return primaryDriverName;
+    const secondaryDriverName = getDriverName(trip.secondaryDriverId);
+    if (!hasPrimary) return secondaryDriverName;
+    return `${primaryDriverName} + ${secondaryDriverName}`;
+  };
 
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
     const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase();
@@ -392,7 +405,7 @@ const DispatcherWorkspace = () => {
     const tripDate = getTripServiceDateKey(trip);
     if (tripDate && tripDate !== tripDateFilter) return false;
     if (!selectedDriverId) return true;
-    return !trip.driverId || trip.driverId === selectedDriverId;
+    return !trip.driverId || trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
     return getTripLegFilterKey(trip) === tripLegFilter;
@@ -483,7 +496,7 @@ const DispatcherWorkspace = () => {
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const filteredDrivers = drivers;
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
-  const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
+  const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
       const leftAssignedToSelectedDriver = selectedDriverId && leftTrip.driverId === selectedDriverId ? 1 : 0;
@@ -708,6 +721,22 @@ const DispatcherWorkspace = () => {
 
     assignTripsToDriver(driverId);
     setStatusMessage(`${selectedTripIds.length} trip(s) asignados a ${driver.name}.`);
+  };
+
+  const handleAssignSecondary = driverId => {
+    if (!driverId || selectedTripIds.length === 0) {
+      setStatusMessage('Escoge segundo chofer y al menos un trip.');
+      return;
+    }
+
+    const driver = drivers.find(item => item.id === driverId);
+    if (!driver) {
+      setStatusMessage('El segundo chofer ya no esta disponible.');
+      return;
+    }
+
+    assignTripsToSecondaryDriver(driverId);
+    setStatusMessage(`${selectedTripIds.length} trip(s) actualizados con segundo chofer: ${driver.name}.`);
   };
 
   const handleAssignTrip = tripId => {
@@ -1335,6 +1364,10 @@ const DispatcherWorkspace = () => {
                     <option value="">Select driver</option>
                     {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
+                  <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
+                    <option value="">Second driver</option>
+                    {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+                  </Form.Select>
                   {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
                   <Badge bg={selectedTripIds.length > 0 ? 'dark' : 'light'} text={selectedTripIds.length > 0 ? 'light' : 'dark'}>{selectedTripIds.length} selected trips</Badge>
                 </div>
@@ -1356,6 +1389,7 @@ const DispatcherWorkspace = () => {
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked}>I</Button> : <>
                       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)} disabled={mapLocked}>A</Button>
+                      <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} disabled={mapLocked} title="Assign second driver">A2</Button>
                       <Button variant="secondary" size="sm" onClick={handleUnassign} disabled={mapLocked}>U</Button>
                       <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} disabled={mapLocked}>C</Button>
                     </>}
@@ -1476,7 +1510,7 @@ const DispatcherWorkspace = () => {
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} className="table-light">
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
-                      </tr> : <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : row.trip.driverId && row.trip.driverId === selectedDriverId ? 'table-success' : ''}>
+                      </tr> : <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
                         <td>
                           <input
                             type="checkbox"
@@ -1522,8 +1556,8 @@ const DispatcherWorkspace = () => {
                           <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
                             {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1">{getLegBadge(row.trip).label}</Badge> : null}
                           </td> : null}
-                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={row.trip.driverId && row.trip.driverId === selectedDriverId ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{row.trip.driverId && row.trip.driverId === selectedDriverId ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
-                        {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}>{getDriverName(row.trip.driverId)}</td> : null}
+                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
+                        {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripDriverDisplay(row.trip)}</td> : null}
                         {visibleTripColumns.includes('pickup') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.pickup}</td> : null}
                         {visibleTripColumns.includes('dropoff') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.dropoff}</td> : null}
                         {visibleTripColumns.includes('miles') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.miles || '-'}</td> : null}
