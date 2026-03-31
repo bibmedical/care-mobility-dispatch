@@ -152,7 +152,8 @@ export const NemtProvider = ({
   };
 
   useEffect(() => {
-    if (!state || state.version !== STORAGE_VERSION) {
+    const needsNormalization = !state || state.version !== STORAGE_VERSION || !Array.isArray(state?.trips) || !Array.isArray(state?.routePlans) || !Array.isArray(state?.selectedTripIds) || typeof state?.uiPreferences !== 'object' || state?.uiPreferences == null;
+    if (needsNormalization) {
       startTransition(() => {
         setState(buildClientState(state));
       });
