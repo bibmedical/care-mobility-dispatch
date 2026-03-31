@@ -31,6 +31,18 @@ const greenToolbarButtonStyle = {
   backgroundColor: 'transparent'
 };
 
+const addressClampStyle = {
+  maxWidth: 260,
+  minWidth: 220,
+  whiteSpace: 'normal',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  lineHeight: 1.2
+};
+
 const DispatcherMapResizer = ({ resizeKey }) => {
   const map = useMap();
 
@@ -1314,9 +1326,9 @@ const DispatcherWorkspace = () => {
                       {visibleTripColumns.includes('dropoff') ? renderTripHeader('dropoff', 'DO') : null}
                       {visibleTripColumns.includes('miles') ? renderTripHeader('miles', 'Miles') : null}
                       {visibleTripColumns.includes('rider') ? renderTripHeader('rider', 'Rider') : null}
-                      {visibleTripColumns.includes('address') ? renderTripHeader('address', 'PU Address') : null}
+                      {visibleTripColumns.includes('address') ? renderTripHeader('address', 'PU Address', 260) : null}
                       {visibleTripColumns.includes('puZip') ? renderTripHeader('puZip', 'PU ZIP') : null}
-                      {visibleTripColumns.includes('destination') ? renderTripHeader('destination', 'DO Address') : null}
+                      {visibleTripColumns.includes('destination') ? renderTripHeader('destination', 'DO Address', 260) : null}
                       {visibleTripColumns.includes('doZip') ? renderTripHeader('doZip', 'DO ZIP') : null}
                       {visibleTripColumns.includes('phone') ? renderTripHeader('phone', 'Phone') : null}
                       {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
@@ -1380,9 +1392,9 @@ const DispatcherWorkspace = () => {
                         {visibleTripColumns.includes('dropoff') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.dropoff}</td> : null}
                         {visibleTripColumns.includes('miles') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.miles || '-'}</td> : null}
                         {visibleTripColumns.includes('rider') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.rider}</td> : null}
-                        {visibleTripColumns.includes('address') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.address}</td> : null}
+                        {visibleTripColumns.includes('address') ? <td><div style={addressClampStyle}>{row.trip.address}</div></td> : null}
                         {visibleTripColumns.includes('puZip') ? <td style={{ whiteSpace: 'nowrap' }}>{getPickupZip(row.trip) || '-'}</td> : null}
-                        {visibleTripColumns.includes('destination') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.destination || '-'}</td> : null}
+                        {visibleTripColumns.includes('destination') ? <td><div style={addressClampStyle}>{row.trip.destination || '-'}</div></td> : null}
                         {visibleTripColumns.includes('doZip') ? <td style={{ whiteSpace: 'nowrap' }}>{getDropoffZip(row.trip) || '-'}</td> : null}
                         {visibleTripColumns.includes('phone') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.patientPhoneNumber || '-'}</td> : null}
                         {visibleTripColumns.includes('vehicle') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.vehicleType || '-'}</td> : null}
