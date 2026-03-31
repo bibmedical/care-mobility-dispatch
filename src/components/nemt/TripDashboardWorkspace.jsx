@@ -1353,11 +1353,6 @@ const TripDashboardWorkspace = () => {
         <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <strong>VDRS: {drivers.length}</strong>
-            <Form.Select size="sm" value={driverGrouping} onChange={event => setDriverGrouping(event.target.value)} style={{ width: 150 }}>
-              <option>VDR Grouping</option>
-              <option>By Live Status</option>
-              <option>By Vehicle</option>
-            </Form.Select>
             <span>{liveDrivers} live</span>
           </div>
           <div className="d-flex gap-2">
