@@ -260,7 +260,7 @@ const ConfirmationWorkspace = () => {
       return;
     }
     const exists = patientHistoryRows.some(row => row.key === selectedPatientKey);
-    if (!exists) setSelectedPatientKey(patientHistoryRows[0].key);
+    if (!exists && selectedPatientKey) setSelectedPatientKey('');
   }, [patientHistoryRows, selectedPatientKey]);
 
   const selectedPatientHistory = useMemo(() => {
@@ -987,8 +987,12 @@ const ConfirmationWorkspace = () => {
           {patientHistoryRows.length > 0 ? <>
               <div className="d-flex flex-column flex-xl-row gap-2 mb-3">
                 <Form.Select value={selectedPatientKey} onChange={event => setSelectedPatientKey(event.target.value)} style={{ ...surfaceStyles.input, maxWidth: 520 }}>
+                  <option value="">Select patient manually</option>
                   {patientHistoryRows.map(row => <option key={row.key} value={row.key}>{row.rider || 'Unknown'} {row.phone ? `• ${row.phone}` : ''} • {row.totalTrips} trip(s)</option>)}
                 </Form.Select>
+                <Button style={surfaceStyles.button} onClick={() => setSelectedPatientKey('')}>
+                  No Patient Selected
+                </Button>
               </div>
 
               {selectedPatientHistory ? <>
@@ -1038,7 +1042,7 @@ const ConfirmationWorkspace = () => {
                             <td>{item.completion}</td>
                             <td>{item.confirmationStatus}</td>
                             <td>{item.responseCode || '-'}</td>
-                            <td>{item.rehabHospital}</td>
+                            <td style={{ color: themeMode === 'light' ? '#0f172a' : '#e6ecff' }}>{item.rehabHospital}</td>
                             <td style={{ maxWidth: 360, whiteSpace: 'normal' }}>{item.note}</td>
                           </tr>)}
                       </tbody>
@@ -1165,7 +1169,7 @@ const ConfirmationWorkspace = () => {
                       <td>
                         {trip.hospitalStatus ? (
                           <div>
-                            <Badge bg={isHospitalRehabActive(trip) ? 'warning' : 'secondary'}>
+                            <Badge bg={isHospitalRehabActive(trip) ? 'warning' : 'secondary'} style={{ color: isHospitalRehabActive(trip) ? '#111827' : '#ffffff' }}>
                               {trip.hospitalStatus.type}: {trip.hospitalStatus.endDate}
                             </Badge>
                             {isHospitalRehabActive(trip) ? (
