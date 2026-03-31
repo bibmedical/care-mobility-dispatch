@@ -10,6 +10,7 @@ import { Toaster } from 'sonner';
 import { NotificationProvider } from '@/context/useNotificationContext';
 import { NemtProvider } from '@/context/useNemtContext';
 import DispatchAssistantWidget from '@/components/nemt/DispatchAssistantWidget';
+import InactivityLogoutWrapper from '@/components/wrappers/InactivityLogoutWrapper';
 const LayoutProvider = dynamic(() => import('@/context/useLayoutContext').then(mod => mod.LayoutProvider), {
   ssr: false
 });
@@ -28,15 +29,17 @@ const AppProvidersWrapper = ({
     }
   }, []);
   return <SessionProvider>
-      <LayoutProvider>
-        <NotificationProvider>
-          <NemtProvider>
-            {children}
-            <DispatchAssistantWidget />
-            <Toaster richColors />
-          </NemtProvider>
-        </NotificationProvider>
-      </LayoutProvider>
+      <InactivityLogoutWrapper>
+        <LayoutProvider>
+          <NotificationProvider>
+            <NemtProvider>
+              {children}
+              <DispatchAssistantWidget />
+              <Toaster richColors />
+            </NemtProvider>
+          </NotificationProvider>
+        </LayoutProvider>
+      </InactivityLogoutWrapper>
     </SessionProvider>;
 };
 export default AppProvidersWrapper;

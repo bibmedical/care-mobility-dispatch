@@ -393,6 +393,7 @@ export const enrichSystemUser = (user, protectedUserIds = DEFAULT_PROTECTED_SYST
   password: String(user.password || buildPasswordForUser(user)),
   webAccess: typeof user.webAccess === 'boolean' ? user.webAccess : true,
   androidAccess: typeof user.androidAccess === 'boolean' ? user.androidAccess : true,
+  inactivityTimeoutMinutes: typeof user.inactivityTimeoutMinutes === 'number' && user.inactivityTimeoutMinutes > 0 ? user.inactivityTimeoutMinutes : 15,
   isProtected: isProtectedSystemUser(user, protectedUserIds)
 });
 

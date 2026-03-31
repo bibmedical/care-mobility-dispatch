@@ -22,6 +22,7 @@ const normalizeUserRecord = user => ({
   password: String(user?.password || buildPasswordForUser(user)),
   webAccess: typeof user?.webAccess === 'boolean' ? user.webAccess : true,
   androidAccess: typeof user?.androidAccess === 'boolean' ? user.androidAccess : true,
+  inactivityTimeoutMinutes: typeof user?.inactivityTimeoutMinutes === 'number' && user.inactivityTimeoutMinutes > 0 ? user.inactivityTimeoutMinutes : 15,
   lastEventTime: String(user?.lastEventTime ?? ''),
   eventType: String(user?.eventType ?? '')
 });
@@ -56,7 +57,7 @@ const normalizeUsersState = value => {
   }) : [];
 
   return {
-    version: 5,
+    version: 6,
     protectedUserIds: normalizeProtectedIds(value?.protectedUserIds, users),
     users
   };
@@ -68,7 +69,7 @@ const ensureStorageFile = async () => {
     await readFile(STORAGE_FILE, 'utf8');
   } catch {
     await writeFile(STORAGE_FILE, JSON.stringify({
-      version: 5,
+      version: 6,
       protectedUserIds: normalizeProtectedIds(DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED),
       users: USER_SEED.map(normalizeUserRecord)
     }, null, 2), 'utf8');

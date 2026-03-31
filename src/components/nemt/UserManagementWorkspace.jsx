@@ -86,6 +86,7 @@ const createBlankUser = () => ({
   password: '',
   webAccess: true,
   androidAccess: true,
+  inactivityTimeoutMinutes: 15,
   lastEventTime: '',
   eventType: '',
   isProtected: false
@@ -148,7 +149,8 @@ const UserManagementWorkspace = () => {
       ...user,
       password: user.password || buildPasswordForUser(user),
       webAccess: typeof user.webAccess === 'boolean' ? user.webAccess : true,
-      androidAccess: typeof user.androidAccess === 'boolean' ? user.androidAccess : true
+      androidAccess: typeof user.androidAccess === 'boolean' ? user.androidAccess : true,
+      inactivityTimeoutMinutes: typeof user.inactivityTimeoutMinutes === 'number' ? user.inactivityTimeoutMinutes : 15
     } : {
       ...createBlankUser(),
       password: buildPasswordForUser(createBlankUser())
@@ -360,6 +362,7 @@ const UserManagementWorkspace = () => {
               <Col md={3}><Form.Label className={formLabelClassName}>Phone</Form.Label><Form.Control value={draftUser.phone} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, phone: event.target.value }))} /></Col>
               <Col md={3}><Form.Label className={formLabelClassName}>Username</Form.Label><Form.Control value={draftUser.username} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, username: event.target.value }))} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Role</Form.Label><Form.Select value={draftUser.role} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, role: event.target.value }))}><option>DBSS Admin(Full...)</option><option>Driver(Driver)</option><option>Dispatcher</option><option>Billing</option></Form.Select></Col>
+              <Col md={6}><Form.Label className={formLabelClassName}>Inactivity Logout (minutes)</Form.Label><Form.Control type="number" min="1" max="1440" value={draftUser.inactivityTimeoutMinutes || 15} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, inactivityTimeoutMinutes: Math.max(1, parseInt(event.target.value) || 15) }))} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Password</Form.Label><Form.Control value={draftUser.password} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, password: event.target.value }))} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Last Event Time</Form.Label><Form.Control value={draftUser.lastEventTime} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, lastEventTime: event.target.value }))} /></Col>
               <Col md={6}><Form.Label className={formLabelClassName}>Event Type</Form.Label><Form.Control value={draftUser.eventType} style={userShellStyles.modalInput} onChange={event => setDraftUser(current => ({ ...current, eventType: event.target.value }))} /></Col>

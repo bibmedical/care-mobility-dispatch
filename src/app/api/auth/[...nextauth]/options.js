@@ -55,7 +55,8 @@ export const options = {
           lastName: user.lastName,
           role: user.role,
           webAccess: user.webAccess,
-          androidAccess: user.androidAccess
+          androidAccess: user.androidAccess,
+          inactivityTimeoutMinutes: user.inactivityTimeoutMinutes || 15
         };
       }
       return token;
@@ -66,7 +67,8 @@ export const options = {
     }) => {
       session.user = {
         ...token.user,
-        name: token.user ? `${token.user.firstName} ${token.user.lastName}`.trim() : ''
+        name: token.user ? `${token.user.firstName} ${token.user.lastName}`.trim() : '',
+        inactivityTimeoutMinutes: token.user?.inactivityTimeoutMinutes || 15
       };
       return Promise.resolve(session);
     }
