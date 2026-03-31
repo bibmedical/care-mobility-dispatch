@@ -80,6 +80,17 @@ const ConfirmationWorkspace = () => {
   const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
+  
+  // Hospital/Rehab states
+  const [hospitalRehabModal, setHospitalRehabModal] = useState(null);
+  const [hospitalRehabType, setHospitalRehabType] = useState('Hospital');
+  const [hospitalRehabStartDate, setHospitalRehabStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [hospitalRehabEndDate, setHospitalRehabEndDate] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date.toISOString().slice(0, 10);
+  });
+  const [hospitalRehabNotes, setHospitalRehabNotes] = useState('');
 
   const optOutList = Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [];
   const blacklistEntries = Array.isArray(blacklistData?.entries) ? blacklistData.entries : [];
@@ -108,11 +119,20 @@ const ConfirmationWorkspace = () => {
 
   const filteredTrips = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
+    const today = new Date().toISOString().slice(0, 10);
+    
     return trips.filter(trip => {
+      // Check if trip is in hospital/rehab (should be excluded from normal confirmation)
+      const isInHospitalRehab = trip.hospitalStatus && trip.hospitalStatus.startDate <= today && today <= trip.hospitalStatus.endDate;
+      
       const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
       if (statusFilter !== 'all' && confirmationStatus !== statusFilter) return false;
       if (legFilter !== 'all' && getTripLegFilterKey(trip) !== legFilter) return false;
       if (rideTypeFilter !== 'all' && getTripTypeLabel(trip) !== rideTypeFilter) return false;
+      
+      // Optionally hide trips in active hospital/rehab status from normal confirmation view
+      // Uncomment below if you want to hide them automatically:
+      // if (isInHospitalRehab) return false;
       
       // Filter by date
       const tripDate = trip.serviceDate || trip.dateOfService || trip.pickupDate || trip.appointmentDate || trip.tripDate;
@@ -345,6 +365,53 @@ const ConfirmationWorkspace = () => {
     setCustomStatus(`Exportando ${filteredTrips.length} viajes a PDF.`);
   };
 
+  const handleOpenHospitalRehabModal = trip => {
+    setHospitalRehabModal(trip);
+    if (trip.hospitalStatus) {
+      setHospitalRehabType(trip.hospitalStatus.type || 'Hospital');
+      setHospitalRehabStartDate(trip.hospitalStatus.startDate);
+      setHospitalRehabEndDate(trip.hospitalStatus.endDate);
+      setHospitalRehabNotes(trip.hospitalStatus.notes || '');
+    } else {
+      setHospitalRehabType('Hospital');
+      setHospitalRehabStartDate(new Date().toISOString().slice(0, 10));
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 7);
+      setHospitalRehabEndDate(endDate.toISOString().slice(0, 10));
+      setHospitalRehabNotes('');
+    }
+  };
+
+  const handleSaveHospitalRehab = () => {
+    if (!hospitalRehabModal) return;
+    
+    updateTripRecord(hospitalRehabModal.id, {
+      hospitalStatus: {
+        type: hospitalRehabType,
+        startDate: hospitalRehabStartDate,
+        endDate: hospitalRehabEndDate,
+        notes: hospitalRehabNotes,
+        createdAt: new Date().toISOString()
+      }
+    });
+    
+    setCustomStatus(`Trip ${hospitalRehabModal.id} marcado como ${hospitalRehabType} hasta ${hospitalRehabEndDate}. Será excluido de confirmaciones hasta esa fecha.`);
+    setHospitalRehabModal(null);
+  };
+
+  const handleRemoveHospitalRehab = trip => {
+    updateTripRecord(trip.id, {
+      hospitalStatus: null
+    });
+    setCustomStatus(`Hospital/Rehab status removido para trip ${trip.id}.`);
+  };
+
+  const isHospitalRehabActive = trip => {
+    if (!trip.hospitalStatus) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    return trip.hospitalStatus.startDate <= today && today <= trip.hospitalStatus.endDate;
+  };
+
   return <>
       <PageTitle title="Confirmation" subName="Operations" />
 
@@ -450,12 +517,13 @@ const ConfirmationWorkspace = () => {
                   <th>Leg</th>
                   <th>Type</th>
                   <th>Do Not Confirm</th>
+                  <th>Hospital/Rehab</th>
                   <th>Confirmation</th>
                   <th>Dispatch Status</th>
                   <th>Reply</th>
                   <th>Sent</th>
                   <th>Responded</th>
-                  <th style={{ width: 140 }}>Action</th>
+                  <th style={{ width: 160 }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -471,6 +539,24 @@ const ConfirmationWorkspace = () => {
                       <td>{getTripLegFilterKey(trip)}</td>
                       <td>{getTripTypeLabel(trip)}</td>
                       <td>{isOptedOut ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>Blocked</Badge> : <Badge bg="success">Allowed</Badge>}</td>
+                      <td>
+                        {trip.hospitalStatus ? (
+                          <div>
+                            <Badge bg={isHospitalRehabActive(trip) ? 'warning' : 'secondary'}>
+                              {trip.hospitalStatus.type}: {trip.hospitalStatus.endDate}
+                            </Badge>
+                            {isHospitalRehabActive(trip) ? (
+                              <div className="small text-muted mt-1">Active until {trip.hospitalStatus.endDate}</div>
+                            ) : (
+                              <div className="small text-muted mt-1">Expired</div>
+                            )}
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="outline-secondary" onClick={() => handleOpenHospitalRehabModal(trip)} style={{ minWidth: 100 }}>
+                            + Rehab Hospital
+                          </Button>
+                        )}
+                      </td>
                       <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}</td>
                       <td>{trip.safeRideStatus || trip.status || '-'}</td>
                       <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td>
@@ -485,6 +571,11 @@ const ConfirmationWorkspace = () => {
                             Cancel
                           </Button>
                           <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 80 }} onClick={() => handleToggleOptOut(trip)}>{isOptedOut ? 'Allow' : 'Block'}</Button>
+                          {trip.hospitalStatus && (
+                            <Button size="sm" variant="outline-warning" onClick={() => handleRemoveHospitalRehab(trip)} title="Remove hospital/rehab status" style={{ minWidth: 80 }}>
+                              Remove RH
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>;
@@ -510,6 +601,35 @@ const ConfirmationWorkspace = () => {
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setCancelNoteModal(null)}>Close</Button>
           <Button variant="danger" onClick={handleSaveCancelNote}>Cancel Trip</Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={Boolean(hospitalRehabModal)} onHide={() => setHospitalRehabModal(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Hospital / Rehab Status</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="small text-muted mb-3">Trip: {hospitalRehabModal?.id} | Rider: {hospitalRehabModal?.rider}</div>
+          
+          <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Type</Form.Label>
+          <Form.Select value={hospitalRehabType} onChange={event => setHospitalRehabType(event.target.value)} className="mb-3">
+            <option value="Hospital">Hospital</option>
+            <option value="Rehab">Rehabilitation Center</option>
+            <option value="Other">Other Medical Facility</option>
+          </Form.Select>
+
+          <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Start Date</Form.Label>
+          <Form.Control type="date" value={hospitalRehabStartDate} onChange={event => setHospitalRehabStartDate(event.target.value)} className="mb-3" />
+
+          <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">End Date (Trip excluded until this date)</Form.Label>
+          <Form.Control type="date" value={hospitalRehabEndDate} onChange={event => setHospitalRehabEndDate(event.target.value)} className="mb-3" />
+
+          <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Notes</Form.Label>
+          <Form.Control as="textarea" rows={3} value={hospitalRehabNotes} onChange={event => setHospitalRehabNotes(event.target.value)} placeholder="Recovery notes, facility name, contact info, etc..." />
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setHospitalRehabModal(null)}>Close</Button>
+          <Button variant="primary" onClick={handleSaveHospitalRehab}>Save Hospital/Rehab Status</Button>
         </Modal.Footer>
       </Modal>
     </>;
