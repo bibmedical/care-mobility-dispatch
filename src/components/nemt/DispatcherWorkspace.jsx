@@ -324,7 +324,6 @@ const DispatcherWorkspace = () => {
   const workspaceRef = useRef(null);
   const tripTableTopScrollerRef = useRef(null);
   const tripTableBottomScrollerRef = useRef(null);
-  const tripTableRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
@@ -1096,12 +1095,17 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     const updateTripTableScrollWidth = () => {
-      setTripTableScrollWidth(tripTableRef.current?.scrollWidth || 0);
+      const scrollContainer = tripTableBottomScrollerRef.current;
+      setTripTableScrollWidth(scrollContainer?.scrollWidth || 0);
     };
 
     updateTripTableScrollWidth();
+    const timeoutId = window.setTimeout(updateTripTableScrollWidth, 0);
     window.addEventListener('resize', updateTripTableScrollWidth);
-    return () => window.removeEventListener('resize', updateTripTableScrollWidth);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('resize', updateTripTableScrollWidth);
+    };
   }, [columnWidths, groupedFilteredTripRows, visibleTripColumns]);
 
   const workspaceHeight = expanded ? 1100 : 980;
@@ -1354,7 +1358,7 @@ const DispatcherWorkspace = () => {
                     <div style={{ fontSize: '12px', color: '#d1d5db' }}>Click "Unlock" to make changes</div>
                   </div>
                 </div>}
-                <Table ref={tripTableRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', opacity: mapLocked ? 0.6 : 1 }}>
+                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', opacity: mapLocked ? 0.6 : 1 }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 48 }}>

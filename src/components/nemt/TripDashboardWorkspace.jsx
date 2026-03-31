@@ -345,7 +345,6 @@ const TripDashboardWorkspace = () => {
   const workspaceRef = useRef(null);
   const tripTableTopScrollerRef = useRef(null);
   const tripTableBottomScrollerRef = useRef(null);
-  const tripTableRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
@@ -1130,12 +1129,17 @@ const TripDashboardWorkspace = () => {
 
   useEffect(() => {
     const updateTripTableScrollWidth = () => {
-      setTripTableScrollWidth(tripTableRef.current?.scrollWidth || 0);
+      const scrollContainer = tripTableBottomScrollerRef.current;
+      setTripTableScrollWidth(scrollContainer?.scrollWidth || 0);
     };
 
     updateTripTableScrollWidth();
+    const timeoutId = window.setTimeout(updateTripTableScrollWidth, 0);
     window.addEventListener('resize', updateTripTableScrollWidth);
-    return () => window.removeEventListener('resize', updateTripTableScrollWidth);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('resize', updateTripTableScrollWidth);
+    };
   }, [columnWidths, groupedFilteredTripRows, visibleTripColumns]);
 
   const workspaceHeight = expanded ? 1120 : 1000;
@@ -1407,7 +1411,7 @@ const TripDashboardWorkspace = () => {
                 <div style={{ width: tripTableScrollWidth || '100%', height: 1 }} />
               </div>
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
-                <Table ref={tripTableRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content' }}>
+                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content' }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 48 }}>
