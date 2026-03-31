@@ -189,7 +189,7 @@ const ConfirmationWorkspace = () => {
   });
   const [timeFromFilter, setTimeFromFilter] = useState('02:00');
   const [timeToFilter, setTimeToFilter] = useState('08:00');
-  const [milesMinFilter, setMilesMinFilter] = useState('0');
+  const [milesMinFilter, setMilesMinFilter] = useState('');
   const [milesMaxFilter, setMilesMaxFilter] = useState('25');
   const [milesSortOrder, setMilesSortOrder] = useState('miles-desc');
   const [isMilesMaxManual, setIsMilesMaxManual] = useState(false);
@@ -465,9 +465,19 @@ const ConfirmationWorkspace = () => {
     })).sort((a, b) => b.miles - a.miles);
   }, [tripsBeforeMilesFilter]);
 
+  const milesOptionValuesDesc = useMemo(() => {
+    const values = existingMilesRows.map(item => Number(item.miles.toFixed(2)));
+    if (!values.some(value => Math.abs(value - 25) < 0.0001)) values.push(25);
+    return Array.from(new Set(values)).sort((a, b) => b - a);
+  }, [existingMilesRows]);
+
+  const milesOptionValuesAsc = useMemo(() => [...milesOptionValuesDesc].sort((a, b) => a - b), [milesOptionValuesDesc]);
+
   const filteredTrips = useMemo(() => {
-    const rawMinMiles = milesMinFilter === '' ? null : Number(milesMinFilter);
-    const rawMaxMiles = milesMaxFilter === '' ? null : Number(milesMaxFilter);
+    const parsedMin = Number(milesMinFilter);
+    const parsedMax = Number(milesMaxFilter);
+    const rawMinMiles = milesMinFilter === '' || !Number.isFinite(parsedMin) ? null : parsedMin;
+    const rawMaxMiles = milesMaxFilter === '' || !Number.isFinite(parsedMax) ? null : parsedMax;
     const hasMinMiles = Number.isFinite(rawMinMiles);
     const hasMaxMiles = Number.isFinite(rawMaxMiles);
     const minMiles = hasMinMiles && hasMaxMiles ? Math.min(rawMinMiles, rawMaxMiles) : rawMinMiles;
@@ -1291,11 +1301,11 @@ const ConfirmationWorkspace = () => {
                 setIsMilesMaxManual(true);
               }} style={{ ...surfaceStyles.input, width: 140 }} title="Highest miles (real list)">
                 <option value="">Max miles</option>
-                {existingMilesRows.map(item => <option key={`max-mi-${item.miles}`} value={String(Number(item.miles.toFixed(2)))}>{Number(item.miles.toFixed(2))} mi</option>)}
+                {milesOptionValuesDesc.map(value => <option key={`max-mi-${value}`} value={String(value)}>{value} mi</option>)}
               </Form.Select>
               <Form.Select value={milesMinFilter} onChange={event => setMilesMinFilter(event.target.value)} style={{ ...surfaceStyles.input, width: 140 }} title="Lowest miles (real list)">
                 <option value="">Min miles</option>
-                {[...existingMilesRows].reverse().map(item => <option key={`min-mi-${item.miles}`} value={String(Number(item.miles.toFixed(2)))}>{Number(item.miles.toFixed(2))} mi</option>)}
+                {milesOptionValuesAsc.map(value => <option key={`min-mi-${value}`} value={String(value)}>{value} mi</option>)}
               </Form.Select>
               <Button style={surfaceStyles.button} onClick={() => {
                 setIsMilesMaxManual(false);
@@ -1370,7 +1380,7 @@ const ConfirmationWorkspace = () => {
                         <td>{item.tripsCount}</td>
                         <td>
                           <Button size="sm" style={surfaceStyles.button} onClick={() => {
-                            setMilesMinFilter('0');
+                            setMilesMinFilter('');
                             setMilesMaxFilter(String(Number(item.miles.toFixed(2))));
                             setIsMilesMaxManual(true);
                           }}>
