@@ -85,6 +85,21 @@ const parseMilesValue = value => {
   return Number.isFinite(miles) ? miles : null;
 };
 
+const getTripMilesValue = trip => {
+  const candidates = [trip?.miles, trip?.distanceMiles, trip?.estimatedMiles, trip?.routeMiles, trip?.tripMiles, trip?.distance];
+  for (const candidate of candidates) {
+    const parsed = parseMilesValue(candidate);
+    if (parsed != null) return parsed;
+  }
+  return null;
+};
+
+const getTripMilesDisplay = trip => {
+  const miles = getTripMilesValue(trip);
+  if (miles == null) return '-';
+  return Number(miles.toFixed(2)).toString();
+};
+
 const isTripCompleted = trip => {
   const status = String(trip?.status || '').trim().toLowerCase();
   if (status.includes('complete') || status.includes('completed') || status.includes('done') || status.includes('finished')) return true;
@@ -118,7 +133,7 @@ const ConfirmationWorkspace = () => {
   const [timeToFilter, setTimeToFilter] = useState('08:00');
   const [milesMinFilter, setMilesMinFilter] = useState('0');
   const [milesMaxFilter, setMilesMaxFilter] = useState('25');
-  const [milesSortOrder, setMilesSortOrder] = useState('desc');
+  const [milesSortOrder, setMilesSortOrder] = useState('miles-desc');
   const [isMilesMaxManual, setIsMilesMaxManual] = useState(false);
   const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
@@ -300,8 +315,8 @@ const ConfirmationWorkspace = () => {
       const isInHospitalRehab = trip.hospitalStatus && trip.hospitalStatus.startDate <= today && today <= trip.hospitalStatus.endDate;
       if (isInHospitalRehab) return false;
 
-      return parseMilesValue(trip.miles) != null;
-    }).map(trip => parseMilesValue(trip.miles)).filter(value => value != null);
+      return getTripMilesValue(trip) != null;
+    }).map(trip => getTripMilesValue(trip)).filter(value => value != null);
 
     if (candidateMiles.length === 0) return null;
     return Math.max(...candidateMiles);
@@ -360,7 +375,7 @@ const ConfirmationWorkspace = () => {
         if (toMinutes != null && tripTimeMinutes > toMinutes) return false;
       }
 
-      const tripMiles = parseMilesValue(trip.miles);
+      const tripMiles = getTripMilesValue(trip);
       const hasMilesFilter = minMiles != null || maxMiles != null;
       if (hasMilesFilter) {
         if (tripMiles == null) return false;
@@ -376,19 +391,34 @@ const ConfirmationWorkspace = () => {
     const dedupedTrips = Array.from(new Map(matchedTrips.map(trip => [String(trip.id), trip])).values());
 
     return [...dedupedTrips].sort((leftTrip, rightTrip) => {
-      const leftMiles = parseMilesValue(leftTrip.miles);
-      const rightMiles = parseMilesValue(rightTrip.miles);
+      const leftMiles = getTripMilesValue(leftTrip);
+      const rightMiles = getTripMilesValue(rightTrip);
       const leftValue = leftMiles == null ? Number.NEGATIVE_INFINITY : leftMiles;
       const rightValue = rightMiles == null ? Number.NEGATIVE_INFINITY : rightMiles;
-      if (milesSortOrder === 'asc') return leftValue - rightValue;
+
+      if (milesSortOrder === 'miles-asc') return leftValue - rightValue;
+      if (milesSortOrder === 'miles-desc') return rightValue - leftValue;
+      if (milesSortOrder === 'rider-asc') return String(leftTrip.rider || '').localeCompare(String(rightTrip.rider || ''));
+      if (milesSortOrder === 'rider-desc') return String(rightTrip.rider || '').localeCompare(String(leftTrip.rider || ''));
+      if (milesSortOrder === 'trip-asc') return String(leftTrip.id || '').localeCompare(String(rightTrip.id || ''));
+      if (milesSortOrder === 'trip-desc') return String(rightTrip.id || '').localeCompare(String(leftTrip.id || ''));
       return rightValue - leftValue;
     });
   }, [confirmationDate, legFilter, milesMaxFilter, milesMinFilter, milesSortOrder, rideTypeFilter, search, statusFilter, timeFromFilter, timeToFilter, tripBlockingMap, trips]);
 
   const visibleTripIds = useMemo(() => filteredTrips.map(trip => trip.id), [filteredTrips]);
+  const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(tripId => selectedTripIds.includes(tripId));
 
   const toggleTripSelection = tripId => {
     setSelectedTripIds(current => current.includes(tripId) ? current.filter(id => id !== tripId) : [...current, tripId]);
+  };
+
+  const handleToggleAllVisible = checked => {
+    if (checked) {
+      setSelectedTripIds(current => Array.from(new Set([...current, ...visibleTripIds])));
+      return;
+    }
+    setSelectedTripIds(current => current.filter(id => !visibleTripIds.includes(id)));
   };
 
   const handleToggleOptOut = async trip => {
@@ -1087,8 +1117,12 @@ const ConfirmationWorkspace = () => {
                 Auto Max
               </Button>
               <Form.Select value={milesSortOrder} onChange={event => setMilesSortOrder(event.target.value)} style={{ ...surfaceStyles.input, width: 180 }} title="Sort by miles">
-                <option value="desc">Miles: High to Low</option>
-                <option value="asc">Miles: Low to High</option>
+                <option value="miles-desc">Miles: High to Low</option>
+                <option value="miles-asc">Miles: Low to High</option>
+                <option value="rider-asc">Rider: A to Z</option>
+                <option value="rider-desc">Rider: Z to A</option>
+                <option value="trip-asc">Trip ID: A to Z</option>
+                <option value="trip-desc">Trip ID: Z to A</option>
               </Form.Select>
               <Button style={surfaceStyles.button} onClick={() => {
                 setTimeFromFilter('');
@@ -1130,11 +1164,20 @@ const ConfirmationWorkspace = () => {
             <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
               <thead className="table-light">
                 <tr>
-                  <th style={{ width: 48 }} />
+                  <th style={{ width: 48 }}>
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={event => handleToggleAllVisible(event.target.checked)}
+                      style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#22c55e' }}
+                      title="Select all visible"
+                    />
+                  </th>
                   <th>Trip ID</th>
                   <th>Rider</th>
                   <th>Phone</th>
                   <th>Pickup Time</th>
+                  <th>Miles</th>
                   <th>Leg</th>
                   <th>Type</th>
                   <th>Do Not Confirm</th>
@@ -1154,7 +1197,14 @@ const ConfirmationWorkspace = () => {
                   const isOptedOut = blockingState.isBlocked;
                   const riderProfile = getRiderProfile(trip);
                   return <tr key={trip.id}>
-                      <td><Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => toggleTripSelection(trip.id)} /></td>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedTripIds.includes(trip.id)}
+                          onChange={() => toggleTripSelection(trip.id)}
+                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#22c55e' }}
+                        />
+                      </td>
                       <td className="fw-semibold">{trip.id}</td>
                       <td>
                         <div>{trip.rider}</div>
@@ -1163,6 +1213,7 @@ const ConfirmationWorkspace = () => {
                       </td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
                       <td>{getTripDisplayPickupTime(trip)}</td>
+                      <td>{getTripMilesDisplay(trip)}</td>
                       <td>{getTripLegFilterKey(trip)}</td>
                       <td>{getTripTypeLabel(trip)}</td>
                       <td>{isOptedOut ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>Blocked</Badge> : <Badge bg="success">Allowed</Badge>}</td>
@@ -1210,7 +1261,7 @@ const ConfirmationWorkspace = () => {
                       </td>
                     </tr>;
                 }) : <tr>
-                    <td colSpan={14} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
+                    <td colSpan={15} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
                   </tr>}
               </tbody>
             </Table>
