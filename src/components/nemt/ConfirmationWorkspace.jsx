@@ -740,18 +740,43 @@ const ConfirmationWorkspace = () => {
   };
 
   const exportToPDF = () => {
-    if (filteredTrips.length === 0) {
+    const exportTrips = selectedTripIds.length > 0 ? filteredTrips.filter(trip => selectedTripIds.includes(trip.id)) : filteredTrips;
+
+    if (exportTrips.length === 0) {
       setCustomStatus('No hay viajes para exportar con el filtro actual.');
       return;
     }
 
-    let htmlContent = '<h1>Confirmation Report</h1>';
-    htmlContent += `<p><strong>Date:</strong> ${confirmationDate}</p>`;
-    htmlContent += `<p><strong>Time Range:</strong> ${timeFromFilter} - ${timeToFilter}</p>`;
-    htmlContent += '<table border="1" cellpadding="8" cellspacing="0" style="width:100%; border-collapse:collapse;">';
-    htmlContent += '<tr style="background-color:#f0f0f0;"><th>Trip ID</th><th>Rider</th><th>Phone</th><th>Leg</th><th>Type</th><th>Status</th><th>Confirmation</th></tr>';
+    let htmlContent = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Confirmation Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0 0 12px; font-size: 24px; }
+            .meta { margin-bottom: 16px; font-size: 13px; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 12px; text-align: left; vertical-align: top; word-break: break-word; }
+            th { background: #f3f4f6; }
+            tr { page-break-inside: avoid; }
+            @media print {
+              body { margin: 12px; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Confirmation Report</h1>
+          <div class="meta"><strong>Date:</strong> ${confirmationDate} <br /><strong>Time Range:</strong> ${timeFromFilter} - ${timeToFilter} <br /><strong>Total trips:</strong> ${exportTrips.length}</div>
+          <table>
+            <thead>
+              <tr><th>Trip ID</th><th>Rider</th><th>Phone</th><th>Leg</th><th>Type</th><th>Status</th><th>Confirmation</th></tr>
+            </thead>
+            <tbody>
+    `;
 
-    filteredTrips.forEach(trip => {
+    exportTrips.forEach(trip => {
       const blockingState = tripBlockingMap.get(trip.id) || { isBlocked: false };
       const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
       htmlContent += `<tr>
@@ -765,12 +790,19 @@ const ConfirmationWorkspace = () => {
       </tr>`;
     });
 
-    htmlContent += '</table>';
+    htmlContent += '</tbody></table></body></html>';
     const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      setCustomStatus('El navegador bloqueo la ventana de impresion. Permite pop-ups para esta pagina.');
+      return;
+    }
     printWindow.document.write(htmlContent);
     printWindow.document.close();
-    printWindow.print();
-    setCustomStatus(`Exportando ${filteredTrips.length} viajes a PDF.`);
+    printWindow.focus();
+    window.setTimeout(() => {
+      printWindow.print();
+    }, 250);
+    setCustomStatus(`Exportando ${exportTrips.length} viaje(s) a PDF.`);
   };
 
   const handleOpenHospitalRehabModal = trip => {
