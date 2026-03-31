@@ -60,6 +60,36 @@ export const NemtProvider = ({
   const persistInFlightRef = useRef(false);
   const pendingPersistSnapshotRef = useRef('');
 
+  const flushPersistQueue = async () => {
+    if (persistInFlightRef.current) return;
+    const nextSnapshot = pendingPersistSnapshotRef.current;
+    if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return;
+
+    persistInFlightRef.current = true;
+    pendingPersistSnapshotRef.current = '';
+
+    try {
+      const response = await fetch('/api/nemt/dispatch', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: nextSnapshot
+      });
+      if (response.ok) {
+        lastPersistedSnapshotRef.current = nextSnapshot;
+        hasLocalDispatchChangesRef.current = false;
+      }
+    } catch {
+      // Keep local state if the server is temporarily unavailable.
+    } finally {
+      persistInFlightRef.current = false;
+      if (pendingPersistSnapshotRef.current && pendingPersistSnapshotRef.current !== lastPersistedSnapshotRef.current) {
+        void flushPersistQueue();
+      }
+    }
+  };
+
   const syncDriversFromServer = async () => {
     try {
       const response = await fetch('/api/nemt/admin', {
@@ -156,39 +186,9 @@ export const NemtProvider = ({
 
     pendingPersistSnapshotRef.current = snapshot;
 
-    const flushPersistQueue = async () => {
-      if (persistInFlightRef.current) return;
-      const nextSnapshot = pendingPersistSnapshotRef.current;
-      if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return;
-
-      persistInFlightRef.current = true;
-      pendingPersistSnapshotRef.current = '';
-
-      try {
-        const response = await fetch('/api/nemt/dispatch', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: nextSnapshot
-        });
-        if (response.ok) {
-          lastPersistedSnapshotRef.current = nextSnapshot;
-          hasLocalDispatchChangesRef.current = false;
-        }
-      } catch {
-        // Keep local state if the server is temporarily unavailable.
-      } finally {
-        persistInFlightRef.current = false;
-        if (pendingPersistSnapshotRef.current && pendingPersistSnapshotRef.current !== lastPersistedSnapshotRef.current) {
-          void flushPersistQueue();
-        }
-      }
-    };
-
     const timeoutId = window.setTimeout(async () => {
       await flushPersistQueue();
-    }, 250);
+    }, 50);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -218,7 +218,12 @@ export const NemtProvider = ({
       if (shouldMarkDispatchDirty) {
         hasLocalDispatchChangesRef.current = true;
       }
-      return updater(baseState);
+      const nextState = updater(baseState);
+      if (shouldMarkDispatchDirty) {
+        pendingPersistSnapshotRef.current = JSON.stringify(createPersistedSnapshot(nextState));
+        void flushPersistQueue();
+      }
+      return nextState;
     });
   };
 
