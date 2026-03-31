@@ -181,6 +181,10 @@ const getPickupZip = trip => String(trip?.fromZipcode || trip?.fromZip || trip?.
 const getDropoffZip = trip => String(trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.dropoffZip || trip?.destinationZip || '').trim();
 
 const getTripLegFilterKey = trip => {
+  const explicitLeg = String(trip?.leg || trip?.tripLeg || trip?.legCode || '').trim().toUpperCase();
+  if (['A', 'AL', '1', 'L1'].includes(explicitLeg)) return 'AL';
+  if (['B', 'BL', '2', 'L2'].includes(explicitLeg)) return 'BL';
+  if (['C', 'CL', '3', 'L3', 'D', 'DL', '4', 'L4'].includes(explicitLeg)) return 'CL';
   const legLabel = String(trip?.legLabel || '').trim().toLowerCase();
   if (!legLabel) return 'AL';
   if (legLabel.includes('outbound') || legLabel.includes('appointment') || legLabel.includes('appt')) return 'AL';
@@ -1448,8 +1452,8 @@ const TripDashboardWorkspace = () => {
                   {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
                 </div>
               </div>
-              {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'scroll', overflowY: 'hidden', height: 18, marginBottom: 6, scrollbarGutter: 'stable', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)' }}>
-                  <div style={{ width: tripTableScrollWidth || '100%', height: 1 }} />
+                  {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'scroll', overflowY: 'hidden', height: 20, marginBottom: 6, scrollbarGutter: 'stable', scrollbarWidth: 'thin', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
+                    <div style={{ width: tripTableScrollWidth > 0 ? tripTableScrollWidth + 2 : 'calc(100% + 2px)', height: 18 }} />
                 </div> : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
                 <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content' }}>
