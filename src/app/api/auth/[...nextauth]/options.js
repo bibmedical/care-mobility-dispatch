@@ -2,6 +2,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { randomBytes } from 'crypto';
 import { authorizePersistedSystemUser } from '@/server/system-users-store';
 import { logLoginFailure } from '@/server/login-failures-store';
+import { logLoginEvent } from '@/server/activity-logs-store';
 
 export const options = {
   providers: [CredentialsProvider({
@@ -107,6 +108,15 @@ export const options = {
       email,
       credentials
     }) {
+      // Log successful login
+      if (user && user.id) {
+        await logLoginEvent(
+          user.id,
+          user.username || user.email,
+          user.role || 'unknown',
+          user.email
+        ).catch(err => console.error('Failed to log login event:', err));
+      }
       return true;
     },
     async jwt({

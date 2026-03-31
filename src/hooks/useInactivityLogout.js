@@ -50,6 +50,16 @@ const useInactivityLogout = () => {
     // Set logout timeout
     timeoutRef.current = setTimeout(() => {
       setShowWarning(false);
+      
+      // Log inactivity logout
+      if (session?.user?.id) {
+        fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: session.user.id })
+        }).catch(err => console.error('Failed to log inactivity logout:', err));
+      }
+      
       signOut({ redirect: true, callbackUrl: '/auth/login' });
     }, timeoutMs);
   }, [session?.user?.id, session?.user?.inactivityTimeoutMinutes, showWarning, showNotification]);

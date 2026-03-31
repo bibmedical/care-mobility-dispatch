@@ -1,0 +1,467 @@
+.systemLogsWorkspace {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 2rem;
+  background: #f8f9fa;
+  min-height: 100vh;
+
+  .header {
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #1a1a1a;
+      margin: 0 0 0.5rem 0;
+    }
+
+    p {
+      color: #666;
+      margin: 0;
+      font-size: 0.95rem;
+    }
+  }
+
+  .statsContainer {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+
+    .statCard {
+      background: white;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      border-left: 4px solid #28a745;
+
+      .statLabel {
+        font-size: 0.85rem;
+        color: #666;
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .statValue {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1a1a1a;
+      }
+
+      &:nth-child(2) {
+        border-left-color: #007bff;
+      }
+
+      &:nth-child(3) {
+        border-left-color: #ffc107;
+      }
+    }
+  }
+
+  .controls {
+    display: flex;
+    gap: 1rem;
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
+    .filterGroup {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+
+      label {
+        font-weight: 500;
+        color: #333;
+        white-space: nowrap;
+      }
+
+      .select {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 0.5rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: border-color 0.2s;
+
+        &:hover {
+          border-color: #999;
+        }
+
+        &:focus {
+          outline: none;
+          border-color: #007bff;
+          box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        }
+      }
+    }
+
+    .button {
+      padding: 0.5rem 1.5rem;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+
+      &:hover:not(:disabled) {
+        background: #218838;
+      }
+
+      &:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  .logsTableContainer {
+    background: white;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+    .logsTable {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+
+      thead {
+        background: #f5f5f5;
+        border-bottom: 2px solid #ddd;
+
+        th {
+          padding: 1rem;
+          text-align: left;
+          font-weight: 600;
+          color: #333;
+          text-transform: uppercase;
+          font-size: 0.8rem;
+          letter-spacing: 0.5px;
+        }
+      }
+
+      tbody {
+        tr {
+          border-bottom: 1px solid #eee;
+          transition: background 0.2s;
+
+          &:hover {
+            background: #f9f9f9;
+          }
+
+          &.clickableRow {
+            cursor: pointer;
+
+            &:hover {
+              background: #f0f7ff;
+            }
+          }
+
+          td {
+            padding: 1rem;
+            color: #333;
+
+            .userNameCell {
+              font-weight: 600;
+              color: #007bff;
+
+              &:hover {
+                text-decoration: underline;
+              }
+            }
+
+            .badge {
+              display: inline-block;
+              padding: 0.25rem 0.75rem;
+              border-radius: 9999px;
+              font-size: 0.8rem;
+              font-weight: 600;
+              text-transform: uppercase;
+
+              &.badge-admin {
+                background: #fff3cd;
+                color: #856404;
+              }
+
+              &.badge-driver {
+                background: #d1ecf1;
+                color: #0c5460;
+              }
+
+              &.badge-attendant {
+                background: #e2e3e5;
+                color: #383d41;
+              }
+            }
+
+            .action {
+              display: inline-block;
+              padding: 0.25rem 0.75rem;
+              border-radius: 0.5rem;
+              font-weight: 600;
+              font-size: 0.8rem;
+
+              &.action-LOGIN {
+                background: #d4edda;
+                color: #155724;
+              }
+
+              &.action-LOGOUT {
+                background: #f8d7da;
+                color: #721c24;
+              }
+            }
+          }
+
+          &:last-child {
+            border-bottom: none;
+          }
+        }
+
+        .loading,
+        .noData {
+          text-align: center;
+          padding: 3rem 1rem;
+          color: #999;
+          font-style: italic;
+        }
+      }
+    }
+  }
+
+  .detailView {
+    background: white;
+    border-radius: 0.75rem;
+    padding: 2rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+    .backButton {
+      padding: 0.5rem 1rem;
+      background: #6c757d;
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      font-weight: 500;
+      cursor: pointer;
+      margin-bottom: 1.5rem;
+      transition: background 0.2s;
+
+      &:hover {
+        background: #5a6268;
+      }
+    }
+
+    .userDetailHeader {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding-bottom: 2rem;
+      border-bottom: 2px solid #eee;
+      margin-bottom: 2rem;
+
+      h2 {
+        margin: 0;
+        font-size: 1.75rem;
+        color: #1a1a1a;
+      }
+
+      p {
+        margin: 0;
+        color: #666;
+        font-size: 0.95rem;
+      }
+
+      .roleBadge {
+        align-self: flex-start;
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background: #007bff;
+        color: white;
+        border-radius: 9999px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+      }
+    }
+
+    .activityTimeline {
+      .dateGroup {
+        margin-bottom: 2.5rem;
+
+        .dateHeader {
+          margin: 0 0 1.5rem 0;
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: #333;
+          text-transform: capitalize;
+          padding-bottom: 0.75rem;
+          border-bottom: 2px solid #007bff;
+        }
+
+        .timelineEvents {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+
+          .timelineEvent {
+            display: flex;
+            gap: 1.5rem;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-radius: 0.5rem;
+            border-left: 3px solid #ddd;
+
+            .eventDot {
+              width: 12px;
+              height: 12px;
+              border-radius: 50%;
+              margin-top: 0.4rem;
+              flex-shrink: 0;
+
+              &.dot-LOGIN {
+                background: #28a745;
+              }
+
+              &.dot-LOGOUT {
+                background: #dc3545;
+              }
+            }
+
+            .eventContent {
+              display: flex;
+              flex-direction: column;
+              gap: 0.25rem;
+              flex: 1;
+
+              .eventTime {
+                font-weight: 600;
+                font-size: 0.95rem;
+                color: #1a1a1a;
+              }
+
+              .eventType {
+                font-size: 0.85rem;
+                text-transform: uppercase;
+                font-weight: 500;
+
+                &.type-LOGIN {
+                  color: #28a745;
+                }
+
+                &.type-LOGOUT {
+                  color: #dc3545;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      .noActivity {
+        text-align: center;
+        padding: 2rem;
+        color: #999;
+        font-style: italic;
+        background: #f9f9f9;
+        border-radius: 0.5rem;
+      }
+    }
+  }
+
+  .onlineUsersSection {
+    background: white;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+
+    h3 {
+      margin: 0 0 1rem 0;
+      font-size: 1.1rem;
+      color: #1a1a1a;
+    }
+
+    .onlineUsersList {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+
+      .onlineUser {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        background: #f9f9f9;
+        border-radius: 0.5rem;
+        border-left: 3px solid #28a745;
+
+        .onlineDot {
+          display: inline-block;
+          width: 8px;
+          height: 8px;
+          background: #28a745;
+          border-radius: 50%;
+          animation: pulse 2s infinite;
+        }
+
+        .onlineUserName {
+          font-weight: 600;
+          flex: 1;
+          color: #1a1a1a;
+        }
+
+        .onlineUserRole {
+          display: inline-block;
+          padding: 0.25rem 0.5rem;
+          background: #007bff;
+          color: white;
+          border-radius: 0.3rem;
+          font-size: 0.75rem;
+          font-weight: 600;
+          text-transform: uppercase;
+        }
+
+        .onlineUserTime {
+          font-size: 0.85rem;
+          color: #666;
+          min-width: 60px;
+          text-align: right;
+        }
+      }
+
+      .noOnlineUsers {
+        text-align: center;
+        padding: 1rem;
+        color: #999;
+        font-style: italic;
+      }
+    }
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (max-width: 768px) {
+  .systemLogsWorkspace {
+    padding: 1rem;
+
+    .logsTableContainer .logsTable tbody tr td {
+      padding: 0.75rem 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    .controls {
+      flex-direction: column;
+    }
+  }
+}

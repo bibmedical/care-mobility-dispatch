@@ -705,7 +705,19 @@ const DispatchAssistantWidget = () => {
       setLastProvider(assistantMessage.provider);
       speakReply(assistantMessage.text);
       if (payload?.action === 'signout') {
-        window.setTimeout(() => {
+        window.setTimeout(async () => {
+          // Log logout event
+          if (session?.user?.id) {
+            try {
+              await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: session.user.id })
+              }).catch(err => console.error('Failed to log logout:', err));
+            } catch (error) {
+              console.error('Error in logout logging:', error);
+            }
+          }
           void signOut({
             callbackUrl: '/auth/login'
           });
