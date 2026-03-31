@@ -144,15 +144,24 @@ const ConfirmationWorkspace = () => {
       
       // Filter by date
       const tripDateKey = getTripServiceDateKey(trip);
-      if (confirmationDate !== 'all' && tripDateKey && tripDateKey !== confirmationDate) {
-        return false;
+      if (confirmationDate !== 'all') {
+        if (!tripDateKey || tripDateKey !== confirmationDate) return false;
       }
       
       // Filter by time range
-      const tripTime = trip.scheduledPickup || trip.pickupTime || trip.appointmentTime || trip.startTime || '';
-      const tripTimeMinutes = parseTripClockMinutes(tripTime);
-      if (tripTimeMinutes != null && fromMinutes != null && toMinutes != null) {
-        if (tripTimeMinutes < fromMinutes || tripTimeMinutes > toMinutes) return false;
+      const tripTime = trip.scheduledPickup || trip.pickupTime || trip.appointmentTime || trip.startTime || trip.pickup || '';
+      const parsedTripTimeMinutes = parseTripClockMinutes(tripTime);
+      const pickupSortTimestamp = Number(trip.pickupSortValue);
+      const pickupSortMinutes = Number.isFinite(pickupSortTimestamp) ? (() => {
+        const d = new Date(pickupSortTimestamp);
+        return Number.isNaN(d.getTime()) ? null : d.getHours() * 60 + d.getMinutes();
+      })() : null;
+      const tripTimeMinutes = parsedTripTimeMinutes != null ? parsedTripTimeMinutes : pickupSortMinutes;
+      const hasTimeFilter = fromMinutes != null || toMinutes != null;
+      if (hasTimeFilter) {
+        if (tripTimeMinutes == null) return false;
+        if (fromMinutes != null && tripTimeMinutes < fromMinutes) return false;
+        if (toMinutes != null && tripTimeMinutes > toMinutes) return false;
       }
       
       if (!normalizedSearch) return true;
