@@ -171,6 +171,7 @@ const RouteControlWorkspace = () => {
 
   const [dateFilter, setDateFilter] = useState('all');
   const [selectedRouteId, setSelectedRouteId] = useState('');
+  const [selectedDriverId, setSelectedDriverId] = useState('');
   const [primaryDriverId, setPrimaryDriverId] = useState('');
   const [secondaryDriverId, setSecondaryDriverId] = useState('');
   const [routeNameDraft, setRouteNameDraft] = useState('');
@@ -216,21 +217,59 @@ const RouteControlWorkspace = () => {
     return String(route?.serviceDate || '').trim() === dateFilter;
   }), [dateFilter, effectiveRoutes]);
 
-  const selectedRoute = useMemo(() => filteredRoutes.find(route => route.id === selectedRouteId) || filteredRoutes[0] || null, [filteredRoutes, selectedRouteId]);
+  const driversWithInfo = useMemo(() => drivers.map(driver => {
+    const driverId = String(driver.id);
+    const driverTrips = trips.filter(trip => {
+      const matchesDriver = String(trip?.driverId || '') === driverId;
+      const matchesDate = dateFilter === 'all' || getTripServiceDateKey(trip) === dateFilter;
+      return matchesDriver && matchesDate;
+    });
+    const driverRoute = effectiveRoutes.find(route => {
+      const matchesDriver = String(route?.driverId || '') === driverId;
+      const matchesDate = dateFilter === 'all' || String(route?.serviceDate || '') === dateFilter;
+      return matchesDriver && matchesDate;
+    });
+    return { driver, trips: driverTrips, route: driverRoute || null, hasRoute: Boolean(driverRoute) };
+  }).filter(entry => dateFilter === 'all' || entry.trips.length > 0 || entry.hasRoute), [drivers, trips, effectiveRoutes, dateFilter]);
+
+  const selectedRoute = useMemo(() => {
+    if (selectedRouteId) return filteredRoutes.find(route => route.id === selectedRouteId) || null;
+    if (selectedDriverId) {
+      return effectiveRoutes.find(route => {
+        const matchesDriver = String(route?.driverId || '') === selectedDriverId;
+        const matchesDate = dateFilter === 'all' || String(route?.serviceDate || '') === dateFilter;
+        return matchesDriver && matchesDate;
+      }) || null;
+    }
+    return null;
+  }, [effectiveRoutes, filteredRoutes, selectedRouteId, selectedDriverId, dateFilter]);
 
   const selectedRouteTrips = useMemo(() => {
-    if (!selectedRoute) return [];
-    return sortRouteTrips(getTripsForRoute(selectedRoute, trips));
-  }, [selectedRoute, trips]);
+    if (selectedRoute) return sortRouteTrips(getTripsForRoute(selectedRoute, trips));
+    if (selectedDriverId) {
+      return sortRouteTrips(trips.filter(trip => {
+        const matchesDriver = String(trip?.driverId || '') === selectedDriverId;
+        const matchesDate = dateFilter === 'all' || getTripServiceDateKey(trip) === dateFilter;
+        return matchesDriver && matchesDate;
+      }));
+    }
+    return [];
+  }, [selectedRoute, selectedDriverId, trips, dateFilter]);
 
-  const selectedRouteDriver = useMemo(() => drivers.find(driver => String(driver.id) === String(selectedRoute?.driverId || '')) || null, [drivers, selectedRoute]);
+  const selectedRouteDriver = useMemo(() => {
+    const driverId = selectedDriverId || String(selectedRoute?.driverId || '');
+    return drivers.find(driver => String(driver.id) === driverId) || null;
+  }, [drivers, selectedRoute, selectedDriverId]);
 
-  const routeSuggestion = useMemo(() => selectedRoute ? buildRouteSuggestion({
-    route: selectedRoute,
-    routeTrips: selectedRouteTrips,
-    drivers,
-    trips
-  }) : null, [drivers, selectedRoute, selectedRouteTrips, trips]);
+  const routeSuggestion = useMemo(() => {
+    if (selectedRouteTrips.length === 0) return null;
+    return buildRouteSuggestion({
+      route: selectedRoute || { id: '', driverId: selectedDriverId },
+      routeTrips: selectedRouteTrips,
+      drivers,
+      trips
+    });
+  }, [drivers, selectedRoute, selectedDriverId, selectedRouteTrips, trips]);
 
   const mapCenter = useMemo(() => {
     const firstTrip = selectedRouteTrips.find(trip => Array.isArray(trip?.position) && trip.position.length === 2);
@@ -242,25 +281,33 @@ const RouteControlWorkspace = () => {
     .filter(position => Array.isArray(position) && position.length === 2), [selectedRouteTrips]);
 
   const dayHistory = useMemo(() => {
-    if (!selectedRoute?.serviceDate) return null;
-    const dayTrips = trips.filter(trip => getTripServiceDateKey(trip) === selectedRoute.serviceDate);
+    const dateKey = selectedRoute?.serviceDate || (dateFilter !== 'all' ? dateFilter : null);
+    const driverId = selectedDriverId || String(selectedRoute?.driverId || '');
+    if (!dateKey || !driverId) return null;
+    const dayTrips = trips.filter(trip => getTripServiceDateKey(trip) === dateKey && String(trip?.driverId || '') === driverId);
+    if (dayTrips.length === 0) return null;
     const completed = dayTrips.filter(trip => ['completed', 'done', 'closed'].includes(getNormalizedStatus(trip))).length;
     const cancelled = dayTrips.filter(trip => ['cancelled', 'canceled'].includes(getNormalizedStatus(trip))).length;
     const assigned = dayTrips.filter(trip => getNormalizedStatus(trip) === 'assigned').length;
-    return {
-      total: dayTrips.length,
-      completed,
-      cancelled,
-      assigned
-    };
-  }, [selectedRoute, trips]);
+    return { total: dayTrips.length, completed, cancelled, assigned };
+  }, [selectedRoute, selectedDriverId, trips, dateFilter]);
 
-  const handleSelectRoute = route => {
-    setSelectedRouteId(route.id);
-    setPrimaryDriverId(String(route.driverId || ''));
-    setSecondaryDriverId(String(route.secondaryDriverId || ''));
-    setRouteNameDraft(String(route.name || ''));
-    setRouteNotesDraft(String(route.notes || ''));
+  const handleSelectDriver = driverInfo => {
+    const driverId = String(driverInfo.driver.id);
+    setSelectedDriverId(driverId);
+    if (driverInfo.route) {
+      setSelectedRouteId(driverInfo.route.id);
+      setPrimaryDriverId(String(driverInfo.route.driverId || driverId));
+      setSecondaryDriverId(String(driverInfo.route.secondaryDriverId || ''));
+      setRouteNameDraft(String(driverInfo.route.name || ''));
+      setRouteNotesDraft(String(driverInfo.route.notes || ''));
+    } else {
+      setSelectedRouteId('');
+      setPrimaryDriverId(driverId);
+      setSecondaryDriverId('');
+      setRouteNameDraft('');
+      setRouteNotesDraft('');
+    }
   };
 
   useEffect(() => {
@@ -329,41 +376,40 @@ const RouteControlWorkspace = () => {
                 <h5 className="mb-0">Route Control</h5>
                 <div className="d-flex gap-2 align-items-center">
                   {isSyncing ? <Badge bg="secondary">Syncing...</Badge> : null}
-                  <Form.Select value={dateFilter} onChange={event => setDateFilter(event.target.value)} style={{ width: 180 }}>
+                  <Form.Select value={dateFilter} onChange={event => { setDateFilter(event.target.value); setSelectedDriverId(''); setSelectedRouteId(''); }} style={{ width: 180 }}>
                     <option value="all">All dates</option>
                     {allDateKeys.map(dateKey => <option key={dateKey} value={dateKey}>{formatTripDateLabel(dateKey)}</option>)}
                   </Form.Select>
-                  <Badge bg="light" text="dark">{filteredRoutes.length} routes</Badge>
+                  <Badge bg="light" text="dark">{driversWithInfo.length} drivers</Badge>
                 </div>
               </div>
-              <div className="small text-muted">Select a route to review health, delays, suggestions, reassignment and auto-fix.</div>
+              <div className="small text-muted">Click a driver to see their route, trips and map.</div>
               <div className="small text-muted mt-1">Loaded: {drivers.length} drivers · {trips.length} trips · {effectiveRoutes.length} routes</div>
               <div className="mt-3 table-responsive" style={{ maxHeight: 300 }}>
                 <Table hover className="mb-0 align-middle">
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
-                      <th>Route</th>
-                      <th>Date</th>
                       <th>Driver</th>
-                      <th>Trips</th>
                       <th>Status</th>
+                      <th>Route</th>
+                      <th>Trips</th>
+                      <th>Health</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRoutes.length > 0 ? filteredRoutes.map(route => {
-                      const routeTrips = getTripsForRoute(route, trips);
-                      const routeHealth = getRouteHealth(routeTrips);
-                      const driverName = drivers.find(driver => String(driver.id) === String(route.driverId || ''))?.name || 'Unassigned';
+                    {driversWithInfo.length > 0 ? driversWithInfo.map(info => {
+                      const health = info.trips.length > 0 ? getRouteHealth(info.trips) : null;
+                      const isSelected = selectedDriverId === String(info.driver.id);
                       return (
-                        <tr key={route.id} className={selectedRoute?.id === route.id ? 'table-primary' : ''} onClick={() => handleSelectRoute(route)} style={{ cursor: 'pointer' }}>
-                          <td className="fw-semibold">{route.name || route.id}</td>
-                          <td>{route.serviceDate || '-'}</td>
-                          <td>{driverName}</td>
-                          <td>{routeTrips.length}</td>
-                          <td><Badge bg={routeHealth.variant}>{routeHealth.level}</Badge></td>
+                        <tr key={info.driver.id} className={isSelected ? 'table-primary' : ''} onClick={() => handleSelectDriver(info)} style={{ cursor: 'pointer' }}>
+                          <td className="fw-semibold">{info.driver.name}</td>
+                          <td><Badge bg={String(info.driver.live || '').toLowerCase() === 'online' ? 'success' : 'secondary'}>{info.driver.live || 'Offline'}</Badge></td>
+                          <td>{info.hasRoute ? <Badge bg="info">Has Route</Badge> : <Badge bg="light" text="dark">No Route</Badge>}</td>
+                          <td>{info.trips.length}</td>
+                          <td>{health ? <Badge bg={health.variant}>{health.level}</Badge> : <span className="text-muted small">-</span>}</td>
                         </tr>
                       );
-                    }) : <tr><td colSpan={5} className="text-center text-muted py-4">No routes for this date filter.</td></tr>}
+                    }) : <tr><td colSpan={5} className="text-center text-muted py-4">No drivers found.</td></tr>}
                   </tbody>
                 </Table>
               </div>
@@ -394,8 +440,8 @@ const RouteControlWorkspace = () => {
           <Card className="h-100">
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <h6 className="mb-0">Route Mini Map</h6>
-                {selectedRoute ? <Badge bg="info">{selectedRouteTrips.length} stops</Badge> : null}
+                <h6 className="mb-0">{selectedRouteDriver ? selectedRouteDriver.name : 'Route Mini Map'}</h6>
+                {selectedRouteTrips.length > 0 ? <Badge bg="info">{selectedRouteTrips.length} stops</Badge> : null}
               </div>
               <div style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
                 <MapContainer center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }}>
@@ -463,7 +509,7 @@ const RouteControlWorkspace = () => {
                   </div>
                   <div className="small text-muted">Current driver: {selectedRouteDriver?.name || 'Unassigned'}</div>
                 </div>
-              ) : <div className="text-muted">Select a route first.</div>}
+              ) : <div className="text-muted">{selectedDriverId ? 'No route found for this driver on this date.' : 'Select a driver first.'}</div>}
             </CardBody>
           </Card>
         </Col>
