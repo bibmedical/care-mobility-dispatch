@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 if ([string]::IsNullOrWhiteSpace($Token)) {
   throw 'Missing -Token. Example: .\scripts\seed-storage-to-render.ps1 -Token "your-token"'
