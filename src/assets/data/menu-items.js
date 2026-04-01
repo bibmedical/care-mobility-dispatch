@@ -8,6 +8,11 @@ export const MENU_ITEMS = [{
   label: 'Dispatcher',
   url: '/dispatcher'
 }, {
+  key: 'route-control',
+  icon: 'iconoir:route',
+  label: 'Route Control',
+  url: '/route-control'
+}, {
   key: 'trip-analytics',
   label: 'Primary Dashboard',
   icon: 'iconoir:stats-report',

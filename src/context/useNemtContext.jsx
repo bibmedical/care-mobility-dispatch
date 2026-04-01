@@ -418,6 +418,62 @@ export const NemtProvider = ({
     };
   }, { markDispatchDirty: true });
 
+  const updateRoutePlan = (routeId, updates = {}) => updateState(currentState => {
+    const normalizedRouteId = String(routeId || '').trim();
+    if (!normalizedRouteId) return currentState;
+    const normalizedUpdates = updates || {};
+    return {
+      ...currentState,
+      routePlans: currentState.routePlans.map(routePlan => routePlan.id === normalizedRouteId ? normalizeRoutePlanRecord({
+        ...routePlan,
+        ...normalizedUpdates,
+        id: routePlan.id,
+        tripIds: Array.isArray(routePlan.tripIds) ? routePlan.tripIds : []
+      }) : routePlan)
+    };
+  }, { markDispatchDirty: true });
+
+  const assignRoutePrimaryDriver = (routeId, driverId) => updateState(currentState => {
+    const normalizedRouteId = String(routeId || '').trim();
+    const normalizedDriverId = String(driverId || '').trim();
+    if (!normalizedRouteId || !normalizedDriverId) return currentState;
+    const updatedAt = getMutationTimestamp();
+    return {
+      ...currentState,
+      selectedDriverId: normalizedDriverId,
+      routePlans: currentState.routePlans.map(routePlan => routePlan.id === normalizedRouteId ? {
+        ...routePlan,
+        driverId: normalizedDriverId
+      } : routePlan),
+      trips: currentState.trips.map(trip => trip.routeId === normalizedRouteId ? {
+        ...trip,
+        driverId: normalizedDriverId,
+        updatedAt,
+        status: 'Assigned'
+      } : trip)
+    };
+  }, { markDispatchDirty: true });
+
+  const assignRouteSecondaryDriver = (routeId, driverId) => updateState(currentState => {
+    const normalizedRouteId = String(routeId || '').trim();
+    const normalizedDriverId = String(driverId || '').trim();
+    if (!normalizedRouteId) return currentState;
+    const updatedAt = getMutationTimestamp();
+    return {
+      ...currentState,
+      routePlans: currentState.routePlans.map(routePlan => routePlan.id === normalizedRouteId ? {
+        ...routePlan,
+        secondaryDriverId: normalizedDriverId || null
+      } : routePlan),
+      trips: currentState.trips.map(trip => trip.routeId === normalizedRouteId ? {
+        ...trip,
+        secondaryDriverId: normalizedDriverId || null,
+        updatedAt,
+        status: trip.driverId || normalizedDriverId ? 'Assigned' : trip.status
+      } : trip)
+    };
+  }, { markDispatchDirty: true });
+
   const addDriver = () => updateState(currentState => {
     const nextIndex = currentState.drivers.length + 19;
     const driver = {
@@ -588,6 +644,9 @@ export const NemtProvider = ({
     reinstateTrips,
     createRoute,
     deleteRoute,
+    updateRoutePlan,
+    assignRoutePrimaryDriver,
+    assignRouteSecondaryDriver,
     addDriver,
     replaceTrips,
     upsertImportedTrips,
