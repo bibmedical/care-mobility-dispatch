@@ -452,10 +452,11 @@ export const NemtProvider = ({
   const upsertImportedTrips = trips => updateState(currentState => {
     const currentTrips = normalizeTripRecords(currentState.trips);
     const importedTrips = normalizeTripRecords(trips);
+    const importedServiceDateKeys = new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean));
+    const currentTripsForImportedDays = currentTrips.filter(trip => importedServiceDateKeys.has(getTripServiceDateKey(trip)));
     const currentTripLookup = new Map();
-    const matchedCurrentTripIds = new Set();
 
-    currentTrips.forEach(trip => {
+    currentTripsForImportedDays.forEach(trip => {
       getTripLookupKeys(trip).forEach(key => {
         if (key && !currentTripLookup.has(key)) {
           currentTripLookup.set(key, trip);
@@ -468,12 +469,11 @@ export const NemtProvider = ({
       if (!currentTrip) {
         return importedTrip;
       }
-
-      matchedCurrentTripIds.add(String(currentTrip.id));
       return mergeImportedTripWithCurrent(currentTrip, importedTrip);
     });
 
-    const nextTrips = normalizeTripRecords(mergedImportedTrips);
+    const remainingTrips = currentTrips.filter(trip => !importedServiceDateKeys.has(getTripServiceDateKey(trip)));
+    const nextTrips = normalizeTripRecords([...remainingTrips, ...mergedImportedTrips]);
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
 
     return {
@@ -481,6 +481,22 @@ export const NemtProvider = ({
       trips: nextTrips,
       routePlans: currentState.routePlans.filter(routePlan => routePlan.tripIds.some(tripId => nextTripIds.has(tripId))),
       selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(tripId))
+    };
+  }, { markDispatchDirty: true });
+
+  const clearTripsByServiceDates = serviceDateKeys => updateState(currentState => {
+    const targetDateKeys = new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean));
+    if (targetDateKeys.size === 0) return currentState;
+
+    const nextTrips = currentState.trips.filter(trip => !targetDateKeys.has(getTripServiceDateKey(trip)));
+    const nextTripIds = new Set(nextTrips.map(trip => trip.id));
+
+    return {
+      ...currentState,
+      trips: nextTrips,
+      routePlans: currentState.routePlans.filter(routePlan => routePlan.tripIds.some(tripId => nextTripIds.has(tripId))),
+      selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(tripId)),
+      selectedRouteId: currentState.selectedRouteId && currentState.routePlans.some(routePlan => routePlan.id === currentState.selectedRouteId && routePlan.tripIds.some(tripId => nextTripIds.has(tripId))) ? currentState.selectedRouteId : null
     };
   }, { markDispatchDirty: true });
 
@@ -575,6 +591,7 @@ export const NemtProvider = ({
     addDriver,
     replaceTrips,
     upsertImportedTrips,
+    clearTripsByServiceDates,
     clearTrips,
     updateTripNotes,
     updateTripRecord,

@@ -2,7 +2,7 @@
 
 import PageTitle from '@/components/PageTitle';
 import { useNemtContext } from '@/context/useNemtContext';
-import { getTripLateMinutes, getTripPunctualityLabel } from '@/helpers/nemt-dispatch-state';
+import { getTripLateMinutes, getTripPunctualityLabel, getTripServiceDateKey } from '@/helpers/nemt-dispatch-state';
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
@@ -275,12 +275,15 @@ const TripImportWorkspace = () => {
   const {
     trips,
     upsertImportedTrips,
+    clearTripsByServiceDates,
     clearTrips
   } = useNemtContext();
-  const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. El archivo reemplaza la carga actual para evitar mezclar dias y se guarda tambien en el servidor.');
+  const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. El archivo actualiza solo los dias que contiene para evitar mezclar fechas y se guarda tambien en el servidor.');
   const [pendingTrips, setPendingTrips] = useState([]);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [isParsing, setIsParsing] = useState(false);
+
+  const importedServiceDateKeys = useMemo(() => Array.from(new Set(pendingTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).sort(), [pendingTrips]);
 
   const stats = useMemo(() => [{
     label: 'Trips en sistema',
@@ -293,7 +296,7 @@ const TripImportWorkspace = () => {
     value: selectedFileName ? selectedFileName.split('.').pop()?.toUpperCase() || 'N/A' : 'XLSX/CSV'
   }, {
     label: 'Modo',
-    value: 'Replace from file'
+    value: 'Replace matching days'
   }], [pendingTrips.length, selectedFileName, trips.length]);
 
   const handleDownloadTemplate = () => {
@@ -341,7 +344,8 @@ const TripImportWorkspace = () => {
 
       const importedTrips = annotateSafeRideTrips(rows.map(mapRowToTrip).filter(trip => trip.id && trip.rider && trip.address));
       setPendingTrips(importedTrips);
-      setMessage(`${importedTrips.length} viajes SafeRide listos para reemplazar la carga actual sin mezclar dias.`);
+      const dayCount = Array.from(new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).length;
+      setMessage(`${importedTrips.length} viajes SafeRide listos para importar. Se actualizaran ${dayCount} dia${dayCount === 1 ? '' : 's'} segun el archivo.`);
     } catch {
       setPendingTrips([]);
       setMessage('No se pudo leer el archivo. Usa Excel .xlsx, .xls o CSV con encabezados.');
@@ -357,7 +361,23 @@ const TripImportWorkspace = () => {
     }
 
     upsertImportedTrips(pendingTrips);
-    setMessage(`${pendingTrips.length} viajes procesados y guardados. La carga actual fue reemplazada con el archivo importado.`);
+    setMessage(`${pendingTrips.length} viajes procesados y guardados. Solo se actualizaron los dias presentes en el archivo.`);
+  };
+
+  const handleClearImportedDays = () => {
+    if (importedServiceDateKeys.length === 0) {
+      setMessage('Primero carga un archivo para detectar los dias a borrar.');
+      return;
+    }
+
+    const confirmationMessage = `Vas a borrar ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'} (${importedServiceDateKeys.join(', ')}). Esta accion no se puede deshacer. Deseas continuar?`;
+    if (!window.confirm(confirmationMessage)) {
+      setMessage('Borrado cancelado.');
+      return;
+    }
+
+    clearTripsByServiceDates(importedServiceDateKeys);
+    setMessage(`Se borraron los viajes de ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'}: ${importedServiceDateKeys.join(', ')}.`);
   };
 
   return <>
@@ -378,25 +398,27 @@ const TripImportWorkspace = () => {
           <Card className="h-100">
             <CardBody>
               <h5 className="mb-2">Importar plantilla oficial de SafeRide</h5>
-              <p className="text-muted mb-3">Este modulo reemplaza la carga actual con los viajes del archivo para evitar mezclar dias. Ya esta adaptado al formato oficial de SafeRide con columnas como rideId, tripId, fromAddress, toAddress, pickupTime y patientFirstName. Si tu archivo trae puntualidad, tambien guarda scheduledPickup, actualPickup, delayMinutes y onTimeStatus.</p>
+              <p className="text-muted mb-3">Este modulo actualiza solo los dias presentes en el archivo para evitar mezclar viajes de fechas distintas. Ya esta adaptado al formato oficial de SafeRide con columnas como rideId, tripId, fromAddress, toAddress, pickupTime y patientFirstName. Si tu archivo trae puntualidad, tambien guarda scheduledPickup, actualPickup, delayMinutes y onTimeStatus.</p>
               <Alert variant="info" className="small">Formato oficial detectado: rideId, tripId, fromAddress, fromZipcode, toAddress, toZipcode, pickupTime, appointmentTime, fromLatitude, fromLongitude, patientFirstName, patientLastName y columnas relacionadas. Opcionalmente puedes incluir scheduledPickup, actualPickup, scheduledDropoff, actualDropoff, delayMinutes y onTimeStatus.</Alert>
               <div className="d-flex flex-wrap gap-2 mb-3">
                 <Button variant="success" onClick={() => fileInputRef.current?.click()} disabled={isParsing}>{isParsing ? 'Leyendo archivo...' : 'Seleccionar Excel o CSV'}</Button>
                 <Button variant="outline-primary" onClick={handleDownloadTemplate}>Descargar plantilla</Button>
+                <Button variant="outline-warning" onClick={handleClearImportedDays} disabled={importedServiceDateKeys.length === 0}>Borrar dias del archivo</Button>
                 <Button variant="outline-danger" onClick={handleClearTrips}>Borrar viajes actuales</Button>
               </div>
               <Form.Control ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} style={{ display: 'none' }} />
               <div className="small text-muted mb-3">{selectedFileName ? `Archivo seleccionado: ${selectedFileName}` : 'No hay archivo seleccionado.'}</div>
+              <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Dias detectados en archivo: ${importedServiceDateKeys.join(', ')}` : 'Dias detectados en archivo: -'}</div>
               <div className="small text-muted mb-3">{message}</div>
               {pendingTrips.length > 0 ? <Alert variant="success" className="d-flex flex-wrap align-items-center justify-content-between gap-3">
                   <div>
                     <div className="fw-semibold">Archivo listo para importar</div>
-                    <div className="small mb-0">Se encontraron {pendingTrips.length} viajes en preview. Presiona el boton verde para reemplazar la carga actual con este archivo.</div>
+                    <div className="small mb-0">Se encontraron {pendingTrips.length} viajes en preview. Presiona el boton verde para actualizar solamente los dias incluidos en este archivo.</div>
                   </div>
                   <Button variant="success" size="lg" onClick={handleImportTrips}>Importar {pendingTrips.length} viajes ahora</Button>
                 </Alert> : null}
               <div className="d-flex flex-wrap gap-2">
-                <Button variant="success" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar y reemplazar viajes</Button>
+                <Button variant="success" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar y actualizar dias</Button>
                 <Button variant="outline-secondary" onClick={() => router.push('/dispatcher')}>Abrir Dispatcher</Button>
                 <Button variant="outline-secondary" onClick={() => router.push('/trip-dashboard')}>Abrir Trip Dashboard</Button>
               </div>
