@@ -1292,7 +1292,7 @@ const TripDashboardWorkspace = () => {
   const isFocusRightLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && showBottomPanels;
   const isStackedLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked && showBottomPanels;
   const isStandardLayout = !isFocusRightLayout && !isStackedLayout;
-  const isPeekPanelMode = isStandardLayout && showMapPane && rightPanelCollapsed;
+  const isPeekPanelMode = isStandardLayout && showMapPane && rightPanelCollapsed && !showBottomPanels;
   const focusRightColumnSplit = clamp(columnSplit, 28, 40);
   const collapsedPanelWidth = TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH;
   const workspaceGridStyle = {
@@ -1333,7 +1333,7 @@ const TripDashboardWorkspace = () => {
 
     if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.normal) {
       setShowMapPane(true);
-      setShowBottomPanels(true);
+      setShowBottomPanels(false);
       setRightPanelCollapsed(true);
       setColumnSplit(94);
       setRowSplit(68);
@@ -1358,11 +1358,16 @@ const TripDashboardWorkspace = () => {
   const handlePanelViewChange = nextView => {
     if (nextView === 'hidden') {
       setShowBottomPanels(false);
+      setRightPanelCollapsed(true);
       setStatusMessage('Paneles inferiores ocultos.');
       return;
     }
     setShowBottomPanels(true);
     setPanelView(nextView);
+    if (isStandardLayout && showMapPane) {
+      setRightPanelCollapsed(false);
+      setColumnSplit(current => clamp(current, 38, 68));
+    }
     setStatusMessage(`Paneles inferiores en modo ${nextView}.`);
   };
 
@@ -1521,8 +1526,20 @@ const TripDashboardWorkspace = () => {
                   </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => router.push('/drivers/grouping')}>Grouping</Button>
                   <Button variant="dark" size="sm" onClick={() => {
-                  setShowBottomPanels(current => !current);
-                  setStatusMessage(showBottomPanels ? 'Paneles inferiores ocultos.' : 'Paneles inferiores visibles.');
+                  if (showBottomPanels) {
+                    setShowBottomPanels(false);
+                    setRightPanelCollapsed(true);
+                    setStatusMessage('Paneles inferiores ocultos.');
+                    return;
+                  }
+
+                  setShowBottomPanels(true);
+                  setPanelView(TRIP_DASHBOARD_PANEL_VIEWS.both);
+                  if (isStandardLayout && showMapPane) {
+                    setRightPanelCollapsed(false);
+                    setColumnSplit(current => clamp(current, 38, 68));
+                  }
+                  setStatusMessage('Paneles inferiores visibles.');
                 }}>{showBottomPanels ? 'Hide Panel' : 'Panel'}</Button>
                   <Button variant="dark" size="sm" onClick={() => setMapLocked(current => !current)}>{mapLocked ? 'Unlock' : 'Lock'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button>
