@@ -3,6 +3,7 @@
 import { useNemtContext } from '@/context/useNemtContext';
 import { formatTripDateLabel, getRouteServiceDateKey, getTripLateMinutes, getTripServiceDateKey } from '@/helpers/nemt-dispatch-state';
 import { useEffect, useMemo, useState } from 'react';
+import { getMapTileConfig } from '@/utils/map-tiles';
 import { MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
@@ -50,6 +51,33 @@ const buildFallbackRoutesFromTrips = trips => {
       tripIds: routeTrips.map(trip => trip.id),
       notes: String(firstTrip?.routeNotes || ''),
       isFallback: true
+    };
+  });
+};
+
+const buildSyntheticRoutesFromAssignedTrips = trips => {
+  const buckets = new Map();
+  trips.forEach(trip => {
+    const driverId = String(trip?.driverId || '').trim();
+    if (!driverId) return;
+    const dateKey = getTripServiceDateKey(trip) || 'undated';
+    const bucketKey = `${driverId}::${dateKey}`;
+    if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
+    buckets.get(bucketKey).push(trip);
+  });
+  return Array.from(buckets.entries()).map(([bucketKey, bucketTrips], index) => {
+    const [driverId, dateKey] = bucketKey.split('::');
+    const firstTrip = bucketTrips[0] || {};
+    return {
+      id: `synthetic-${driverId}-${dateKey}`,
+      name: String(firstTrip?.routeName || `Driver Route ${index + 1}`),
+      driverId,
+      secondaryDriverId: String(firstTrip?.secondaryDriverId || ''),
+      serviceDate: dateKey === 'undated' ? '' : dateKey,
+      tripIds: bucketTrips.map(t => t.id),
+      notes: '',
+      isFallback: true,
+      isSynthetic: true
     };
   });
 };
@@ -131,6 +159,7 @@ const RouteControlWorkspace = () => {
     drivers,
     trips,
     routePlans,
+    uiPreferences,
     refreshDrivers,
     refreshDispatchState,
     assignTripsToDriver,
@@ -149,9 +178,13 @@ const RouteControlWorkspace = () => {
   const [statusMessage, setStatusMessage] = useState('Route Control ready.');
   const [isSyncing, setIsSyncing] = useState(false);
 
+  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+
   const effectiveRoutes = useMemo(() => {
     if (Array.isArray(routePlans) && routePlans.length > 0) return routePlans;
-    return buildFallbackRoutesFromTrips(trips);
+    const byRouteId = buildFallbackRoutesFromTrips(trips);
+    if (byRouteId.length > 0) return byRouteId;
+    return buildSyntheticRoutesFromAssignedTrips(trips);
   }, [routePlans, trips]);
 
   useEffect(() => {
@@ -159,7 +192,7 @@ const RouteControlWorkspace = () => {
     const sync = async () => {
       setIsSyncing(true);
       try {
-        await Promise.all([refreshDrivers(), refreshDispatchState({ forceServer: true })]);
+        await Promise.all([refreshDrivers(), refreshDispatchState()]);
       } catch {
         if (active) setStatusMessage('Live sync failed. Showing latest local data.');
       } finally {
@@ -304,6 +337,7 @@ const RouteControlWorkspace = () => {
                 </div>
               </div>
               <div className="small text-muted">Select a route to review health, delays, suggestions, reassignment and auto-fix.</div>
+              <div className="small text-muted mt-1">Loaded: {drivers.length} drivers · {trips.length} trips · {effectiveRoutes.length} routes</div>
               <div className="mt-3 table-responsive" style={{ maxHeight: 300 }}>
                 <Table hover className="mb-0 align-middle">
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
@@ -365,7 +399,7 @@ const RouteControlWorkspace = () => {
               </div>
               <div style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
                 <MapContainer center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }}>
-                  <TileLayer attribution='&copy; OpenStreetMap contributors' url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
+                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
                   {routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: '#2563eb', weight: 4 }} /> : null}
                   {selectedRouteTrips.map((trip, index) => Array.isArray(trip?.position) && trip.position.length === 2 ? (
                     <Marker key={`${trip.id}-${index}`} position={trip.position}>
