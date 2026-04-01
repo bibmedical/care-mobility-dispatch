@@ -88,6 +88,8 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 const TRIP_DASHBOARD_LAYOUT_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_LAYOUT__';
 const TRIP_DASHBOARD_PANEL_VIEW_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_VIEW__';
 const TRIP_DASHBOARD_PANEL_ORDER_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_ORDER__';
+const TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH = 56;
+const TRIP_DASHBOARD_RIGHT_PANEL_EXPANDED_SPLIT = 50;
 
 const TRIP_DASHBOARD_LAYOUTS = {
   normal: 'normal',
@@ -384,6 +386,7 @@ const TripDashboardWorkspace = () => {
   const [layoutMode, setLayoutMode] = useState(TRIP_DASHBOARD_LAYOUTS.normal);
   const [panelView, setPanelView] = useState(TRIP_DASHBOARD_PANEL_VIEWS.both);
   const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(true);
   const [tripOrderMode, setTripOrderMode] = useState('original');
   const [tripSort, setTripSort] = useState({
     key: 'pickup',
@@ -1206,12 +1209,23 @@ const TripDashboardWorkspace = () => {
 
   useEffect(() => {
     const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
-    if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) return;
+    if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
+      setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
+      setShowMapPane(true);
+      setRightPanelCollapsed(true);
+      setColumnSplit(94);
+      return;
+    }
     setLayoutMode(storedLayout);
     if (storedLayout !== TRIP_DASHBOARD_LAYOUTS.normal) {
       setShowMapPane(false);
       setShowBottomPanels(true);
+      setRightPanelCollapsed(false);
+      return;
     }
+    setShowMapPane(true);
+    setRightPanelCollapsed(true);
+    setColumnSplit(94);
   }, []);
 
   useEffect(() => {
@@ -1278,10 +1292,12 @@ const TripDashboardWorkspace = () => {
   const isFocusRightLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && showBottomPanels;
   const isStackedLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked && showBottomPanels;
   const isStandardLayout = !isFocusRightLayout && !isStackedLayout;
+  const isPeekPanelMode = isStandardLayout && showMapPane && rightPanelCollapsed;
   const focusRightColumnSplit = clamp(columnSplit, 28, 40);
+  const collapsedPanelWidth = TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH;
   const workspaceGridStyle = {
     display: 'grid',
-    gridTemplateColumns: isFocusRightLayout ? `${focusRightColumnSplit}% ${dividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
+    gridTemplateColumns: isFocusRightLayout ? `${focusRightColumnSplit}% ${dividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${dividerSize}px - ${collapsedPanelWidth}px)) ${dividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
     gridTemplateRows: isFocusRightLayout ? '1fr' : isStackedLayout ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : showBottomPanels ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
     height: workspaceHeight,
     minHeight: workspaceHeight,
@@ -1318,14 +1334,16 @@ const TripDashboardWorkspace = () => {
     if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.normal) {
       setShowMapPane(true);
       setShowBottomPanels(true);
-      setColumnSplit(58);
+      setRightPanelCollapsed(true);
+      setColumnSplit(94);
       setRowSplit(68);
-      setStatusMessage('Layout normal restaurado en Trip Dashboard.');
+      setStatusMessage('Layout normal restaurado con panel derecho en pestaña.');
       return;
     }
 
     setShowMapPane(false);
     setShowBottomPanels(true);
+    setRightPanelCollapsed(false);
 
     if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight) {
       setColumnSplit(current => clamp(current, 28, 40));
@@ -1570,9 +1588,9 @@ const TripDashboardWorkspace = () => {
           </Card>
         </div>
 
-        <div onMouseDown={() => showMapPane || isFocusRightLayout ? setDragMode('column') : undefined} style={{
+        <div onMouseDown={() => showMapPane && !isPeekPanelMode || isFocusRightLayout ? setDragMode('column') : undefined} style={{
         ...dividerBaseStyle,
-        cursor: 'col-resize',
+        cursor: showMapPane && isPeekPanelMode ? 'default' : 'col-resize',
         gridColumn: 2,
         gridRow: isFocusRightLayout ? 1 : '1 / span 3',
         display: showMapPane || isFocusRightLayout ? 'block' : 'none'
@@ -1586,7 +1604,24 @@ const TripDashboardWorkspace = () => {
         gridColumn: isFocusRightLayout ? 3 : showMapPane ? 3 : isStackedLayout ? 1 : '1 / span 3',
         gridRow: isFocusRightLayout ? '1 / span 3' : 1
       }}>
-          <Card className="h-100">
+          {isPeekPanelMode ? <Card className="h-100 overflow-hidden">
+              <CardBody className="p-0 d-flex justify-content-center align-items-center" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)' }}>
+                <Button variant="warning" size="sm" onClick={() => {
+                setRightPanelCollapsed(false);
+                setColumnSplit(TRIP_DASHBOARD_RIGHT_PANEL_EXPANDED_SPLIT);
+                setStatusMessage('Panel derecho abierto a mitad.');
+              }} style={{
+                writingMode: 'vertical-rl',
+                textOrientation: 'mixed',
+                fontWeight: 800,
+                letterSpacing: 0.4,
+                borderRadius: 999,
+                minHeight: 140
+              }}>
+                  Open Panel
+                </Button>
+              </CardBody>
+            </Card> : <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                 {/* Row 1: Date selection and trip filters */}
@@ -1625,6 +1660,13 @@ const TripDashboardWorkspace = () => {
                   fontWeight: 800
                 }}>
                       Show Map
+                    </Button> : null}
+                  {isStandardLayout && showMapPane ? <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+                  setRightPanelCollapsed(true);
+                  setColumnSplit(94);
+                  setStatusMessage('Panel derecho minimizado en pestaña.');
+                }}>
+                      Peek Panel
                     </Button> : null}
                   <Badge bg="primary">{trips.length} trips</Badge>
                   <Badge bg="info">{drivers.length} drivers</Badge>
@@ -1847,7 +1889,7 @@ const TripDashboardWorkspace = () => {
                 </Table>
               </div>
             </CardBody>
-          </Card>
+          </Card>}
         </div>
 
         <div onMouseDown={() => showBottomPanels && !isFocusRightLayout ? setDragMode('row') : undefined} style={{
