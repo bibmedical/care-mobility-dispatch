@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
 const STORAGE_DIR = getStorageRoot();
@@ -55,7 +56,11 @@ export const readAssistantMemoryState = async () => {
 export const writeAssistantMemoryState = async nextState => {
   await ensureStorageFile();
   const normalized = normalizeState(nextState);
-  await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
+  await writeJsonFileWithSnapshots({
+    filePath: STORAGE_FILE,
+    nextValue: normalized,
+    backupName: 'assistant-memory'
+  });
   return normalized;
 };
 

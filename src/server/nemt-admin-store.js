@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { buildInitialAdminData, buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
 const STORAGE_DIR = getStorageRoot();
@@ -112,7 +113,11 @@ export const writeNemtAdminState = async nextState => {
   const currentNormalized = normalizeState(currentParsed);
   const mergedState = mergePreservedDriverData(currentNormalized, nextState);
   const normalized = normalizeState(mergedState);
-  await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
+  await writeJsonFileWithSnapshots({
+    filePath: STORAGE_FILE,
+    nextValue: normalized,
+    backupName: 'nemt-admin'
+  });
   return normalized;
 };
 

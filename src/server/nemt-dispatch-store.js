@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
 const STORAGE_DIR = getStorageRoot();
@@ -42,6 +43,10 @@ export const writeNemtDispatchState = async nextState => {
     ...nextState,
     trips: mergeTripsByLatestUpdate(currentState?.trips, nextState?.trips)
   });
-  await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
+  await writeJsonFileWithSnapshots({
+    filePath: STORAGE_FILE,
+    nextValue: normalized,
+    backupName: 'nemt-dispatch'
+  });
   return normalized;
 };

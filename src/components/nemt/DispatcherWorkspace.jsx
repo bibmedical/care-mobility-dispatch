@@ -318,7 +318,7 @@ const DispatcherWorkspace = () => {
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
-  const [tripDateFilter, setTripDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
+  const [tripDateFilter, setTripDateFilter] = useState('all');
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
   const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
@@ -687,7 +687,8 @@ const DispatcherWorkspace = () => {
   };
 
   const handleShiftTripDate = offsetDays => {
-    const nextDate = shiftTripDateKey(tripDateFilter, offsetDays);
+    const baseDate = tripDateFilter === 'all' ? new Date().toISOString().slice(0, 10) : tripDateFilter;
+    const nextDate = shiftTripDateKey(baseDate, offsetDays);
     if (nextDate) setTripDateFilter(nextDate);
   };
 
@@ -1352,7 +1353,7 @@ const DispatcherWorkspace = () => {
                   </Form.Select>
                   <div className="d-flex align-items-center gap-1 flex-nowrap">
                     <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(-1)} title="Previous day" style={greenToolbarButtonStyle}>Prev</Button>
-                    <Form.Control size="sm" type="date" value={tripDateFilter} onChange={event => setTripDateFilter(event.target.value)} style={{ width: 150 }} title="Filter trips by date" />
+                    <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || 'all')} style={{ width: 150 }} title="Filter trips by date" />
                     <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(1)} title="Next day" style={greenToolbarButtonStyle}>Next</Button>
                     <Button variant="outline-dark" size="sm" onClick={() => setTripDateFilter(new Date().toISOString().slice(0, 10))} title="Today" style={greenToolbarButtonStyle}>Today</Button>
                   </div>

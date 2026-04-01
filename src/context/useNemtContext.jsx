@@ -42,6 +42,31 @@ const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#08
 const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 
+const getTripLookupKeys = trip => {
+  const keys = [];
+  const tripId = String(trip?.id || '').trim();
+  const rideId = String(trip?.rideId || '').trim();
+  const brokerTripId = String(trip?.brokerTripId || '').trim();
+
+  if (tripId) keys.push(`id:${tripId}`);
+  if (rideId) keys.push(`ride:${rideId}`);
+  if (rideId && brokerTripId) keys.push(`ride-broker:${rideId}:${brokerTripId}`);
+
+  return keys;
+};
+
+const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => normalizeTripRecord({
+  ...importedTrip,
+  id: String(currentTrip?.id || importedTrip?.id || '').trim(),
+  driverId: currentTrip?.driverId ?? null,
+  secondaryDriverId: currentTrip?.secondaryDriverId ?? null,
+  routeId: currentTrip?.routeId ?? null,
+  status: currentTrip?.status || importedTrip?.status,
+  notes: String(currentTrip?.notes || '').trim() || importedTrip?.notes,
+  confirmation: currentTrip?.confirmation || importedTrip?.confirmation,
+  updatedAt: Number(currentTrip?.updatedAt) || Number(importedTrip?.updatedAt) || 0
+});
+
 export const useNemtContext = () => {
   const context = use(NemtContext);
   if (!context) {
@@ -424,6 +449,42 @@ export const NemtProvider = ({
     selectedDriverId: null
   }), { markDispatchDirty: true });
 
+  const upsertImportedTrips = trips => updateState(currentState => {
+    const currentTrips = normalizeTripRecords(currentState.trips);
+    const importedTrips = normalizeTripRecords(trips);
+    const currentTripLookup = new Map();
+    const matchedCurrentTripIds = new Set();
+
+    currentTrips.forEach(trip => {
+      getTripLookupKeys(trip).forEach(key => {
+        if (key && !currentTripLookup.has(key)) {
+          currentTripLookup.set(key, trip);
+        }
+      });
+    });
+
+    const mergedImportedTrips = importedTrips.map(importedTrip => {
+      const currentTrip = getTripLookupKeys(importedTrip).map(key => currentTripLookup.get(key)).find(Boolean);
+      if (!currentTrip) {
+        return importedTrip;
+      }
+
+      matchedCurrentTripIds.add(String(currentTrip.id));
+      return mergeImportedTripWithCurrent(currentTrip, importedTrip);
+    });
+
+    const remainingTrips = currentTrips.filter(trip => !matchedCurrentTripIds.has(String(trip.id)));
+    const nextTrips = normalizeTripRecords([...remainingTrips, ...mergedImportedTrips]);
+    const nextTripIds = new Set(nextTrips.map(trip => trip.id));
+
+    return {
+      ...currentState,
+      trips: nextTrips,
+      routePlans: currentState.routePlans.filter(routePlan => routePlan.tripIds.some(tripId => nextTripIds.has(tripId))),
+      selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(tripId))
+    };
+  }, { markDispatchDirty: true });
+
   const clearTrips = () => updateState(currentState => ({
     ...currentState,
     trips: [],
@@ -514,6 +575,7 @@ export const NemtProvider = ({
     deleteRoute,
     addDriver,
     replaceTrips,
+    upsertImportedTrips,
     clearTrips,
     updateTripNotes,
     updateTripRecord,

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { MENU_ITEMS } from '@/assets/data/menu-items';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
 import { getTripLateMinutes as getSharedTripLateMinutes } from '@/helpers/nemt-dispatch-state';
+import { readAssistantKnowledgeOverview, searchAssistantKnowledge } from '@/server/assistant-knowledge-store';
 import { readBlacklistState } from '@/server/blacklist-store';
 import { readAssistantConversation, readAssistantFacts, mergeAssistantFact, writeAssistantConversation } from '@/server/assistant-memory-store';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
@@ -162,6 +163,19 @@ const buildConfiguredSectionFacts = integrationsState => {
         kind: sectionName
       };
     }));
+};
+
+const findKnowledgeReply = (message, snapshot) => {
+  const matches = Array.isArray(snapshot?.knowledgeMatches) ? snapshot.knowledgeMatches : [];
+  if (matches.length === 0) return null;
+
+  const es = detectLanguage(message) === 'es';
+  const [primaryMatch, ...otherMatches] = matches;
+  const uniqueSources = Array.from(new Set([primaryMatch.documentTitle, ...otherMatches.map(match => match.documentTitle)].filter(Boolean))).slice(0, 3);
+  const sourceText = uniqueSources.join(', ');
+  return es
+    ? `En la base de conocimiento encontre esto en ${sourceText}: ${primaryMatch.text}`
+    : `I found this in the knowledge base from ${sourceText}: ${primaryMatch.text}`;
 };
 
 const findLearnedFactReply = (message, history, integrationsState, snapshot) => {
@@ -622,7 +636,7 @@ const flattenMenuItems = items => items.flatMap(item => item.children ? [{
 }]);
 
 const buildDispatchSnapshot = async session => {
-  const [adminPayload, dispatchState, integrationsState, systemUsersPayload, blacklistState, persistedFacts] = await Promise.all([readNemtAdminPayload(), readNemtDispatchState(), readIntegrationsState(), readSystemUsersPayload(), readBlacklistState(), readAssistantFacts()]);
+  const [adminPayload, dispatchState, integrationsState, systemUsersPayload, blacklistState, persistedFacts, knowledgeOverview] = await Promise.all([readNemtAdminPayload(), readNemtDispatchState(), readIntegrationsState(), readSystemUsersPayload(), readBlacklistState(), readAssistantFacts(), readAssistantKnowledgeOverview()]);
   const drivers = Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : [];
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
   const routePlans = Array.isArray(dispatchState?.routePlans) ? dispatchState.routePlans : [];
@@ -666,6 +680,17 @@ const buildDispatchSnapshot = async session => {
       integrations: 'Configure Uber, SMS and AI assistant integrations.'
     },
     persistedFacts: Array.isArray(persistedFacts) ? persistedFacts : [],
+    knowledge: {
+      totalDocuments: Number(knowledgeOverview?.totals?.documents || 0),
+      totalChunks: Number(knowledgeOverview?.totals?.chunks || 0),
+      documents: Array.isArray(knowledgeOverview?.documents) ? knowledgeOverview.documents.slice(0, 10).map(document => ({
+        id: document.id,
+        title: document.title,
+        fileName: document.fileName,
+        summary: document.summary,
+        relativePath: document.relativePath
+      })) : []
+    },
     allTrips: trips.map(trip => ({
       id: trip.id,
       rideId: trip.rideId,
@@ -698,6 +723,9 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
 
   const learnedFactReply = findLearnedFactReply(message, history, integrationsState, snapshot);
   if (learnedFactReply) return learnedFactReply;
+
+  const knowledgeReply = findKnowledgeReply(message, snapshot);
+  if (knowledgeReply) return knowledgeReply;
 
   if (/cual es tu nombre|como te llamas|tu nombre|what.*your name|who are you/.test(prompt)) {
     return es ? `Soy ${myName}, tu asistente de despacho.` : `I'm ${myName}, your dispatch assistant.`;
@@ -812,6 +840,11 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
       ? `Resumen de integraciones: Uber ${snapshot.integrations.uberConfigured ? 'configurado' : 'no configurado'}. IA ${snapshot.integrations.aiConfigured ? `configurada, usando ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no configurada'}. Proveedores SMS activos: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'ninguno'}.`
       : `Integration summary: Uber configured ${snapshot.integrations.uberConfigured ? 'yes' : 'no'}. AI configured ${snapshot.integrations.aiConfigured ? `yes, using ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no'}. Active SMS providers: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'none'}.`;
   }
+  if (/document|pdf|manual|libro|diccionario|knowledge|memoria/.test(prompt)) {
+    return es
+      ? `La memoria documental tiene ${snapshot?.knowledge?.totalDocuments || 0} documento${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'} cargado${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'}. Puedes preguntarme por el contenido y buscare en ellos.`
+      : `The document memory currently has ${snapshot?.knowledge?.totalDocuments || 0} uploaded document${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'}. You can ask me about their contents and I will search them.`;
+  }
   if (/remember|learn|save|recuerda|aprende|guarda/.test(prompt)) {
     return es ? `Listo. Lo recordare para la proxima vez.` : `Got it. I'll save that and remember it next time.`;
   }
@@ -875,7 +908,10 @@ const callOpenAI = async ({ message, history, snapshot, pathname, integrationsSt
       }, {
         role: 'system',
         content: `Current page: ${pathname || 'unknown'}. App snapshot: ${JSON.stringify(snapshot)}`
-      }, ...history.slice(-10).map(item => ({
+      }, ...(Array.isArray(snapshot?.knowledgeMatches) && snapshot.knowledgeMatches.length > 0 ? [{
+        role: 'system',
+        content: `Knowledge matches: ${JSON.stringify(snapshot.knowledgeMatches)}`
+      }] : []), ...history.slice(-10).map(item => ({
         role: item.role === 'assistant' ? 'assistant' : 'user',
         content: item.text
       })), {
@@ -936,7 +972,11 @@ export async function POST(request) {
   try {
     const snapshot = await buildDispatchSnapshot(session);
     const integrationsState = await readIntegrationsState();
-    const result = await callOpenAI({ message, history, snapshot, pathname, integrationsState, providerMode, session });
+    const knowledgeMatches = await searchAssistantKnowledge(message, { limit: 4 });
+    const result = await callOpenAI({ message, history, snapshot: {
+      ...snapshot,
+      knowledgeMatches
+    }, pathname, integrationsState, providerMode, session });
 
     // Persist learned facts from this message
     const newFacts = extractLearnFacts(message);

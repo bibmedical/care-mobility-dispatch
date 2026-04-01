@@ -6,7 +6,7 @@ import { useLayoutContext } from '@/context/useLayoutContext';
 import useAiIntegrationApi from '@/hooks/useAiIntegrationApi';
 import useAvatarSettingsApi from '@/hooks/useAvatarSettingsApi';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
+import { Alert, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
 
 const buildSurfaceStyles = isLight => ({
   card: {
@@ -60,6 +60,15 @@ const buildStatusPillStyle = (pillStyle, active) => ({
   color: active ? '#7ef0b1' : '#ffd76a'
 });
 
+const EMPTY_KNOWLEDGE = {
+  documents: [],
+  totals: {
+    documents: 0,
+    chunks: 0,
+    characters: 0
+  }
+};
+
 const AiIntegrationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
@@ -76,6 +85,10 @@ const AiIntegrationWorkspace = () => {
   const [message, setMessage] = useState('Pega aqui tu OpenAI API key para que el asistente de la esquina responda con IA real en lugar del modo basico.');
   const [showKey, setShowKey] = useState(false);
   const [assistantVisible, setAssistantVisible] = useState(true);
+  const [knowledgeData, setKnowledgeData] = useState(EMPTY_KNOWLEDGE);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(true);
+  const [knowledgeUploading, setKnowledgeUploading] = useState(false);
+  const [knowledgeDeletingId, setKnowledgeDeletingId] = useState('');
 
   useEffect(() => {
     if (!data?.ai) return;
@@ -108,6 +121,27 @@ const AiIntegrationWorkspace = () => {
     }
   });
 
+  const refreshKnowledge = async () => {
+    setKnowledgeLoading(true);
+    try {
+      const response = await fetch('/api/assistant/knowledge', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to load knowledge documents');
+      setKnowledgeData({
+        documents: Array.isArray(payload?.documents) ? payload.documents : [],
+        totals: payload?.totals || EMPTY_KNOWLEDGE.totals
+      });
+    } catch (knowledgeError) {
+      setMessage(knowledgeError.message || 'No se pudo cargar la memoria documental.');
+    } finally {
+      setKnowledgeLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshKnowledge();
+  }, []);
+
   const handleSave = async nextDraft => {
     try {
       const payload = await saveData({
@@ -136,7 +170,7 @@ const AiIntegrationWorkspace = () => {
   };
 
   const handleRefresh = async () => {
-    await Promise.all([refresh(), refreshAvatar()]);
+    await Promise.all([refresh(), refreshAvatar(), refreshKnowledge()]);
   };
 
   const handleAssistantVisibilityChange = async event => {
@@ -147,6 +181,55 @@ const AiIntegrationWorkspace = () => {
       setMessage(nextVisible ? 'La IA flotante ya esta visible en pantalla.' : 'La IA flotante se escondio de la pantalla.');
     } catch {
       setAssistantVisible(!nextVisible);
+    }
+  };
+
+  const handleKnowledgeUpload = async event => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    setKnowledgeUploading(true);
+    try {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('files', file);
+      });
+      const response = await fetch('/api/assistant/knowledge', {
+        method: 'POST',
+        body: formData
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to upload documents');
+      setKnowledgeData({
+        documents: Array.isArray(payload?.documents) ? payload.documents : [],
+        totals: payload?.totals || EMPTY_KNOWLEDGE.totals
+      });
+      setMessage(`${Array.isArray(payload?.uploadedDocuments) ? payload.uploadedDocuments.length : files.length} documento(s) agregados a la memoria de la IA.`);
+    } catch (uploadError) {
+      setMessage(uploadError.message || 'No se pudo subir el documento.');
+    } finally {
+      event.target.value = '';
+      setKnowledgeUploading(false);
+    }
+  };
+
+  const handleKnowledgeDelete = async documentId => {
+    setKnowledgeDeletingId(documentId);
+    try {
+      const response = await fetch(`/api/assistant/knowledge?id=${encodeURIComponent(documentId)}`, {
+        method: 'DELETE'
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to delete knowledge document');
+      setKnowledgeData({
+        documents: Array.isArray(payload?.documents) ? payload.documents : [],
+        totals: payload?.totals || EMPTY_KNOWLEDGE.totals
+      });
+      setMessage('Documento removido de la memoria de la IA.');
+    } catch (deleteError) {
+      setMessage(deleteError.message || 'No se pudo borrar el documento.');
+    } finally {
+      setKnowledgeDeletingId('');
     }
   };
 
@@ -197,7 +280,7 @@ const AiIntegrationWorkspace = () => {
             </div>
             <div className="d-flex flex-wrap gap-2 align-items-start">
               <span style={buildStatusPillStyle(surfaceStyles.pill, draft.enabled)}>{draft.enabled ? 'Enabled' : 'Disabled'}</span>
-              <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleRefresh} disabled={pageLoading || pageSaving}><IconifyIcon icon="iconoir:refresh-double" className="me-2" />Refresh</Button>
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleRefresh} disabled={pageLoading || pageSaving || knowledgeLoading || knowledgeUploading}><IconifyIcon icon="iconoir:refresh-double" className="me-2" />Refresh</Button>
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => handleSave({
               ...draft,
               connectionStatus: readiness
@@ -262,6 +345,43 @@ const AiIntegrationWorkspace = () => {
                   <div className="small text-secondary">Tip: use this switch to hide or show the AI widget from the corner without leaving this page.</div>
                 </div>
               </Col>
+            </Row>}
+        </CardBody>
+      </Card>
+
+      <Card style={surfaceStyles.card} className="border mt-3">
+        <CardBody>
+          <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-4">
+            <div>
+              <h5 className="mb-1">Document Memory</h5>
+              <p className="text-secondary mb-2">Sube libros, manuales, diccionarios o instrucciones en PDF, TXT, MD o CSV. El asistente local y el modo con OpenAI podran buscar en ese contenido al responder.</p>
+              <div className="small text-secondary">Documentos: {knowledgeData.totals.documents} | Chunks: {knowledgeData.totals.chunks} | Caracteres: {knowledgeData.totals.characters}</div>
+            </div>
+            <div className="d-flex flex-wrap gap-2 align-items-start">
+              <Form.Control type="file" accept=".pdf,.txt,.md,.csv" multiple onChange={handleKnowledgeUpload} disabled={knowledgeUploading} style={{ maxWidth: 320, ...surfaceStyles.input }} />
+              <Button style={surfaceStyles.button} className="rounded-pill" onClick={refreshKnowledge} disabled={knowledgeLoading || knowledgeUploading}>Refresh docs</Button>
+            </div>
+          </div>
+
+          {knowledgeUploading ? <Alert variant="info" className="py-2">Procesando documento y extrayendo texto...</Alert> : null}
+          {knowledgeLoading ? <div className="py-5 text-center text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading document memory...</div> : <Row className="g-3">
+              {knowledgeData.documents.length === 0 ? <Col xs={12}>
+                  <div className="border rounded-3 p-4 text-secondary" style={surfaceStyles.input}>Todavia no hay documentos cargados. Cuando subas un PDF o TXT, la IA podra consultarlo como memoria local persistente.</div>
+                </Col> : knowledgeData.documents.map(document => <Col md={6} xl={4} key={document.id}>
+                    <div className="border rounded-3 p-3 h-100 d-flex flex-column gap-3" style={surfaceStyles.input}>
+                      <div>
+                        <div className="fw-semibold">{document.title || document.fileName}</div>
+                        <div className="small text-secondary">{document.fileName}</div>
+                      </div>
+                      <div className="small text-secondary">{document.summary || 'No summary available.'}</div>
+                      <div className="small text-secondary">Chunks: {document.chunkCount} | Caracteres: {document.charCount}</div>
+                      <div className="small text-secondary">Subido: {document.uploadedAt ? new Date(document.uploadedAt).toLocaleString() : 'Pending'}</div>
+                      <div className="d-flex flex-wrap gap-2 mt-auto">
+                        <Button as="a" href={`/api/files/local?path=${encodeURIComponent(document.relativePath)}`} target="_blank" rel="noreferrer" style={surfaceStyles.button} size="sm">Open file</Button>
+                        <Button variant="outline-danger" size="sm" onClick={() => handleKnowledgeDelete(document.id)} disabled={knowledgeDeletingId === document.id}>{knowledgeDeletingId === document.id ? 'Deleting...' : 'Delete'}</Button>
+                      </div>
+                    </div>
+                  </Col>)}
             </Row>}
         </CardBody>
       </Card>

@@ -138,6 +138,19 @@ const getTimeValue = value => {
   return date ? date.getTime() : Number.MAX_SAFE_INTEGER;
 };
 
+const buildImportedTripId = ({
+  rideId,
+  tripId,
+  rawPickupTime,
+  rawDropoffTime,
+  address,
+  destination,
+  rider
+}, index) => {
+  const stableId = String(rideId || '').trim() || [tripId, rawPickupTime, rawDropoffTime, address, destination, rider].map(value => String(value || '').trim()).filter(Boolean).join('|');
+  return stableId || `trip-row-${index + 1}`;
+};
+
 const annotateSafeRideTrips = trips => {
   const groupedTrips = trips.reduce((accumulator, trip) => {
     const groupKey = trip.brokerTripId || trip.id;
@@ -176,7 +189,6 @@ const mapRowToTrip = (row, index) => {
   const destination = getValueByAliases(row, COLUMN_ALIASES.toAddress) || getValueByAliases(row, COLUMN_ALIASES.destination) || '';
   const rideId = getValueByAliases(row, COLUMN_ALIASES.id) || `RIDE-${Date.now()}-${index + 1}`;
   const tripId = getValueByAliases(row, COLUMN_ALIASES.brokerTripId);
-  const uniqueTripId = `${rideId}-${tripId || 'row'}-${index + 1}`;
   const status = getValueByAliases(row, COLUMN_ALIASES.status) || 'Scheduled';
   const confirmationStatus = getValueByAliases(row, COLUMN_ALIASES.confirmationStatus) || 'confirmed';
   const position = [getCoordinate(row, 'lat', index), getCoordinate(row, 'lng', index)];
@@ -205,6 +217,15 @@ const mapRowToTrip = (row, index) => {
     ...tripDraft,
     lateMinutes
   });
+  const uniqueTripId = buildImportedTripId({
+    rideId,
+    tripId,
+    rawPickupTime,
+    rawDropoffTime,
+    address,
+    destination,
+    rider
+  }, index);
 
   return {
     id: uniqueTripId,
@@ -253,10 +274,10 @@ const TripImportWorkspace = () => {
   const fileInputRef = useRef(null);
   const {
     trips,
-    replaceTrips,
+    upsertImportedTrips,
     clearTrips
   } = useNemtContext();
-  const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. Ahora los viajes se guardan tambien en el servidor para que no se borren al reiniciar.');
+  const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. Los viajes se agregan o actualizan y se guardan tambien en el servidor para que no se borren al reiniciar.');
   const [pendingTrips, setPendingTrips] = useState([]);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [isParsing, setIsParsing] = useState(false);
@@ -272,7 +293,7 @@ const TripImportWorkspace = () => {
     value: selectedFileName ? selectedFileName.split('.').pop()?.toUpperCase() || 'N/A' : 'XLSX/CSV'
   }, {
     label: 'Modo',
-    value: 'Replace trips'
+    value: 'Merge trips'
   }], [pendingTrips.length, selectedFileName, trips.length]);
 
   const handleDownloadTemplate = () => {
@@ -320,7 +341,7 @@ const TripImportWorkspace = () => {
 
       const importedTrips = annotateSafeRideTrips(rows.map(mapRowToTrip).filter(trip => trip.id && trip.rider && trip.address));
       setPendingTrips(importedTrips);
-      setMessage(`${importedTrips.length} viajes SafeRide listos para reemplazar los existentes.`);
+      setMessage(`${importedTrips.length} viajes SafeRide listos para agregar o actualizar sin borrar los existentes.`);
     } catch {
       setPendingTrips([]);
       setMessage('No se pudo leer el archivo. Usa Excel .xlsx, .xls o CSV con encabezados.');
@@ -335,8 +356,8 @@ const TripImportWorkspace = () => {
       return;
     }
 
-    replaceTrips(pendingTrips);
-    setMessage(`${pendingTrips.length} viajes importados y guardados. Los viajes anteriores fueron reemplazados.`);
+    upsertImportedTrips(pendingTrips);
+    setMessage(`${pendingTrips.length} viajes procesados y guardados. Los viajes existentes se conservaron y los coincidentes fueron actualizados.`);
   };
 
   return <>
@@ -357,7 +378,7 @@ const TripImportWorkspace = () => {
           <Card className="h-100">
             <CardBody>
               <h5 className="mb-2">Importar plantilla oficial de SafeRide</h5>
-              <p className="text-muted mb-3">Este modulo reemplaza todos los viajes cargados actualmente. Ya esta adaptado al formato oficial de SafeRide con columnas como rideId, tripId, fromAddress, toAddress, pickupTime y patientFirstName. Si tu archivo trae puntualidad, tambien guarda scheduledPickup, actualPickup, delayMinutes y onTimeStatus.</p>
+              <p className="text-muted mb-3">Este modulo agrega viajes nuevos y actualiza los que ya existen sin borrar el progreso actual. Ya esta adaptado al formato oficial de SafeRide con columnas como rideId, tripId, fromAddress, toAddress, pickupTime y patientFirstName. Si tu archivo trae puntualidad, tambien guarda scheduledPickup, actualPickup, delayMinutes y onTimeStatus.</p>
               <Alert variant="info" className="small">Formato oficial detectado: rideId, tripId, fromAddress, fromZipcode, toAddress, toZipcode, pickupTime, appointmentTime, fromLatitude, fromLongitude, patientFirstName, patientLastName y columnas relacionadas. Opcionalmente puedes incluir scheduledPickup, actualPickup, scheduledDropoff, actualDropoff, delayMinutes y onTimeStatus.</Alert>
               <div className="d-flex flex-wrap gap-2 mb-3">
                 <Button variant="success" onClick={() => fileInputRef.current?.click()} disabled={isParsing}>{isParsing ? 'Leyendo archivo...' : 'Seleccionar Excel o CSV'}</Button>
@@ -370,12 +391,12 @@ const TripImportWorkspace = () => {
               {pendingTrips.length > 0 ? <Alert variant="success" className="d-flex flex-wrap align-items-center justify-content-between gap-3">
                   <div>
                     <div className="fw-semibold">Archivo listo para importar</div>
-                    <div className="small mb-0">Se encontraron {pendingTrips.length} viajes en preview. Presiona el boton verde para subirlos al sistema.</div>
+                    <div className="small mb-0">Se encontraron {pendingTrips.length} viajes en preview. Presiona el boton verde para agregarlos o actualizarlos en el sistema.</div>
                   </div>
                   <Button variant="success" size="lg" onClick={handleImportTrips}>Importar {pendingTrips.length} viajes ahora</Button>
                 </Alert> : null}
               <div className="d-flex flex-wrap gap-2">
-                <Button variant="success" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar y reemplazar viajes</Button>
+                <Button variant="success" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar y conservar viajes</Button>
                 <Button variant="outline-secondary" onClick={() => router.push('/dispatcher')}>Abrir Dispatcher</Button>
                 <Button variant="outline-secondary" onClick={() => router.push('/trip-dashboard')}>Abrir Trip Dashboard</Button>
               </div>

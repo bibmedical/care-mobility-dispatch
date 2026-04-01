@@ -362,7 +362,7 @@ const TripDashboardWorkspace = () => {
   const [routeNotes, setRouteNotes] = useState('');
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
   const [tripIdSearch, setTripIdSearch] = useState('');
-  const [tripDateFilter, setTripDateFilter] = useState(() => new Date().toISOString().slice(0, 10));
+  const [tripDateFilter, setTripDateFilter] = useState('all');
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
