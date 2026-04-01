@@ -277,7 +277,7 @@ const TripImportWorkspace = () => {
     upsertImportedTrips,
     clearTrips
   } = useNemtContext();
-  const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. Los viajes se agregan o actualizan y se guardan tambien en el servidor para que no se borren al reiniciar.');
+  const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. El archivo reemplaza la carga actual para evitar mezclar dias y se guarda tambien en el servidor.');
   const [pendingTrips, setPendingTrips] = useState([]);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [isParsing, setIsParsing] = useState(false);
@@ -293,7 +293,7 @@ const TripImportWorkspace = () => {
     value: selectedFileName ? selectedFileName.split('.').pop()?.toUpperCase() || 'N/A' : 'XLSX/CSV'
   }, {
     label: 'Modo',
-    value: 'Merge trips'
+    value: 'Replace from file'
   }], [pendingTrips.length, selectedFileName, trips.length]);
 
   const handleDownloadTemplate = () => {
@@ -341,7 +341,7 @@ const TripImportWorkspace = () => {
 
       const importedTrips = annotateSafeRideTrips(rows.map(mapRowToTrip).filter(trip => trip.id && trip.rider && trip.address));
       setPendingTrips(importedTrips);
-      setMessage(`${importedTrips.length} viajes SafeRide listos para agregar o actualizar sin borrar los existentes.`);
+      setMessage(`${importedTrips.length} viajes SafeRide listos para reemplazar la carga actual sin mezclar dias.`);
     } catch {
       setPendingTrips([]);
       setMessage('No se pudo leer el archivo. Usa Excel .xlsx, .xls o CSV con encabezados.');
@@ -357,7 +357,7 @@ const TripImportWorkspace = () => {
     }
 
     upsertImportedTrips(pendingTrips);
-    setMessage(`${pendingTrips.length} viajes procesados y guardados. Los viajes existentes se conservaron y los coincidentes fueron actualizados.`);
+    setMessage(`${pendingTrips.length} viajes procesados y guardados. La carga actual fue reemplazada con el archivo importado.`);
   };
 
   return <>
@@ -378,7 +378,7 @@ const TripImportWorkspace = () => {
           <Card className="h-100">
             <CardBody>
               <h5 className="mb-2">Importar plantilla oficial de SafeRide</h5>
-              <p className="text-muted mb-3">Este modulo agrega viajes nuevos y actualiza los que ya existen sin borrar el progreso actual. Ya esta adaptado al formato oficial de SafeRide con columnas como rideId, tripId, fromAddress, toAddress, pickupTime y patientFirstName. Si tu archivo trae puntualidad, tambien guarda scheduledPickup, actualPickup, delayMinutes y onTimeStatus.</p>
+              <p className="text-muted mb-3">Este modulo reemplaza la carga actual con los viajes del archivo para evitar mezclar dias. Ya esta adaptado al formato oficial de SafeRide con columnas como rideId, tripId, fromAddress, toAddress, pickupTime y patientFirstName. Si tu archivo trae puntualidad, tambien guarda scheduledPickup, actualPickup, delayMinutes y onTimeStatus.</p>
               <Alert variant="info" className="small">Formato oficial detectado: rideId, tripId, fromAddress, fromZipcode, toAddress, toZipcode, pickupTime, appointmentTime, fromLatitude, fromLongitude, patientFirstName, patientLastName y columnas relacionadas. Opcionalmente puedes incluir scheduledPickup, actualPickup, scheduledDropoff, actualDropoff, delayMinutes y onTimeStatus.</Alert>
               <div className="d-flex flex-wrap gap-2 mb-3">
                 <Button variant="success" onClick={() => fileInputRef.current?.click()} disabled={isParsing}>{isParsing ? 'Leyendo archivo...' : 'Seleccionar Excel o CSV'}</Button>
@@ -391,12 +391,12 @@ const TripImportWorkspace = () => {
               {pendingTrips.length > 0 ? <Alert variant="success" className="d-flex flex-wrap align-items-center justify-content-between gap-3">
                   <div>
                     <div className="fw-semibold">Archivo listo para importar</div>
-                    <div className="small mb-0">Se encontraron {pendingTrips.length} viajes en preview. Presiona el boton verde para agregarlos o actualizarlos en el sistema.</div>
+                    <div className="small mb-0">Se encontraron {pendingTrips.length} viajes en preview. Presiona el boton verde para reemplazar la carga actual con este archivo.</div>
                   </div>
                   <Button variant="success" size="lg" onClick={handleImportTrips}>Importar {pendingTrips.length} viajes ahora</Button>
                 </Alert> : null}
               <div className="d-flex flex-wrap gap-2">
-                <Button variant="success" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar y conservar viajes</Button>
+                <Button variant="success" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar y reemplazar viajes</Button>
                 <Button variant="outline-secondary" onClick={() => router.push('/dispatcher')}>Abrir Dispatcher</Button>
                 <Button variant="outline-secondary" onClick={() => router.push('/trip-dashboard')}>Abrir Trip Dashboard</Button>
               </div>

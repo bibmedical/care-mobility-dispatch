@@ -473,8 +473,7 @@ export const NemtProvider = ({
       return mergeImportedTripWithCurrent(currentTrip, importedTrip);
     });
 
-    const remainingTrips = currentTrips.filter(trip => !matchedCurrentTripIds.has(String(trip.id)));
-    const nextTrips = normalizeTripRecords([...remainingTrips, ...mergedImportedTrips]);
+    const nextTrips = normalizeTripRecords(mergedImportedTrips);
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
 
     return {
