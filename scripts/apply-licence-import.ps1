@@ -25,6 +25,7 @@ foreach ($d in $data.drivers) {
 $template = $data.drivers[0] | ConvertTo-Json -Depth 30 | ConvertFrom-Json
 $created = @()
 $updated = @()
+$repoRoot = (Get-Location).Path
 
 foreach ($file in $licenseFiles) {
   $folderToken = $file.Directory.Name.Trim().ToUpper()
@@ -46,7 +47,8 @@ foreach ($file in $licenseFiles) {
     }
   }
 
-  $relPath = ($file.FullName.Replace((Get-Location).Path + '\\', '')).Replace('\\', '/')
+  $relPath = (Resolve-Path -LiteralPath $file.FullName -Relative)
+  $relPath = ($relPath -replace '^[.][/\\]', '') -replace '\\', '/'
 
   if ($best -and $bestScore -gt 0) {
     if (-not $best.documents) {
