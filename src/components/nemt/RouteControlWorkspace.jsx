@@ -1,7 +1,7 @@
 'use client';
 
 import { useNemtContext } from '@/context/useNemtContext';
-import { formatTripDateLabel, getTripLateMinutes, getTripServiceDateKey } from '@/helpers/nemt-dispatch-state';
+import { formatTripDateLabel, getRouteServiceDateKey, getTripLateMinutes, getTripServiceDateKey } from '@/helpers/nemt-dispatch-state';
 import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
@@ -27,6 +27,30 @@ const getTripsForRoute = (route, allTrips) => {
     const matchesRouteId = String(trip?.routeId || '').trim() === routeId;
     const matchesTripId = tripId && routeTripIds.has(tripId);
     return matchesRouteId || matchesTripId;
+  });
+};
+
+const buildFallbackRoutesFromTrips = trips => {
+  const routeBuckets = new Map();
+  trips.forEach(trip => {
+    const routeId = String(trip?.routeId || '').trim();
+    if (!routeId) return;
+    if (!routeBuckets.has(routeId)) routeBuckets.set(routeId, []);
+    routeBuckets.get(routeId).push(trip);
+  });
+
+  return Array.from(routeBuckets.entries()).map(([routeId, routeTrips], index) => {
+    const firstTrip = routeTrips[0] || {};
+    return {
+      id: routeId,
+      name: String(firstTrip?.routeName || `Route ${index + 1}`),
+      driverId: String(firstTrip?.driverId || ''),
+      secondaryDriverId: String(firstTrip?.secondaryDriverId || ''),
+      serviceDate: getRouteServiceDateKey({ tripIds: routeTrips.map(trip => trip.id) }, routeTrips),
+      tripIds: routeTrips.map(trip => trip.id),
+      notes: String(firstTrip?.routeNotes || ''),
+      isFallback: true
+    };
   });
 };
 
@@ -107,6 +131,8 @@ const RouteControlWorkspace = () => {
     drivers,
     trips,
     routePlans,
+    refreshDrivers,
+    refreshDispatchState,
     assignTripsToDriver,
     assignRoutePrimaryDriver,
     assignRouteSecondaryDriver,
@@ -121,17 +147,41 @@ const RouteControlWorkspace = () => {
   const [routeNameDraft, setRouteNameDraft] = useState('');
   const [routeNotesDraft, setRouteNotesDraft] = useState('');
   const [statusMessage, setStatusMessage] = useState('Route Control ready.');
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  const allDateKeys = useMemo(() => {
-    const routeDates = routePlans.map(route => String(route?.serviceDate || '').trim()).filter(Boolean);
-    const tripDates = trips.map(getTripServiceDateKey).filter(Boolean);
-    return Array.from(new Set([...routeDates, ...tripDates])).sort();
+  const effectiveRoutes = useMemo(() => {
+    if (Array.isArray(routePlans) && routePlans.length > 0) return routePlans;
+    return buildFallbackRoutesFromTrips(trips);
   }, [routePlans, trips]);
 
-  const filteredRoutes = useMemo(() => routePlans.filter(route => {
+  useEffect(() => {
+    let active = true;
+    const sync = async () => {
+      setIsSyncing(true);
+      try {
+        await Promise.all([refreshDrivers(), refreshDispatchState({ forceServer: true })]);
+      } catch {
+        if (active) setStatusMessage('Live sync failed. Showing latest local data.');
+      } finally {
+        if (active) setIsSyncing(false);
+      }
+    };
+    sync();
+    return () => {
+      active = false;
+    };
+  }, [refreshDispatchState, refreshDrivers]);
+
+  const allDateKeys = useMemo(() => {
+    const routeDates = effectiveRoutes.map(route => String(route?.serviceDate || '').trim()).filter(Boolean);
+    const tripDates = trips.map(getTripServiceDateKey).filter(Boolean);
+    return Array.from(new Set([...routeDates, ...tripDates])).sort();
+  }, [effectiveRoutes, trips]);
+
+  const filteredRoutes = useMemo(() => effectiveRoutes.filter(route => {
     if (dateFilter === 'all') return true;
     return String(route?.serviceDate || '').trim() === dateFilter;
-  }), [dateFilter, routePlans]);
+  }), [dateFilter, effectiveRoutes]);
 
   const selectedRoute = useMemo(() => filteredRoutes.find(route => route.id === selectedRouteId) || filteredRoutes[0] || null, [filteredRoutes, selectedRouteId]);
 
@@ -245,6 +295,7 @@ const RouteControlWorkspace = () => {
               <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
                 <h5 className="mb-0">Route Control</h5>
                 <div className="d-flex gap-2 align-items-center">
+                  {isSyncing ? <Badge bg="secondary">Syncing...</Badge> : null}
                   <Form.Select value={dateFilter} onChange={event => setDateFilter(event.target.value)} style={{ width: 180 }}>
                     <option value="all">All dates</option>
                     {allDateKeys.map(dateKey => <option key={dateKey} value={dateKey}>{formatTripDateLabel(dateKey)}</option>)}
