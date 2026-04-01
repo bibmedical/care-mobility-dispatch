@@ -18,6 +18,18 @@ const getNormalizedStatus = trip => String(trip?.status || '').trim().toLowerCas
 
 const sortRouteTrips = trips => [...trips].sort((a, b) => toMinutes(a?.pickup) - toMinutes(b?.pickup));
 
+const getTripsForRoute = (route, allTrips) => {
+  if (!route) return [];
+  const routeId = String(route.id || '').trim();
+  const routeTripIds = new Set((Array.isArray(route.tripIds) ? route.tripIds : []).map(value => String(value || '').trim()).filter(Boolean));
+  return allTrips.filter(trip => {
+    const tripId = String(trip?.id || '').trim();
+    const matchesRouteId = String(trip?.routeId || '').trim() === routeId;
+    const matchesTripId = tripId && routeTripIds.has(tripId);
+    return matchesRouteId || matchesTripId;
+  });
+};
+
 const getRouteHealth = routeTrips => {
   const lateTrips = routeTrips.filter(trip => {
     const lateMinutes = getTripLateMinutes(trip);
@@ -125,7 +137,7 @@ const RouteControlWorkspace = () => {
 
   const selectedRouteTrips = useMemo(() => {
     if (!selectedRoute) return [];
-    return sortRouteTrips(trips.filter(trip => trip.routeId === selectedRoute.id));
+    return sortRouteTrips(getTripsForRoute(selectedRoute, trips));
   }, [selectedRoute, trips]);
 
   const selectedRouteDriver = useMemo(() => drivers.find(driver => String(driver.id) === String(selectedRoute?.driverId || '')) || null, [drivers, selectedRoute]);
@@ -254,7 +266,7 @@ const RouteControlWorkspace = () => {
                   </thead>
                   <tbody>
                     {filteredRoutes.length > 0 ? filteredRoutes.map(route => {
-                      const routeTrips = trips.filter(trip => trip.routeId === route.id);
+                      const routeTrips = getTripsForRoute(route, trips);
                       const routeHealth = getRouteHealth(routeTrips);
                       const driverName = drivers.find(driver => String(driver.id) === String(route.driverId || ''))?.name || 'Unassigned';
                       return (
