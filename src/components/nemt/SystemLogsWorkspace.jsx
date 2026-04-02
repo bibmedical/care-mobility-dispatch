@@ -2,12 +2,31 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNotificationContext } from '@/context/useNotificationContext';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import styles from './SystemLogsWorkspace.module.scss';
 
 const SESSION_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT']);
 const WORK_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT', 'ACTION']);
 
 const getTodayDateKey = nowMs => new Date(nowMs).toISOString().split('T')[0];
+const getDateKeyFromTimestampMs = timestampMs => new Date(timestampMs).toISOString().split('T')[0];
+const getUtcDayStartMs = dateKey => new Date(`${dateKey}T00:00:00.000Z`).getTime();
+
+const addDurationAcrossUtcDays = (totalsMap, userId, startMs, endMs) => {
+  if (!userId || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+
+  let cursor = startMs;
+  while (cursor < endMs) {
+    const dateKey = getDateKeyFromTimestampMs(cursor);
+    const dayStartMs = getUtcDayStartMs(dateKey);
+    if (!dateKey || !Number.isFinite(dayStartMs)) break;
+    const nextDayMs = dayStartMs + 24 * 60 * 60 * 1000;
+    const sliceEndMs = Math.min(endMs, nextDayMs);
+    const bucketKey = `${userId}::${dateKey}`;
+    totalsMap.set(bucketKey, (totalsMap.get(bucketKey) || 0) + Math.max(0, sliceEndMs - cursor));
+    cursor = sliceEndMs;
+  }
+};
 
 const formatDurationMs = milliseconds => {
   if (!Number.isFinite(milliseconds) || milliseconds <= 0) return '00:00:00';
@@ -69,8 +88,7 @@ const buildSessionState = logs => {
 };
 
 const buildWorkdayState = (logs, nowMs) => {
-  const groupedLogs = new Map();
-  const workedAtLogId = new Map();
+  const logsByUserId = new Map();
   const totalByUserDate = new Map();
   const activeDayByUserId = new Map();
   const todayKey = getTodayDateKey(nowMs);
@@ -78,55 +96,51 @@ const buildWorkdayState = (logs, nowMs) => {
   (Array.isArray(logs) ? logs : [])
     .filter(log => log?.userId && WORK_EVENT_TYPES.has(log.eventType) && log?.timestamp && log?.date)
     .forEach(log => {
-      const key = `${log.userId}::${log.date}`;
-      if (!groupedLogs.has(key)) groupedLogs.set(key, []);
-      groupedLogs.get(key).push(log);
+      if (!logsByUserId.has(log.userId)) logsByUserId.set(log.userId, []);
+      logsByUserId.get(log.userId).push(log);
     });
 
-  groupedLogs.forEach(groupLogs => {
+  logsByUserId.forEach((groupLogs, userId) => {
     const orderedLogs = [...groupLogs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    let completedMs = 0;
     let segmentStartMs = null;
+    let previousTimestampMs = null;
+    let lastOpenLog = null;
 
     orderedLogs.forEach(log => {
       const timestampMs = new Date(log.timestamp).getTime();
       if (!Number.isFinite(timestampMs)) return;
-      if (segmentStartMs === null) segmentStartMs = timestampMs;
 
-      const cumulativeAtEvent = completedMs + Math.max(0, timestampMs - segmentStartMs);
-      workedAtLogId.set(log.id, cumulativeAtEvent);
+      if (segmentStartMs === null) {
+        segmentStartMs = timestampMs;
+        previousTimestampMs = timestampMs;
+        lastOpenLog = log;
+      } else {
+        addDurationAcrossUtcDays(totalByUserDate, userId, previousTimestampMs, timestampMs);
+        previousTimestampMs = timestampMs;
+        lastOpenLog = log;
+      }
 
       if (log.eventType === 'LOGOUT') {
-        completedMs = cumulativeAtEvent;
         segmentStartMs = null;
+        previousTimestampMs = null;
+        lastOpenLog = null;
       }
     });
 
-    const lastLog = orderedLogs[orderedLogs.length - 1] || null;
-    const dateKey = lastLog?.date || '';
-    let totalMs = completedMs;
-
-    if (segmentStartMs !== null && lastLog) {
-      const lastTimestampMs = new Date(lastLog.timestamp).getTime();
-      const activeEndMs = dateKey === todayKey ? nowMs : lastTimestampMs;
-      totalMs = completedMs + Math.max(0, activeEndMs - segmentStartMs);
-      if (dateKey === todayKey) {
-        activeDayByUserId.set(lastLog.userId, {
-          ...lastLog,
-          totalMs,
-          cumulativeMsAtLastLog: workedAtLogId.get(lastLog.id) || 0,
+    if (segmentStartMs !== null && previousTimestampMs != null && lastOpenLog) {
+      addDurationAcrossUtcDays(totalByUserDate, userId, previousTimestampMs, nowMs);
+      const todayTotalMs = totalByUserDate.get(`${userId}::${todayKey}`) || 0;
+      if (todayTotalMs > 0) {
+        activeDayByUserId.set(userId, {
+          ...lastOpenLog,
+          totalMs: todayTotalMs,
           startedAt: segmentStartMs
         });
       }
     }
-
-    if (lastLog) {
-      totalByUserDate.set(`${lastLog.userId}::${dateKey}`, totalMs);
-    }
   });
 
   return {
-    workedAtLogId,
     totalByUserDate,
     activeDayByUserId
   };
@@ -160,6 +174,7 @@ const getRoleFilterKey = role => {
 
 const SystemLogsWorkspace = () => {
   const { showNotification } = useNotificationContext();
+  const { themeMode } = useLayoutContext();
 
   const [logs, setLogs] = useState([]);
   const [allLogs, setAllLogs] = useState([]);
@@ -333,7 +348,7 @@ const SystemLogsWorkspace = () => {
     : 0;
 
   return (
-    <div className={styles.systemLogsWorkspace}>
+    <div className={`${styles.systemLogsWorkspace} ${themeMode === 'light' ? styles.lightTheme : ''}`}>
       <div className={styles.header}>
         <div>
           <h1>System Logs</h1>

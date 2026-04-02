@@ -191,6 +191,41 @@ const formatSlackLabel = minutes => {
   return `${Math.abs(minutes)} min tarde`;
 };
 
+const formatMinutesToTimeInput = minutes => {
+  if (!Number.isFinite(minutes)) return '';
+  const normalized = Math.max(0, Math.min(23 * 60 + 59, Math.round(minutes)));
+  const hours = String(Math.floor(normalized / 60)).padStart(2, '0');
+  const mins = String(normalized % 60).padStart(2, '0');
+  return `${hours}:${mins}`;
+};
+
+const looksLikeExcelSerialTime = value => /^\d{4,6}(?:\.\d+)?$/.test(String(value || '').trim());
+
+const getEffectiveTimeText = (scheduledValue, fallbackValue) => {
+  const scheduledText = String(scheduledValue || '').trim();
+  const fallbackText = String(fallbackValue || '').trim();
+  if (looksLikeExcelSerialTime(scheduledText) && fallbackText) return fallbackText;
+  return scheduledText || fallbackText;
+};
+
+const getSuggestedPlannerCutoffTime = trip => {
+  const dropoffMinutes = parseTripClockMinutes(getEffectiveTimeText(trip?.scheduledDropoff, trip?.dropoff));
+  if (dropoffMinutes != null) return formatMinutesToTimeInput(dropoffMinutes + 180);
+  const pickupMinutes = parseTripClockMinutes(getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup));
+  if (pickupMinutes != null) return formatMinutesToTimeInput(pickupMinutes + 240);
+  return '';
+};
+
+const getPlannerTripLabel = trip => {
+  if (!trip) return 'Trip';
+  const rawTripId = String(trip?.rideId || trip?.id || '').trim();
+  const tripId = rawTripId.split('-')[0]?.trim() || rawTripId;
+  const rider = String(trip?.rider || '').trim();
+  const pickup = getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup);
+  const pickupZip = getPickupZip(trip);
+  return [tripId, rider, pickup, pickupZip].filter(Boolean).join(' - ');
+};
+
 const sortTripsByPickupTime = items => [...items].sort((leftTrip, rightTrip) => {
   const leftTime = leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
   const rightTime = rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
@@ -214,6 +249,20 @@ const getPickupCity = trip => extractCityFromAddress(trip?.address);
 const getDropoffCity = trip => extractCityFromAddress(trip?.destination);
 const getPickupZip = trip => String(trip?.fromZipcode || trip?.fromZip || trip?.pickupZipcode || trip?.pickupZip || trip?.originZip || '').trim();
 const getDropoffZip = trip => String(trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.dropoffZip || trip?.destinationZip || '').trim();
+const normalizeCityValue = value => String(value || '').trim().toLowerCase();
+const buildAiPlannerRoutePairKey = (pickupCity, dropoffCity) => `${String(pickupCity || '').trim()}|||${String(dropoffCity || '').trim()}`;
+const parseAiPlannerRoutePairKey = pairKey => {
+  const [pickupCity = '', dropoffCity = ''] = String(pairKey || '').split('|||');
+  return {
+    pickupCity: pickupCity.trim(),
+    dropoffCity: dropoffCity.trim()
+  };
+};
+const formatAiPlannerRoutePairLabel = pairKey => {
+  const { pickupCity, dropoffCity } = parseAiPlannerRoutePairKey(pairKey);
+  if (!pickupCity && !dropoffCity) return 'Todas las rutas';
+  return `${pickupCity || '?'} -> ${dropoffCity || '?'}`;
+};
 const normalizeTripId = tripId => String(tripId || '').trim();
 const normalizeDriverId = driverId => String(driverId || '').trim();
 const getClosedRouteKey = (driverId, dateKey) => {
@@ -236,12 +285,21 @@ const getTripLegFilterKey = trip => {
   return 'CL';
 };
 
-const getEffectivePickupTimeText = trip => {
-  const scheduledPickup = String(trip?.scheduledPickup || '').trim();
-  const pickup = String(trip?.pickup || '').trim();
-  const scheduledLooksLikeExcelSerial = /^\d{4,6}(?:\.\d+)?$/.test(scheduledPickup);
-  if (scheduledLooksLikeExcelSerial && pickup) return pickup;
-  return scheduledPickup || pickup;
+const getEffectivePickupTimeText = trip => getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup);
+
+const readJsonResponse = async response => {
+  const rawText = await response.text();
+  if (!rawText) return null;
+
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('text/html')) {
+      throw new Error('El servidor devolvio una pagina en vez de JSON. Revisa el error del API en el servidor local.');
+    }
+    throw new Error(rawText.slice(0, 220) || 'El servidor devolvio una respuesta invalida.');
+  }
 };
 
 const hasMissingTripTime = trip => {
@@ -450,6 +508,22 @@ const TripDashboardWorkspace = () => {
   const [noteModalTripId, setNoteModalTripId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [tripEditDraft, setTripEditDraft] = useState(buildTripEditDraft(null));
+  const [aiPlannerMode, setAiPlannerMode] = useState('local');
+  const [aiPlannerAnchorTripId, setAiPlannerAnchorTripId] = useState('');
+  const [aiPlannerStartZip, setAiPlannerStartZip] = useState('');
+  const [aiPlannerCutoffTime, setAiPlannerCutoffTime] = useState('');
+  const [aiPlannerCityFilter, setAiPlannerCityFilter] = useState('');
+  const [aiPlannerRoutePairPickupCity, setAiPlannerRoutePairPickupCity] = useState('');
+  const [aiPlannerRoutePairDropoffCity, setAiPlannerRoutePairDropoffCity] = useState('');
+  const [aiPlannerRoutePairMode, setAiPlannerRoutePairMode] = useState('exact');
+  const [aiPlannerRoutePairs, setAiPlannerRoutePairs] = useState([]);
+  const [aiPlannerLegFilter, setAiPlannerLegFilter] = useState('all');
+  const [aiPlannerTypeFilter, setAiPlannerTypeFilter] = useState('all');
+  const [aiPlannerMaxTrips, setAiPlannerMaxTrips] = useState('12');
+  const [aiPlannerLateToleranceMinutes, setAiPlannerLateToleranceMinutes] = useState('15');
+  const [aiPlannerPreview, setAiPlannerPreview] = useState(null);
+  const [aiPlannerLoading, setAiPlannerLoading] = useState(false);
+  const [aiPlannerCollapsed, setAiPlannerCollapsed] = useState(false);
   const workspaceRef = useRef(null);
   const tripTableTopScrollerRef = useRef(null);
   const tripTableBottomScrollerRef = useRef(null);
@@ -976,6 +1050,49 @@ const TripDashboardWorkspace = () => {
     });
   }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIds.includes(trip.id)), [selectedTripIds, trips]);
+  const aiPlannerBaseScopeTrips = useMemo(() => {
+    const selectedVisibleTrips = sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIds.includes(trip.id)));
+    if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
+    return sortTripsByPickupTime(filteredTrips).slice(0, 200);
+  }, [filteredTrips, selectedTripIds]);
+  const aiPlannerCityOptions = useMemo(() => {
+    const citySet = new Set();
+    aiPlannerBaseScopeTrips.forEach(trip => {
+      const pickupCity = getPickupCity(trip).trim();
+      const dropoffCity = getDropoffCity(trip).trim();
+      if (pickupCity) citySet.add(pickupCity);
+      if (dropoffCity) citySet.add(dropoffCity);
+    });
+    return Array.from(citySet).sort((left, right) => left.localeCompare(right));
+  }, [aiPlannerBaseScopeTrips]);
+  const aiPlannerRoutePairPickupOptions = useMemo(() => Array.from(new Set(aiPlannerBaseScopeTrips.map(trip => getPickupCity(trip).trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right)), [aiPlannerBaseScopeTrips]);
+  const aiPlannerRoutePairDropoffOptions = useMemo(() => {
+    const pickupCityValue = normalizeCityValue(aiPlannerRoutePairPickupCity);
+    return Array.from(new Set(aiPlannerBaseScopeTrips.filter(trip => !pickupCityValue || normalizeCityValue(getPickupCity(trip)) === pickupCityValue).map(trip => getDropoffCity(trip).trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right));
+  }, [aiPlannerBaseScopeTrips, aiPlannerRoutePairPickupCity]);
+  const aiPlannerRoutePairSet = useMemo(() => new Set(aiPlannerRoutePairs), [aiPlannerRoutePairs]);
+  const aiPlanningScopeTrips = useMemo(() => aiPlannerBaseScopeTrips.filter(trip => {
+    const cityValue = aiPlannerCityFilter.trim().toLowerCase();
+    if (!cityValue) return true;
+    return getPickupCity(trip).toLowerCase() === cityValue || getDropoffCity(trip).toLowerCase() === cityValue;
+  }).filter(trip => {
+    if (aiPlannerRoutePairSet.size === 0) return true;
+    const pickupCity = getPickupCity(trip).trim();
+    const dropoffCity = getDropoffCity(trip).trim();
+    const exactPairKey = buildAiPlannerRoutePairKey(pickupCity, dropoffCity);
+    if (aiPlannerRoutePairSet.has(exactPairKey)) return true;
+    if (aiPlannerRoutePairMode !== 'both') return false;
+    const reversePairKey = buildAiPlannerRoutePairKey(dropoffCity, pickupCity);
+    return aiPlannerRoutePairSet.has(reversePairKey);
+  }).filter(trip => {
+    if (aiPlannerLegFilter === 'all') return true;
+    return getTripLegFilterKey(trip) === aiPlannerLegFilter;
+  }).filter(trip => {
+    if (aiPlannerTypeFilter === 'all') return true;
+    return getTripTypeLabel(trip) === aiPlannerTypeFilter;
+  }), [aiPlannerBaseScopeTrips, aiPlannerCityFilter, aiPlannerLegFilter, aiPlannerRoutePairMode, aiPlannerRoutePairSet, aiPlannerTypeFilter]);
+  const aiPlannerAnchorTrip = useMemo(() => aiPlanningScopeTrips.find(trip => trip.id === aiPlannerAnchorTripId) ?? null, [aiPlanningScopeTrips, aiPlannerAnchorTripId]);
+  const aiPlannerZipOptions = useMemo(() => Array.from(new Set(aiPlanningScopeTrips.flatMap(trip => [getPickupZip(trip), getDropoffZip(trip)]).filter(Boolean))).sort((left, right) => left.localeCompare(right)), [aiPlanningScopeTrips]);
   const visibleTripIds = filteredTrips.map(trip => trip.id);
   const filteredDrivers = useMemo(() => {
     const term = driverSearch.trim().toLowerCase();
@@ -1324,6 +1441,41 @@ const TripDashboardWorkspace = () => {
     setMapZipQuickFilter('');
   }, [mapQuickZipOptions, mapZipQuickFilter]);
 
+  useEffect(() => {
+    const fallbackAnchorTrip = aiPlanningScopeTrips[0] ?? null;
+    if (!fallbackAnchorTrip) {
+      setAiPlannerAnchorTripId('');
+      setAiPlannerPreview(null);
+      return;
+    }
+
+    if (!aiPlanningScopeTrips.some(trip => trip.id === aiPlannerAnchorTripId)) {
+      setAiPlannerAnchorTripId(fallbackAnchorTrip.id);
+    }
+  }, [aiPlannerAnchorTripId, aiPlanningScopeTrips]);
+
+  useEffect(() => {
+    if (!aiPlannerAnchorTrip) return;
+
+    const fallbackZip = getPickupZip(aiPlannerAnchorTrip) || getDropoffZip(aiPlannerAnchorTrip) || '';
+    if (!aiPlannerStartZip || (aiPlannerZipOptions.length > 0 && !aiPlannerZipOptions.includes(aiPlannerStartZip))) {
+      setAiPlannerStartZip(fallbackZip);
+    }
+
+    if (!aiPlannerCutoffTime) {
+      setAiPlannerCutoffTime(getSuggestedPlannerCutoffTime(aiPlannerAnchorTrip));
+    }
+  }, [aiPlannerAnchorTrip, aiPlannerCutoffTime, aiPlannerStartZip, aiPlannerZipOptions]);
+
+  useEffect(() => {
+    setAiPlannerPreview(currentPreview => {
+      if (!currentPreview?.plan) return null;
+      if (currentPreview?.serviceDate && currentPreview.serviceDate !== tripDateFilter) return null;
+      if (currentPreview?.focusDriverId && selectedDriverId && currentPreview.focusDriverId !== selectedDriverId) return null;
+      return currentPreview;
+    });
+  }, [selectedDriverId, tripDateFilter]);
+
   const handleOpenTripNote = trip => {
     setNoteModalTripId(trip.id);
     setNoteDraft(getTripNoteText(trip));
@@ -1642,6 +1794,150 @@ const TripDashboardWorkspace = () => {
     setRouteNotes('');
   };
 
+  const handlePreviewAiSmartRoute = async providerMode => {
+    if (!selectedDriverId) {
+      setStatusMessage('Selecciona una chofera o chofer primero.');
+      return;
+    }
+    if (tripDateFilter === 'all') {
+      setStatusMessage('Escoge un dia de trabajo especifico primero.');
+      return;
+    }
+    if (!aiPlannerAnchorTripId) {
+      setStatusMessage('Escoge el viaje inicial para la ruta inteligente.');
+      return;
+    }
+    if (!aiPlannerCutoffTime) {
+      setStatusMessage('Escoge la hora limite para cerrar la ruta.');
+      return;
+    }
+    if (aiPlanningScopeTrips.length === 0) {
+      setStatusMessage('No hay viajes en el pool con los filtros actuales.');
+      return;
+    }
+
+  setAiPlannerMode(providerMode);
+    setAiPlannerLoading(true);
+    try {
+      const response = await fetch('/api/assistant/dispatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pathname: '/trip-dashboard',
+          providerMode,
+          message: `trip dashboard smart route ${tripDateFilter}`,
+          actionRequest: {
+            type: 'build-route-plan-from-selection',
+            params: {
+              serviceDate: tripDateFilter,
+              driverId: selectedDriverId,
+              anchorTripId: aiPlannerAnchorTripId,
+              candidateTripIds: aiPlanningScopeTrips.map(trip => trip.id),
+              startZip: aiPlannerStartZip,
+              cutoffTime: aiPlannerCutoffTime,
+              maxTripCount: Number.parseInt(aiPlannerMaxTrips, 10) || null,
+              maxLateMinutes: Number.parseInt(aiPlannerLateToleranceMinutes, 10) || 0
+            }
+          }
+        })
+      });
+      const payload = await readJsonResponse(response);
+      if (!response.ok) throw new Error(payload?.error || 'No se pudo crear el preview de la ruta.');
+      setAiPlannerPreview(payload?.action || null);
+      const previewTripIds = Array.isArray(payload?.action?.plan?.routes?.[0]?.tripIds) ? payload.action.plan.routes[0].tripIds : [];
+      if (previewTripIds.length > 0) {
+        setSelectedTripIds(previewTripIds);
+        setShowRoute(true);
+      }
+      setStatusMessage(String(payload?.reply || 'Preview de ruta inteligente listo.'));
+      showNotification({
+        message: String(payload?.reply || 'Preview de ruta inteligente listo.'),
+        variant: 'success'
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo crear el preview de la ruta.';
+      setStatusMessage(message);
+      showNotification({ message, variant: 'error' });
+    } finally {
+      setAiPlannerLoading(false);
+    }
+  };
+
+  const handleAddAiPlannerRoutePair = () => {
+    const pickupCity = aiPlannerRoutePairPickupCity.trim();
+    const dropoffCity = aiPlannerRoutePairDropoffCity.trim();
+    if (!pickupCity || !dropoffCity) {
+      setStatusMessage('Escoge ciudad de origen y ciudad de destino para agregar la ruta.');
+      return;
+    }
+    const pairKey = buildAiPlannerRoutePairKey(pickupCity, dropoffCity);
+    setAiPlannerRoutePairs(currentPairs => currentPairs.includes(pairKey) ? currentPairs : [...currentPairs, pairKey]);
+    setStatusMessage(`Ruta ${pickupCity} -> ${dropoffCity} agregada al planner.`);
+  };
+
+  const handleRemoveAiPlannerRoutePair = pairKey => {
+    setAiPlannerRoutePairs(currentPairs => currentPairs.filter(currentPair => currentPair !== pairKey));
+  };
+
+  const handleClearAiPlannerRoutePairs = () => {
+    setAiPlannerRoutePairs([]);
+    setStatusMessage('Se limpiaron los pares de ciudad del planner.');
+  };
+
+  const handleApplyAiSmartRoute = async () => {
+    if (!aiPlannerPreview?.plan) {
+      setStatusMessage('Primero crea un preview de la ruta inteligente.');
+      return;
+    }
+
+    setAiPlannerLoading(true);
+    try {
+      const response = await fetch('/api/assistant/dispatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pathname: '/trip-dashboard',
+          providerMode: aiPlannerMode,
+          message: `apply smart route ${tripDateFilter}`,
+          actionRequest: {
+            ...aiPlannerPreview,
+            type: 'apply-route-plan'
+          }
+        })
+      });
+      const payload = await readJsonResponse(response);
+      if (!response.ok) throw new Error(payload?.error || 'No se pudo aplicar la ruta inteligente.');
+
+      const appliedTripIds = Array.isArray(payload?.action?.plan?.routes?.[0]?.tripIds) ? payload.action.plan.routes[0].tripIds : [];
+      await refreshDispatchState({ forceServer: true });
+      setAiPlannerPreview(null);
+      if (payload?.action?.serviceDate) setTripDateFilter(String(payload.action.serviceDate));
+      if (payload?.action?.focusDriverId) setSelectedDriverId(String(payload.action.focusDriverId));
+      if (appliedTripIds.length > 0) setSelectedTripIds(appliedTripIds);
+      window.dispatchEvent(new CustomEvent('nemt-assistant-action', { detail: payload.action }));
+      setStatusMessage(String(payload?.reply || 'Ruta inteligente aplicada.'));
+      showNotification({
+        message: String(payload?.reply || 'Ruta inteligente aplicada.'),
+        variant: 'success'
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo aplicar la ruta inteligente.';
+      setStatusMessage(message);
+      showNotification({ message, variant: 'error' });
+    } finally {
+      setAiPlannerLoading(false);
+    }
+  };
+
+  const handleClearAiPlannerPreview = () => {
+    setAiPlannerPreview(null);
+    setStatusMessage('Preview de ruta inteligente limpiado.');
+  };
+
   const handleAssign = driverId => {
     const targetTripIds = [...selectedTripIds];
     if (!driverId || targetTripIds.length === 0) {
@@ -1904,7 +2200,18 @@ const TripDashboardWorkspace = () => {
   }, [columnWidths, groupedFilteredTripRows, visibleTripColumns]);
 
   useEffect(() => {
-    const handleAssistantAction = () => refreshDispatchState({ forceServer: true });
+    const handleAssistantAction = event => {
+      const detail = event?.detail || {};
+      void refreshDispatchState({ forceServer: true });
+      if (detail?.serviceDate) setTripDateFilter(String(detail.serviceDate));
+      if (detail?.focusDriverId) setSelectedDriverId(String(detail.focusDriverId));
+      const routeTripIds = Array.isArray(detail?.plan?.routes?.[0]?.tripIds) ? detail.plan.routes[0].tripIds : [];
+      if (routeTripIds.length > 0) setSelectedTripIds(routeTripIds);
+      if (detail?.type === 'apply-route-plan') {
+        setAiPlannerPreview(null);
+        setShowRoute(true);
+      }
+    };
     window.addEventListener('nemt-assistant-action', handleAssistantAction);
     return () => window.removeEventListener('nemt-assistant-action', handleAssistantAction);
   }, [refreshDispatchState]);
@@ -2131,7 +2438,7 @@ const TripDashboardWorkspace = () => {
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: showMapPane && isStandardLayout ? 'block' : 'none' }}>
           <Card className="h-100">
-            <CardBody className="p-0 d-flex flex-column h-100">
+            <CardBody className="p-0 d-flex flex-column h-100 position-relative">
               {showInlineMap ? <div className="position-relative h-100">
                 <Button variant="warning" type="button" onClick={() => {
                 setShowMapPane(false);
@@ -2393,6 +2700,199 @@ const TripDashboardWorkspace = () => {
                     </div>)}
                 </div>
               </div>
+              {aiPlannerCollapsed ? <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={{
+              position: 'absolute',
+              top: 118,
+              right: 10,
+              zIndex: 30,
+              writingMode: 'vertical-rl',
+              textOrientation: 'mixed',
+              borderRadius: 14,
+              border: '1px solid rgba(15, 23, 42, 0.18)',
+              background: 'linear-gradient(180deg, #eef2ff 0%, #dbeafe 100%)',
+              color: '#1e293b',
+              fontWeight: 800,
+              fontSize: 11,
+              letterSpacing: '0.08em',
+              padding: '12px 7px',
+              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)'
+            }}>
+                  AI Route
+                </button> : <div className="mx-3 mb-3 p-3 rounded-3 border bg-light-subtle text-dark" style={{ borderColor: 'rgba(15, 23, 42, 0.12)' }}>
+                  <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
+                    <div>
+                      <div className="fw-semibold">AI Smart Route</div>
+                      <div className="small text-muted">Chofer + viaje inicial + ZIP + hora limite. Luego Local o GPT arma la ruta.</div>
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <Badge bg={aiPlannerMode === 'openai' ? 'primary' : 'secondary'}>{aiPlannerMode === 'openai' ? 'GPT' : 'LOCAL'}</Badge>
+                      <Button variant="light" size="sm" onClick={() => setAiPlannerCollapsed(true)} style={{ minWidth: 38 }} title="Esconder AI Smart Route">
+                        <IconifyIcon icon="iconoir:eye-closed" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {!selectedDriverId || tripDateFilter === 'all' ? <div className="small text-muted">Primero escoge una chofera o chofer y un dia especifico.</div> : <div className="d-flex flex-column gap-2">
+                      <Form.Group>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Chofer</Form.Label>
+                        <Form.Control value={selectedDriver?.name || 'No driver selected'} readOnly />
+                      </Form.Group>
+                      <Form.Group>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Viaje inicial</Form.Label>
+                        <Form.Select size="sm" value={aiPlannerAnchorTripId} onChange={event => setAiPlannerAnchorTripId(event.target.value)}>
+                          <option value="">Escoge viaje inicial</option>
+                          {aiPlanningScopeTrips.map(trip => <option key={`ai-anchor-${trip.id}`} value={trip.id}>{getPlannerTripLabel(trip)}</option>)}
+                        </Form.Select>
+                      </Form.Group>
+                      <Form.Group>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">ZIP de arranque</Form.Label>
+                        <Form.Select size="sm" value={aiPlannerStartZip} onChange={event => setAiPlannerStartZip(event.target.value)}>
+                          <option value="">Usar ZIP del viaje inicial</option>
+                          {aiPlannerZipOptions.map(zip => <option key={`ai-zip-${zip}`} value={zip}>{zip}</option>)}
+                        </Form.Select>
+                      </Form.Group>
+                      <Form.Group>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Ciudad</Form.Label>
+                        <Form.Select size="sm" value={aiPlannerCityFilter} onChange={event => setAiPlannerCityFilter(event.target.value)}>
+                          <option value="">Todas las ciudades</option>
+                          {aiPlannerCityOptions.map(city => <option key={`ai-city-${city}`} value={city}>{city}</option>)}
+                        </Form.Select>
+                      </Form.Group>
+                      <div className="rounded-3 border p-2 bg-white" style={{ borderColor: 'rgba(15, 23, 42, 0.1)' }}>
+                        <div className="small text-uppercase text-muted fw-semibold mb-2">Rutas por ciudad</div>
+                        <div className="row g-2">
+                          <div className="col-6">
+                            <Form.Group>
+                              <Form.Label className="small text-muted fw-semibold mb-1">Origen</Form.Label>
+                              <Form.Select size="sm" value={aiPlannerRoutePairPickupCity} onChange={event => setAiPlannerRoutePairPickupCity(event.target.value)}>
+                                <option value="">Escoge origen</option>
+                                {aiPlannerRoutePairPickupOptions.map(city => <option key={`ai-route-pickup-${city}`} value={city}>{city}</option>)}
+                              </Form.Select>
+                            </Form.Group>
+                          </div>
+                          <div className="col-6">
+                            <Form.Group>
+                              <Form.Label className="small text-muted fw-semibold mb-1">Destino</Form.Label>
+                              <Form.Select size="sm" value={aiPlannerRoutePairDropoffCity} onChange={event => setAiPlannerRoutePairDropoffCity(event.target.value)}>
+                                <option value="">Escoge destino</option>
+                                {aiPlannerRoutePairDropoffOptions.map(city => <option key={`ai-route-dropoff-${city}`} value={city}>{city}</option>)}
+                              </Form.Select>
+                            </Form.Group>
+                          </div>
+                        </div>
+                        <div className="row g-2 mt-1">
+                          <div className="col-7">
+                            <Form.Group>
+                              <Form.Label className="small text-muted fw-semibold mb-1">Direccion</Form.Label>
+                              <Form.Select size="sm" value={aiPlannerRoutePairMode} onChange={event => setAiPlannerRoutePairMode(event.target.value)}>
+                                <option value="exact">Solo la direccion exacta</option>
+                                <option value="both">Ida y regreso automaticos</option>
+                              </Form.Select>
+                            </Form.Group>
+                          </div>
+                          <div className="col-5 d-flex align-items-end">
+                            <Button variant="outline-dark" size="sm" className="w-100" onClick={handleAddAiPlannerRoutePair}>
+                              Agregar par
+                            </Button>
+                          </div>
+                        </div>
+                        {aiPlannerRoutePairs.length > 0 ? <div className="d-flex flex-wrap gap-2 mt-2">
+                            {aiPlannerRoutePairs.map(pairKey => <button
+                              key={`ai-route-pair-${pairKey}`}
+                              type="button"
+                              onClick={() => handleRemoveAiPlannerRoutePair(pairKey)}
+                              className="btn btn-sm btn-outline-secondary"
+                            >
+                              {formatAiPlannerRoutePairLabel(pairKey)} x
+                            </button>)}
+                          </div> : <div className="small text-muted mt-2">Si no agregas pares, el planner usa cualquier origen y destino del pool.</div>}
+                        {aiPlannerRoutePairs.length > 0 ? <div className="d-flex justify-content-between align-items-center gap-2 mt-2">
+                            <div className="small text-muted">Modo: {aiPlannerRoutePairMode === 'both' ? 'ida y regreso automaticos' : 'solo direccion exacta'}.</div>
+                            <Button variant="light" size="sm" onClick={handleClearAiPlannerRoutePairs}>Limpiar pares</Button>
+                          </div> : null}
+                      </div>
+                      <div className="row g-2">
+                        <div className="col-6">
+                          <Form.Group>
+                            <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Patas</Form.Label>
+                            <Form.Select size="sm" value={aiPlannerLegFilter} onChange={event => setAiPlannerLegFilter(event.target.value)}>
+                              <option value="all">Todas</option>
+                              <option value="AL">AL</option>
+                              <option value="BL">BL</option>
+                              <option value="CL">CL</option>
+                            </Form.Select>
+                          </Form.Group>
+                        </div>
+                        <div className="col-6">
+                          <Form.Group>
+                            <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Tipo</Form.Label>
+                            <Form.Select size="sm" value={aiPlannerTypeFilter} onChange={event => setAiPlannerTypeFilter(event.target.value)}>
+                              <option value="all">Todos</option>
+                              <option value="A">A</option>
+                              <option value="W">W</option>
+                              <option value="STR">STR</option>
+                            </Form.Select>
+                          </Form.Group>
+                        </div>
+                      </div>
+                      <Form.Group>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Cantidad maxima</Form.Label>
+                        <Form.Control size="sm" type="number" min="1" max="200" value={aiPlannerMaxTrips} onChange={event => setAiPlannerMaxTrips(event.target.value)} />
+                      </Form.Group>
+                      <Form.Group>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Tardanza maxima (min)</Form.Label>
+                        <Form.Control size="sm" type="number" min="0" max="120" value={aiPlannerLateToleranceMinutes} onChange={event => setAiPlannerLateToleranceMinutes(event.target.value)} />
+                      </Form.Group>
+                      <Form.Group>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Hora limite</Form.Label>
+                        <Form.Control size="sm" type="time" value={aiPlannerCutoffTime} onChange={event => setAiPlannerCutoffTime(event.target.value)} />
+                      </Form.Group>
+
+                      <div className="d-grid gap-2 mt-1">
+                        <Button variant="outline-secondary" size="sm" disabled={aiPlannerLoading} onClick={() => void handlePreviewAiSmartRoute('local')}>
+                          {aiPlannerLoading && aiPlannerMode === 'local' ? 'Creando preview local...' : 'Preview Local'}
+                        </Button>
+                        <Button variant="outline-primary" size="sm" disabled={aiPlannerLoading} onClick={() => void handlePreviewAiSmartRoute('openai')}>
+                          {aiPlannerLoading && aiPlannerMode === 'openai' ? 'Creando preview GPT...' : 'Preview GPT'}
+                        </Button>
+                        <Button variant="success" size="sm" disabled={aiPlannerLoading || !aiPlannerPreview?.plan} onClick={() => void handleApplyAiSmartRoute()}>
+                          {aiPlannerLoading && aiPlannerPreview?.plan ? 'Aplicando ruta...' : 'Aplicar Preview'}
+                        </Button>
+                        <Button variant="light" size="sm" disabled={!aiPlannerPreview?.plan || aiPlannerLoading} onClick={handleClearAiPlannerPreview}>
+                          Limpiar Preview
+                        </Button>
+                      </div>
+
+                      <div className="small text-muted">
+                        {selectedTripIds.length > 0 ? `Usando ${aiPlanningScopeTrips.length} viaje(s) seleccionados como pool.` : `Usando ${aiPlanningScopeTrips.length} viaje(s) visibles del dia como pool.`}
+                      </div>
+                      {aiPlannerPreview?.plan?.routes?.[0] ? <div className="small text-muted">
+                          Preview actual: {aiPlannerPreview.plan.routes[0].tripIds.length} viaje(s).
+                        </div> : null}
+                      <div className="small text-muted">
+                        Filtros activos: {aiPlannerCityFilter || 'todas las ciudades'} / {aiPlannerRoutePairs.length > 0 ? aiPlannerRoutePairs.map(formatAiPlannerRoutePairLabel).join(', ') : 'sin pares'} / {aiPlannerRoutePairs.length > 0 ? aiPlannerRoutePairMode === 'both' ? 'ida y regreso' : 'direccion exacta' : 'cualquier direccion'} / {aiPlannerLegFilter === 'all' ? 'todas las patas' : aiPlannerLegFilter} / {aiPlannerTypeFilter === 'all' ? 'todos los tipos' : aiPlannerTypeFilter} / max {aiPlannerMaxTrips || 'sin limite'} / tarde {aiPlannerLateToleranceMinutes || '0'} min.
+                      </div>
+
+                      {aiPlannerPreview?.plan?.routes?.[0] ? <div className="rounded-3 border p-2 bg-white" style={{ borderColor: 'rgba(15, 23, 42, 0.1)' }}>
+                          <div className="d-flex justify-content-between align-items-center gap-2 mb-1">
+                            <div className="fw-semibold small">{aiPlannerPreview.plan.routes[0].name}</div>
+                            <Badge bg="dark">{aiPlannerPreview.plan.routes[0].tripIds.length} trips</Badge>
+                          </div>
+                          <div className="small text-muted mb-2">{aiPlannerPreview.plan.routes[0].notes}</div>
+                          <div className="d-flex flex-column gap-1" style={{ maxHeight: 132, overflowY: 'auto' }}>
+                            {aiPlannerPreview.plan.routes[0].stops.map((stop, index) => <div key={`ai-stop-${stop.id}-${index}`} className="small d-flex justify-content-between gap-2">
+                                <span className="fw-semibold">{index + 1}. {stop.rider || stop.id}</span>
+                                <span className="text-muted text-end">
+                                  {stop.estimatedArrivalLabel || '--'}
+                                  {' '}→{' '}
+                                  {stop.pickup || '--'}
+                                  {Number.isFinite(stop.lateMinutes) && stop.lateMinutes > 0 ? ` (${stop.lateMinutes} min tarde)` : ' (on time)'}
+                                </span>
+                              </div>)}
+                          </div>
+                        </div> : null}
+                    </div>}
+                </div>}
                   {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'scroll', overflowY: 'hidden', height: 20, marginBottom: 6, scrollbarGutter: 'stable', scrollbarWidth: 'thin', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
                     <div style={{ width: tripTableScrollWidth > 0 ? tripTableScrollWidth + 40 : 'calc(100% + 40px)', height: 18 }} />
                 </div> : null}

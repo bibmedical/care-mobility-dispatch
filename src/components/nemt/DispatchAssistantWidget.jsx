@@ -23,6 +23,9 @@ const buildInitialState = assistantName => ({
   }]
 });
 
+const isRoutePlanPreviewAction = action => action?.type === 'route-plan-preview' && action?.plan;
+const isAppliedRoutePlanAction = action => action?.type === 'apply-route-plan' && action?.plan;
+
 const widgetStyles = {
   shell: {
     position: 'fixed',
@@ -257,6 +260,7 @@ const DispatchAssistantWidget = () => {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [isHydrating, setIsHydrating] = useState(false);
+  const [pendingRoutePlan, setPendingRoutePlan] = useState(null);
   const recognitionRef = useRef(null);
   const recognitionRunningRef = useRef(false);
   const recognitionRestartTimeoutRef = useRef(null);
@@ -342,6 +346,8 @@ const DispatchAssistantWidget = () => {
 
   useEffect(() => {
     messagesRef.current = messages;
+    const latestRoutePlanAction = [...messages].reverse().map(item => item?.action).find(action => isRoutePlanPreviewAction(action) || isAppliedRoutePlanAction(action));
+    setPendingRoutePlan(isRoutePlanPreviewAction(latestRoutePlanAction) ? latestRoutePlanAction : null);
   }, [messages]);
 
   useEffect(() => {
@@ -576,6 +582,52 @@ const DispatchAssistantWidget = () => {
     }));
   };
 
+  const applyPlannedRoutes = async planAction => {
+    if (!planAction?.plan || isSendingRef.current) return;
+    setIsSending(true);
+    setErrorMessage('');
+
+    try {
+      const response = await fetch('/api/assistant/dispatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          clientId,
+          pathname,
+          providerMode: assistantModeRef.current,
+          message: `apply route plan ${planAction?.serviceDate || ''}`,
+          actionRequest: planAction
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Unable to apply the route plan.');
+      }
+
+      const assistantMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        text: String(payload?.reply || 'The route plan was applied.'),
+        createdAt: Date.now(),
+        provider: payload?.provider || assistantModeRef.current,
+        action: payload?.action || null
+      };
+      appendMessage(assistantMessage);
+      setLastReply(assistantMessage.text);
+      setLastProvider(assistantMessage.provider);
+      setPendingRoutePlan(null);
+      if (isAppliedRoutePlanAction(payload?.action)) {
+        window.dispatchEvent(new CustomEvent('nemt-assistant-action', { detail: payload.action }));
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to apply the route plan.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const toggleOpen = () => {
     setStoredAssistantState(currentState => ({
       ...buildInitialState(assistantName),
@@ -706,7 +758,8 @@ const DispatchAssistantWidget = () => {
         role: 'assistant',
         text: String(payload?.reply || 'I did not get a response.'),
         createdAt: Date.now(),
-        provider: payload?.provider || 'local'
+        provider: payload?.provider || 'local',
+        action: payload?.action || null
       };
       appendMessage(assistantMessage);
       setLastReply(assistantMessage.text);
@@ -745,7 +798,9 @@ const DispatchAssistantWidget = () => {
             status: 'sent'
           }
         });
-      } else if (['create-route', 'assign-trips', 'confirm-trip'].includes(payload?.action?.type)) {
+      } else if (isRoutePlanPreviewAction(payload?.action)) {
+        setPendingRoutePlan(payload.action);
+      } else if (['create-route', 'assign-trips', 'confirm-trip', 'apply-route-plan'].includes(payload?.action?.type)) {
         window.dispatchEvent(new CustomEvent('nemt-assistant-action', { detail: payload.action }));
       }
     } catch (error) {
@@ -833,6 +888,19 @@ const DispatchAssistantWidget = () => {
                   wordBreak: 'break-word'
                 }}>
                   {msg.text}
+                  {isRoutePlanPreviewAction(msg.action) ? <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.74)' }}>
+                        {Array.isArray(msg.action?.plan?.routes) ? msg.action.plan.routes.map(route => `${route.driverName}: ${route.tripIds.length} trips`).join(' | ') : ''}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <Button size="sm" variant="light" onClick={() => void applyPlannedRoutes(msg.action)} disabled={isSending} style={{ ...widgetStyles.miniButton, minHeight: 24 }}>
+                          Aplicar plan
+                        </Button>
+                        <Button size="sm" variant="outline-light" onClick={() => router.push('/route-control')} style={{ ...widgetStyles.miniButton, minHeight: 24 }}>
+                          Ver Route Control
+                        </Button>
+                      </div>
+                    </div> : null}
                 </div>
               ))}
               {isSending && (
@@ -844,6 +912,10 @@ const DispatchAssistantWidget = () => {
             </div>
 
             {errorMessage && <div style={{ ...widgetStyles.statusPill, background: 'rgba(220,50,50,0.18)', borderColor: 'rgba(220,50,50,0.3)', fontSize: 10 }}>{errorMessage}</div>}
+
+            {pendingRoutePlan ? <div style={{ ...widgetStyles.statusPill, background: 'rgba(59,130,246,0.14)', borderColor: 'rgba(96,165,250,0.28)', textAlign: 'left' }}>
+                Plan listo para {pendingRoutePlan?.serviceDate || 'el dia seleccionado'}. {Array.isArray(pendingRoutePlan?.plan?.routes) ? pendingRoutePlan.plan.routes.length : 0} ruta(s) preparadas.
+              </div> : null}
 
             {/* Text input */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>

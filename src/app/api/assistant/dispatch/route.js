@@ -2,7 +2,7 @@
 import { getServerSession } from 'next-auth';
 import { MENU_ITEMS } from '@/assets/data/menu-items';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
-import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripLateMinutes as getSharedTripLateMinutes } from '@/helpers/nemt-dispatch-state';
+import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
 import { readAssistantKnowledgeOverview, searchAssistantKnowledge } from '@/server/assistant-knowledge-store';
 import { readBlacklistState } from '@/server/blacklist-store';
 import { readAssistantConversation, readAssistantFacts, mergeAssistantFact, writeAssistantConversation } from '@/server/assistant-memory-store';
@@ -509,6 +509,528 @@ const parseDateKeyword = text => {
   return getLocalDateKey(today, DEFAULT_DISPATCH_TIME_ZONE);
 };
 
+const ROUTE_PLAN_COLORS = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#0891b2'];
+
+const isCancelledTripStatus = status => ['cancelled', 'canceled'].includes(String(status || '').trim().toLowerCase());
+
+const looksLikeExcelSerialTime = value => /^\d{4,6}(?:\.\d+)?$/.test(String(value || '').trim());
+
+const getEffectivePlanningTimeText = (scheduledValue, fallbackValue) => {
+  const scheduledText = String(scheduledValue || '').trim();
+  const fallbackText = String(fallbackValue || '').trim();
+  if (looksLikeExcelSerialTime(scheduledText) && fallbackText) return fallbackText;
+  return scheduledText || fallbackText;
+};
+
+const parseClockToMinutes = value => {
+  const parsed = parseTripClockMinutes(value);
+  return parsed == null ? Number.MAX_SAFE_INTEGER : parsed;
+};
+
+const getPlanningZipValue = value => String(value || '').trim();
+const getTripPlanningPickupZip = trip => getPlanningZipValue(trip?.pickupZip || trip?.fromZipcode || trip?.fromZip || trip?.pickupZipcode || trip?.originZip);
+const getTripPlanningDropoffZip = trip => getPlanningZipValue(trip?.dropoffZip || trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.destinationZip);
+const getTripPlanningPickupMinutes = trip => {
+  const pickupMinutes = parseClockToMinutes(getEffectivePlanningTimeText(trip?.scheduledPickup, trip?.pickup));
+  return pickupMinutes === Number.MAX_SAFE_INTEGER ? null : pickupMinutes;
+};
+const getTripPlanningDropoffMinutes = trip => {
+  const dropoffMinutes = parseClockToMinutes(getEffectivePlanningTimeText(trip?.scheduledDropoff, trip?.dropoff));
+  if (dropoffMinutes !== Number.MAX_SAFE_INTEGER) return dropoffMinutes;
+  const pickupMinutes = getTripPlanningPickupMinutes(trip);
+  if (pickupMinutes == null) return null;
+  return pickupMinutes + 25;
+};
+const getTripPlanningServiceDurationMinutes = trip => {
+  const pickupMinutes = getTripPlanningPickupMinutes(trip);
+  const dropoffMinutes = getTripPlanningDropoffMinutes(trip);
+  if (pickupMinutes != null && dropoffMinutes != null && dropoffMinutes >= pickupMinutes) {
+    return Math.max(5, dropoffMinutes - pickupMinutes);
+  }
+  return 25;
+};
+const getTripPlanningPickupPosition = trip => Array.isArray(trip?.position) && trip.position.length === 2 ? trip.position : null;
+const getTripPlanningDropoffPosition = trip => Array.isArray(trip?.destinationPosition) && trip.destinationPosition.length === 2 ? trip.destinationPosition : getTripPlanningPickupPosition(trip);
+
+const formatMinutesAsTimeInput = minutes => {
+  if (!Number.isFinite(minutes)) return '';
+  const normalized = Math.max(0, Math.min(23 * 60 + 59, Math.round(minutes)));
+  const hours = String(Math.floor(normalized / 60)).padStart(2, '0');
+  const mins = String(normalized % 60).padStart(2, '0');
+  return `${hours}:${mins}`;
+};
+
+const formatMinutesAsClockLabel = minutes => {
+  if (!Number.isFinite(minutes)) return '--';
+  const normalized = ((Math.round(minutes) % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const hours24 = Math.floor(normalized / 60);
+  const mins = String(normalized % 60).padStart(2, '0');
+  const suffix = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  return `${String(hours12).padStart(2, '0')}:${mins} ${suffix}`;
+};
+
+const getEstimatedTripArrivalMinutes = (trip, currentAvailableMinutes) => {
+  const pickupMinutes = getTripPlanningPickupMinutes(trip);
+  if (pickupMinutes == null) return currentAvailableMinutes;
+  if (currentAvailableMinutes == null) return pickupMinutes;
+  return Math.max(currentAvailableMinutes, pickupMinutes);
+};
+
+const buildFocusedRouteStops = plannedTrips => {
+  let currentAvailableMinutes = null;
+  return (Array.isArray(plannedTrips) ? plannedTrips : []).map(trip => {
+    const pickupMinutes = getTripPlanningPickupMinutes(trip);
+    const estimatedArrivalMinutes = getEstimatedTripArrivalMinutes(trip, currentAvailableMinutes);
+    const lateMinutes = pickupMinutes != null && estimatedArrivalMinutes != null ? Math.max(0, estimatedArrivalMinutes - pickupMinutes) : 0;
+    const serviceDurationMinutes = getTripPlanningServiceDurationMinutes(trip);
+    currentAvailableMinutes = estimatedArrivalMinutes != null ? estimatedArrivalMinutes + serviceDurationMinutes : currentAvailableMinutes;
+
+    return {
+      id: String(trip?.id || '').trim(),
+      rider: getTripPlanningLabel(trip),
+      pickup: String(trip?.pickup || '').trim(),
+      dropoff: String(trip?.dropoff || '').trim(),
+      address: String(trip?.address || '').trim(),
+      destination: String(trip?.destination || '').trim(),
+      estimatedArrivalMinutes,
+      estimatedArrivalLabel: formatMinutesAsClockLabel(estimatedArrivalMinutes),
+      lateMinutes,
+      serviceDurationMinutes
+    };
+  });
+};
+
+const toRadians = value => value * (Math.PI / 180);
+const getDistanceBetweenPositionsMiles = (from, to) => {
+  if (!Array.isArray(from) || !Array.isArray(to) || from.length !== 2 || to.length !== 2) return null;
+  const earthRadiusMiles = 3958.8;
+  const dLat = toRadians(to[0] - from[0]);
+  const dLon = toRadians(to[1] - from[1]);
+  const lat1 = toRadians(from[0]);
+  const lat2 = toRadians(to[0]);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getTripPlanningDateKey = trip => String(trip?.serviceDate || '').trim() || getTripServiceDateKey(trip);
+
+const getTripPlanningSortValue = trip => {
+  const pickupMinutes = parseClockToMinutes(getEffectivePlanningTimeText(trip?.scheduledPickup, trip?.pickup));
+  if (Number.isFinite(pickupMinutes) && pickupMinutes !== Number.MAX_SAFE_INTEGER) return pickupMinutes;
+  const dropoffMinutes = parseClockToMinutes(getEffectivePlanningTimeText(trip?.scheduledDropoff, trip?.dropoff));
+  if (Number.isFinite(dropoffMinutes) && dropoffMinutes !== Number.MAX_SAFE_INTEGER) return dropoffMinutes;
+  const pickupTimestamp = Number(trip?.pickupSortValue);
+  if (Number.isFinite(pickupTimestamp) && pickupTimestamp > 0) return pickupTimestamp / 60000;
+  const dropoffTimestamp = Number(trip?.dropoffSortValue);
+  if (Number.isFinite(dropoffTimestamp) && dropoffTimestamp > 0) return dropoffTimestamp / 60000;
+  return Number.MAX_SAFE_INTEGER;
+};
+
+const getTripPlanningLabel = trip => String(trip?.rider || trip?.rideId || trip?.brokerTripId || trip?.id || 'Trip').trim();
+
+const getRouteNameForDriver = (driverName, serviceDate, index, totalRoutes) => {
+  const cleanDriverName = String(driverName || `Dispatcher Route ${index + 1}`).trim();
+  if (totalRoutes <= 1) return `${cleanDriverName} Route`;
+  return `${cleanDriverName} Route ${index + 1}`;
+};
+
+const splitTripsIntoRouteBuckets = trips => {
+  const orderedTrips = [...(Array.isArray(trips) ? trips : [])].sort((a, b) => getTripPlanningSortValue(a) - getTripPlanningSortValue(b));
+  const buckets = [];
+
+  orderedTrips.forEach(trip => {
+    const tripMinutes = getTripPlanningSortValue(trip);
+    const currentBucket = buckets[buckets.length - 1];
+    if (!currentBucket) {
+      buckets.push([trip]);
+      return;
+    }
+
+    const lastTrip = currentBucket[currentBucket.length - 1];
+    const lastMinutes = getTripPlanningSortValue(lastTrip);
+    const hasLargeGap = Number.isFinite(tripMinutes) && Number.isFinite(lastMinutes) && tripMinutes - lastMinutes >= 90;
+    const bucketTooLarge = currentBucket.length >= 8;
+
+    if (hasLargeGap || bucketTooLarge) {
+      buckets.push([trip]);
+      return;
+    }
+
+    currentBucket.push(trip);
+  });
+
+  return buckets;
+};
+
+const buildDriverPlanningScores = (snapshot, serviceDate) => {
+  const trips = Array.isArray(snapshot?.allTrips) ? snapshot.allTrips : [];
+  const routePlans = Array.isArray(snapshot?.routePlans) ? snapshot.routePlans : [];
+  const driverLoads = new Map();
+  const routeCountByDriver = new Map();
+
+  trips.forEach(trip => {
+    const tripDate = getTripPlanningDateKey(trip);
+    if (tripDate !== serviceDate) return;
+    const driverId = String(trip?.driverId || '').trim();
+    if (driverId) driverLoads.set(driverId, (driverLoads.get(driverId) || 0) + 1);
+    const secondaryDriverId = String(trip?.secondaryDriverId || '').trim();
+    if (secondaryDriverId) driverLoads.set(secondaryDriverId, (driverLoads.get(secondaryDriverId) || 0) + 1);
+  });
+
+  routePlans.forEach(routePlan => {
+    const routeDate = String(routePlan?.serviceDate || '').trim();
+    if (routeDate !== serviceDate) return;
+    const driverId = String(routePlan?.driverId || '').trim();
+    if (driverId) routeCountByDriver.set(driverId, (routeCountByDriver.get(driverId) || 0) + 1);
+  });
+
+  return { driverLoads, routeCountByDriver };
+};
+
+const rankDriversForPlanning = (snapshot, serviceDate, excludedDriverIds = new Set()) => {
+  const { driverLoads, routeCountByDriver } = buildDriverPlanningScores(snapshot, serviceDate);
+  const drivers = Array.isArray(snapshot?.driverDirectory) ? snapshot.driverDirectory : [];
+
+  return [...drivers]
+    .filter(driver => String(driver?.id || '').trim() && !excludedDriverIds.has(String(driver.id)))
+    .map(driver => {
+      const driverId = String(driver.id);
+      const load = driverLoads.get(driverId) || 0;
+      const routeCount = routeCountByDriver.get(driverId) || 0;
+      const offlinePenalty = String(driver?.live || '').trim().toLowerCase() === 'online' ? 0 : 2;
+      return {
+        ...driver,
+        planningScore: load + routeCount * 4 + offlinePenalty,
+        dailyLoad: load,
+        routeCount
+      };
+    })
+    .sort((left, right) => {
+      if (left.planningScore !== right.planningScore) return left.planningScore - right.planningScore;
+      if (left.routeCount !== right.routeCount) return left.routeCount - right.routeCount;
+      return String(left.name || '').localeCompare(String(right.name || ''));
+    });
+};
+
+const buildPlannedRoutePayload = ({ bucket, driver, serviceDate, routeIndex, totalRoutes }) => ({
+  id: `route-plan-${Date.now()}-${routeIndex + 1}`,
+  name: getRouteNameForDriver(driver?.name, serviceDate, routeIndex, totalRoutes),
+  serviceDate,
+  driverId: String(driver?.id || '').trim(),
+  driverName: String(driver?.name || 'Unassigned').trim(),
+  secondaryDriverId: '',
+  notes: `AI planned route for ${serviceDate}`,
+  color: ROUTE_PLAN_COLORS[routeIndex % ROUTE_PLAN_COLORS.length],
+  tripIds: bucket.map(trip => String(trip?.id || '').trim()).filter(Boolean),
+  stops: bucket.map(trip => ({
+    id: String(trip?.id || '').trim(),
+    rider: getTripPlanningLabel(trip),
+    pickup: String(trip?.pickup || '').trim(),
+    dropoff: String(trip?.dropoff || '').trim(),
+    address: String(trip?.address || '').trim(),
+    destination: String(trip?.destination || '').trim()
+  }))
+});
+
+const buildRoutePlanningReply = ({ message, serviceDate, routes, skippedTrips = [], applied = false }) => {
+  const es = detectLanguage(message) === 'es';
+  const routeCount = routes.length;
+  const tripCount = routes.reduce((total, route) => total + (Array.isArray(route?.tripIds) ? route.tripIds.length : 0), 0);
+  const skippedCount = skippedTrips.length;
+  const routeLine = routes
+    .map(route => `${route.driverName}: ${route.tripIds.length}`)
+    .join(', ');
+
+  if (es) {
+    const base = applied
+      ? `Listo. Aplique el plan de rutas para ${serviceDate}. Cree ${routeCount} ruta${routeCount === 1 ? '' : 's'} con ${tripCount} viaje${tripCount === 1 ? '' : 's'}.`
+      : `Plan listo para ${serviceDate}. Prepare ${routeCount} ruta${routeCount === 1 ? '' : 's'} con ${tripCount} viaje${tripCount === 1 ? '' : 's'}.`;
+    const detail = routeLine ? ` Distribucion: ${routeLine}.` : '';
+    const skipped = skippedCount > 0 ? ` Quedaron ${skippedCount} viaje${skippedCount === 1 ? '' : 's'} fuera por falta de chofer o datos.` : '';
+    const close = applied ? ' El dispatch ya fue actualizado.' : ' Si quieres, aplica el plan y lo guardo en Route Control.';
+    return `${base}${detail}${skipped}${close}`;
+  }
+
+  const base = applied
+    ? `Done. I applied the route plan for ${serviceDate}. I created ${routeCount} route${routeCount === 1 ? '' : 's'} with ${tripCount} trip${tripCount === 1 ? '' : 's'}.`
+    : `Plan ready for ${serviceDate}. I prepared ${routeCount} route${routeCount === 1 ? '' : 's'} with ${tripCount} trip${tripCount === 1 ? '' : 's'}.`;
+  const detail = routeLine ? ` Distribution: ${routeLine}.` : '';
+  const skipped = skippedCount > 0 ? ` ${skippedCount} trip${skippedCount === 1 ? '' : 's'} were left out because a driver or scheduling data was missing.` : '';
+  const close = applied ? ' Dispatch has been updated.' : ' If you want, apply the plan and I will save it in Route Control.';
+  return `${base}${detail}${skipped}${close}`;
+};
+
+const buildFocusedRoutePlanReply = ({ message, serviceDate, driverName, routes, skippedTrips = [], applied = false, anchorTrip = null, cutoffTime = '' }) => {
+  const route = Array.isArray(routes) ? routes[0] : null;
+  const tripCount = Array.isArray(route?.tripIds) ? route.tripIds.length : 0;
+  const skippedCount = Array.isArray(skippedTrips) ? skippedTrips.length : 0;
+  const anchorLabel = getTripPlanningLabel(anchorTrip);
+  const stopsText = Array.isArray(route?.stops) ? route.stops.slice(0, 6).map(stop => stop.rider || stop.id).join(', ') : '';
+  const es = detectLanguage(message) === 'es';
+
+  if (es) {
+    const base = applied
+      ? `Listo. Aplique la ruta inteligente para ${driverName || 'el chofer'} en ${serviceDate}.`
+      : `Plan inteligente listo para ${driverName || 'el chofer'} en ${serviceDate}.`;
+    const count = ` Tome ${tripCount} viaje${tripCount === 1 ? '' : 's'} empezando por ${anchorLabel || 'el viaje ancla'}`;
+    const cutoff = cutoffTime ? ` hasta ${cutoffTime}` : '';
+    const stops = stopsText ? ` Orden sugerido: ${stopsText}.` : '';
+    const skipped = skippedCount > 0 ? ` Deje ${skippedCount} viaje${skippedCount === 1 ? '' : 's'} fuera por tiempo o ajuste.` : '';
+    const close = applied ? ' Ya quedo guardada en dispatch.' : ' Revisa el preview y aplica si te gusta.';
+    return `${base}${count}${cutoff}.${stops}${skipped}${close}`;
+  }
+
+  const base = applied
+    ? `Done. I applied the smart route for ${driverName || 'the driver'} on ${serviceDate}.`
+    : `Smart route plan ready for ${driverName || 'the driver'} on ${serviceDate}.`;
+  const count = ` I selected ${tripCount} trip${tripCount === 1 ? '' : 's'} starting from ${anchorLabel || 'the anchor trip'}`;
+  const cutoff = cutoffTime ? ` until ${cutoffTime}` : '';
+  const stops = stopsText ? ` Suggested order: ${stopsText}.` : '';
+  const skipped = skippedCount > 0 ? ` I left ${skippedCount} trip${skippedCount === 1 ? '' : 's'} out because of time or fit.` : '';
+  const close = applied ? ' It is already saved in dispatch.' : ' Review the preview and apply it if it looks right.';
+  return `${base}${count}${cutoff}.${stops}${skipped}${close}`;
+};
+
+const scoreFocusedRouteCandidate = ({ trip, currentPosition, currentAvailableMinutes, startZip, anchorPickupMinutes, maxLateMinutes }) => {
+  const pickupMinutes = getTripPlanningPickupMinutes(trip);
+  if (pickupMinutes == null) return Number.POSITIVE_INFINITY;
+  const latenessMinutes = currentAvailableMinutes != null ? Math.max(0, currentAvailableMinutes - pickupMinutes) : 0;
+  if (latenessMinutes > maxLateMinutes) return Number.POSITIVE_INFINITY;
+  const latenessPenalty = latenessMinutes * 2;
+  const waitPenalty = currentAvailableMinutes != null ? Math.max(0, pickupMinutes - currentAvailableMinutes) : 0;
+  const position = getTripPlanningPickupPosition(trip);
+  const miles = currentPosition && position ? getDistanceBetweenPositionsMiles(currentPosition, position) : null;
+  const proximityPenalty = Number.isFinite(miles) ? Math.max(0, miles) : 0;
+  const pickupZip = getTripPlanningPickupZip(trip);
+  const dropoffZip = getTripPlanningDropoffZip(trip);
+  const zipBonus = startZip && (pickupZip === startZip || dropoffZip === startZip) ? 18 : 0;
+  const anchorPenalty = anchorPickupMinutes != null ? Math.max(0, pickupMinutes - anchorPickupMinutes) * 0.15 : 0;
+  return proximityPenalty + waitPenalty + latenessPenalty + anchorPenalty - zipBonus;
+};
+
+const buildFocusedRoutePlanAction = ({ snapshot, params = {}, providerMode = 'local', applyNow = false, message = 'trip dashboard planner' }) => {
+  const serviceDate = String(params?.serviceDate || '').trim();
+  const driverId = String(params?.driverId || '').trim();
+  const anchorTripId = String(params?.anchorTripId || '').trim();
+  const cutoffTime = String(params?.cutoffTime || '').trim();
+  const startZip = String(params?.startZip || '').trim();
+  const parsedMaxTripCount = Number.parseInt(String(params?.maxTripCount ?? '').trim(), 10);
+  const parsedMaxLateMinutes = Number.parseInt(String(params?.maxLateMinutes ?? '').trim(), 10);
+  const maxTripCount = Number.isFinite(parsedMaxTripCount) && parsedMaxTripCount > 0 ? parsedMaxTripCount : Number.MAX_SAFE_INTEGER;
+  const maxLateMinutes = Number.isFinite(parsedMaxLateMinutes) && parsedMaxLateMinutes >= 0 ? parsedMaxLateMinutes : 0;
+  const candidateTripIdSet = new Set((Array.isArray(params?.candidateTripIds) ? params.candidateTripIds : []).map(value => String(value || '').trim()).filter(Boolean));
+  const allTrips = Array.isArray(snapshot?.allTrips) ? snapshot.allTrips : [];
+  const drivers = Array.isArray(snapshot?.driverDirectory) ? snapshot.driverDirectory : [];
+  const targetDriver = drivers.find(driver => String(driver?.id || '').trim() === driverId) || null;
+  const anchorTrip = allTrips.find(trip => String(trip?.id || '').trim() === anchorTripId) || null;
+  if (!serviceDate || !driverId || !anchorTrip) return null;
+
+  const normalizedCutoffMinutes = cutoffTime ? parseClockToMinutes(cutoffTime) : Number.MAX_SAFE_INTEGER;
+  const anchorPickupMinutes = getTripPlanningPickupMinutes(anchorTrip);
+  const effectiveStartZip = startZip || getTripPlanningPickupZip(anchorTrip) || getTripPlanningDropoffZip(anchorTrip);
+
+  const pool = allTrips
+    .filter(trip => getTripPlanningDateKey(trip) === serviceDate)
+    .filter(trip => !isCancelledTripStatus(trip?.status))
+    .filter(trip => candidateTripIdSet.size === 0 || candidateTripIdSet.has(String(trip?.id || '').trim()))
+    .filter(trip => {
+      const tripDriverId = String(trip?.driverId || '').trim();
+      return !tripDriverId || tripDriverId === driverId;
+    });
+
+  const remainingTrips = [...pool].filter(trip => String(trip?.id || '').trim() !== anchorTripId);
+  const plannedTrips = [anchorTrip];
+  let currentPosition = getTripPlanningDropoffPosition(anchorTrip);
+  const anchorEstimatedArrivalMinutes = getEstimatedTripArrivalMinutes(anchorTrip, null);
+  let currentAvailableMinutes = anchorEstimatedArrivalMinutes != null ? anchorEstimatedArrivalMinutes + getTripPlanningServiceDurationMinutes(anchorTrip) : anchorPickupMinutes;
+
+  while (remainingTrips.length > 0 && plannedTrips.length < maxTripCount) {
+    const eligibleTrips = remainingTrips.filter(trip => {
+      const pickupMinutes = getTripPlanningPickupMinutes(trip);
+      if (pickupMinutes == null) return false;
+      if (pickupMinutes > normalizedCutoffMinutes) return false;
+      if (anchorPickupMinutes != null && pickupMinutes < anchorPickupMinutes) return false;
+      if (currentAvailableMinutes != null && currentAvailableMinutes - pickupMinutes > maxLateMinutes) return false;
+      return true;
+    });
+
+    if (eligibleTrips.length === 0) break;
+
+    const rankedTrips = eligibleTrips
+      .map(trip => ({
+        trip,
+        score: scoreFocusedRouteCandidate({
+          trip,
+          currentPosition,
+          currentAvailableMinutes,
+          startZip: effectiveStartZip,
+          anchorPickupMinutes,
+          maxLateMinutes
+        })
+      }))
+      .sort((left, right) => {
+        if (left.score !== right.score) return left.score - right.score;
+        return getTripPlanningSortValue(left.trip) - getTripPlanningSortValue(right.trip);
+      });
+
+    const nextTrip = rankedTrips[0]?.trip || null;
+    if (!nextTrip) break;
+
+    plannedTrips.push(nextTrip);
+    currentPosition = getTripPlanningDropoffPosition(nextTrip);
+    const nextEstimatedArrivalMinutes = getEstimatedTripArrivalMinutes(nextTrip, currentAvailableMinutes);
+    currentAvailableMinutes = nextEstimatedArrivalMinutes != null ? nextEstimatedArrivalMinutes + getTripPlanningServiceDurationMinutes(nextTrip) : currentAvailableMinutes;
+
+    const nextTripId = String(nextTrip?.id || '').trim();
+    const nextIndex = remainingTrips.findIndex(trip => String(trip?.id || '').trim() === nextTripId);
+    if (nextIndex >= 0) remainingTrips.splice(nextIndex, 1);
+  }
+
+  const skippedTrips = pool.filter(trip => !plannedTrips.some(plannedTrip => String(plannedTrip?.id || '').trim() === String(trip?.id || '').trim()));
+  const route = buildPlannedRoutePayload({
+    bucket: plannedTrips,
+    driver: targetDriver || { id: driverId, name: driverId },
+    serviceDate,
+    routeIndex: 0,
+    totalRoutes: 1
+  });
+  route.name = `${String(targetDriver?.name || 'Driver').trim()} Smart Route`;
+  route.notes = `AI smart route from ${anchorTripId}${cutoffTime ? ` until ${cutoffTime}` : ''}${effectiveStartZip ? ` via ${effectiveStartZip}` : ''}${Number.isFinite(maxTripCount) && maxTripCount !== Number.MAX_SAFE_INTEGER ? ` max ${maxTripCount} trips` : ''} late<=${maxLateMinutes}m`;
+  route.stops = buildFocusedRouteStops(plannedTrips);
+
+  const plan = {
+    serviceDate,
+    createdAt: new Date().toISOString(),
+    planningMode: 'trip-dashboard-smart-route',
+    requestedDriverId: driverId,
+    anchorTripId,
+    startZip: effectiveStartZip,
+    cutoffTime: cutoffTime || formatMinutesAsTimeInput(normalizedCutoffMinutes),
+    maxLateMinutes,
+    routes: [route],
+    skippedTripIds: skippedTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
+    focusDriverId: driverId
+  };
+
+  return {
+    action: {
+      type: applyNow ? 'apply-route-plan' : 'route-plan-preview',
+      plan,
+      serviceDate,
+      focusDriverId: driverId
+    },
+    provider: providerMode === 'openai' ? 'openai-planner' : 'local-planner',
+    reply: buildFocusedRoutePlanReply({
+      message,
+      serviceDate,
+      driverName: targetDriver?.name || driverId,
+      routes: [route],
+      skippedTrips,
+      applied: applyNow,
+      anchorTrip,
+      cutoffTime: cutoffTime || formatMinutesAsTimeInput(normalizedCutoffMinutes)
+    })
+  };
+};
+
+const buildRoutePlanningAction = (message, snapshot) => {
+  const prompt = normalizeLookupValue(message);
+  const wantsPlanning = /(planifica|planear|planea|organiza|optimi[sz]a|optimize|plan|suggest|acomoda|acomodar|prepara|preparar|crea|crear|haz|hacer|build|make|generate)/.test(prompt) && /(ruta|rutas|route|routes)/.test(prompt);
+  if (!wantsPlanning) return null;
+
+  const serviceDate = parseDateKeyword(message);
+  const allTrips = Array.isArray(snapshot?.allTrips) ? snapshot.allTrips : [];
+  const wantsAllRoutes = /(todas|todos|all|complete|completa|completo|entero|full day|entire day)/.test(prompt) || /rutas/.test(prompt);
+  const shouldApply = /(crea|crear|haz|hacer|aplica|aplicar|ejecuta|ejecutar|guarda|guardar|build|make|create|apply|execute|save)/.test(prompt) && !/(preview|vista previa|suger|sugiere|planifica|organiza|optimi[sz]a)/.test(prompt);
+  const matchedDriver = findDriverInSnapshot(message, snapshot);
+
+  const eligibleTrips = allTrips
+    .filter(trip => getTripPlanningDateKey(trip) === serviceDate)
+    .filter(trip => !isCancelledTripStatus(trip?.status))
+    .filter(trip => {
+      const routeId = String(trip?.routeId || '').trim();
+      const primaryDriverId = String(trip?.driverId || '').trim();
+      if (matchedDriver) {
+        return primaryDriverId === matchedDriver.id || (!routeId && (!primaryDriverId || primaryDriverId === matchedDriver.id));
+      }
+      return !routeId;
+    });
+
+  if (eligibleTrips.length === 0) {
+    return {
+      action: null,
+      reply: detectLanguage(message) === 'es'
+        ? `No encontre viajes disponibles para planificar en ${serviceDate}.`
+        : `I could not find any available trips to plan on ${serviceDate}.`
+    };
+  }
+
+  const buckets = wantsAllRoutes ? splitTripsIntoRouteBuckets(eligibleTrips) : [splitTripsIntoRouteBuckets(eligibleTrips).flat()];
+  const rankedDrivers = matchedDriver ? [{ ...matchedDriver, planningScore: 0, dailyLoad: 0, routeCount: 0 }] : rankDriversForPlanning(snapshot, serviceDate);
+  const usedDriverIds = new Set();
+  const routes = [];
+  const skippedTrips = [];
+
+  buckets.forEach((bucket, bucketIndex) => {
+    const cleanBucket = (Array.isArray(bucket) ? bucket : []).filter(Boolean);
+    if (cleanBucket.length === 0) return;
+
+    const driver = matchedDriver
+      ? matchedDriver
+      : rankedDrivers.find(candidate => !usedDriverIds.has(String(candidate.id))) || rankedDrivers[bucketIndex % Math.max(rankedDrivers.length, 1)];
+
+    if (!driver) {
+      skippedTrips.push(...cleanBucket);
+      return;
+    }
+
+    usedDriverIds.add(String(driver.id));
+    routes.push(buildPlannedRoutePayload({
+      bucket: cleanBucket,
+      driver,
+      serviceDate,
+      routeIndex: routes.length,
+      totalRoutes: buckets.length
+    }));
+  });
+
+  if (routes.length === 0) {
+    return {
+      action: null,
+      reply: detectLanguage(message) === 'es'
+        ? `No pude armar una ruta valida para ${serviceDate}.`
+        : `I could not build a valid route plan for ${serviceDate}.`
+    };
+  }
+
+  const plan = {
+    serviceDate,
+    createdAt: new Date().toISOString(),
+    planningMode: wantsAllRoutes ? 'day' : 'single-route',
+    requestedDriverId: String(matchedDriver?.id || '').trim(),
+    routes,
+    skippedTripIds: skippedTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
+    focusDriverId: String(routes[0]?.driverId || matchedDriver?.id || '').trim()
+  };
+
+  return {
+    action: {
+      type: shouldApply ? 'apply-route-plan' : 'route-plan-preview',
+      plan,
+      serviceDate,
+      focusDriverId: plan.focusDriverId
+    },
+    reply: buildRoutePlanningReply({
+      message,
+      serviceDate,
+      routes,
+      skippedTrips,
+      applied: shouldApply
+    })
+  };
+};
+
 const findDriverInSnapshot = (text, snapshot) => {
   const drivers = Array.isArray(snapshot?.driverDirectory) ? snapshot.driverDirectory : [];
   const norm = normalizeLookupValue(text);
@@ -520,46 +1042,9 @@ const findDriverInSnapshot = (text, snapshot) => {
 };
 
 const findCreateRouteAction = (message, snapshot) => {
-  const prompt = normalizeLookupValue(message);
-  if (!(/(crea|crear|nueva|generar|hacer|haz|armar)\s*(la\s*)?ruta/.test(prompt)) && !/(create|build|make|generate)\s*(a\s*)?route/.test(prompt)) return null;
-  const trips = Array.isArray(snapshot?.allTrips) ? snapshot.allTrips : [];
-  const serviceDate = parseDateKeyword(message);
-
-  const afterVerb = prompt.replace(/(crea|crear|nueva|generar|hacer|haz|armar)\s*(la\s*)?ruta\s*(de|del|para)?\s*/g, '').trim();
-  const matchedDriver = findDriverInSnapshot(afterVerb, snapshot);
-
-  let targetTripIds = [];
-  let targetDriverId = null;
-  let targetDriverName = '';
-
-  if (matchedDriver) {
-    const unassigned = trips.filter(t => !t.driverId && !['cancelled', 'canceled'].includes(String(t.status || '').toLowerCase()));
-    const alreadyAssigned = trips.filter(t => t.driverId === matchedDriver.id);
-    const combined = [...alreadyAssigned, ...unassigned];
-    targetTripIds = combined.map(t => t.id);
-    targetDriverId = matchedDriver.id;
-    targetDriverName = matchedDriver.name;
-  } else {
-    targetTripIds = trips.filter(t => !t.driverId && !['cancelled', 'canceled'].includes(String(t.status || '').toLowerCase())).map(t => t.id).slice(0, 50);
-  }
-
-  const routeId = `route-${Date.now()}`;
-  const lang = detectLanguage(message);
-  return {
-    action: {
-      type: 'create-route',
-      routePlan: { id: routeId, serviceDate, tripIds: targetTripIds },
-      assignDriverId: targetDriverId,
-      assignTripIds: targetTripIds
-    },
-    reply: lang === 'es'
-      ? (targetDriverName
-          ? `Listo. Ruta creada para ${serviceDate} asignada a ${targetDriverName} con ${targetTripIds.length} viaje${targetTripIds.length !== 1 ? 's' : ''}. El estado offline del chofer no afecta la asignacion.`
-          : `Listo. Ruta creada para ${serviceDate} con ${targetTripIds.length} viaje${targetTripIds.length !== 1 ? 's' : ''} sin asignar.`)
-      : (targetDriverName
-          ? `Done. Route created for ${serviceDate} assigned to ${targetDriverName} with ${targetTripIds.length} trip${targetTripIds.length !== 1 ? 's' : ''}. Offline status does not affect assignment.`
-          : `Done. Route created for ${serviceDate} with ${targetTripIds.length} unassigned trip${targetTripIds.length !== 1 ? 's' : ''}.`)
-  };
+  const planning = buildRoutePlanningAction(message, snapshot);
+  if (!planning?.action || planning.action.type !== 'apply-route-plan') return null;
+  return planning;
 };
 
 const findAssignTripToDriverAction = (message, snapshot) => {
@@ -672,8 +1157,25 @@ const flattenMenuItems = items => items.flatMap(item => item.children ? [{
   isTitle: Boolean(item.isTitle)
 }]);
 
+const readSnapshotSource = async (label, reader) => {
+  try {
+    return await reader();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'Unknown error');
+    throw new Error(`${label}: ${message}`);
+  }
+};
+
 const buildDispatchSnapshot = async session => {
-  const [adminPayload, dispatchState, integrationsState, systemUsersPayload, blacklistState, persistedFacts, knowledgeOverview] = await Promise.all([readNemtAdminPayload(), readNemtDispatchState(), readIntegrationsState(), readSystemUsersPayload(), readBlacklistState(), readAssistantFacts(), readAssistantKnowledgeOverview()]);
+  const [adminPayload, dispatchState, integrationsState, systemUsersPayload, blacklistState, persistedFacts, knowledgeOverview] = await Promise.all([
+    readSnapshotSource('nemt-admin', () => readNemtAdminPayload()),
+    readSnapshotSource('nemt-dispatch', () => readNemtDispatchState()),
+    readSnapshotSource('integrations', () => readIntegrationsState()),
+    readSnapshotSource('system-users', () => readSystemUsersPayload()),
+    readSnapshotSource('blacklist', () => readBlacklistState()),
+    readSnapshotSource('assistant-facts', () => readAssistantFacts()),
+    readSnapshotSource('assistant-knowledge', () => readAssistantKnowledgeOverview())
+  ]);
   const drivers = Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : [];
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
   const routePlans = Array.isArray(dispatchState?.routePlans) ? dispatchState.routePlans : [];
@@ -747,11 +1249,23 @@ const buildDispatchSnapshot = async session => {
       rider: trip.rider,
       status: trip.status,
       driverId: trip.driverId,
+      secondaryDriverId: trip.secondaryDriverId,
+      routeId: trip.routeId,
       pickup: trip.pickup,
       dropoff: trip.dropoff,
+      scheduledPickup: trip.scheduledPickup,
+      scheduledDropoff: trip.scheduledDropoff,
       address: trip.address,
       destination: trip.destination,
-      confirmation: trip.confirmation
+      position: trip.position,
+      destinationPosition: trip.destinationPosition,
+      pickupSortValue: trip.pickupSortValue,
+      dropoffSortValue: trip.dropoffSortValue,
+      pickupZip: trip.fromZipcode || trip.fromZip || trip.pickupZipcode || trip.pickupZip || trip.originZip || '',
+      dropoffZip: trip.toZipcode || trip.toZip || trip.dropoffZipcode || trip.dropoffZip || trip.destinationZip || '',
+      serviceDate: getTripServiceDateKey(trip),
+      confirmation: trip.confirmation,
+      notes: trip.notes || ''
     })),
     sampleDrivers: combinedDriverDirectory.slice(0, 25).map(driver => ({
       id: driver.id,
@@ -765,10 +1279,15 @@ const buildDispatchSnapshot = async session => {
       vehicle: driver.vehicle,
       live: driver.live
     })),
-    routePlans: routePlans.slice(0, 30).map(rp => ({
+    routePlans: routePlans.map(rp => ({
       id: rp.id,
+      name: rp.name,
+      driverId: rp.driverId,
+      secondaryDriverId: rp.secondaryDriverId,
       serviceDate: rp.serviceDate,
-      tripIds: rp.tripIds
+      tripIds: rp.tripIds,
+      notes: rp.notes,
+      color: rp.color
     })),
     dispatchThreads: dispatchThreads.map(thread => ({
       driverId: thread.driverId,
@@ -818,6 +1337,9 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
 
   const moduleAction = findModuleAction(message, snapshot);
   if (moduleAction) return `${personalizedLead}${moduleAction.reply}`;
+
+  const routePlanningAction = buildRoutePlanningAction(message, snapshot);
+  if (routePlanningAction?.reply) return `${personalizedLead}${routePlanningAction.reply}`;
 
   const createRouteAction = findCreateRouteAction(message, snapshot);
   if (createRouteAction) return `${personalizedLead}${createRouteAction.reply}`;
@@ -935,13 +1457,22 @@ const extractLearnFacts = message => {
 const callOpenAI = async ({ message, history, snapshot, pathname, integrationsState, providerMode, session }) => {
   const mathReply = trySolveSimpleMathSafe(message);
   const moduleAction = findModuleAction(message, snapshot);
+  const routePlanningAction = buildRoutePlanningAction(message, snapshot);
   const createRouteAction = findCreateRouteAction(message, snapshot);
   const confirmTripAction = findConfirmTripAction(message, snapshot);
   const driverMessageAction = findDriverMessageAction(message, snapshot);
   const assignTripAction = findAssignTripToDriverAction(message, snapshot);
-  const directAction = confirmTripAction?.action || assignTripAction?.action || createRouteAction?.action || driverMessageAction?.action || moduleAction?.action || (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(String(message || '').toLowerCase()) ? 'signout' : null);
+  const directAction = routePlanningAction?.action || confirmTripAction?.action || assignTripAction?.action || createRouteAction?.action || driverMessageAction?.action || moduleAction?.action || (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(String(message || '').toLowerCase()) ? 'signout' : null);
   if (mathReply) {
     return { reply: mathReply, provider: 'local', action: directAction };
+  }
+
+  if (routePlanningAction?.action) {
+    return {
+      reply: routePlanningAction.reply,
+      provider: providerMode === 'openai' ? 'openai-planner' : 'local-planner',
+      action: routePlanningAction.action
+    };
   }
 
   if (providerMode === 'local') {
@@ -1000,6 +1531,91 @@ const callOpenAI = async ({ message, history, snapshot, pathname, integrationsSt
   };
 };
 
+const buildAppliedRoutesFromPlan = (plan, currentRoutePlans = []) => {
+  const existingCount = Array.isArray(currentRoutePlans) ? currentRoutePlans.length : 0;
+  return (Array.isArray(plan?.routes) ? plan.routes : []).map((route, index) => ({
+    id: String(route?.id || `route-${Date.now()}-${index + 1}`).trim(),
+    name: String(route?.name || `AI Route ${index + 1}`).trim() || `AI Route ${index + 1}`,
+    driverId: String(route?.driverId || '').trim(),
+    secondaryDriverId: String(route?.secondaryDriverId || '').trim() || null,
+    serviceDate: String(route?.serviceDate || plan?.serviceDate || '').trim(),
+    tripIds: Array.isArray(route?.tripIds) ? route.tripIds.map(value => String(value || '').trim()).filter(Boolean) : [],
+    notes: String(route?.notes || '').trim(),
+    color: String(route?.color || ROUTE_PLAN_COLORS[(existingCount + index) % ROUTE_PLAN_COLORS.length]).trim()
+  })).filter(route => route.serviceDate && route.tripIds.length > 0);
+};
+
+const executeRoutePlanAction = async ({ action, session }) => {
+  const plan = action?.plan;
+  const routes = Array.isArray(plan?.routes) ? plan.routes : [];
+  if (routes.length === 0) return null;
+
+  const currentState = await readNemtDispatchState();
+  const plannedRoutes = buildAppliedRoutesFromPlan(plan, currentState.routePlans);
+  if (plannedRoutes.length === 0) return null;
+
+  const targetTripIds = new Set(plannedRoutes.flatMap(route => route.tripIds).filter(Boolean));
+  const routeByTripId = new Map();
+  plannedRoutes.forEach(route => {
+    route.tripIds.forEach(tripId => {
+      routeByTripId.set(String(tripId), route);
+    });
+  });
+
+  const updatedAt = new Date().toISOString();
+  const cleanedRoutePlans = (Array.isArray(currentState.routePlans) ? currentState.routePlans : [])
+    .map(routePlan => ({
+      ...routePlan,
+      tripIds: (Array.isArray(routePlan?.tripIds) ? routePlan.tripIds : []).map(value => String(value || '').trim()).filter(tripId => !targetTripIds.has(tripId))
+    }))
+    .filter(routePlan => routePlan.tripIds.length > 0);
+
+  const nextTrips = (Array.isArray(currentState.trips) ? currentState.trips : []).map(trip => {
+    const tripId = String(trip?.id || '').trim();
+    const route = routeByTripId.get(tripId);
+    if (!route) return trip;
+    return {
+      ...trip,
+      driverId: route.driverId || null,
+      secondaryDriverId: route.secondaryDriverId || null,
+      routeId: route.id,
+      updatedAt,
+      status: 'Assigned'
+    };
+  });
+
+  const nextState = {
+    ...currentState,
+    routePlans: [...cleanedRoutePlans, ...plannedRoutes],
+    trips: nextTrips,
+    auditLog: appendDispatchAuditEntry(currentState.auditLog, {
+      action: 'assistant-apply-route-plan',
+      entityType: 'route',
+      entityId: String(plan?.serviceDate || '').trim(),
+      actorId: String(session?.user?.id || '').trim(),
+      actorName: String(session?.user?.name || session?.user?.username || '').trim(),
+      source: 'assistant',
+      summary: `Assistant applied ${plannedRoutes.length} route(s) for ${String(plan?.serviceDate || '').trim()}`,
+      metadata: {
+        serviceDate: String(plan?.serviceDate || '').trim(),
+        routeCount: plannedRoutes.length,
+        tripCount: targetTripIds.size
+      }
+    })
+  };
+
+  await writeNemtDispatchState(nextState);
+  return {
+    plan: {
+      ...plan,
+      routes: plannedRoutes,
+      focusDriverId: String(plan?.focusDriverId || plannedRoutes[0]?.driverId || '').trim()
+    },
+    tripCount: targetTripIds.size,
+    routeCount: plannedRoutes.length
+  };
+};
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const clientId = String(searchParams.get('clientId') || '').trim();
@@ -1029,14 +1645,83 @@ export async function POST(request) {
   const clientId = String(body?.clientId || '').trim();
   const pathname = String(body?.pathname || '').trim();
   const providerMode = String(body?.providerMode || 'local').trim().toLowerCase() === 'openai' ? 'openai' : 'local';
+  const actionRequest = body?.actionRequest && typeof body.actionRequest === 'object' ? body.actionRequest : null;
   const session = await getServerSession(authOptions);
   const conversationKey = buildConversationKey({ session, clientId });
 
-  if (!message) {
+  if (!message && !actionRequest) {
     return NextResponse.json({ error: 'Message is required.' }, { status: 400 });
   }
 
   try {
+    if (actionRequest?.type === 'build-route-plan-from-selection') {
+      const snapshot = await buildDispatchSnapshot(session);
+      const planResult = buildFocusedRoutePlanAction({
+        snapshot,
+        params: actionRequest?.params,
+        providerMode,
+        applyNow: false,
+        message: message || 'trip dashboard smart route'
+      });
+
+      if (!planResult?.action) {
+        return NextResponse.json({ ok: false, error: 'Unable to build route preview.' }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        reply: planResult.reply,
+        provider: planResult.provider,
+        action: planResult.action,
+        scope: session?.user?.id ? 'user' : 'client'
+      });
+    }
+
+    if (actionRequest?.type === 'apply-route-plan') {
+      const appliedPlan = await executeRoutePlanAction({ action: actionRequest, session });
+      if (!appliedPlan) {
+        return NextResponse.json({ ok: false, error: 'Unable to apply route plan.' }, { status: 400 });
+      }
+
+      const reply = buildRoutePlanningReply({
+        message: message || 'apply route plan',
+        serviceDate: appliedPlan.plan.serviceDate,
+        routes: appliedPlan.plan.routes,
+        skippedTrips: [],
+        applied: true
+      });
+
+      if (session?.user?.id) {
+        await logUserActionEvent({
+          userId: session.user.id,
+          userName: `${session.user.firstName || ''} ${session.user.lastName || ''}`.trim() || session.user.username || 'Unknown',
+          userRole: session.user.role,
+          userEmail: session.user.email,
+          eventLabel: `Assistant applied route plan for ${appliedPlan.plan.serviceDate}`,
+          target: pathname || 'route-control',
+          metadata: {
+            provider: providerMode,
+            action: 'apply-route-plan',
+            routeCount: appliedPlan.routeCount,
+            tripCount: appliedPlan.tripCount
+          }
+        });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        reply,
+        provider: providerMode === 'openai' ? 'openai-planner' : 'local-planner',
+        action: {
+          type: 'apply-route-plan',
+          serviceDate: appliedPlan.plan.serviceDate,
+          focusDriverId: appliedPlan.plan.focusDriverId,
+          plan: appliedPlan.plan
+        },
+        scope: session?.user?.id ? 'user' : 'client'
+      });
+    }
+
     const snapshot = await buildDispatchSnapshot(session);
     const integrationsState = await readIntegrationsState();
     const knowledgeMatches = await searchAssistantKnowledge(message, { limit: 4 });
@@ -1049,6 +1734,20 @@ export async function POST(request) {
     const newFacts = extractLearnFacts(message);
     for (const fact of newFacts) {
       await mergeAssistantFact(fact);
+    }
+
+    if (result.action?.type === 'apply-route-plan' && result.action?.plan) {
+      try {
+        const appliedPlan = await executeRoutePlanAction({ action: result.action, session });
+        if (appliedPlan) {
+          result.action = {
+            ...result.action,
+            plan: appliedPlan.plan,
+            focusDriverId: appliedPlan.plan.focusDriverId,
+            serviceDate: appliedPlan.plan.serviceDate
+          };
+        }
+      } catch {}
     }
 
     // Execute create-route action server-side

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 export default function useLocalStorage(key, initialValue, override = false) {
   const [storedValue, setStoredValue] = useState(() => {
     if (override) return initialValue;
@@ -16,19 +16,22 @@ export default function useLocalStorage(key, initialValue, override = false) {
       return initialValue;
     }
   });
-  const getStoredItem = () => {
+
+  const getStoredItem = useCallback(() => {
     if (key) {
       const item = window.localStorage.getItem(key);
       if (item) {
         setStoredValue(JSON.parse(item));
       }
     }
-  };
+  }, [key]);
+
   useEffect(() => {
     window.addEventListener('storage', getStoredItem, false);
     return () => window.removeEventListener('storage', getStoredItem);
-  }, [key]);
-  const setValue = value => {
+  }, [getStoredItem]);
+
+  const setValue = useCallback(value => {
     try {
       setStoredValue(currentValue => {
         const valueToStore = value instanceof Function ? value(currentValue) : value;
@@ -40,6 +43,7 @@ export default function useLocalStorage(key, initialValue, override = false) {
     } catch (error) {
       console.error(error);
     }
-  };
+  }, [key]);
+
   return [storedValue, setValue];
 }

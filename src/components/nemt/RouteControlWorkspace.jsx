@@ -184,6 +184,23 @@ const RouteControlWorkspace = () => {
   }, [refreshDispatchState, refreshDrivers]);
 
   useEffect(() => {
+    const handleAssistantAction = event => {
+      const detail = event?.detail || {};
+      void refreshDispatchState({ forceServer: true });
+      if (detail?.serviceDate) {
+        setDateFilter(String(detail.serviceDate));
+      }
+      if (detail?.focusDriverId) {
+        setSelectedDriverId(String(detail.focusDriverId));
+        setSelectedRouteId('');
+      }
+    };
+
+    window.addEventListener('nemt-assistant-action', handleAssistantAction);
+    return () => window.removeEventListener('nemt-assistant-action', handleAssistantAction);
+  }, [refreshDispatchState]);
+
+  useEffect(() => {
     const loadClosedRouteState = () => {
       try {
         const rawValue = window.localStorage.getItem(CLOSED_ROUTE_STATE_KEY);

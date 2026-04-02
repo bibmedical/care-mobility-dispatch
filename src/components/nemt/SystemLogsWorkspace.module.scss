@@ -1,13 +1,77 @@
 .systemLogsWorkspace {
+  --sl-bg-glow: rgba(55, 65, 81, 0.24);
+  --sl-bg-start: #0c1220;
+  --sl-bg-end: #0a101b;
+  --sl-text: #e5edf9;
+  --sl-text-strong: #f8fbff;
+  --sl-text-soft: #dfe8f6;
+  --sl-text-muted: #93a4c3;
+  --sl-text-muted-2: #8ea0be;
+  --sl-surface: rgba(15, 23, 38, 0.96);
+  --sl-surface-2: rgba(10, 17, 30, 0.88);
+  --sl-surface-3: rgba(15, 23, 38, 0.92);
+  --sl-surface-head: rgba(7, 14, 25, 0.72);
+  --sl-surface-hover: rgba(18, 29, 47, 0.88);
+  --sl-border: rgba(53, 65, 89, 0.92);
+  --sl-border-soft: rgba(42, 54, 77, 0.94);
+  --sl-border-row: rgba(32, 43, 64, 0.88);
+  --sl-input-bg: #0a1322;
+  --sl-input-border: rgba(67, 83, 111, 0.9);
+  --sl-pill-bg: rgba(255, 255, 255, 0.06);
+  --sl-pill-border: rgba(255, 255, 255, 0.08);
+  --sl-pill-text: #eef4ff;
+  --sl-button-secondary-bg: #111b2d;
+  --sl-button-secondary-text: #d7e2f4;
+  --sl-success-soft: rgba(13, 46, 33, 0.82);
+  --sl-success-border: rgba(74, 222, 128, 0.24);
+  --sl-success-text: #9ce7b3;
+  --sl-admin-bg: rgba(255, 255, 255, 0.08);
+  --sl-admin-text: #f2f5f9;
+  --sl-offline-bg: rgba(255, 255, 255, 0.08);
+  --sl-offline-text: #cfdae9;
+
   min-height: 100vh;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   background:
-    radial-gradient(circle at top left, rgba(55, 65, 81, 0.24), transparent 28%),
-    linear-gradient(180deg, #0c1220 0%, #0a101b 100%);
-  color: #e5edf9;
+    radial-gradient(circle at top left, var(--sl-bg-glow), transparent 28%),
+    linear-gradient(180deg, var(--sl-bg-start) 0%, var(--sl-bg-end) 100%);
+  color: var(--sl-text);
+
+  &.lightTheme {
+    --sl-bg-glow: rgba(103, 149, 198, 0.18);
+    --sl-bg-start: #f7fbff;
+    --sl-bg-end: #eef4fb;
+    --sl-text: #243247;
+    --sl-text-strong: #0f172a;
+    --sl-text-soft: #334155;
+    --sl-text-muted: #64748b;
+    --sl-text-muted-2: #6b7a90;
+    --sl-surface: rgba(255, 255, 255, 0.96);
+    --sl-surface-2: rgba(248, 251, 255, 0.98);
+    --sl-surface-3: rgba(255, 255, 255, 0.98);
+    --sl-surface-head: rgba(241, 245, 249, 0.98);
+    --sl-surface-hover: rgba(236, 244, 255, 0.95);
+    --sl-border: rgba(203, 213, 225, 0.95);
+    --sl-border-soft: rgba(214, 223, 235, 0.98);
+    --sl-border-row: rgba(226, 232, 240, 0.98);
+    --sl-input-bg: #ffffff;
+    --sl-input-border: rgba(191, 202, 218, 0.95);
+    --sl-pill-bg: rgba(226, 232, 240, 0.7);
+    --sl-pill-border: rgba(203, 213, 225, 0.95);
+    --sl-pill-text: #1e293b;
+    --sl-button-secondary-bg: #eef4fb;
+    --sl-button-secondary-text: #1e293b;
+    --sl-success-soft: rgba(227, 252, 239, 0.95);
+    --sl-success-border: rgba(74, 222, 128, 0.34);
+    --sl-success-text: #137a46;
+    --sl-admin-bg: rgba(226, 232, 240, 0.85);
+    --sl-admin-text: #334155;
+    --sl-offline-bg: rgba(226, 232, 240, 0.85);
+    --sl-offline-text: #475569;
+  }
 
   .header {
     display: flex;
@@ -20,12 +84,12 @@
       font-size: 1.9rem;
       font-weight: 700;
       letter-spacing: -0.03em;
-      color: #f8fbff;
+      color: var(--sl-text-strong);
     }
 
     p {
       margin: 0.35rem 0 0;
-      color: #93a4c3;
+      color: var(--sl-text-muted);
       font-size: 0.95rem;
     }
   }
@@ -33,10 +97,10 @@
   .headerNote {
     align-self: center;
     padding: 0.55rem 0.85rem;
-    border: 1px solid rgba(74, 222, 128, 0.24);
+    border: 1px solid var(--sl-success-border);
     border-radius: 999px;
-    background: rgba(13, 46, 33, 0.82);
-    color: #9ce7b3;
+    background: var(--sl-success-soft);
+    color: var(--sl-success-text);
     font-size: 0.8rem;
     white-space: nowrap;
   }
@@ -52,8 +116,8 @@
   .logsTableContainer,
   .detailView,
   .onlineUsersSection {
-    background: rgba(15, 23, 38, 0.96);
-    border: 1px solid rgba(53, 65, 89, 0.92);
+    background: var(--sl-surface);
+    border: 1px solid var(--sl-border);
     box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
     border-radius: 1rem;
   }
@@ -95,7 +159,7 @@
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: #8ea0be;
+    color: var(--sl-text-muted-2);
   }
 
   .statValue {
@@ -103,12 +167,12 @@
     font-size: 2rem;
     line-height: 1;
     letter-spacing: -0.04em;
-    color: #f8fbff;
+    color: var(--sl-text-strong);
   }
 
   .statHint {
     margin-top: 0.45rem;
-    color: #6bd7ac;
+    color: var(--sl-success-text);
     font-size: 0.78rem;
   }
 
@@ -126,7 +190,7 @@
     gap: 0.8rem;
 
     label {
-      color: #d6e0ef;
+      color: var(--sl-text-soft);
       font-size: 0.9rem;
       white-space: nowrap;
     }
@@ -136,9 +200,9 @@
     min-width: 150px;
     padding: 0.72rem 0.85rem;
     border-radius: 0.7rem;
-    border: 1px solid rgba(67, 83, 111, 0.9);
-    background: #0a1322;
-    color: #f4f7fb;
+    border: 1px solid var(--sl-input-border);
+    background: var(--sl-input-bg);
+    color: var(--sl-text-strong);
     outline: none;
   }
 
@@ -146,7 +210,7 @@
     display: flex;
     align-items: center;
     gap: 0.9rem;
-    color: #93a4c3;
+    color: var(--sl-text-muted);
     font-size: 0.86rem;
   }
 
@@ -177,9 +241,9 @@
   .backButton {
     align-self: flex-start;
     padding: 0.7rem 0.95rem;
-    background: #111b2d;
-    color: #d7e2f4;
-    border: 1px solid rgba(67, 83, 111, 0.9);
+    background: var(--sl-button-secondary-bg);
+    color: var(--sl-button-secondary-text);
+    border: 1px solid var(--sl-input-border);
   }
 
   .logsTableContainer,
@@ -206,14 +270,14 @@
     }
 
     h3 {
-      color: #f8fbff;
+      color: var(--sl-text-strong);
       font-size: 1.08rem;
     }
 
     p {
       margin-top: 0.25rem;
       font-size: 0.82rem;
-      color: #91a3c0;
+      color: var(--sl-text-muted);
     }
   }
 
@@ -235,9 +299,9 @@
 
   .tableBadge,
   .dateWorkedBadge {
-    background: rgba(255, 255, 255, 0.06);
-    color: #eef4ff;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: var(--sl-pill-bg);
+    color: var(--sl-pill-text);
+    border: 1px solid var(--sl-pill-border);
   }
 
   .logsTable {
@@ -246,27 +310,27 @@
 
     thead th {
       padding: 0.95rem 0.85rem;
-      border-bottom: 1px solid rgba(53, 65, 89, 0.92);
-      color: #d9e4f5;
+      border-bottom: 1px solid var(--sl-border);
+      color: var(--sl-text-soft);
       text-align: left;
       font-size: 0.78rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      background: rgba(7, 14, 25, 0.72);
+      background: var(--sl-surface-head);
     }
 
     tbody tr {
-      border-bottom: 1px solid rgba(32, 43, 64, 0.88);
+      border-bottom: 1px solid var(--sl-border-row);
       transition: background 0.18s ease;
 
       &:hover {
-        background: rgba(18, 29, 47, 0.88);
+        background: var(--sl-surface-hover);
       }
     }
 
     tbody td {
       padding: 0.95rem 0.85rem;
-      color: #dfe8f6;
+      color: var(--sl-text-soft);
       font-size: 0.92rem;
       vertical-align: middle;
     }
@@ -278,7 +342,7 @@
 
   .userNameCell {
     font-weight: 700;
-    color: #f5f9ff;
+    color: var(--sl-text-strong);
   }
 
   .badge,
@@ -293,8 +357,8 @@
   }
 
   .badgeAdmin {
-    background: rgba(255, 255, 255, 0.08);
-    color: #f2f5f9;
+    background: var(--sl-admin-bg);
+    color: var(--sl-admin-text);
   }
 
   .badgeDriver {
@@ -313,8 +377,8 @@
   }
 
   .statusOffline {
-    background: rgba(255, 255, 255, 0.08);
-    color: #cfdae9;
+    background: var(--sl-offline-bg);
+    color: var(--sl-offline-text);
   }
 
   .actionLOGIN {
@@ -338,7 +402,7 @@
   .noOnlineUsers {
     padding: 2.25rem 1rem;
     text-align: center;
-    color: #8ea0be;
+    color: var(--sl-text-muted-2);
   }
 
   .detailView {
@@ -350,17 +414,17 @@
   .userDetailHeader {
     align-items: flex-start;
     padding-bottom: 1rem;
-    border-bottom: 1px solid rgba(53, 65, 89, 0.92);
+    border-bottom: 1px solid var(--sl-border);
 
     h2 {
       margin: 0;
-      color: #f8fbff;
+      color: var(--sl-text-strong);
       font-size: 1.45rem;
     }
 
     p {
       margin: 0.25rem 0 0;
-      color: #91a3c0;
+      color: var(--sl-text-muted);
     }
   }
 
@@ -382,8 +446,8 @@
   }
 
   .sessionBadgeOffline {
-    background: rgba(255, 255, 255, 0.08);
-    color: #cfdae9;
+    background: var(--sl-offline-bg);
+    color: var(--sl-offline-text);
   }
 
   .activityTimeline {
@@ -395,13 +459,13 @@
   .dateGroup {
     padding: 1rem;
     border-radius: 0.9rem;
-    background: rgba(10, 17, 30, 0.88);
-    border: 1px solid rgba(42, 54, 77, 0.94);
+    background: var(--sl-surface-2);
+    border: 1px solid var(--sl-border-soft);
   }
 
   .dateHeader {
     margin: 0;
-    color: #f6fbff;
+    color: var(--sl-text-strong);
     font-size: 1rem;
     text-transform: capitalize;
   }
@@ -418,8 +482,8 @@
     gap: 0.85rem;
     padding: 0.85rem;
     border-radius: 0.8rem;
-    background: rgba(15, 23, 38, 0.92);
-    border: 1px solid rgba(38, 50, 73, 0.92);
+    background: var(--sl-surface-3);
+    border: 1px solid var(--sl-border-soft);
   }
 
   .eventDot {
@@ -450,7 +514,7 @@
 
   .eventTime {
     font-size: 0.86rem;
-    color: #eaf1fb;
+    color: var(--sl-text-strong);
     font-weight: 700;
   }
 
@@ -472,7 +536,7 @@
   }
 
   .eventMeta {
-    color: #91a3c0;
+    color: var(--sl-text-muted);
     font-size: 0.78rem;
   }
 
@@ -488,8 +552,8 @@
     gap: 0.75rem;
     padding: 0.95rem;
     border-radius: 0.9rem;
-    background: rgba(10, 17, 30, 0.88);
-    border: 1px solid rgba(42, 54, 77, 0.94);
+    background: var(--sl-surface-2);
+    border: 1px solid var(--sl-border-soft);
   }
 
   .onlineDot {
@@ -503,17 +567,17 @@
   .onlineUserName {
     flex: 1;
     font-weight: 700;
-    color: #f8fbff;
+    color: var(--sl-text-strong);
   }
 
   .onlineUserRole {
-    color: #93a4c3;
+    color: var(--sl-text-muted);
     font-size: 0.82rem;
   }
 
   .onlineUserTime {
     font-weight: 700;
-    color: #f8fbff;
+    color: var(--sl-text-strong);
   }
 }
 

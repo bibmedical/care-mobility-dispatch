@@ -6,6 +6,8 @@ import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 const STORAGE_DIR = getStorageRoot();
 const STORAGE_FILE = getStorageFilePath('nemt-dispatch.json');
 
+const parseJsonSafe = raw => JSON.parse(String(raw ?? '').replace(/^\uFEFF/, ''));
+
 const ensureStorageFile = async () => {
   await mkdir(STORAGE_DIR, { recursive: true });
   try {
@@ -18,7 +20,7 @@ const ensureStorageFile = async () => {
 export const readNemtDispatchState = async () => {
   await ensureStorageFile();
   const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizePersistentDispatchState(JSON.parse(fileContents));
+  return normalizePersistentDispatchState(parseJsonSafe(fileContents));
 };
 
 const getTripUpdatedAt = trip => {
