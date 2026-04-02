@@ -1,6 +1,6 @@
-'use client';
+﻿'use client';
 
-import { getTripServiceDateKey, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
+import { getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { createContext, startTransition, use, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,6 +24,9 @@ const buildClientState = value => ({
     ...routePlan,
     tripIds: [...routePlan.tripIds]
   })),
+  dispatchThreads: Array.isArray(value?.dispatchThreads) ? value.dispatchThreads.map(normalizeDispatchThreadRecord) : [],
+  dailyDrivers: Array.isArray(value?.dailyDrivers) ? value.dailyDrivers.map(normalizeDailyDriverRecord) : [],
+  auditLog: Array.isArray(value?.auditLog) ? value.auditLog.map(normalizeDispatchAuditRecord).slice(-500) : [],
   selectedTripIds: Array.isArray(value?.selectedTripIds) ? value.selectedTripIds.filter(Boolean) : [],
   selectedDriverId: value?.selectedDriverId || null,
   selectedRouteId: value?.selectedRouteId || null,
@@ -35,12 +38,28 @@ const createInitialState = () => buildClientState();
 const createPersistedSnapshot = state => normalizePersistentDispatchState({
   trips: state?.trips,
   routePlans: state?.routePlans,
+  dispatchThreads: state?.dispatchThreads,
+  dailyDrivers: state?.dailyDrivers,
+  auditLog: state?.auditLog,
   uiPreferences: state?.uiPreferences
 });
 
 const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#0891b2'];
 const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
+const MAX_AUDIT_LOG_ENTRIES = 500;
+
+const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
+  if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;
+  return Array.isArray(currentState?.selectedTripIds) ? currentState.selectedTripIds : [];
+};
+
+const getRouteTripIdSet = (currentState, routeId) => {
+  const normalizedRouteId = String(routeId || '').trim();
+  if (!normalizedRouteId) return new Set();
+  const routePlan = (Array.isArray(currentState?.routePlans) ? currentState.routePlans : []).find(item => String(item?.id || '').trim() === normalizedRouteId);
+  return new Set((Array.isArray(routePlan?.tripIds) ? routePlan.tripIds : []).map(value => String(value || '').trim()).filter(Boolean));
+};
 
 const getTripLookupKeys = trip => {
   const keys = [];
@@ -66,6 +85,11 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => normalizeTri
   confirmation: currentTrip?.confirmation || importedTrip?.confirmation,
   updatedAt: Number(currentTrip?.updatedAt) || Number(importedTrip?.updatedAt) || 0
 });
+
+const appendAuditEntry = (currentState, entry) => {
+  const nextEntry = normalizeDispatchAuditRecord(entry);
+  return [...(Array.isArray(currentState?.auditLog) ? currentState.auditLog : []), nextEntry].slice(-MAX_AUDIT_LOG_ENTRIES);
+};
 
 export const useNemtContext = () => {
   const context = use(NemtContext);
@@ -148,8 +172,8 @@ export const NemtProvider = ({
       startTransition(() => {
         setState(currentState => {
           const localState = buildClientState(currentState ?? createInitialState());
-          const useLocalTrips = !forceServer && (localState.trips.length > payload.trips.length || hasLocalDispatchChangesRef.current && localState.trips.length > 0);
-          const useLocalRoutes = !forceServer && (localState.routePlans.length > payload.routePlans.length || hasLocalDispatchChangesRef.current && localState.routePlans.length > 0);
+          const useLocalTrips = !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalRoutes = !forceServer && hasLocalDispatchChangesRef.current;
           const localColumns = normalizeDispatcherVisibleTripColumns(localState.uiPreferences?.dispatcherVisibleTripColumns);
           const serverColumns = normalizeDispatcherVisibleTripColumns(payload.uiPreferences?.dispatcherVisibleTripColumns);
           const localMapProvider = normalizeMapProviderPreference(localState.uiPreferences?.mapProvider);
@@ -203,7 +227,8 @@ export const NemtProvider = ({
     return () => {
       active = false;
     };
-  }, [setState]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!isDispatchLoaded || !state) return;
@@ -239,14 +264,102 @@ export const NemtProvider = ({
 
   const updateState = (updater, options = {}) => {
     const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;
+    const buildAuditEntry = typeof options.buildAuditEntry === 'function' ? options.buildAuditEntry : null;
     setState(currentState => {
       const baseState = currentState ?? createInitialState();
       if (shouldMarkDispatchDirty) {
         hasLocalDispatchChangesRef.current = true;
       }
-      return updater(baseState);
+      const nextState = updater(baseState);
+      if (!buildAuditEntry || !shouldMarkDispatchDirty) return nextState;
+      const auditEntry = buildAuditEntry(baseState, nextState);
+      if (!auditEntry) return nextState;
+      return {
+        ...nextState,
+        auditLog: appendAuditEntry(nextState, auditEntry)
+      };
     });
   };
+
+  const upsertDispatchThreadMessage = ({ driverId, message, markIncomingRead = false }) => updateState(currentState => {
+    const normalizedDriverId = String(driverId || '').trim();
+    const normalizedMessage = normalizeDispatchMessageRecord(message);
+    if (!normalizedDriverId || (!normalizedMessage.text && normalizedMessage.attachments.length === 0)) return currentState;
+    const existingThreads = Array.isArray(currentState.dispatchThreads) ? currentState.dispatchThreads : [];
+    const nextThreads = existingThreads.some(thread => thread.driverId === normalizedDriverId)
+      ? existingThreads.map(thread => thread.driverId === normalizedDriverId ? {
+        ...thread,
+        messages: [...thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
+          ...currentMessage,
+          status: 'read'
+        } : currentMessage), normalizedMessage]
+      } : thread)
+      : [...existingThreads, normalizeDispatchThreadRecord({ driverId: normalizedDriverId, messages: [normalizedMessage] })];
+    return {
+      ...currentState,
+      dispatchThreads: nextThreads
+    };
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'message-thread-upsert',
+      entityType: 'dispatch-thread',
+      entityId: String(driverId || '').trim(),
+      source: 'dispatcher-messaging',
+      summary: `Message added to driver thread ${String(driverId || '').trim()}`,
+      metadata: {
+        direction: String(message?.direction || 'outgoing').trim() || 'outgoing',
+        text: String(message?.text || '').trim()
+      }
+    })
+  });
+
+  const markDispatchThreadRead = driverId => updateState(currentState => {
+    const normalizedDriverId = String(driverId || '').trim();
+    if (!normalizedDriverId) return currentState;
+    return {
+      ...currentState,
+      dispatchThreads: (Array.isArray(currentState.dispatchThreads) ? currentState.dispatchThreads : []).map(thread => thread.driverId === normalizedDriverId ? {
+        ...thread,
+        messages: thread.messages.map(message => message.direction === 'incoming' ? {
+          ...message,
+          status: 'read'
+        } : message)
+      } : thread)
+    };
+  }, { markDispatchDirty: true });
+
+  const addDailyDriver = payload => updateState(currentState => {
+    const nextDriver = normalizeDailyDriverRecord(payload);
+    if (!nextDriver.id || !nextDriver.firstName) return currentState;
+    return {
+      ...currentState,
+      dailyDrivers: [...(Array.isArray(currentState.dailyDrivers) ? currentState.dailyDrivers.filter(driver => driver.id !== nextDriver.id) : []), nextDriver]
+    };
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'daily-driver-add',
+      entityType: 'daily-driver',
+      entityId: String(payload?.id || '').trim(),
+      source: 'dispatcher-messaging',
+      summary: `Daily driver added: ${String(payload?.firstName || '').trim()}`
+    })
+  });
+
+  const removeDailyDriver = driverId => updateState(currentState => ({
+    ...currentState,
+    dailyDrivers: (Array.isArray(currentState.dailyDrivers) ? currentState.dailyDrivers : []).filter(driver => driver.id !== driverId)
+  }), {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'daily-driver-remove',
+      entityType: 'daily-driver',
+      entityId: String(driverId || '').trim(),
+      source: 'dispatcher-messaging',
+      summary: `Daily driver removed: ${String(driverId || '').trim()}`
+    })
+  });
 
   const setSelectedTripIds = tripIdsOrUpdater => updateState(currentState => {
     const nextTripIds = typeof tripIdsOrUpdater === 'function' ? tripIdsOrUpdater(Array.isArray(currentState.selectedTripIds) ? currentState.selectedTripIds : []) : tripIdsOrUpdater;
@@ -284,7 +397,17 @@ export const NemtProvider = ({
         status: 'Assigned'
       } : trip)
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: currentState => ({
+      action: 'assign-trips-primary',
+      entityType: 'trip',
+      entityId: String(driverId || '').trim(),
+      source: 'dispatcher',
+      summary: `Assigned ${getTargetTripIdsForAudit(currentState, tripIds).length} trip(s) to ${String(driverId || '').trim()}`,
+      metadata: { driverId, tripIds: getTargetTripIdsForAudit(currentState, tripIds) }
+    })
+  });
 
   const assignTripsToSecondaryDriver = (driverId, tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
@@ -298,7 +421,17 @@ export const NemtProvider = ({
         status: trip.driverId || driverId ? 'Assigned' : trip.status
       } : trip)
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: currentState => ({
+      action: 'assign-trips-secondary',
+      entityType: 'trip',
+      entityId: String(driverId || '').trim(),
+      source: 'dispatcher',
+      summary: `Assigned ${getTargetTripIdsForAudit(currentState, tripIds).length} trip(s) to secondary driver ${String(driverId || '').trim()}`,
+      metadata: { driverId, tripIds: getTargetTripIdsForAudit(currentState, tripIds) }
+    })
+  });
 
   const unassignTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
@@ -319,7 +452,16 @@ export const NemtProvider = ({
         status: 'Unassigned'
       } : trip)
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: currentState => ({
+      action: 'unassign-trips',
+      entityType: 'trip',
+      source: 'dispatcher',
+      summary: `Unassigned ${getTargetTripIdsForAudit(currentState, tripIds).length} trip(s)`,
+      metadata: { tripIds: getTargetTripIdsForAudit(currentState, tripIds) }
+    })
+  });
 
   const cancelTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
@@ -341,7 +483,16 @@ export const NemtProvider = ({
         status: 'Cancelled'
       } : trip)
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'cancel-trips',
+      entityType: 'trip',
+      source: 'dispatcher',
+      summary: `Cancelled ${tripIds.length} trip(s)`,
+      metadata: { tripIds }
+    })
+  });
 
   const reinstateTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
@@ -358,7 +509,16 @@ export const NemtProvider = ({
         status: 'Unassigned'
       } : trip)
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'reinstate-trips',
+      entityType: 'trip',
+      source: 'dispatcher',
+      summary: `Reinstated ${tripIds.length} trip(s)`,
+      metadata: { tripIds }
+    })
+  });
 
   const createRoute = ({
     name,
@@ -367,14 +527,17 @@ export const NemtProvider = ({
     notes,
     serviceDate
   }) => updateState(currentState => {
-    const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const targetTripIds = (Array.isArray(tripIds) && tripIds.length > 0 ? tripIds : currentState.selectedTripIds)
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    if (targetTripIds.length === 0) return currentState;
     const updatedAt = getMutationTimestamp();
     const routeId = `route-${Date.now()}`;
-    const firstTripInRoute = currentState.trips.find(trip => targetTripIds.includes(trip.id));
+    const firstTripInRoute = currentState.trips.find(trip => targetTripIds.includes(String(trip?.id || '').trim()));
     const routeServiceDate = String(serviceDate || getTripServiceDateKey(firstTripInRoute) || '').trim();
     const cleanedRoutePlans = currentState.routePlans.map(routePlan => ({
       ...routePlan,
-      tripIds: routePlan.tripIds.filter(id => !targetTripIds.includes(id))
+      tripIds: routePlan.tripIds.filter(id => !targetTripIds.includes(String(id || '').trim()))
     })).filter(routePlan => routePlan.tripIds.length > 0);
     const routePlan = {
       id: routeId,
@@ -390,7 +553,7 @@ export const NemtProvider = ({
       selectedDriverId: driverId,
       selectedRouteId: routeId,
       routePlans: [...cleanedRoutePlans, routePlan],
-      trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
+      trips: currentState.trips.map(trip => targetTripIds.includes(String(trip?.id || '').trim()) ? {
         ...trip,
         driverId,
         routeId,
@@ -399,24 +562,50 @@ export const NemtProvider = ({
       } : trip),
       selectedTripIds: targetTripIds
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'create-route',
+      entityType: 'route',
+      entityId: String(name || '').trim(),
+      source: 'dispatcher',
+      summary: `Created route ${String(name || '').trim() || 'unnamed route'}`,
+      metadata: { driverId, tripIds, serviceDate }
+    })
+  });
 
   const deleteRoute = routeId => updateState(currentState => {
+    const normalizedRouteId = String(routeId || '').trim();
+    if (!normalizedRouteId) return currentState;
+    const routeTripIds = getRouteTripIdSet(currentState, normalizedRouteId);
     const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
-      selectedRouteId: currentState.selectedRouteId === routeId ? null : currentState.selectedRouteId,
-      routePlans: currentState.routePlans.filter(routePlan => routePlan.id !== routeId),
-      trips: currentState.trips.map(trip => trip.routeId === routeId ? {
+      selectedRouteId: String(currentState.selectedRouteId || '').trim() === normalizedRouteId ? null : currentState.selectedRouteId,
+      routePlans: currentState.routePlans.filter(routePlan => String(routePlan?.id || '').trim() !== normalizedRouteId),
+      trips: currentState.trips.map(trip => {
+        const tripId = String(trip?.id || '').trim();
+        const shouldResetTrip = String(trip?.routeId || '').trim() === normalizedRouteId || (tripId && routeTripIds.has(tripId));
+        return shouldResetTrip ? {
         ...trip,
         driverId: null,
         secondaryDriverId: null,
         routeId: null,
         updatedAt,
         status: 'Unassigned'
-      } : trip)
+      } : trip;
+      })
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'delete-route',
+      entityType: 'route',
+      entityId: String(routeId || '').trim(),
+      source: 'dispatcher',
+      summary: `Deleted route ${String(routeId || '').trim()}`
+    })
+  });
 
   const updateRoutePlan = (routeId, updates = {}) => updateState(currentState => {
     const normalizedRouteId = String(routeId || '').trim();
@@ -431,12 +620,23 @@ export const NemtProvider = ({
         tripIds: Array.isArray(routePlan.tripIds) ? routePlan.tripIds : []
       }) : routePlan)
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'update-route',
+      entityType: 'route',
+      entityId: String(routeId || '').trim(),
+      source: 'dispatcher',
+      summary: `Updated route ${String(routeId || '').trim()}`,
+      metadata: updates
+    })
+  });
 
   const assignRoutePrimaryDriver = (routeId, driverId) => updateState(currentState => {
     const normalizedRouteId = String(routeId || '').trim();
     const normalizedDriverId = String(driverId || '').trim();
     if (!normalizedRouteId || !normalizedDriverId) return currentState;
+    const routeTripIds = getRouteTripIdSet(currentState, normalizedRouteId);
     const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
@@ -445,19 +645,34 @@ export const NemtProvider = ({
         ...routePlan,
         driverId: normalizedDriverId
       } : routePlan),
-      trips: currentState.trips.map(trip => trip.routeId === normalizedRouteId ? {
+      trips: currentState.trips.map(trip => {
+        const tripId = String(trip?.id || '').trim();
+        const isRouteTrip = String(trip?.routeId || '').trim() === normalizedRouteId || (tripId && routeTripIds.has(tripId));
+        return isRouteTrip ? {
         ...trip,
         driverId: normalizedDriverId,
+        routeId: normalizedRouteId,
         updatedAt,
         status: 'Assigned'
-      } : trip)
+      } : trip;
+      })
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'route-primary-driver',
+      entityType: 'route',
+      entityId: String(routeId || '').trim(),
+      source: 'dispatcher',
+      summary: `Changed primary driver on route ${String(routeId || '').trim()} to ${String(driverId || '').trim()}`
+    })
+  });
 
   const assignRouteSecondaryDriver = (routeId, driverId) => updateState(currentState => {
     const normalizedRouteId = String(routeId || '').trim();
     const normalizedDriverId = String(driverId || '').trim();
     if (!normalizedRouteId) return currentState;
+    const routeTripIds = getRouteTripIdSet(currentState, normalizedRouteId);
     const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
@@ -465,14 +680,28 @@ export const NemtProvider = ({
         ...routePlan,
         secondaryDriverId: normalizedDriverId || null
       } : routePlan),
-      trips: currentState.trips.map(trip => trip.routeId === normalizedRouteId ? {
+      trips: currentState.trips.map(trip => {
+        const tripId = String(trip?.id || '').trim();
+        const isRouteTrip = String(trip?.routeId || '').trim() === normalizedRouteId || (tripId && routeTripIds.has(tripId));
+        return isRouteTrip ? {
         ...trip,
         secondaryDriverId: normalizedDriverId || null,
+        routeId: normalizedRouteId,
         updatedAt,
         status: trip.driverId || normalizedDriverId ? 'Assigned' : trip.status
-      } : trip)
+      } : trip;
+      })
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'route-secondary-driver',
+      entityType: 'route',
+      entityId: String(routeId || '').trim(),
+      source: 'dispatcher',
+      summary: `Changed secondary driver on route ${String(routeId || '').trim()} to ${String(driverId || '').trim()}`
+    })
+  });
 
   const addDriver = () => updateState(currentState => {
     const nextIndex = currentState.drivers.length + 19;
@@ -577,7 +806,16 @@ export const NemtProvider = ({
         notes: normalizedNotes
       } : trip)
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'trip-notes-update',
+      entityType: 'trip',
+      entityId: String(tripId || '').trim(),
+      source: 'dispatcher',
+      summary: `Updated notes on trip ${String(tripId || '').trim()}`
+    })
+  });
 
   const updateTripRecord = (tripId, updates) => updateState(currentState => {
     const normalizedTripId = String(tripId || '').trim();
@@ -591,7 +829,17 @@ export const NemtProvider = ({
         ...(updates || {})
       }) : trip)
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: () => ({
+      action: 'trip-record-update',
+      entityType: 'trip',
+      entityId: String(tripId || '').trim(),
+      source: 'dispatcher',
+      summary: `Updated trip ${String(tripId || '').trim()}`,
+      metadata: updates || {}
+    })
+  });
 
   const setDispatcherVisibleTripColumns = columnKeys => updateState(currentState => ({
     ...currentState,
@@ -654,6 +902,10 @@ export const NemtProvider = ({
     clearTrips,
     updateTripNotes,
     updateTripRecord,
+    upsertDispatchThreadMessage,
+    markDispatchThreadRead,
+    addDailyDriver,
+    removeDailyDriver,
     setDispatcherVisibleTripColumns,
     setMapProvider,
     setPrintSetup,

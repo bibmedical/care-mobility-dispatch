@@ -2,7 +2,7 @@
 import { getServerSession } from 'next-auth';
 import { MENU_ITEMS } from '@/assets/data/menu-items';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
-import { getTripLateMinutes as getSharedTripLateMinutes } from '@/helpers/nemt-dispatch-state';
+import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripLateMinutes as getSharedTripLateMinutes } from '@/helpers/nemt-dispatch-state';
 import { readAssistantKnowledgeOverview, searchAssistantKnowledge } from '@/server/assistant-knowledge-store';
 import { readBlacklistState } from '@/server/blacklist-store';
 import { readAssistantConversation, readAssistantFacts, mergeAssistantFact, writeAssistantConversation } from '@/server/assistant-memory-store';
@@ -13,6 +13,43 @@ import { logUserActionEvent } from '@/server/activity-logs-store';
 import { readSystemUsersPayload } from '@/server/system-users-store';
 
 const DEFAULT_MODEL = 'gpt-5.4-nano';
+
+const normalizeAuditEntry = entry => ({
+  id: String(entry?.id || `audit-${Date.now()}`),
+  action: String(entry?.action || 'update').trim() || 'update',
+  entityType: String(entry?.entityType || 'dispatch').trim() || 'dispatch',
+  entityId: String(entry?.entityId || '').trim(),
+  actorId: String(entry?.actorId || '').trim(),
+  actorName: String(entry?.actorName || '').trim(),
+  source: String(entry?.source || 'assistant').trim() || 'assistant',
+  timestamp: String(entry?.timestamp || new Date().toISOString()),
+  summary: String(entry?.summary || '').trim(),
+  metadata: typeof entry?.metadata === 'object' && entry?.metadata != null ? entry.metadata : {}
+});
+
+const appendDispatchAuditEntry = (auditLog, entry) => [...(Array.isArray(auditLog) ? auditLog : []), normalizeAuditEntry(entry)].slice(-500);
+
+const appendDriverDispatchThreadMessage = (dispatchThreads, action) => {
+  const driverId = String(action?.driverId || '').trim();
+  const text = String(action?.message || '').trim();
+  if (!driverId || !text) return Array.isArray(dispatchThreads) ? dispatchThreads : [];
+  const messageRecord = {
+    id: `${driverId}-${Date.now()}`,
+    direction: 'outgoing',
+    text,
+    timestamp: new Date().toISOString(),
+    status: 'sent',
+    attachments: []
+  };
+  const existingThreads = Array.isArray(dispatchThreads) ? dispatchThreads : [];
+  const hasThread = existingThreads.some(thread => String(thread?.driverId || '').trim() === driverId);
+  return hasThread
+    ? existingThreads.map(thread => String(thread?.driverId || '').trim() === driverId ? {
+      ...thread,
+      messages: [...(Array.isArray(thread?.messages) ? thread.messages : []), messageRecord]
+    } : thread)
+    : [...existingThreads, { driverId, messages: [messageRecord] }];
+};
 
 const stripRichText = value => String(value || '')
   .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -457,10 +494,10 @@ const findDriverMessageAction = (message, snapshot) => {
 const parseDateKeyword = text => {
   const t = normalizeLookupValue(text);
   const today = new Date();
-  if (/hoy|today/.test(t)) return today.toISOString().slice(0, 10);
+  if (/hoy|today/.test(t)) return getLocalDateKey(today, DEFAULT_DISPATCH_TIME_ZONE);
   if (/man[aá]ana|tomorrow/.test(t)) {
     const d = new Date(today); d.setDate(d.getDate() + 1);
-    return d.toISOString().slice(0, 10);
+    return getLocalDateKey(d, DEFAULT_DISPATCH_TIME_ZONE);
   }
   const dateMatch = text.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
   if (dateMatch) {
@@ -469,7 +506,7 @@ const parseDateKeyword = text => {
     const year = dateMatch[3] ? (String(dateMatch[3]).length === 2 ? `20${dateMatch[3]}` : dateMatch[3]) : String(today.getFullYear());
     return `${year}-${month}-${day}`;
   }
-  return today.toISOString().slice(0, 10);
+  return getLocalDateKey(today, DEFAULT_DISPATCH_TIME_ZONE);
 };
 
 const findDriverInSnapshot = (text, snapshot) => {
@@ -640,8 +677,20 @@ const buildDispatchSnapshot = async session => {
   const drivers = Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : [];
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
   const routePlans = Array.isArray(dispatchState?.routePlans) ? dispatchState.routePlans : [];
+  const dispatchThreads = Array.isArray(dispatchState?.dispatchThreads) ? dispatchState.dispatchThreads : [];
+  const dailyDrivers = Array.isArray(dispatchState?.dailyDrivers) ? dispatchState.dailyDrivers : [];
+  const auditLog = Array.isArray(dispatchState?.auditLog) ? dispatchState.auditLog : [];
   const users = Array.isArray(systemUsersPayload?.users) ? systemUsersPayload.users : [];
   const blacklistEntries = Array.isArray(blacklistState?.entries) ? blacklistState.entries : [];
+  const combinedDriverDirectory = [
+    ...drivers,
+    ...dailyDrivers.map(driver => ({
+      id: driver.id,
+      name: [driver.firstName, driver.lastNameOrOrg].filter(Boolean).join(' ').trim() || driver.firstName,
+      vehicle: 'Daily Driver',
+      live: 'Online'
+    }))
+  ];
 
   const cancelledTrips = trips.filter(trip => ['cancelled', 'canceled'].includes(String(trip?.status || '').trim().toLowerCase()));
   const unassignedTrips = trips.filter(trip => !trip?.driverId && !['cancelled', 'canceled'].includes(String(trip?.status || '').trim().toLowerCase()));
@@ -704,11 +753,29 @@ const buildDispatchSnapshot = async session => {
       destination: trip.destination,
       confirmation: trip.confirmation
     })),
+    sampleDrivers: combinedDriverDirectory.slice(0, 25).map(driver => ({
+      id: driver.id,
+      name: driver.name,
+      vehicle: driver.vehicle,
+      live: driver.live
+    })),
+    driverDirectory: combinedDriverDirectory.map(driver => ({
+      id: driver.id,
+      name: driver.name,
+      vehicle: driver.vehicle,
+      live: driver.live
+    })),
     routePlans: routePlans.slice(0, 30).map(rp => ({
       id: rp.id,
       serviceDate: rp.serviceDate,
       tripIds: rp.tripIds
-    }))
+    })),
+    dispatchThreads: dispatchThreads.map(thread => ({
+      driverId: thread.driverId,
+      messages: Array.isArray(thread.messages) ? thread.messages.slice(-20) : []
+    })),
+    dailyDrivers,
+    auditLog: auditLog.slice(-100)
   };
 };
 
@@ -1018,6 +1085,28 @@ export async function POST(request) {
             : trip
         );
         await writeNemtDispatchState({ ...currentState, trips: nextTrips });
+      } catch {}
+    }
+
+    if (result.action?.type === 'driver-message' && result.action?.driverId && result.action?.message) {
+      try {
+        const currentState = await readNemtDispatchState();
+        await writeNemtDispatchState({
+          ...currentState,
+          dispatchThreads: appendDriverDispatchThreadMessage(currentState.dispatchThreads, result.action),
+          auditLog: appendDispatchAuditEntry(currentState.auditLog, {
+            action: 'assistant-driver-message',
+            entityType: 'dispatch-thread',
+            entityId: String(result.action.driverId || '').trim(),
+            actorId: String(session?.user?.id || '').trim(),
+            actorName: String(session?.user?.name || session?.user?.username || '').trim(),
+            source: 'assistant',
+            summary: `Assistant sent message to ${String(result.action.driverName || result.action.driverId || '').trim()}`,
+            metadata: {
+              message: String(result.action.message || '').trim()
+            }
+          })
+        });
       } catch {}
     }
 

@@ -1,33 +1,17 @@
 ﻿'use client';
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import { useNemtContext } from '@/context/useNemtContext';
+import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { useMemo, useRef, useState } from 'react';
 import { Badge, Button, Form } from 'react-bootstrap';
-
-const DAILY_DRIVERS_KEY = '__CARE_MOBILITY_DAILY_DRIVERS__';
 
 const greenToolbarButtonStyle = {
   color: '#08131a',
   borderColor: 'rgba(8, 19, 26, 0.35)',
   backgroundColor: 'transparent'
 };
-
-const formatTime = value => new Date(value).toLocaleTimeString([], {
-  hour: '2-digit',
-  minute: '2-digit'
-});
-
-const buildSeedThreads = drivers => drivers.slice(0, 4).map((driver, index) => ({
-  driverId: driver.id,
-  messages: [{
-    id: `${driver.id}-welcome`,
-    direction: 'incoming',
-    text: ['Driver app connected.', 'At pickup location.', 'Minor delay on route.', 'Need rider confirmation.'][index] ?? 'Driver app connected.',
-    timestamp: new Date(Date.now() - (index + 1) * 600000).toISOString(),
-    status: 'read'
-  }]
-}));
 
 const mergeThreads = (threads, drivers) => {
   const existingThreads = Array.isArray(threads) ? threads : [];
@@ -44,9 +28,16 @@ const DispatcherMessagingPanel = ({
   setSelectedDriverId,
   openFullChat
 }) => {
-  const [threads, setThreads] = useLocalStorage('__CARE_MOBILITY_DISPATCH_MESSAGES__', buildSeedThreads(drivers));
+  const {
+    dispatchThreads,
+    dailyDrivers,
+    uiPreferences,
+    upsertDispatchThreadMessage,
+    markDispatchThreadRead,
+    addDailyDriver,
+    removeDailyDriver
+  } = useNemtContext();
   const [hiddenDriverIds, setHiddenDriverIds] = useLocalStorage('__CARE_MOBILITY_DISPATCH_HIDDEN_DRIVERS__', []);
-  const [dailyDrivers, setDailyDrivers] = useLocalStorage(DAILY_DRIVERS_KEY, []);
   const [dailyForm, setDailyForm] = useState({ firstName: '', lastNameOrOrg: '' });
   const [draftMessage, setDraftMessage] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
@@ -65,7 +56,7 @@ const DispatcherMessagingPanel = ({
     }))
   ], [drivers, dailyDrivers]);
 
-  const normalizedThreads = useMemo(() => mergeThreads(threads, allDrivers), [allDrivers, threads]);
+  const normalizedThreads = useMemo(() => mergeThreads(dispatchThreads, allDrivers), [allDrivers, dispatchThreads]);
   const hiddenDriverIdSet = useMemo(() => new Set(Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []), [hiddenDriverIds]);
   const visibleThreads = useMemo(() => normalizedThreads.filter(thread => !hiddenDriverIdSet.has(thread.driverId)), [hiddenDriverIdSet, normalizedThreads]);
   const normalizedSearch = driverSearch.trim().toLowerCase();
@@ -81,13 +72,7 @@ const DispatcherMessagingPanel = ({
 
   const handleSelectDriver = driverId => {
     setSelectedDriverId(driverId);
-    setThreads(currentThreads => mergeThreads(currentThreads, allDrivers).map(thread => thread.driverId === driverId ? {
-      ...thread,
-      messages: thread.messages.map(message => message.direction === 'incoming' ? {
-        ...message,
-        status: 'read'
-      } : message)
-    } : thread));
+    markDispatchThreadRead(driverId);
   };
 
   const handleSendMessage = (text, options = {}) => {
@@ -102,10 +87,7 @@ const DispatcherMessagingPanel = ({
       status: 'sent',
       attachments
     };
-    setThreads(currentThreads => mergeThreads(currentThreads, allDrivers).map(thread => thread.driverId === activeDriverId ? {
-      ...thread,
-      messages: [...thread.messages, outgoingMessage]
-    } : thread));
+    upsertDispatchThreadMessage({ driverId: activeDriverId, message: outgoingMessage });
     setDraftMessage('');
   };
 
@@ -164,13 +146,13 @@ const DispatcherMessagingPanel = ({
       lastNameOrOrg,
       createdAt: new Date().toISOString()
     };
-    setDailyDrivers(current => [...(Array.isArray(current) ? current : []), newDriver]);
+    addDailyDriver(newDriver);
     setDailyForm({ firstName: '', lastNameOrOrg: '' });
     setShowAddDriver(false);
   };
 
   const handleDeleteDailyDriver = driverId => {
-    setDailyDrivers(current => (Array.isArray(current) ? current : []).filter(dd => dd.id !== driverId));
+    removeDailyDriver(driverId);
     if (driverId === activeDriverId) {
       const next = visibleThreads.find(t => t.driverId !== driverId);
       setSelectedDriverId(next?.driverId ?? null);
@@ -245,7 +227,7 @@ const DispatcherMessagingPanel = ({
                             </div>
                           </div>
                           <div className="text-end">
-                            <div className="small">{lastMessage ? formatTime(lastMessage.timestamp) : '--:--'}</div>
+                            <div className="small">{lastMessage ? formatDispatchTime(lastMessage.timestamp, uiPreferences?.timeZone) : '--:--'}</div>
                             {threadUnreadCount > 0 ? <Badge bg="danger">{threadUnreadCount}</Badge> : null}
                           </div>
                         </div>
@@ -291,7 +273,7 @@ const DispatcherMessagingPanel = ({
                       ))}
                     </div>
                   ) : null}
-                  <div className={`small mt-1 ${message.direction === 'outgoing' ? 'text-white-50' : 'text-muted'}`}>{formatTime(message.timestamp)} {message.direction === 'outgoing' ? `| ${message.status}` : ''}</div>
+                  <div className={`small mt-1 ${message.direction === 'outgoing' ? 'text-white-50' : 'text-muted'}`}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status}` : ''}</div>
                 </div>
               </div>
             )) : <div className="text-center text-muted py-5">No messages yet for this driver.</div>}

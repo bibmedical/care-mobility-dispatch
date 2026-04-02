@@ -3,6 +3,7 @@ import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
 const STORAGE_DIR = getStorageRoot();
 const STORAGE_FILE = getStorageFilePath('activity-logs.json');
+const STALE_OPEN_SESSION_MS = 18 * 60 * 60 * 1000;
 
 const ensureStorageFile = async () => {
   try {
@@ -71,12 +72,37 @@ const buildBaseLogEntry = ({
   };
 };
 
+const getSessionLogsAscending = logs => [...(Array.isArray(logs) ? logs : [])]
+  .filter(log => log?.userId && (log.eventType === 'LOGIN' || log.eventType === 'LOGOUT'))
+  .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+const getOpenSessionsByUserId = logs => {
+  const openSessions = new Map();
+  getSessionLogsAscending(logs).forEach(log => {
+    if (log.eventType === 'LOGIN') {
+      openSessions.set(log.userId, log);
+      return;
+    }
+    openSessions.delete(log.userId);
+  });
+  return openSessions;
+};
+
 /**
  * Log a login event
  */
 export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAddress = '') => {
   try {
     const state = await readActivityLogs();
+    const openSessions = getOpenSessionsByUserId(state.logs);
+    const openSession = openSessions.get(userId);
+    if (openSession) {
+      const openSessionAgeMs = Date.now() - new Date(openSession.timestamp).getTime();
+      if (Number.isFinite(openSessionAgeMs) && openSessionAgeMs >= 0 && openSessionAgeMs < STALE_OPEN_SESSION_MS) {
+        return openSession;
+      }
+    }
+
     const logEntry = buildBaseLogEntry({
       userId,
       userName,
@@ -246,25 +272,26 @@ export const getActivityLogsSummary = async () => {
     });
     
     // Count online (last event was login)
-    const onlineUsers = new Map();
-    logs.forEach(log => {
-      onlineUsers.set(log.userId, {
+    const onlineUsers = Array.from(getOpenSessionsByUserId(logs).values())
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .map(log => ({
         userId: log.userId,
         userName: log.userName,
         userRole: log.userRole,
         userEmail: log.userEmail,
-        lastEvent: log.eventType,
+        lastEvent: 'LOGIN',
         lastTimestamp: log.timestamp,
-        isOnline: log.eventType === 'LOGIN'
-      });
-    });
+        isOnline: true,
+        activeLoginId: log.id,
+        activeLoginTimestamp: log.timestamp
+      }));
     
     return {
       totalEvents: logs.length,
       todayEvents: todayLogs.length,
       uniqueUsers,
       roleCount,
-      onlineUsers: Array.from(onlineUsers.values()).filter(u => u.isOnline)
+      onlineUsers
     };
   } catch (error) {
     console.error('Error getting activity logs summary:', error);

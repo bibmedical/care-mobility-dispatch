@@ -3,9 +3,6 @@
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import * as yup from 'yup';
-import { yupResolver } from '@hookform/resolvers/yup';
 import useQueryParams from '@/hooks/useQueryParams';
 import { useNotificationContext } from '@/context/useNotificationContext';
 
@@ -15,6 +12,10 @@ export const PAGE_OPTIONS = [{
   value: 'dispatching',
   label: 'Dispatching',
   href: '/dispatcher'
+}, {
+  value: 'driver',
+  label: 'Driver',
+  href: '/drivers'
 }, {
   value: 'scheduling',
   label: 'Scheduling',
@@ -46,24 +47,36 @@ const useSignIn = () => {
   const { showNotification } = useNotificationContext();
   const queryParams = useQueryParams();
 
-  const loginFormSchema = yup.object({
-    identifier: yup.string().trim().min(1, 'Please enter your username or email').required('Please enter your username or email'),
-    password: yup.string().trim().min(1, 'Please enter your password').required('Please enter your password'),
-    companyKey: yup.string().transform(value => String(value ?? '').trim().toUpperCase()).oneOf([COMPANY_KEY], 'Please enter the company code correctly').required('Please enter the company code'),
-    portalPage: yup.string().oneOf(PAGE_OPTIONS.map(option => option.value)).required('Please choose a page')
-  });
+  const submitCredentialsLogin = async values => {
+    const normalizedIdentifier = String(values?.identifier || '').trim();
+    const normalizedPassword = String(values?.password || '').trim();
+    const normalizedCompanyKey = String(values?.companyKey || '').trim().toUpperCase();
+    const normalizedPortalPage = PAGE_OPTIONS.some(option => option.value === values?.portalPage) ? values.portalPage : PAGE_OPTIONS[0].value;
 
-  const { control, handleSubmit } = useForm({
-    resolver: yupResolver(loginFormSchema),
-    defaultValues: {
-      identifier: '',
-      password: '',
-      companyKey: COMPANY_KEY,
-      portalPage: PAGE_OPTIONS[0].value
+    if (!normalizedIdentifier) {
+      showNotification({
+        message: 'Please enter your username or email',
+        variant: 'danger'
+      });
+      return false;
     }
-  });
 
-  const login = handleSubmit(async values => {
+    if (!normalizedPassword) {
+      showNotification({
+        message: 'Please enter your password',
+        variant: 'danger'
+      });
+      return false;
+    }
+
+    if (normalizedCompanyKey !== COMPANY_KEY) {
+      showNotification({
+        message: 'Please enter the company code correctly',
+        variant: 'danger'
+      });
+      return false;
+    }
+
     setLoading(true);
     setLockoutStatus(null);
     try {
@@ -72,8 +85,8 @@ const useSignIn = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          identifier: values?.identifier,
-          password: values?.password
+          identifier: normalizedIdentifier,
+          password: normalizedPassword
         })
       });
 
@@ -95,53 +108,66 @@ const useSignIn = () => {
           variant: 'danger'
         });
         setLoading(false);
-        return;
+        return false;
       }
 
       if (preLoginData.requires2FA) {
         // Store info for 2FA verification
         setPendingLogin({
-          identifier: values?.identifier,
-          password: values?.password,
+          identifier: normalizedIdentifier,
+          password: normalizedPassword,
           tempToken: preLoginData.tempToken,
-          portalPage: values?.portalPage
+          portalPage: normalizedPortalPage
         });
         setRequires2FA(true);
         setLoading(false);
-        return;
+        return true;
       }
 
       // If no 2FA required, proceed with normal signin
       const response = await signIn('credentials', {
         redirect: false,
-        identifier: values?.identifier,
-        password: values?.password,
+        identifier: normalizedIdentifier,
+        password: normalizedPassword,
         clientType: 'web'
       });
 
       if (response?.ok) {
         setLockoutStatus(null);
-        const targetPage = PAGE_OPTIONS.find(option => option.value === values?.portalPage)?.href ?? '/dispatcher';
+        const targetPage = PAGE_OPTIONS.find(option => option.value === normalizedPortalPage)?.href ?? '/dispatcher';
         push(queryParams['redirectTo'] ?? targetPage);
         showNotification({
           message: 'Successfully logged in. Redirecting....',
           variant: 'success'
         });
+        return true;
       } else {
         showNotification({
           message: response?.error ?? 'Unable to sign in',
           variant: 'danger'
         });
+        return false;
       }
     } catch (error) {
       showNotification({
         message: error.message || 'Login failed',
         variant: 'danger'
       });
+      return false;
     } finally {
       setLoading(false);
     }
-  });
+  };
+
+  const login = async event => {
+    event?.preventDefault();
+    return submitCredentialsLogin({
+      identifier: '',
+      password: '',
+      companyKey: COMPANY_KEY,
+      portalPage: PAGE_OPTIONS[0].value
+    });
+  };
 
   const sendEmailCode = async e => {
     e?.preventDefault();
@@ -326,7 +352,7 @@ const useSignIn = () => {
   return {
     loading,
     login,
-    control,
+    submitCredentialsLogin,
     loginMode,
     setLoginMode,
     emailLoading,

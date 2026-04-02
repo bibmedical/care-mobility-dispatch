@@ -2,10 +2,61 @@ import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 
 const DEFAULT_CENTER = [28.5383, -81.3792];
 const DEFAULT_ASSISTANT_AVATAR_IMAGE = '/WhatsApp%20Image%202026-03-28%20at%2011.58.52%20PM.jpeg';
+export const DEFAULT_DISPATCH_TIME_ZONE = 'America/New_York';
 
 const normalizeTextValue = value => String(value ?? '').trim();
 
 const padDatePart = value => String(value).padStart(2, '0');
+
+const isValidTimeZone = timeZone => {
+  const normalized = String(timeZone || '').trim();
+  if (!normalized) return false;
+  try {
+    Intl.DateTimeFormat('en-US', { timeZone: normalized }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const normalizeDispatchTimeZonePreference = value => {
+  const normalized = String(value || '').trim();
+  return isValidTimeZone(normalized) ? normalized : DEFAULT_DISPATCH_TIME_ZONE;
+};
+
+const getDatePartsInTimeZone = (input = new Date(), timeZone = DEFAULT_DISPATCH_TIME_ZONE) => {
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: normalizeDispatchTimeZonePreference(timeZone),
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find(part => part.type === 'year')?.value;
+  const month = parts.find(part => part.type === 'month')?.value;
+  const day = parts.find(part => part.type === 'day')?.value;
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+};
+
+export const getLocalDateKey = (input = new Date(), timeZone = DEFAULT_DISPATCH_TIME_ZONE) => {
+  const parts = getDatePartsInTimeZone(input, timeZone);
+  if (!parts) return '';
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+export const formatDispatchTime = (value, timeZone = DEFAULT_DISPATCH_TIME_ZONE) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '--:--';
+  return date.toLocaleTimeString('en-US', {
+    timeZone: normalizeDispatchTimeZonePreference(timeZone),
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
 
 const normalizeTripDateInput = value => {
   const text = String(value ?? '').trim();
@@ -69,6 +120,25 @@ export const getRouteServiceDateKey = (routePlan, trips = []) => {
   const routeTripIds = Array.isArray(routePlan?.tripIds) ? routePlan.tripIds : [];
   const firstRouteTrip = routeTripIds.map(tripId => (Array.isArray(trips) ? trips : []).find(trip => trip.id === tripId)).find(Boolean);
   return getTripServiceDateKey(firstRouteTrip);
+};
+
+export const getTripTimelineDateKey = (trip, routePlans = [], trips = []) => {
+  const tripDate = getTripServiceDateKey(trip);
+  if (tripDate) return tripDate;
+
+  const routeId = String(trip?.routeId || '').trim();
+  if (!routeId) return '';
+
+  const linkedRoute = (Array.isArray(routePlans) ? routePlans : []).find(routePlan => String(routePlan?.id || '').trim() === routeId);
+  return getRouteServiceDateKey(linkedRoute, trips);
+};
+
+export const isTripAssignedToDriver = (trip, driverId, includeSecondary = true) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) return false;
+  const primaryDriverId = String(trip?.driverId || '').trim();
+  const secondaryDriverId = String(trip?.secondaryDriverId || '').trim();
+  return includeSecondary ? primaryDriverId === normalizedDriverId || secondaryDriverId === normalizedDriverId : primaryDriverId === normalizedDriverId;
 };
 
 export const shiftTripDateKey = (dateKey, offsetDays) => {
@@ -179,6 +249,7 @@ export const normalizeDispatcherVisibleTripColumns = value => {
 export const normalizeNemtUiPreferences = value => ({
   dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(value?.dispatcherVisibleTripColumns),
   mapProvider: normalizeMapProviderPreference(value?.mapProvider),
+  timeZone: normalizeDispatchTimeZonePreference(value?.timeZone),
   printSetup: normalizePrintSetup(value?.printSetup)
 });
 
@@ -351,9 +422,52 @@ export const normalizeRoutePlanRecord = routePlan => ({
   tripIds: Array.isArray(routePlan?.tripIds) ? routePlan.tripIds.filter(Boolean) : []
 });
 
+export const normalizeDispatchMessageRecord = message => ({
+  id: String(message?.id ?? `msg-${Date.now()}`),
+  direction: String(message?.direction ?? 'incoming').trim() || 'incoming',
+  text: String(message?.text ?? '').trim(),
+  timestamp: String(message?.timestamp ?? new Date().toISOString()),
+  status: String(message?.status ?? 'sent').trim() || 'sent',
+  attachments: Array.isArray(message?.attachments) ? message.attachments.map(attachment => ({
+    id: String(attachment?.id ?? `attachment-${Date.now()}`),
+    kind: String(attachment?.kind ?? 'document').trim() || 'document',
+    name: String(attachment?.name ?? '').trim(),
+    mimeType: String(attachment?.mimeType ?? '').trim(),
+    dataUrl: String(attachment?.dataUrl ?? '').trim()
+  })) : []
+});
+
+export const normalizeDispatchThreadRecord = thread => ({
+  driverId: String(thread?.driverId ?? '').trim(),
+  messages: Array.isArray(thread?.messages) ? thread.messages.map(normalizeDispatchMessageRecord).filter(message => message.text || message.attachments.length > 0) : []
+});
+
+export const normalizeDailyDriverRecord = driver => ({
+  id: String(driver?.id ?? `daily-${Date.now()}`),
+  firstName: String(driver?.firstName ?? '').trim(),
+  lastNameOrOrg: String(driver?.lastNameOrOrg ?? '').trim(),
+  createdAt: String(driver?.createdAt ?? new Date().toISOString())
+});
+
+export const normalizeDispatchAuditRecord = entry => ({
+  id: String(entry?.id ?? `audit-${Date.now()}`),
+  action: String(entry?.action ?? 'update').trim() || 'update',
+  entityType: String(entry?.entityType ?? 'dispatch').trim() || 'dispatch',
+  entityId: String(entry?.entityId ?? '').trim(),
+  actorId: String(entry?.actorId ?? '').trim(),
+  actorName: String(entry?.actorName ?? '').trim(),
+  source: String(entry?.source ?? 'web').trim() || 'web',
+  timestamp: String(entry?.timestamp ?? new Date().toISOString()),
+  summary: String(entry?.summary ?? '').trim(),
+  metadata: typeof entry?.metadata === 'object' && entry?.metadata != null ? entry.metadata : {}
+});
+
 export const normalizePersistentDispatchState = value => ({
   version: 1,
   trips: normalizeTripRecords(value?.trips),
   routePlans: Array.isArray(value?.routePlans) ? value.routePlans.map(normalizeRoutePlanRecord) : [],
+  dispatchThreads: Array.isArray(value?.dispatchThreads) ? value.dispatchThreads.map(normalizeDispatchThreadRecord).filter(thread => thread.driverId) : [],
+  dailyDrivers: Array.isArray(value?.dailyDrivers) ? value.dailyDrivers.map(normalizeDailyDriverRecord).filter(driver => driver.id && driver.firstName) : [],
+  auditLog: Array.isArray(value?.auditLog) ? value.auditLog.map(normalizeDispatchAuditRecord).filter(entry => entry.id && entry.action) : [],
   uiPreferences: normalizeNemtUiPreferences(value?.uiPreferences)
 });

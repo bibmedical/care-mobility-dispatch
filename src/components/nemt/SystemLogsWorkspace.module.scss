@@ -1,656 +1,559 @@
 .systemLogsWorkspace {
+  min-height: 100vh;
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
-  padding: 2rem;
-  background: #f8f9fa;
-  min-height: 100vh;
+  gap: 1.5rem;
+  background:
+    radial-gradient(circle at top left, rgba(55, 65, 81, 0.24), transparent 28%),
+    linear-gradient(180deg, #0c1220 0%, #0a101b 100%);
+  color: #e5edf9;
 
   .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+
     h1 {
-      font-size: 2rem;
+      margin: 0;
+      font-size: 1.9rem;
       font-weight: 700;
-      color: #1a1a1a;
-      margin: 0 0 0.5rem 0;
+      letter-spacing: -0.03em;
+      color: #f8fbff;
     }
 
     p {
-      color: #666;
-      margin: 0;
+      margin: 0.35rem 0 0;
+      color: #93a4c3;
       font-size: 0.95rem;
     }
   }
 
+  .headerNote {
+    align-self: center;
+    padding: 0.55rem 0.85rem;
+    border: 1px solid rgba(74, 222, 128, 0.24);
+    border-radius: 999px;
+    background: rgba(13, 46, 33, 0.82);
+    color: #9ce7b3;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
   .statsContainer {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
-
-    .statCard {
-      background: white;
-      border-radius: 0.75rem;
-      padding: 1.5rem;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-      border-left: 4px solid #28a745;
-
-      .statLabel {
-        font-size: 0.85rem;
-        color: #666;
-        font-weight: 500;
-        margin-bottom: 0.5rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-
-      .statValue {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1a1a1a;
-      }
-
-      &:nth-child(2) {
-        border-left-color: #007bff;
-      }
-
-      &:nth-child(3) {
-        border-left-color: #ffc107;
-      }
-    }
-  }
-
-  .controls {
-    display: flex;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1rem;
-    background: white;
-    padding: 1.5rem;
-    border-radius: 0.75rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-
-    .filterGroup {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-
-      label {
-        font-weight: 500;
-        color: #333;
-        white-space: nowrap;
-      }
-
-      .select {
-        padding: 0.5rem 0.75rem;
-        border: 1px solid #ddd;
-        border-radius: 0.5rem;
-        font-size: 0.9rem;
-        cursor: pointer;
-        transition: border-color 0.2s;
-
-        &:hover {
-          border-color: #999;
-        }
-
-        &:focus {
-          outline: none;
-          border-color: #007bff;
-          box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-        }
-      }
-    }
-
-    .button {
-      padding: 0.5rem 1.5rem;
-      background: #28a745;
-      color: white;
-      border: none;
-      border-radius: 0.5rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-
-      &:hover:not(:disabled) {
-        background: #218838;
-      }
-
-      &:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-    }
   }
 
-  .logsTableContainer {
-    background: white;
-    border-radius: 0.75rem;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-
-    .logsTable {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.9rem;
-
-      thead {
-        background: #f5f5f5;
-        border-bottom: 2px solid #ddd;
-
-        th {
-          padding: 1rem;
-          text-align: left;
-          font-weight: 600;
-          color: #333;
-          text-transform: uppercase;
-          font-size: 0.8rem;
-          letter-spacing: 0.5px;
-        }
-      }
-
-      tbody {
-        tr {
-          border-bottom: 1px solid #eee;
-          transition: background 0.2s;
-
-          &:hover {
-            background: #f9f9f9;
-          }
-
-          &.clickableRow {
-            cursor: pointer;
-
-            &:hover {
-              background: #f0f7ff;
-            }
-          }
-
-          td {
-            padding: 1rem;
-            color: #333;
-
-            .userNameCell {
-              font-weight: 600;
-              color: #007bff;
-
-              &:hover {
-                text-decoration: underline;
-              }
-            }
-
-            .badge {
-              display: inline-block;
-              padding: 0.25rem 0.75rem;
-              border-radius: 9999px;
-              font-size: 0.8rem;
-              font-weight: 600;
-              text-transform: uppercase;
-
-              &.badge-admin {
-                background: #fff3cd;
-                color: #856404;
-              }
-
-              &.badge-driver {
-                background: #d1ecf1;
-                color: #0c5460;
-              }
-
-              &.badge-attendant {
-                background: #e2e3e5;
-                color: #383d41;
-              }
-            }
-
-            .action {
-              display: inline-block;
-              padding: 0.25rem 0.75rem;
-              border-radius: 0.5rem;
-              font-weight: 600;
-              font-size: 0.8rem;
-
-              &.action-LOGIN {
-                background: #d4edda;
-                color: #155724;
-              }
-
-              &.action-LOGOUT {
-                background: #f8d7da;
-                color: #721c24;
-              }
-
-              &.action-ACTION {
-                background: #e8ddff;
-                color: #4b2a8a;
-              }
-            }
-          }
-
-          &:last-child {
-            border-bottom: none;
-          }
-        }
-
-        .loading,
-        .noData {
-          text-align: center;
-          padding: 3rem 1rem;
-          color: #999;
-          font-style: italic;
-        }
-      }
-    }
-  }
-
-  .detailView {
-    background: white;
-    border-radius: 0.75rem;
-    padding: 2rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-
-    .backButton {
-      padding: 0.5rem 1rem;
-      background: #6c757d;
-      color: white;
-      border: none;
-      border-radius: 0.5rem;
-      font-weight: 500;
-      cursor: pointer;
-      margin-bottom: 1.5rem;
-      transition: background 0.2s;
-
-      &:hover {
-        background: #5a6268;
-      }
-    }
-
-    .userDetailHeader {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      padding-bottom: 2rem;
-      border-bottom: 2px solid #eee;
-      margin-bottom: 2rem;
-
-      h2 {
-        margin: 0;
-        font-size: 1.75rem;
-        color: #1a1a1a;
-      }
-
-      p {
-        margin: 0;
-        color: #666;
-        font-size: 0.95rem;
-      }
-
-      .roleBadge {
-        align-self: flex-start;
-        display: inline-block;
-        padding: 0.5rem 1rem;
-        background: #007bff;
-        color: white;
-        border-radius: 9999px;
-        font-weight: 600;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-      }
-
-      .sessionBadge {
-        align-self: flex-start;
-        margin-top: 0.35rem;
-        padding: 0.3rem 0.7rem;
-        border-radius: 999px;
-        background: #d4edda;
-        color: #155724;
-        font-weight: 600;
-        font-size: 0.8rem;
-      }
-
-      .sessionBadgeOffline {
-        align-self: flex-start;
-        margin-top: 0.35rem;
-        padding: 0.3rem 0.7rem;
-        border-radius: 999px;
-        background: #f1f3f5;
-        color: #6c757d;
-        font-weight: 600;
-        font-size: 0.8rem;
-      }
-    }
-
-    .activityTimeline {
-      .dateGroup {
-        margin-bottom: 2.5rem;
-
-        .dateHeader {
-          margin: 0 0 1.5rem 0;
-          font-size: 1.1rem;
-          font-weight: 600;
-          color: #333;
-          text-transform: capitalize;
-          padding-bottom: 0.75rem;
-          border-bottom: 2px solid #007bff;
-        }
-
-        .timelineEvents {
-          display: flex;
-          flex-direction: column;
-          gap: 1rem;
-
-          .timelineEvent {
-            display: flex;
-            gap: 1.5rem;
-            padding: 1rem;
-            background: #f9f9f9;
-            border-radius: 0.5rem;
-            border-left: 3px solid #ddd;
-
-            .eventDot {
-              width: 12px;
-              height: 12px;
-              border-radius: 50%;
-              margin-top: 0.4rem;
-              flex-shrink: 0;
-
-              &.dot-LOGIN {
-                background: #28a745;
-              }
-
-              &.dot-LOGOUT {
-                background: #dc3545;
-              }
-
-              &.dot-ACTION {
-                background: #6f42c1;
-              }
-            }
-
-            .eventContent {
-              display: flex;
-              flex-direction: column;
-              gap: 0.25rem;
-              flex: 1;
-
-              .eventTime {
-                font-weight: 600;
-                font-size: 0.95rem;
-                color: #1a1a1a;
-              }
-
-              .eventType {
-                font-size: 0.85rem;
-                text-transform: uppercase;
-                font-weight: 500;
-
-                &.type-LOGIN {
-                  color: #28a745;
-                }
-
-                &.type-LOGOUT {
-                  color: #dc3545;
-                }
-        
-                &.type-ACTION {
-                  color: #6f42c1;
-                }
-              }
-      
-              .eventMeta {
-                margin-top: 0.15rem;
-                color: #6c757d;
-                font-size: 0.78rem;
-              }
-            }
-          }
-        }
-      }
-
-      .noActivity {
-        text-align: center;
-        padding: 2rem;
-        color: #999;
-        font-style: italic;
-        background: #f9f9f9;
-        border-radius: 0.5rem;
-      }
-    }
-  }
-
-  .onlineUsersSection {
-    background: white;
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-
-    h3 {
-      margin: 0 0 1rem 0;
-      font-size: 1.1rem;
-      color: #1a1a1a;
-    }
-
-    .onlineUsersList {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-
-      .onlineUser {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        padding: 0.75rem 1rem;
-        background: #f9f9f9;
-        border-radius: 0.5rem;
-        border-left: 3px solid #28a745;
-
-        .onlineDot {
-          display: inline-block;
-          width: 8px;
-          height: 8px;
-          background: #28a745;
-          border-radius: 50%;
-          animation: pulse 2s infinite;
-        }
-
-        .onlineUserName {
-          font-weight: 600;
-          flex: 1;
-          color: #1a1a1a;
-        }
-
-        .onlineUserRole {
-          display: inline-block;
-          padding: 0.25rem 0.5rem;
-          background: #007bff;
-          color: white;
-          border-radius: 0.3rem;
-          font-size: 0.75rem;
-          font-weight: 600;
-          text-transform: uppercase;
-        }
-
-        .onlineUserTime {
-          font-size: 0.85rem;
-          color: #666;
-          min-width: 60px;
-          text-align: right;
-        }
-      }
-
-      .noOnlineUsers {
-        text-align: center;
-        padding: 1rem;
-        color: #999;
-        font-style: italic;
-      }
-    }
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-@media (max-width: 768px) {
-  .systemLogsWorkspace {
-    padding: 1rem;
-
-    .logsTableContainer .logsTable tbody tr td {
-      padding: 0.75rem 0.5rem;
-      font-size: 0.8rem;
-    }
-
-    .controls {
-      flex-direction: column;
-    }
-  }
-}
-
-:global(html[data-bs-theme='dark']) .systemLogsWorkspace {
-  background: #0f172a;
-
-  .header {
-    h1 {
-      color: #e2e8f0;
-    }
-
-    p {
-      color: #94a3b8;
-    }
-  }
-
-  .statsContainer .statCard,
+  .statCard,
   .controls,
   .logsTableContainer,
   .detailView,
   .onlineUsersSection {
-    background: #111827;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
-    border: 1px solid #1f2937;
+    background: rgba(15, 23, 38, 0.96);
+    border: 1px solid rgba(53, 65, 89, 0.92);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+    border-radius: 1rem;
   }
 
-  .statsContainer .statCard {
-    .statLabel {
-      color: #94a3b8;
+  .statCard {
+    padding: 1rem 1.1rem;
+    position: relative;
+    overflow: hidden;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0.9rem;
+      right: 0.9rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.14);
+      box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.18);
     }
 
-    .statValue {
-      color: #f8fafc;
+    &:nth-child(2)::after {
+      background: rgba(16, 185, 129, 0.14);
+      box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.18);
     }
+
+    &:nth-child(3)::after {
+      background: rgba(248, 113, 113, 0.14);
+      box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.18);
+    }
+
+    &:nth-child(4)::after {
+      background: rgba(251, 191, 36, 0.14);
+      box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.18);
+    }
+  }
+
+  .statLabel {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8ea0be;
+  }
+
+  .statValue {
+    margin-top: 0.45rem;
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: #f8fbff;
+  }
+
+  .statHint {
+    margin-top: 0.45rem;
+    color: #6bd7ac;
+    font-size: 0.78rem;
   }
 
   .controls {
-    .filterGroup {
-      label {
-        color: #cbd5e1;
-      }
+    padding: 1rem 1.15rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
 
-      .select {
-        background: #0b1220;
-        color: #e2e8f0;
-        border-color: #334155;
-      }
+  .filterGroup {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+
+    label {
+      color: #d6e0ef;
+      font-size: 0.9rem;
+      white-space: nowrap;
     }
   }
 
-  .logsTableContainer {
-    .logsTable {
-      thead {
-        background: #0b1220;
-        border-bottom-color: #334155;
+  .select {
+    min-width: 150px;
+    padding: 0.72rem 0.85rem;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(67, 83, 111, 0.9);
+    background: #0a1322;
+    color: #f4f7fb;
+    outline: none;
+  }
 
-        th {
-          color: #cbd5e1;
-        }
-      }
+  .controlsMeta {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    color: #93a4c3;
+    font-size: 0.86rem;
+  }
 
-      tbody {
-        tr {
-          border-bottom-color: #1f2937;
+  .button,
+  .backButton {
+    border: none;
+    border-radius: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease;
 
-          &:hover {
-            background: #172032;
-          }
+    &:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
 
-          &.clickableRow:hover {
-            background: #1a2438;
-          }
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+  }
 
-          td {
-            color: #e2e8f0;
-          }
-        }
+  .button {
+    padding: 0.72rem 1.05rem;
+    background: #22c55e;
+    color: #f8fffb;
+  }
 
-        .loading,
-        .noData {
-          color: #94a3b8;
-        }
+  .backButton {
+    align-self: flex-start;
+    padding: 0.7rem 0.95rem;
+    background: #111b2d;
+    color: #d7e2f4;
+    border: 1px solid rgba(67, 83, 111, 0.9);
+  }
+
+  .logsTableContainer,
+  .onlineUsersSection,
+  .detailView {
+    padding: 1.15rem;
+  }
+
+  .tableHeader,
+  .dateHeaderRow,
+  .userDetailHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .tableHeader {
+    margin-bottom: 0.9rem;
+
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h3 {
+      color: #f8fbff;
+      font-size: 1.08rem;
+    }
+
+    p {
+      margin-top: 0.25rem;
+      font-size: 0.82rem;
+      color: #91a3c0;
+    }
+  }
+
+  .tableBadge,
+  .dateWorkedBadge,
+  .roleBadge,
+  .sessionBadge,
+  .sessionBadgeOffline {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .tableBadge,
+  .dateWorkedBadge {
+    background: rgba(255, 255, 255, 0.06);
+    color: #eef4ff;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .logsTable {
+    width: 100%;
+    border-collapse: collapse;
+
+    thead th {
+      padding: 0.95rem 0.85rem;
+      border-bottom: 1px solid rgba(53, 65, 89, 0.92);
+      color: #d9e4f5;
+      text-align: left;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(7, 14, 25, 0.72);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(32, 43, 64, 0.88);
+      transition: background 0.18s ease;
+
+      &:hover {
+        background: rgba(18, 29, 47, 0.88);
       }
     }
+
+    tbody td {
+      padding: 0.95rem 0.85rem;
+      color: #dfe8f6;
+      font-size: 0.92rem;
+      vertical-align: middle;
+    }
+  }
+
+  .clickableRow {
+    cursor: pointer;
+  }
+
+  .userNameCell {
+    font-weight: 700;
+    color: #f5f9ff;
+  }
+
+  .badge,
+  .action {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.85rem;
+    padding: 0.32rem 0.72rem;
+    border-radius: 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .badgeAdmin {
+    background: rgba(255, 255, 255, 0.08);
+    color: #f2f5f9;
+  }
+
+  .badgeDriver {
+    background: rgba(59, 130, 246, 0.16);
+    color: #9bc7ff;
+  }
+
+  .badgeAttendant {
+    background: rgba(168, 85, 247, 0.18);
+    color: #d7b4ff;
+  }
+
+  .statusOnline {
+    background: rgba(34, 197, 94, 0.18);
+    color: #a9f0bf;
+  }
+
+  .statusOffline {
+    background: rgba(255, 255, 255, 0.08);
+    color: #cfdae9;
+  }
+
+  .actionLOGIN {
+    background: #dff6df;
+    color: #1f7a3f;
+  }
+
+  .actionLOGOUT {
+    background: rgba(248, 113, 113, 0.18);
+    color: #f4a3a3;
+  }
+
+  .actionACTION {
+    background: rgba(255, 214, 10, 0.16);
+    color: #ffd25f;
+  }
+
+  .loading,
+  .noData,
+  .noActivity,
+  .noOnlineUsers {
+    padding: 2.25rem 1rem;
+    text-align: center;
+    color: #8ea0be;
   }
 
   .detailView {
-    .userDetailHeader {
-      border-bottom-color: #334155;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
 
-      h2 {
-        color: #f8fafc;
-      }
+  .userDetailHeader {
+    align-items: flex-start;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(53, 65, 89, 0.92);
 
-      p {
-        color: #94a3b8;
-      }
+    h2 {
+      margin: 0;
+      color: #f8fbff;
+      font-size: 1.45rem;
     }
 
-    .activityTimeline {
-      .dateGroup {
-        .dateHeader {
-          color: #e2e8f0;
-        }
-
-        .timelineEvents {
-          .timelineEvent {
-            background: #0b1220;
-            border-left-color: #334155;
-
-            .eventContent {
-              .eventTime {
-                color: #e2e8f0;
-              }
-            }
-          }
-        }
-      }
-
-      .noActivity {
-        color: #94a3b8;
-        background: #0b1220;
-      }
+    p {
+      margin: 0.25rem 0 0;
+      color: #91a3c0;
     }
   }
 
-  .onlineUsersSection {
-    h3 {
-      color: #f8fafc;
+  .detailBadges {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+
+  .roleBadge {
+    background: rgba(59, 130, 246, 0.16);
+    color: #a8cfff;
+  }
+
+  .sessionBadge {
+    background: rgba(34, 197, 94, 0.18);
+    color: #a9f0bf;
+  }
+
+  .sessionBadgeOffline {
+    background: rgba(255, 255, 255, 0.08);
+    color: #cfdae9;
+  }
+
+  .activityTimeline {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .dateGroup {
+    padding: 1rem;
+    border-radius: 0.9rem;
+    background: rgba(10, 17, 30, 0.88);
+    border: 1px solid rgba(42, 54, 77, 0.94);
+  }
+
+  .dateHeader {
+    margin: 0;
+    color: #f6fbff;
+    font-size: 1rem;
+    text-transform: capitalize;
+  }
+
+  .timelineEvents {
+    margin-top: 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .timelineEvent {
+    display: flex;
+    gap: 0.85rem;
+    padding: 0.85rem;
+    border-radius: 0.8rem;
+    background: rgba(15, 23, 38, 0.92);
+    border: 1px solid rgba(38, 50, 73, 0.92);
+  }
+
+  .eventDot {
+    width: 0.72rem;
+    height: 0.72rem;
+    margin-top: 0.4rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+
+  .dotLOGIN {
+    background: #4ade80;
+  }
+
+  .dotLOGOUT {
+    background: #fb7185;
+  }
+
+  .dotACTION {
+    background: #fbbf24;
+  }
+
+  .eventContent {
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+  }
+
+  .eventTime {
+    font-size: 0.86rem;
+    color: #eaf1fb;
+    font-weight: 700;
+  }
+
+  .eventType {
+    font-size: 0.83rem;
+    font-weight: 700;
+  }
+
+  .typeLOGIN {
+    color: #8befab;
+  }
+
+  .typeLOGOUT {
+    color: #ffadb6;
+  }
+
+  .typeACTION {
+    color: #ffd56c;
+  }
+
+  .eventMeta {
+    color: #91a3c0;
+    font-size: 0.78rem;
+  }
+
+  .onlineUsersList {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0.85rem;
+  }
+
+  .onlineUser {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.95rem;
+    border-radius: 0.9rem;
+    background: rgba(10, 17, 30, 0.88);
+    border: 1px solid rgba(42, 54, 77, 0.94);
+  }
+
+  .onlineDot {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 999px;
+    background: #4ade80;
+    box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.12);
+  }
+
+  .onlineUserName {
+    flex: 1;
+    font-weight: 700;
+    color: #f8fbff;
+  }
+
+  .onlineUserRole {
+    color: #93a4c3;
+    font-size: 0.82rem;
+  }
+
+  .onlineUserTime {
+    font-weight: 700;
+    color: #f8fbff;
+  }
+}
+
+@media (max-width: 1180px) {
+  .systemLogsWorkspace {
+    .statsContainer {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+@media (max-width: 860px) {
+  .systemLogsWorkspace {
+    padding: 1rem;
+
+    .header,
+    .controls,
+    .tableHeader,
+    .dateHeaderRow,
+    .userDetailHeader {
+      flex-direction: column;
+      align-items: flex-start;
     }
 
-    .onlineUsersList {
-      .onlineUser {
-        background: #0b1220;
+    .statsContainer {
+      grid-template-columns: 1fr;
+    }
 
-        .onlineUserName {
-          color: #e2e8f0;
-        }
+    .controlsMeta {
+      width: 100%;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
 
-        .onlineUserTime {
-          color: #94a3b8;
-        }
-      }
+    .logsTableContainer {
+      overflow-x: auto;
+    }
 
-      .noOnlineUsers {
-        color: #94a3b8;
-      }
+    .logsTable {
+      min-width: 760px;
     }
   }
 }

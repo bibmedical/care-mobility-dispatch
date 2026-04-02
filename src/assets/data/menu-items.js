@@ -9,7 +9,7 @@ export const MENU_ITEMS = [{
   url: '/dispatcher'
 }, {
   key: 'route-control',
-  icon: 'iconoir:route',
+  icon: 'iconoir:view-grid',
   label: 'Route Control',
   url: '/route-control'
 }, {

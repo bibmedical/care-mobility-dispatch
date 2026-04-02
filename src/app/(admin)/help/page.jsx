@@ -204,13 +204,33 @@ const HelpPage = () => {
           <h5 className="mb-3">Changelog — Version History</h5>
           <div className="d-flex flex-column gap-3">
 
-            <div className="border rounded p-3">
+            <div className="border rounded p-3" style={{ backgroundColor: '#111827', borderColor: '#374151' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="warning" text="dark" className="fs-6 px-3 py-2">V8</Badge>
+                <span className="fw-semibold text-light">Dispatcher &amp; Trip Dashboard — Workflow Separation + Custom Toolbar Builder</span>
+                <span className="text-light small ms-auto" style={{ opacity: 0.85 }}>April 1, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#e5e7eb' }}>
+                <li>Fixed local-vs-server sync race: local dispatch mutations (delete route, unassign, etc.) now persist correctly without being reverted by stale server snapshots.</li>
+                <li>Trip Dashboard and Dispatcher selections are now workspace-local (selected trips/driver/route no longer leak from one screen to the other).</li>
+                <li>Default date behavior split by workspace: Trip Dashboard opens with no selected date, Dispatcher opens on current day.</li>
+                <li>Trip Dashboard with no date selected now shows no trips/routes (prevents old-day records from appearing unexpectedly).</li>
+                <li>Columns picker popover repositioned to avoid clipping off-screen on the right.</li>
+                <li>Trip Dashboard header cleanup: removed extra trip/driver/live badges, changed label VDRS → Drivers, added driver search input in drivers panel.</li>
+                <li>Selected-count indicator moved from top bar into table header (shows numeric value only).</li>
+                <li>Color action groups (A/A2/U/C, Leg, Type) moved to top toolbar row per operator request.</li>
+                <li>New toolbar customization mode in Trip Dashboard and Dispatcher: Edit, drag blocks, Save, and Reset.</li>
+                <li>Toolbar customization now works across rows (move blocks between row 1/2/3) via drag-and-drop, and removed temporary 1/2/3 move buttons.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#111827', borderColor: '#374151' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="primary" className="fs-6 px-3 py-2">V7</Badge>
-                <span className="fw-semibold">Trip Dashboard — Flexible Docking Layouts</span>
-                <span className="text-muted small ms-auto">March 31, 2026 — Evening</span>
+                <span className="fw-semibold text-light">Trip Dashboard — Flexible Docking Layouts</span>
+                <span className="text-light small ms-auto" style={{ opacity: 0.85 }}>March 31, 2026 — Evening</span>
               </div>
-              <ul className="mb-0 small text-muted ps-3">
+              <ul className="mb-0 small ps-3" style={{ color: '#e5e7eb' }}>
                 <li>3 layout modes: <strong>Normal</strong>, <strong>Focus Right</strong> (map popout expands right column full height), <strong>Stacked</strong> (panels stacked vertically)</li>
                 <li>Map popout automatically activates Focus Right layout</li>
                 <li>Panel visibility controls: Both / VDRS / Routes / Hide bottom panels</li>
@@ -220,13 +240,13 @@ const HelpPage = () => {
               </ul>
             </div>
 
-            <div className="border rounded p-3">
+            <div className="border rounded p-3" style={{ backgroundColor: '#111827', borderColor: '#374151' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V6</Badge>
-                <span className="fw-semibold">Scrollbar &amp; WillCall Polish</span>
-                <span className="text-muted small ms-auto">March 31, 2026 — PM</span>
+                <span className="fw-semibold text-light">Scrollbar &amp; WillCall Polish</span>
+                <span className="text-light small ms-auto" style={{ opacity: 0.85 }}>March 31, 2026 — PM</span>
               </div>
-              <ul className="mb-0 small text-muted ps-3">
+              <ul className="mb-0 small ps-3" style={{ color: '#e5e7eb' }}>
                 <li>Top horizontal scrollbar now visible in Dispatcher <strong>and</strong> Trip Dashboard (forced +40px overflow so Chrome always shows scroll thumb)</li>
                 <li>ScrollWidth measured via ResizeObserver on actual table element — no more stale width</li>
                 <li>WillCall (WC) button now only appears on non-AL (non-outbound) trip legs in Dispatcher</li>
@@ -236,13 +256,13 @@ const HelpPage = () => {
               </ul>
             </div>
 
-            <div className="border rounded p-3">
+            <div className="border rounded p-3" style={{ backgroundColor: '#111827', borderColor: '#374151' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="primary" className="fs-6 px-3 py-2">V5</Badge>
-                <span className="fw-semibold">Dispatcher &amp; Dashboard UI Polish</span>
-                <span className="text-muted small ms-auto">March 31, 2026 — Mid Morning</span>
+                <span className="fw-semibold text-light">Dispatcher &amp; Dashboard UI Polish</span>
+                <span className="text-light small ms-auto" style={{ opacity: 0.85 }}>March 31, 2026 — Mid Morning</span>
               </div>
-              <ul className="mb-0 small text-muted ps-3">
+              <ul className="mb-0 small ps-3" style={{ color: '#e5e7eb' }}>
                 <li>Synced dual top/bottom horizontal scrollbar added to Dispatcher and Trip Dashboard</li>
                 <li>Draggable grey column resizers on dispatch tables</li>
                 <li>Long address columns clamped to two lines to save vertical space</li>
@@ -257,13 +277,13 @@ const HelpPage = () => {
               </ul>
             </div>
 
-            <div className="border rounded p-3">
+            <div className="border rounded p-3" style={{ backgroundColor: '#111827', borderColor: '#374151' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="info" className="fs-6 px-3 py-2">V4</Badge>
-                <span className="fw-semibold">Confirmation Workspace — Full Feature Build</span>
-                <span className="text-muted small ms-auto">March 31, 2026 — Morning</span>
+                <span className="fw-semibold text-light">Confirmation Workspace — Full Feature Build</span>
+                <span className="text-light small ms-auto" style={{ opacity: 0.85 }}>March 31, 2026 — Morning</span>
               </div>
-              <ul className="mb-0 small text-muted ps-3">
+              <ul className="mb-0 small ps-3" style={{ color: '#e5e7eb' }}>
                 <li>Date/time filtering, manual confirmation, cancel with note, and PDF export</li>
                 <li>Hospital/Rehab status — exclude trips until expiration date</li>
                 <li>SMS/WhatsApp confirmation method selection with batch sending</li>
@@ -275,13 +295,13 @@ const HelpPage = () => {
               </ul>
             </div>
 
-            <div className="border rounded p-3">
+            <div className="border rounded p-3" style={{ backgroundColor: '#111827', borderColor: '#374151' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="warning" text="dark" className="fs-6 px-3 py-2">V3</Badge>
-                <span className="fw-semibold">Communications + Translations</span>
-                <span className="text-muted small ms-auto">March 31, 2026 — Early Morning</span>
+                <span className="fw-semibold text-light">Communications + Translations</span>
+                <span className="text-light small ms-auto" style={{ opacity: 0.85 }}>March 31, 2026 — Early Morning</span>
               </div>
-              <ul className="mb-0 small text-muted ps-3">
+              <ul className="mb-0 small ps-3" style={{ color: '#e5e7eb' }}>
                 <li>Communication extensions: WhatsApp, Telegram, Viber, Signal, SMS — server API route + modal UI</li>
                 <li>Auto-link driver phone numbers to WhatsApp with quick message buttons</li>
                 <li>Additional driver document fields: 1099, 3× Training Certificates</li>
@@ -291,13 +311,13 @@ const HelpPage = () => {
               </ul>
             </div>
 
-            <div className="border rounded p-3">
+            <div className="border rounded p-3" style={{ backgroundColor: '#111827', borderColor: '#374151' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="danger" className="fs-6 px-3 py-2">V2</Badge>
-                <span className="fw-semibold">Security Advanced + System Logs + 2FA</span>
-                <span className="text-muted small ms-auto">March 30, 2026 — Evening / Night</span>
+                <span className="fw-semibold text-light">Security Advanced + System Logs + 2FA</span>
+                <span className="text-light small ms-auto" style={{ opacity: 0.85 }}>March 30, 2026 — Evening / Night</span>
               </div>
-              <ul className="mb-0 small text-muted ps-3">
+              <ul className="mb-0 small ps-3" style={{ color: '#e5e7eb' }}>
                 <li>2FA (TOTP) for admin users with login verification flow</li>
                 <li>Login lockout UX — blocks account after repeated failures</li>
                 <li>Email-based passwordless login with verification codes</li>
@@ -311,13 +331,13 @@ const HelpPage = () => {
               </ul>
             </div>
 
-            <div className="border rounded p-3">
+            <div className="border rounded p-3" style={{ backgroundColor: '#111827', borderColor: '#374151' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="secondary" className="fs-6 px-3 py-2">V1</Badge>
-                <span className="fw-semibold">Security Foundation + Auth Hardening</span>
-                <span className="text-muted small ms-auto">March 30, 2026 — Afternoon</span>
+                <span className="fw-semibold text-light">Security Foundation + Auth Hardening</span>
+                <span className="text-light small ms-auto" style={{ opacity: 0.85 }}>March 30, 2026 — Afternoon</span>
               </div>
-              <ul className="mb-0 small text-muted ps-3">
+              <ul className="mb-0 small ps-3" style={{ color: '#e5e7eb' }}>
                 <li>Require authentication on all routes; admin role required for write APIs</li>
                 <li>Strengthen login validation — prevent empty credential bypass</li>
                 <li>Remove "Remember me" checkbox from login</li>

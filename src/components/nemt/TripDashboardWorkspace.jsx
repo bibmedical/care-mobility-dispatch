@@ -2,8 +2,11 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
+import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
+import useBlacklistApi from '@/hooks/useBlacklistApi';
+import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
@@ -15,6 +18,7 @@ import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leafl
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
+import { useSession } from 'next-auth/react';
 
 const greenToolbarButtonStyle = {
   color: '#08131a',
@@ -88,6 +92,14 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 const TRIP_DASHBOARD_LAYOUT_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_LAYOUT__';
 const TRIP_DASHBOARD_PANEL_VIEW_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_VIEW__';
 const TRIP_DASHBOARD_PANEL_ORDER_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_ORDER__';
+const TRIP_DASHBOARD_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW1_BLOCKS__';
+const TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS = ['date-controls', 'status-filter', 'trip-search', 'driver-assigned', 'action-buttons', 'leg-buttons', 'type-buttons', 'closed-route'];
+const TRIP_DASHBOARD_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW2_BLOCKS__';
+const TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS = ['show-map', 'peek-panel', 'toolbar-edit', 'columns', 'map-screen', 'layout', 'panels', 'trip-order'];
+const TRIP_DASHBOARD_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW3_BLOCKS__';
+const TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS = ['driver-select', 'secondary-driver', 'zip-filter', 'route-filter', 'theme-toggle', 'metric-miles', 'metric-duration'];
+const MAP_SCREEN_DASHBOARD_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DASHBOARD_STATE__';
+const CLOSED_ROUTE_STATE_KEY = '__CARE_MOBILITY_CLOSED_ROUTE_STATE__';
 const TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH = 56;
 const TRIP_DASHBOARD_RIGHT_PANEL_EXPANDED_SPLIT = 50;
 
@@ -202,6 +214,14 @@ const getPickupCity = trip => extractCityFromAddress(trip?.address);
 const getDropoffCity = trip => extractCityFromAddress(trip?.destination);
 const getPickupZip = trip => String(trip?.fromZipcode || trip?.fromZip || trip?.pickupZipcode || trip?.pickupZip || trip?.originZip || '').trim();
 const getDropoffZip = trip => String(trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.dropoffZip || trip?.destinationZip || '').trim();
+const normalizeTripId = tripId => String(tripId || '').trim();
+const normalizeDriverId = driverId => String(driverId || '').trim();
+const getClosedRouteKey = (driverId, dateKey) => {
+  const normalizedDriverId = normalizeDriverId(driverId);
+  const normalizedDateKey = String(dateKey || '').trim();
+  if (!normalizedDriverId || !normalizedDateKey || normalizedDateKey === 'all') return '';
+  return `${normalizedDriverId}::${normalizedDateKey}`;
+};
 
 const getTripLegFilterKey = trip => {
   const explicitLeg = String(trip?.leg || trip?.tripLeg || trip?.legCode || '').trim().toUpperCase();
@@ -216,22 +236,42 @@ const getTripLegFilterKey = trip => {
   return 'CL';
 };
 
+const getEffectivePickupTimeText = trip => {
+  const scheduledPickup = String(trip?.scheduledPickup || '').trim();
+  const pickup = String(trip?.pickup || '').trim();
+  const scheduledLooksLikeExcelSerial = /^\d{4,6}(?:\.\d+)?$/.test(scheduledPickup);
+  if (scheduledLooksLikeExcelSerial && pickup) return pickup;
+  return scheduledPickup || pickup;
+};
+
 const hasMissingTripTime = trip => {
-  const scheduledPickup = String(trip?.scheduledPickup || trip?.pickup || '').trim();
-  const parsedPickupMinutes = parseTripClockMinutes(scheduledPickup);
-  if (!scheduledPickup) return true;
-  if (['tbd', 'willcall', 'will call', '23:', '23'].includes(scheduledPickup.toLowerCase())) return true;
+  const effectivePickupText = getEffectivePickupTimeText(trip);
+  const parsedPickupMinutes = parseTripClockMinutes(effectivePickupText);
+  const normalizedPickup = effectivePickupText.toLowerCase().replace(/\s+/g, '');
+  if (!effectivePickupText) return true;
+  if (['tbd', 'willcall', 'will call', '23:', '23'].includes(effectivePickupText.toLowerCase())) return true;
+  if (['11:59pm', '11:59p.m.', '11:59p'].includes(normalizedPickup)) return true;
   if (parsedPickupMinutes != null) return false;
   return !Number.isFinite(trip?.pickupSortValue) || trip?.pickupSortValue === Number.MAX_SAFE_INTEGER;
 };
 
+const hasWillCallPickupMarker = trip => {
+  const effectivePickupText = getEffectivePickupTimeText(trip).toLowerCase();
+  if (!effectivePickupText) return false;
+  const normalizedPickup = effectivePickupText.replace(/\s+/g, '');
+  if (['11:59pm', '11:59p.m.', '11:59p'].includes(normalizedPickup)) return true;
+  return ['tbd', 'willcall', 'will call', '23', '23:'].some(marker => effectivePickupText === marker || effectivePickupText.startsWith(marker));
+};
+
 const getEffectiveTripStatus = trip => {
   const normalizedStatus = String(trip?.status || '').trim();
+  const normalizedStatusToken = normalizedStatus.toLowerCase().replace(/\s+/g, '');
   const normalizedOverride = String(trip?.willCallOverride || '').trim().toLowerCase();
-  if (['cancelled', 'canceled'].includes(normalizedStatus.toLowerCase())) return normalizedStatus || 'Cancelled';
-  if (normalizedOverride === 'off') return normalizedStatus === 'WillCall' ? 'Unassigned' : normalizedStatus || 'Unassigned';
+  if (['cancelled', 'canceled'].includes(normalizedStatusToken)) return 'Cancelled';
+  if (normalizedOverride === 'off') return normalizedStatusToken === 'willcall' ? 'Unassigned' : normalizedStatus || 'Unassigned';
   if (normalizedOverride === 'manual') return 'WillCall';
-  if (normalizedStatus === 'WillCall') return 'WillCall';
+  if (normalizedStatusToken === 'willcall') return 'WillCall';
+  if (hasWillCallPickupMarker(trip)) return 'WillCall';
   if (getTripLegFilterKey(trip) !== 'AL' && hasMissingTripTime(trip)) return 'WillCall';
   return normalizedStatus || 'Unassigned';
 };
@@ -329,18 +369,14 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const TripDashboardWorkspace = () => {
   const router = useRouter();
+  const { data: session } = useSession();
   const { changeTheme, themeMode } = useLayoutContext();
+  const { data: smsData } = useSmsIntegrationApi();
+  const { data: blacklistData } = useBlacklistApi();
   const {
     drivers,
     trips,
     routePlans,
-    selectedTripIds,
-    selectedDriverId,
-    selectedRouteId,
-    setSelectedTripIds,
-    setSelectedDriverId,
-    setSelectedRouteId,
-    toggleTripSelection,
     assignTripsToDriver,
     assignTripsToSecondaryDriver,
     unassignTrips,
@@ -363,6 +399,9 @@ const TripDashboardWorkspace = () => {
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripDateFilter, setTripDateFilter] = useState('all');
+  const [selectedTripIds, setSelectedTripIds] = useState([]);
+  const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
@@ -373,6 +412,7 @@ const TripDashboardWorkspace = () => {
   const [zipFilter, setZipFilter] = useState('');
   const [puCityFilter, setPuCityFilter] = useState('');
   const [doCityFilter, setDoCityFilter] = useState('');
+  const [driverSearch, setDriverSearch] = useState('');
   const [driverGrouping, setDriverGrouping] = useState('VDR Grouping');
   const [routeSearch, setRouteSearch] = useState('');
   const [showInfo, setShowInfo] = useState(false);
@@ -383,6 +423,13 @@ const TripDashboardWorkspace = () => {
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
+  const [toolbarRow1Order, setToolbarRow1Order] = useState(TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS);
+  const [toolbarRow2Order, setToolbarRow2Order] = useState(TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS);
+  const [toolbarRow3Order, setToolbarRow3Order] = useState(TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS);
+  const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
+  const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
+  const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
   const [layoutMode, setLayoutMode] = useState(TRIP_DASHBOARD_LAYOUTS.normal);
   const [panelView, setPanelView] = useState(TRIP_DASHBOARD_PANEL_VIEWS.both);
   const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
@@ -394,6 +441,7 @@ const TripDashboardWorkspace = () => {
   });
   const [columnWidths, setColumnWidths] = useState({});
   const [statusMessage, setStatusMessage] = useState('Trip dashboard listo con paneles inferiores cerrados.');
+  const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
   const [columnSplit, setColumnSplit] = useState(58);
   const [rowSplit, setRowSplit] = useState(68);
   const [dragMode, setDragMode] = useState(null);
@@ -409,6 +457,18 @@ const TripDashboardWorkspace = () => {
   const tripTableScrollSyncRef = useRef(false);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
+  const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
+  const blacklistEntries = useMemo(() => Array.isArray(blacklistData?.entries) ? blacklistData.entries : [], [blacklistData?.entries]);
+  const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
+    trip,
+    optOutList,
+    blacklistEntries,
+    defaultCountryCode: smsData?.sms?.defaultCountryCode
+  })])), [blacklistEntries, optOutList, smsData?.sms?.defaultCountryCode, trips]);
+
+  const toggleTripSelection = tripId => {
+    setSelectedTripIds(currentTripIds => currentTripIds.includes(tripId) ? currentTripIds.filter(id => id !== tripId) : [...currentTripIds, tripId]);
+  };
 
   const syncTripTableScroll = source => {
     if (tripTableScrollSyncRef.current) return;
@@ -428,13 +488,29 @@ const TripDashboardWorkspace = () => {
 
   const selectedDriver = useMemo(() => drivers.find(driver => driver.id === selectedDriverId) ?? null, [drivers, selectedDriverId]);
   const filteredRoutePlans = useMemo(() => routePlans.filter(routePlan => {
-    if (tripDateFilter === 'all') return true;
+    if (tripDateFilter === 'all') return false;
     return getRouteServiceDateKey(routePlan, trips) === tripDateFilter;
   }), [routePlans, tripDateFilter, trips]);
   const selectedRoute = useMemo(() => filteredRoutePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [filteredRoutePlans, selectedRouteId]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
-  const isTripAssignedToSelectedDriver = trip => Boolean(selectedDriverId && (trip?.driverId === selectedDriverId || trip?.secondaryDriverId === selectedDriverId));
+  const activeDateTripIdSet = useMemo(() => {
+    if (tripDateFilter === 'all') return new Set();
+    return new Set(trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter).map(trip => String(trip?.id || '').trim()).filter(Boolean));
+  }, [tripDateFilter, routePlans, trips]);
+
+  useEffect(() => {
+    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify({
+      tripDateFilter,
+      selectedTripIds,
+      selectedDriverId,
+      selectedRouteId,
+      activeDateTripIds: Array.from(activeDateTripIdSet),
+      capturedAt: Date.now()
+    }));
+  }, [activeDateTripIdSet, selectedDriverId, selectedRouteId, selectedTripIds, tripDateFilter]);
+
+  const isTripAssignedToSelectedDriver = trip => isTripAssignedToDriver(trip, selectedDriverId);
   const getTripDriverDisplay = trip => {
     const primaryDriverName = getDriverName(trip?.driverId);
     const hasPrimary = Boolean(trip?.driverId);
@@ -445,18 +521,372 @@ const TripDashboardWorkspace = () => {
     if (!hasPrimary) return secondaryDriverName;
     return `${primaryDriverName} + ${secondaryDriverName}`;
   };
-  const todayDateKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const getTripTimelineDateKey = trip => getTripServiceDateKey(trip) || getRouteServiceDateKey(routePlans.find(routePlan => routePlan.id === trip?.routeId), trips);
+  const todayDateKey = useMemo(() => getLocalDateKey(new Date(), uiPreferences?.timeZone), [uiPreferences?.timeZone]);
+  const operatorDisplayName = useMemo(() => {
+    const sessionName = String(session?.user?.name || '').trim();
+    const sessionUsername = String(session?.user?.username || '').trim();
+    if (sessionName) return sessionName;
+    if (sessionUsername) return sessionUsername;
+    return 'Dispatcher';
+  }, [session?.user?.name, session?.user?.username]);
+  const activeClosedRouteKey = useMemo(() => getClosedRouteKey(selectedDriverId, tripDateFilter), [selectedDriverId, tripDateFilter]);
+  const activeClosedRouteState = useMemo(() => activeClosedRouteKey ? closedRouteStateByKey[activeClosedRouteKey] ?? null : null, [activeClosedRouteKey, closedRouteStateByKey]);
+  const isActiveRouteClosed = Boolean(activeClosedRouteState?.closed);
   const availableTripDateKeys = useMemo(() => Array.from(new Set(trips.map(getTripTimelineDateKey).filter(Boolean).concat(routePlans.map(routePlan => getRouteServiceDateKey(routePlan, trips)).filter(Boolean)))).sort(), [routePlans, trips]);
   const activeTripDateLabel = useMemo(() => formatTripDateLabel(tripDateFilter), [tripDateFilter]);
+
+  useEffect(() => {
+    setTripDateFilter('all');
+    setSelectedTripIds([]);
+    setSelectedDriverId(null);
+    setSelectedRouteId(null);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const rawValue = window.localStorage.getItem(CLOSED_ROUTE_STATE_KEY);
+      if (!rawValue) return;
+      const parsed = JSON.parse(rawValue);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      setClosedRouteStateByKey(parsed);
+    } catch {
+      // Ignore corrupted closed-route local state.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CLOSED_ROUTE_STATE_KEY, JSON.stringify(closedRouteStateByKey));
+    } catch {
+      // Ignore localStorage write errors.
+    }
+  }, [closedRouteStateByKey]);
+
+  useEffect(() => {
+    const loadToolbarOrder = (storageKey, defaultOrder) => {
+      const storedValue = window.localStorage.getItem(storageKey);
+      if (!storedValue) return defaultOrder;
+      const parsed = JSON.parse(storedValue);
+      if (!Array.isArray(parsed)) return defaultOrder;
+      const normalized = parsed.filter(blockId => defaultOrder.includes(blockId));
+      const missing = defaultOrder.filter(blockId => !normalized.includes(blockId));
+      const nextOrder = [...normalized, ...missing];
+      return nextOrder.length > 0 ? nextOrder : defaultOrder;
+    };
+
+    try {
+      setToolbarRow1Order(loadToolbarOrder(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS));
+      setToolbarRow2Order(loadToolbarOrder(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS));
+      setToolbarRow3Order(loadToolbarOrder(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS));
+    } catch {
+      // Ignore corrupted local toolbar layout preferences.
+    }
+  }, []);
+
+  const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
+    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    setToolbarRow1Order(currentOrder => {
+      const fromIndex = currentOrder.indexOf(fromBlockId);
+      const toIndex = currentOrder.indexOf(toBlockId);
+      if (fromIndex === -1 || toIndex === -1) return currentOrder;
+      const nextOrder = [...currentOrder];
+      const [moved] = nextOrder.splice(fromIndex, 1);
+      nextOrder.splice(toIndex, 0, moved);
+      return nextOrder;
+    });
+  };
+
+  const moveToolbarRow2Block = (fromBlockId, toBlockId) => {
+    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    setToolbarRow2Order(currentOrder => {
+      const fromIndex = currentOrder.indexOf(fromBlockId);
+      const toIndex = currentOrder.indexOf(toBlockId);
+      if (fromIndex === -1 || toIndex === -1) return currentOrder;
+      const nextOrder = [...currentOrder];
+      const [moved] = nextOrder.splice(fromIndex, 1);
+      nextOrder.splice(toIndex, 0, moved);
+      return nextOrder;
+    });
+  };
+
+  const moveToolbarRow3Block = (fromBlockId, toBlockId) => {
+    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    setToolbarRow3Order(currentOrder => {
+      const fromIndex = currentOrder.indexOf(fromBlockId);
+      const toIndex = currentOrder.indexOf(toBlockId);
+      if (fromIndex === -1 || toIndex === -1) return currentOrder;
+      const nextOrder = [...currentOrder];
+      const [moved] = nextOrder.splice(fromIndex, 1);
+      nextOrder.splice(toIndex, 0, moved);
+      return nextOrder;
+    });
+  };
+
+  const getActiveDraggedToolbarBlockId = () => draggingToolbarBlockId || draggingToolbarRow2BlockId || draggingToolbarRow3BlockId || null;
+
+  const clearDraggingToolbarBlockIds = () => {
+    setDraggingToolbarBlockId(null);
+    setDraggingToolbarRow2BlockId(null);
+    setDraggingToolbarRow3BlockId(null);
+  };
+
+  const moveToolbarBlockAcrossRows = (fromBlockId, targetRow, targetBlockId = null) => {
+    if (!fromBlockId || !targetRow) return;
+
+    const nextRow1 = toolbarRow1Order.filter(currentId => currentId !== fromBlockId);
+    const nextRow2 = toolbarRow2Order.filter(currentId => currentId !== fromBlockId);
+    const nextRow3 = toolbarRow3Order.filter(currentId => currentId !== fromBlockId);
+
+    const insertInto = row => {
+      if (!targetBlockId) {
+        row.push(fromBlockId);
+        return;
+      }
+      const targetIndex = row.indexOf(targetBlockId);
+      if (targetIndex === -1) {
+        row.push(fromBlockId);
+        return;
+      }
+      row.splice(targetIndex, 0, fromBlockId);
+    };
+
+    if (targetRow === 'row1') insertInto(nextRow1);
+    if (targetRow === 'row2') insertInto(nextRow2);
+    if (targetRow === 'row3') insertInto(nextRow3);
+
+    setToolbarRow1Order(nextRow1);
+    setToolbarRow2Order(nextRow2);
+    setToolbarRow3Order(nextRow3);
+  };
+
+  const handleSaveToolbarLayout = () => {
+    try {
+      window.localStorage.setItem(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, JSON.stringify(toolbarRow1Order));
+      window.localStorage.setItem(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, JSON.stringify(toolbarRow2Order));
+      window.localStorage.setItem(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, JSON.stringify(toolbarRow3Order));
+      setStatusMessage('Toolbar layout guardado.');
+    } catch {
+      setStatusMessage('No se pudo guardar el toolbar layout.');
+    } finally {
+      setIsToolbarEditMode(false);
+      clearDraggingToolbarBlockIds();
+    }
+  };
+
+  const handleResetToolbarLayout = () => {
+    const defaultRow1Order = [...TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS];
+    const defaultRow2Order = [...TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS];
+    const defaultRow3Order = [...TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS];
+    setToolbarRow1Order(defaultRow1Order);
+    setToolbarRow2Order(defaultRow2Order);
+    setToolbarRow3Order(defaultRow3Order);
+    setIsToolbarEditMode(false);
+    clearDraggingToolbarBlockIds();
+    try {
+      window.localStorage.setItem(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, JSON.stringify(defaultRow1Order));
+      window.localStorage.setItem(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, JSON.stringify(defaultRow2Order));
+      window.localStorage.setItem(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, JSON.stringify(defaultRow3Order));
+      setStatusMessage('Toolbar layout reseteado.');
+    } catch {
+      setStatusMessage('No se pudo resetear el toolbar layout.');
+    }
+  };
+
+  const renderToolbarRow1Block = blockId => {
+    switch (blockId) {
+      case 'date-controls':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(-1)} title="Previous day">Prev</Button>
+            <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || 'all')} style={{ width: 150 }} />
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(1)} title="Next day">Next</Button>
+            <Button variant={tripDateFilter === todayDateKey ? 'dark' : 'outline-dark'} size="sm" style={tripDateFilter === todayDateKey ? undefined : greenToolbarButtonStyle} onClick={() => setTripDateFilter(todayDateKey)}>Today</Button>
+          </div>;
+      case 'status-filter':
+        return null;
+      case 'trip-search':
+        return <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, rider, phone, address..." style={{ width: 220 }} />;
+      case 'driver-assigned':
+        return selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null;
+      case 'action-buttons':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
+                <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
+                <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign second driver">A2</Button>
+                <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
+                <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+              </>}
+          </div>;
+      case 'leg-buttons':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Leg</span>
+            <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
+            <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
+            <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Tercer viaje o connector leg">CL</Button>
+          </div>;
+      case 'type-buttons':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Type</span>
+            <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
+            <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
+            <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
+          </div>;
+      case 'closed-route':
+        return <Button variant={isActiveRouteClosed ? 'danger' : 'outline-dark'} size="sm" style={isActiveRouteClosed ? {
+          fontWeight: 700
+        } : greenToolbarButtonStyle} onClick={handleToggleClosedRoute} title="Lock route by driver/day. New trips added later will show who added them.">
+            {isActiveRouteClosed ? 'Closed Route' : 'Close Route'}
+          </Button>;
+      default:
+        return null;
+    }
+  };
+
+  const renderToolbarRow2Block = blockId => {
+    switch (blockId) {
+      case 'show-map':
+        return !showMapPane ? <Button variant="warning" size="sm" onClick={() => {
+          setShowMapPane(true);
+          setStatusMessage('Mapa visible otra vez en Trip Dashboard.');
+        }} style={{
+          color: '#5b3b00',
+          borderColor: 'rgba(161, 98, 7, 0.48)',
+          background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
+          fontWeight: 800
+        }}>
+            Show Map
+          </Button> : null;
+      case 'peek-panel':
+        return isStandardLayout && showMapPane ? <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+          setRightPanelCollapsed(true);
+          setColumnSplit(94);
+          setStatusMessage('Panel derecho minimizado en pestaña.');
+        }}>
+            Peek Panel
+          </Button> : null;
+      case 'toolbar-edit':
+        return <>
+            {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save Toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)}>Edit Toolbar</Button>}
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout}>Reset Toolbar</Button>
+          </>;
+      case 'columns':
+        return <>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)}>Columns</Button>
+            {showColumnPicker ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 80, width: 240 }}>
+                <CardBody className="p-3 text-dark">
+                  <div className="fw-semibold mb-2">Escoge que quieres ver</div>
+                  <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
+                  <div className="d-flex flex-column gap-2">
+                    {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dashboard-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+                  </div>
+                </CardBody>
+              </Card> : null}
+          </>;
+      case 'map-screen':
+        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map Screen' : 'Show Map Here'}</Button>;
+      case 'layout':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Layout</span>
+            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Normal</Button>
+            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)}>Focus Right</Button>
+            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.stacked)}>Stacked</Button>
+            {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
+          </div>;
+      case 'panels':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Panels</span>
+            <Form.Select size="sm" value={showBottomPanels ? panelView : 'hidden'} onChange={event => handlePanelViewChange(event.target.value)} style={{ width: 112 }}>
+              <option value="both">Both</option>
+              <option value="drivers">Drivers</option>
+              <option value="routes">Routes</option>
+              <option value="hidden">Hide</option>
+            </Form.Select>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setPanelOrder(current => current === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? TRIP_DASHBOARD_PANEL_ORDERS.routesFirst : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst)}>
+              Swap
+            </Button>
+          </div>;
+      case 'trip-order':
+        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>;
+      default:
+        return null;
+    }
+  };
+
+  const renderToolbarRow3Block = blockId => {
+    switch (blockId) {
+      case 'driver-select':
+        return <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ width: 220 }}>
+            <option value="">Select driver</option>
+            {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+          </Form.Select>;
+      case 'secondary-driver':
+        return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 220 }}>
+            <option value="">Second driver</option>
+            {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+          </Form.Select>;
+      case 'zip-filter':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">ZIP</span>
+            <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} style={{ width: 110 }} title="ZIP de origen">
+              <option value="">PU ZIP</option>
+              {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
+            </Form.Select>
+            <span className="text-muted small">→</span>
+            <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} style={{ width: 110 }} title="ZIP de destino">
+              <option value="">DO ZIP</option>
+              {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
+            </Form.Select>
+            <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
+          </div>;
+      case 'route-filter':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Ruta</span>
+            <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} style={{ width: 140 }} title="Ciudad de recogida">
+              <option value="">Origen</option>
+              {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
+            </Form.Select>
+            <span className="text-muted small">→</span>
+            <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} style={{ width: 140 }} title="Ciudad de destino">
+              <option value="">Destino</option>
+              {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
+            </Form.Select>
+            {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
+          </div>;
+      case 'theme-toggle':
+        return <Button
+          variant="outline-dark"
+          size="sm"
+          style={greenToolbarButtonStyle}
+          onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')}
+          title={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
+          aria-label={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
+        >
+            <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
+          </Button>;
+      case 'metric-miles':
+        return routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
+      case 'metric-duration':
+        return routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null;
+      default:
+        return null;
+    }
+  };
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
-    const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase();
+    const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
+    const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
     if (tripStatusFilter === 'all') return true;
     if (tripStatusFilter === 'unassigned') return !trip.driverId && !trip.secondaryDriverId && !['cancelled', 'canceled'].includes(normalizedStatus);
+    if (tripStatusFilter === 'willcall') return normalizedStatus === 'willcall';
+    if (tripStatusFilter === 'block') return confirmationStatus === 'Opted Out';
+    if (tripStatusFilter === 'confirm') return confirmationStatus === 'Confirmed';
+    if (tripStatusFilter === 'unconfirm') return confirmationStatus === 'Not Sent' || String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase() === 'U';
     return normalizedStatus === tripStatusFilter;
   }).filter(trip => {
-    if (tripDateFilter === 'all') return true;
-    return getTripTimelineDateKey(trip) === tripDateFilter;
+    if (tripDateFilter === 'all') {
+      // With no date selected, only blocked patients should be visible.
+      if (tripStatusFilter === 'block') return true;
+      return false;
+    }
+    return getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
     return getTripLegFilterKey(trip) === tripLegFilter;
@@ -466,7 +896,9 @@ const TripDashboardWorkspace = () => {
   }).filter(trip => {
     const searchValue = tripIdSearch.trim().toLowerCase();
     if (!searchValue) return true;
-    return String(trip.id || '').toLowerCase().includes(searchValue) || String(trip.brokerTripId || '').toLowerCase().includes(searchValue);
+    const tokens = searchValue.split(/\s+/).filter(Boolean);
+    const haystack = [trip.id, trip.brokerTripId, trip.rideId, trip.rider, trip.patientFirstName, trip.patientLastName, trip.patientName, trip.patientPhoneNumber, trip.address, trip.destination, getPickupZip(trip), getDropoffZip(trip), getPickupCity(trip), getDropoffCity(trip), trip.notes, trip.status, trip.safeRideStatus].filter(Boolean).join(' ').toLowerCase();
+    return tokens.every(token => haystack.includes(token));
   }).filter(trip => {
     const pickupZipValue = pickupZipFilter.trim();
     if (!pickupZipValue) return true;
@@ -479,7 +911,7 @@ const TripDashboardWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -545,26 +977,208 @@ const TripDashboardWorkspace = () => {
   }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIds.includes(trip.id)), [selectedTripIds, trips]);
   const visibleTripIds = filteredTrips.map(trip => trip.id);
-  const filteredDrivers = drivers;
+  const filteredDrivers = useMemo(() => {
+    const term = driverSearch.trim().toLowerCase();
+    if (!term) return drivers;
+    return drivers.filter(driver => [driver?.name, driver?.code, driver?.vehicle, driver?.attendant, driver?.live].some(value => String(value || '').toLowerCase().includes(term)));
+  }, [driverSearch, drivers]);
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
-  const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIds.includes(trip.id) && (!trip.driverId || trip.driverId === selectedDriverId)).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIds]);
+  const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIds.includes(trip.id) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIds]);
   const selectedDriverWorkingTrips = useMemo(() => {
     if (!selectedDriver) return [];
-    const relevantTrips = filteredTrips.filter(trip => trip.driverId === selectedDriver.id || selectedDriverCandidateTripIds.has(trip.id));
+    const relevantTrips = filteredTrips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id) || selectedDriverCandidateTripIds.has(trip.id));
     return sortTripsByPickupTime(relevantTrips);
   }, [filteredTrips, selectedDriver, selectedDriverCandidateTripIds]);
 
   const routeTrips = useMemo(() => {
-    const baseTrips = selectedDriver ? selectedDriverWorkingTrips : selectedRoute ? trips.filter(trip => selectedRoute.tripIds.includes(trip.id)) : trips.filter(trip => selectedTripIds.includes(trip.id));
+    const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
+    const selectedRouteTripIdSet = new Set((Array.isArray(selectedRoute?.tripIds) ? selectedRoute.tripIds : []).map(id => String(id || '').trim()).filter(Boolean));
+    const baseTrips = selectedDriver ? selectedDriverWorkingTrips : selectedRoute ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim())) : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
+    const scopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
     const term = deferredRouteSearch.trim().toLowerCase();
-    return sortTripsByPickupTime(baseTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => value.toLowerCase().includes(term))));
-  }, [deferredRouteSearch, selectedDriver, selectedDriverWorkingTrips, selectedRoute, selectedTripIds, trips]);
+    return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => value.toLowerCase().includes(term))));
+  }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedDriverWorkingTrips, selectedRoute, selectedTripIds, trips]);
+
+  const selectedDriverDayAssignedTripIds = useMemo(() => {
+    if (!selectedDriverId || tripDateFilter === 'all') return [];
+    return trips.filter(trip => {
+      if (!isTripAssignedToDriver(trip, selectedDriverId)) return false;
+      return getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter;
+    }).map(trip => normalizeTripId(trip?.id)).filter(Boolean);
+  }, [routePlans, selectedDriverId, tripDateFilter, trips]);
+  const selectedDriverDayAssignedTripIdsKey = useMemo(() => [...selectedDriverDayAssignedTripIds].sort().join('|'), [selectedDriverDayAssignedTripIds]);
+
+  useEffect(() => {
+    if (!activeClosedRouteKey || !isActiveRouteClosed) return;
+    setClosedRouteStateByKey(currentState => {
+      const currentRouteState = currentState[activeClosedRouteKey];
+      if (!currentRouteState || !currentRouteState.closed) return currentState;
+
+      const baselineTripIdSet = new Set((Array.isArray(currentRouteState.baseTripIds) ? currentRouteState.baseTripIds : []).map(normalizeTripId).filter(Boolean));
+      const lastSeenTripIdSet = new Set((Array.isArray(currentRouteState.lastSeenTripIds) ? currentRouteState.lastSeenTripIds : currentRouteState.baseTripIds || []).map(normalizeTripId).filter(Boolean));
+      const addedByTripId = currentRouteState.addedByTripId && typeof currentRouteState.addedByTripId === 'object' ? currentRouteState.addedByTripId : {};
+      const removedByTripId = currentRouteState.removedByTripId && typeof currentRouteState.removedByTripId === 'object' ? currentRouteState.removedByTripId : {};
+      const eventLog = Array.isArray(currentRouteState.events) ? currentRouteState.events : [];
+      const nextAddedByTripId = {
+        ...addedByTripId
+      };
+      const nextRemovedByTripId = {
+        ...removedByTripId
+      };
+      const nextEvents = [...eventLog];
+      const currentTripIdSet = new Set(selectedDriverDayAssignedTripIds.map(normalizeTripId).filter(Boolean));
+      let hasChanges = false;
+
+      for (const tripId of currentTripIdSet) {
+        const normalizedTripId = normalizeTripId(tripId);
+        if (!normalizedTripId || baselineTripIdSet.has(normalizedTripId) || nextAddedByTripId[normalizedTripId] || lastSeenTripIdSet.has(normalizedTripId)) continue;
+        nextAddedByTripId[normalizedTripId] = {
+          addedBy: operatorDisplayName,
+          addedAt: Date.now()
+        };
+        nextEvents.push({
+          id: `trip-added-${normalizedTripId}-${Date.now()}`,
+          type: 'trip-added',
+          tripId: normalizedTripId,
+          by: operatorDisplayName,
+          at: Date.now()
+        });
+        hasChanges = true;
+      }
+
+      for (const tripId of lastSeenTripIdSet) {
+        const normalizedTripId = normalizeTripId(tripId);
+        if (!normalizedTripId || currentTripIdSet.has(normalizedTripId) || nextRemovedByTripId[normalizedTripId]) continue;
+        nextRemovedByTripId[normalizedTripId] = {
+          removedBy: operatorDisplayName,
+          removedAt: Date.now()
+        };
+        nextEvents.push({
+          id: `trip-removed-${normalizedTripId}-${Date.now()}`,
+          type: 'trip-removed',
+          tripId: normalizedTripId,
+          by: operatorDisplayName,
+          at: Date.now()
+        });
+        hasChanges = true;
+      }
+
+      if (!hasChanges) return currentState;
+      return {
+        ...currentState,
+        [activeClosedRouteKey]: {
+          ...currentRouteState,
+          addedByTripId: nextAddedByTripId,
+          removedByTripId: nextRemovedByTripId,
+          lastSeenTripIds: Array.from(currentTripIdSet),
+          events: nextEvents,
+          lastUpdatedAt: Date.now()
+        }
+      };
+    });
+  }, [activeClosedRouteKey, isActiveRouteClosed, operatorDisplayName, selectedDriverDayAssignedTripIdsKey]);
+
+  const handleToggleClosedRoute = () => {
+    if (!selectedDriverId) {
+      setStatusMessage('Select a driver before closing route.');
+      return;
+    }
+    if (tripDateFilter === 'all') {
+      setStatusMessage('Pick a specific day before closing route.');
+      return;
+    }
+
+    const routeKey = getClosedRouteKey(selectedDriverId, tripDateFilter);
+    if (!routeKey) return;
+
+    const nextIsClosing = !isActiveRouteClosed;
+    setClosedRouteStateByKey(currentState => {
+      const previousState = currentState[routeKey] || {};
+      const previousEvents = Array.isArray(previousState.events) ? previousState.events : [];
+      if (nextIsClosing) {
+        return {
+          ...currentState,
+          [routeKey]: {
+            closed: true,
+            closedBy: operatorDisplayName,
+            closedAt: Date.now(),
+            driverId: normalizeDriverId(selectedDriverId),
+            dateKey: tripDateFilter,
+            baseTripIds: selectedDriverDayAssignedTripIds,
+            lastSeenTripIds: selectedDriverDayAssignedTripIds,
+            addedByTripId: previousState?.addedByTripId && typeof previousState.addedByTripId === 'object' ? previousState.addedByTripId : {},
+            removedByTripId: previousState?.removedByTripId && typeof previousState.removedByTripId === 'object' ? previousState.removedByTripId : {},
+            events: [...previousEvents, {
+              id: `route-closed-${Date.now()}`,
+              type: 'route-closed',
+              by: operatorDisplayName,
+              at: Date.now()
+            }],
+            lastUpdatedAt: Date.now()
+          }
+        };
+      }
+
+      return {
+        ...currentState,
+        [routeKey]: {
+          ...previousState,
+          closed: false,
+          reopenedBy: operatorDisplayName,
+          reopenedAt: Date.now(),
+          events: [...previousEvents, {
+            id: `route-reopened-${Date.now()}`,
+            type: 'route-reopened',
+            by: operatorDisplayName,
+            at: Date.now()
+          }],
+          lastUpdatedAt: Date.now()
+        }
+      };
+    });
+
+    if (nextIsClosing) {
+      setStatusMessage(`Closed route enabled for ${selectedDriver?.name || 'driver'} on ${tripDateFilter}.`);
+      return;
+    }
+    setStatusMessage('Closed route disabled.');
+  };
+
+  const getTripAddedByLabel = trip => {
+    if (!activeClosedRouteState) return '';
+    const tripId = normalizeTripId(trip?.id);
+    if (!tripId) return '';
+    const addedByTripId = activeClosedRouteState.addedByTripId && typeof activeClosedRouteState.addedByTripId === 'object' ? activeClosedRouteState.addedByTripId : {};
+    const entry = addedByTripId[tripId];
+    if (!entry) return '';
+    const name = String(entry?.addedBy || '').trim() || 'Dispatcher';
+    return `Added by ${name}`;
+  };
+
+  useEffect(() => {
+    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify({
+      tripDateFilter,
+      selectedTripIds,
+      selectedDriverId,
+      selectedRouteId,
+      activeDateTripIds: Array.from(activeDateTripIdSet),
+      routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
+      capturedAt: Date.now()
+    }));
+  }, [activeDateTripIdSet, routeTrips, selectedDriverId, selectedRouteId, selectedTripIds, tripDateFilter]);
 
   const routeStops = useMemo(() => {
     if (!showRoute) return [];
 
     if (selectedTripIds.length > 0) {
-      return sortTripsByPickupTime(trips.filter(trip => selectedTripIds.includes(trip.id))).flatMap((trip, index) => [{
+      const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
+      const selectedTripsForMap = trips.filter(trip => {
+        const tripId = String(trip?.id || '').trim();
+        if (!selectedTripIdSet.has(tripId)) return false;
+        if (!activeDateTripIdSet) return true;
+        return activeDateTripIdSet.has(tripId);
+      });
+      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => [{
         key: `${trip.id}-pickup`,
         label: `${index * 2 + 1}`,
         variant: 'pickup',
@@ -618,23 +1232,22 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
 
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
-  const assignedTripsCount = trips.filter(trip => trip.status === 'Assigned').length;
-  const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIds.includes(trip.id)) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => trip.driverId === selectedDriver.id) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
+  const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIds.includes(trip.id)) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIds.includes(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
-    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && trip.driverId === selectedDriver.id);
+    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && isTripAssignedToDriver(trip, selectedDriver.id));
     if (preferredTrip) return preferredTrip;
-    const routeTrip = routeTrips.find(trip => trip.driverId === selectedDriver.id);
+    const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id));
     if (routeTrip) return routeTrip;
-    return trips.find(trip => trip.driverId === selectedDriver.id) ?? null;
+    return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
   }, [routeTrips, selectedDriver, selectedTripIds, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
@@ -697,6 +1310,15 @@ const TripDashboardWorkspace = () => {
   }, [filteredRoutePlans, selectedRouteId, setSelectedRouteId]);
 
   useEffect(() => {
+    if (!activeDateTripIdSet) return;
+    const selectedIds = selectedTripIds.map(id => String(id || '').trim()).filter(Boolean);
+    const prunedSelectedIds = selectedIds.filter(id => activeDateTripIdSet.has(id));
+    if (prunedSelectedIds.length !== selectedIds.length) {
+      setSelectedTripIds(prunedSelectedIds);
+    }
+  }, [activeDateTripIdSet, selectedTripIds, setSelectedTripIds]);
+
+  useEffect(() => {
     if (!mapZipQuickFilter) return;
     if (mapQuickZipOptions.includes(mapZipQuickFilter)) return;
     setMapZipQuickFilter('');
@@ -738,8 +1360,8 @@ const TripDashboardWorkspace = () => {
 
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
-      const leftAssignedToSelectedDriver = selectedDriverId && leftTrip.driverId === selectedDriverId ? 1 : 0;
-      const rightAssignedToSelectedDriver = selectedDriverId && rightTrip.driverId === selectedDriverId ? 1 : 0;
+      const leftAssignedToSelectedDriver = isTripAssignedToDriver(leftTrip, selectedDriverId) ? 1 : 0;
+      const rightAssignedToSelectedDriver = isTripAssignedToDriver(rightTrip, selectedDriverId) ? 1 : 0;
       if (leftAssignedToSelectedDriver !== rightAssignedToSelectedDriver) return rightAssignedToSelectedDriver - leftAssignedToSelectedDriver;
 
       if (tripOrderMode === 'time') {
@@ -1314,6 +1936,15 @@ const TripDashboardWorkspace = () => {
   const handleOpenMapWindow = () => {
     const mapUrl = `/map-screen?source=dashboard`;
     window.localStorage.setItem('__CARE_MOBILITY_MAP_SCREEN_SOURCE__', 'dashboard');
+    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify({
+      tripDateFilter,
+      selectedTripIds,
+      selectedDriverId,
+      selectedRouteId,
+      activeDateTripIds: Array.from(activeDateTripIdSet),
+      routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
+      capturedAt: Date.now()
+    }));
     const popup = window.open(mapUrl, 'care-mobility-map', 'popup=yes,width=1600,height=900,resizable=yes,scrollbars=no');
     if (popup) {
       popup.focus();
@@ -1375,10 +2006,11 @@ const TripDashboardWorkspace = () => {
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
-            <strong>VDRS: {drivers.length}</strong>
+            <strong>Drivers: {drivers.length}</strong>
             <span>{liveDrivers} live</span>
           </div>
-          <div className="d-flex gap-2">
+          <div className="d-flex gap-2 align-items-center">
+            <Form.Control size="sm" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" style={{ width: 180 }} />
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
             refreshDrivers();
             router.push('/drivers');
@@ -1464,7 +2096,7 @@ const TripDashboardWorkspace = () => {
                       <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
                     </div>
                   </td>
-                  <td className="fw-semibold">{trip.id}</td>
+                  <td className="fw-semibold">{trip.id}{getTripAddedByLabel(trip) ? <div className="small mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}</td>
                   <td>{trip.miles || '-'}</td>
                   <td>{trip.pickup}</td>
                   <td>{trip.dropoff}</td>
@@ -1642,153 +2274,123 @@ const TripDashboardWorkspace = () => {
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                 {/* Row 1: Date selection and trip filters */}
-                <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
-                  <strong>Trips</strong>
-                  <Badge bg="light" text="dark">{assignedTripsCount}/{trips.length}</Badge>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(-1)} title="Previous day">Prev</Button>
-                    <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || 'all')} style={{ width: 150 }} />
-                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(1)} title="Next day">Next</Button>
-                    <Button variant={tripDateFilter === todayDateKey ? 'dark' : 'outline-dark'} size="sm" style={tripDateFilter === todayDateKey ? undefined : greenToolbarButtonStyle} onClick={() => setTripDateFilter(todayDateKey)}>Today</Button>
-                    <Badge bg="light" text="dark">{activeTripDateLabel}</Badge>
-                    {availableTripDateKeys.length > 0 ? <Badge bg="light" text="dark">{availableTripDateKeys.length} days</Badge> : null}
-                    {tripDateFilter !== 'all' && selectedDateDriverSummary.length > 0 ? <Badge bg="light" text="dark">Drivers {selectedDateDriverSummary.map(([name, count]) => `${name}: ${count}`).slice(0, 3).join(' | ')}</Badge> : null}
-                  </div>
-                  <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 130 }}>
-                    <option value="all">All</option>
-                    <option value="assigned">Assigned</option>
-                    <option value="unassigned">Unassigned</option>
-                    <option value="cancelled">Cancelled</option>
-                  </Form.Select>
-                  <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search Trip ID" style={{ width: 150 }} />
-                  {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
-                  <Badge bg={selectedTripIds.length > 0 ? 'dark' : 'light'} text={selectedTripIds.length > 0 ? 'light' : 'dark'}>{selectedTripIds.length} selected trips</Badge>
+                <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
+                if (!isToolbarEditMode) return;
+                event.preventDefault();
+              }} onDrop={() => {
+                if (!isToolbarEditMode) return;
+                const draggedBlockId = getActiveDraggedToolbarBlockId();
+                moveToolbarBlockAcrossRows(draggedBlockId, 'row1');
+                clearDraggingToolbarBlockIds();
+              }}>
+                  {toolbarRow1Order.map(blockId => <div
+                    key={blockId}
+                    draggable={isToolbarEditMode}
+                    onDragStart={() => {
+                    setDraggingToolbarBlockId(blockId);
+                    setDraggingToolbarRow2BlockId(null);
+                    setDraggingToolbarRow3BlockId(null);
+                  }}
+                    onDragOver={event => {
+                    if (!isToolbarEditMode) return;
+                    event.preventDefault();
+                  }}
+                    onDrop={() => {
+                    if (!isToolbarEditMode) return;
+                    const draggedBlockId = getActiveDraggedToolbarBlockId();
+                    moveToolbarBlockAcrossRows(draggedBlockId, 'row1', blockId);
+                  }}
+                    onDragEnd={clearDraggingToolbarBlockIds}
+                    style={isToolbarEditMode ? {
+                    border: '1px dashed rgba(8, 19, 26, 0.55)',
+                    borderRadius: 8,
+                    padding: '2px 4px',
+                    cursor: 'move',
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                  } : undefined}
+                  >
+                      {renderToolbarRow1Block(blockId) || isToolbarEditMode ? renderToolbarRow1Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                    </div>)}
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }}>
-                  {!showMapPane ? <Button variant="warning" size="sm" onClick={() => {
-                  setShowMapPane(true);
-                  setStatusMessage('Mapa visible otra vez en Trip Dashboard.');
-                }} style={{
-                  color: '#5b3b00',
-                  borderColor: 'rgba(161, 98, 7, 0.48)',
-                  background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
-                  fontWeight: 800
-                }}>
-                      Show Map
-                    </Button> : null}
-                  {isStandardLayout && showMapPane ? <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-                  setRightPanelCollapsed(true);
-                  setColumnSplit(94);
-                  setStatusMessage('Panel derecho minimizado en pestaña.');
-                }}>
-                      Peek Panel
-                    </Button> : null}
-                  <Badge bg="primary">{trips.length} trips</Badge>
-                  <Badge bg="info">{drivers.length} drivers</Badge>
-                  <Badge bg="secondary">{liveDrivers} live</Badge>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)}>Columns</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map Screen' : 'Show Map Here'}</Button>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Layout</span>
-                    <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Normal</Button>
-                    <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)}>Focus Right</Button>
-                    <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.stacked)}>Stacked</Button>
-                    {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Panels</span>
-                    <Form.Select size="sm" value={showBottomPanels ? panelView : 'hidden'} onChange={event => handlePanelViewChange(event.target.value)} style={{ width: 112 }}>
-                      <option value="both">Both</option>
-                      <option value="drivers">VDRS</option>
-                      <option value="routes">Routes</option>
-                      <option value="hidden">Hide</option>
-                    </Form.Select>
-                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setPanelOrder(current => current === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? TRIP_DASHBOARD_PANEL_ORDERS.routesFirst : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst)}>
-                      Swap
-                    </Button>
-                  </div>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
-                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-                      <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign second driver">A2</Button>
-                      <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
-                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
-                    </>}
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Leg</span>
-                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
-                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
-                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Tercer viaje o connector leg">CL</Button>
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Type</span>
-                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
-                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
-                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
-                  </div>
-                  {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 80, width: 240 }}>
-                      <CardBody className="p-3 text-dark">
-                        <div className="fw-semibold mb-2">Escoge que quieres ver</div>
-                        <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
-                        <div className="d-flex flex-column gap-2">
-                          {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dashboard-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
-                        </div>
-                      </CardBody>
-                    </Card> : null}
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }} onDragOver={event => {
+                if (!isToolbarEditMode) return;
+                event.preventDefault();
+              }} onDrop={() => {
+                if (!isToolbarEditMode) return;
+                const draggedBlockId = getActiveDraggedToolbarBlockId();
+                moveToolbarBlockAcrossRows(draggedBlockId, 'row2');
+                clearDraggingToolbarBlockIds();
+              }}>
+                  {toolbarRow2Order.map(blockId => <div
+                    key={blockId}
+                    draggable={isToolbarEditMode}
+                    onDragStart={() => {
+                    setDraggingToolbarBlockId(null);
+                    setDraggingToolbarRow2BlockId(blockId);
+                    setDraggingToolbarRow3BlockId(null);
+                  }}
+                    onDragOver={event => {
+                    if (!isToolbarEditMode) return;
+                    event.preventDefault();
+                  }}
+                    onDrop={() => {
+                    if (!isToolbarEditMode) return;
+                    const draggedBlockId = getActiveDraggedToolbarBlockId();
+                    moveToolbarBlockAcrossRows(draggedBlockId, 'row2', blockId);
+                  }}
+                    onDragEnd={clearDraggingToolbarBlockIds}
+                    style={isToolbarEditMode ? {
+                    border: '1px dashed rgba(8, 19, 26, 0.55)',
+                    borderRadius: 8,
+                    padding: '2px 4px',
+                    cursor: 'move',
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                  } : undefined}
+                  >
+                      {renderToolbarRow2Block(blockId) || isToolbarEditMode ? renderToolbarRow2Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                    </div>)}
                 </div>
                 
                 {/* Row 3: Leg/Type filters and misc buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
-                  <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ width: 220 }}>
-                    <option value="">Select driver</option>
-                    {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
-                  </Form.Select>
-                  <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 220 }}>
-                    <option value="">Second driver</option>
-                    {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
-                  </Form.Select>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">ZIP</span>
-                    <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} style={{ width: 110 }} title="ZIP de origen">
-                      <option value="">PU ZIP</option>
-                      {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
-                    </Form.Select>
-                    <span className="text-muted small">→</span>
-                    <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} style={{ width: 110 }} title="ZIP de destino">
-                      <option value="">DO ZIP</option>
-                      {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
-                    </Form.Select>
-                    <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Ruta</span>
-                    <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} style={{ width: 140 }} title="Ciudad de recogida">
-                      <option value="">Origen</option>
-                      {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
-                    </Form.Select>
-                    <span className="text-muted small">→</span>
-                    <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} style={{ width: 140 }} title="Ciudad de destino">
-                      <option value="">Destino</option>
-                      {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
-                    </Form.Select>
-                    {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
-                  </div>
-                  <Button
-                    variant="outline-dark"
-                    size="sm"
-                    style={greenToolbarButtonStyle}
-                    onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')}
-                    title={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
-                    aria-label={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
+                if (!isToolbarEditMode) return;
+                event.preventDefault();
+              }} onDrop={() => {
+                if (!isToolbarEditMode) return;
+                const draggedBlockId = getActiveDraggedToolbarBlockId();
+                moveToolbarBlockAcrossRows(draggedBlockId, 'row3');
+                clearDraggingToolbarBlockIds();
+              }}>
+                  {toolbarRow3Order.map(blockId => <div
+                    key={blockId}
+                    draggable={isToolbarEditMode}
+                    onDragStart={() => {
+                    setDraggingToolbarBlockId(null);
+                    setDraggingToolbarRow2BlockId(null);
+                    setDraggingToolbarRow3BlockId(blockId);
+                  }}
+                    onDragOver={event => {
+                    if (!isToolbarEditMode) return;
+                    event.preventDefault();
+                  }}
+                    onDrop={() => {
+                    if (!isToolbarEditMode) return;
+                    const draggedBlockId = getActiveDraggedToolbarBlockId();
+                    moveToolbarBlockAcrossRows(draggedBlockId, 'row3', blockId);
+                  }}
+                    onDragEnd={clearDraggingToolbarBlockIds}
+                    style={isToolbarEditMode ? {
+                    border: '1px dashed rgba(8, 19, 26, 0.55)',
+                    borderRadius: 8,
+                    padding: '2px 4px',
+                    cursor: 'move',
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                  } : undefined}
                   >
-                    <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
-                  </Button>
-                  {routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null}
-                  {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
+                      {renderToolbarRow3Block(blockId) || isToolbarEditMode ? renderToolbarRow3Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                    </div>)}
                 </div>
               </div>
                   {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'scroll', overflowY: 'hidden', height: 20, marginBottom: 6, scrollbarGutter: 'stable', scrollbarWidth: 'thin', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
@@ -1813,6 +2415,7 @@ const TripDashboardWorkspace = () => {
                             cursor: 'pointer'
                           }}
                         />
+                        <div className="small fw-semibold mt-1" style={{ lineHeight: 1 }}>{selectedTripIds.length}</div>
                       </th>
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
@@ -1873,7 +2476,7 @@ const TripDashboardWorkspace = () => {
                             <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
                             {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1">{getLegBadge(row.trip).label}</Badge> : null}
                           </td> : null}
-                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
+                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}{getTripAddedByLabel(row.trip) ? <div className="mt-1"><Badge bg="dark">{getTripAddedByLabel(row.trip)}</Badge></div> : null}{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
                         {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}><div>{getTripDriverDisplay(row.trip)}</div>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}</td> : null}
                         {visibleTripColumns.includes('pickup') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.pickup}</td> : null}
                         {visibleTripColumns.includes('dropoff') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.dropoff}</td> : null}

@@ -1,8 +1,8 @@
 'use client';
 
 import { useNemtContext } from '@/context/useNemtContext';
-import { formatTripDateLabel, getRouteServiceDateKey, getTripLateMinutes, getTripServiceDateKey } from '@/helpers/nemt-dispatch-state';
-import { useEffect, useMemo, useState } from 'react';
+import { getTripLateMinutes, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver } from '@/helpers/nemt-dispatch-state';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getMapTileConfig } from '@/utils/map-tiles';
 import { MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
@@ -18,6 +18,15 @@ const toMinutes = value => {
 const getNormalizedStatus = trip => String(trip?.status || '').trim().toLowerCase();
 
 const sortRouteTrips = trips => [...trips].sort((a, b) => toMinutes(a?.pickup) - toMinutes(b?.pickup));
+const CLOSED_ROUTE_STATE_KEY = '__CARE_MOBILITY_CLOSED_ROUTE_STATE__';
+const normalizeTripId = tripId => String(tripId || '').trim();
+const normalizeDriverId = driverId => String(driverId || '').trim();
+const getClosedRouteKey = (driverId, dateKey) => {
+  const normalizedDriverId = normalizeDriverId(driverId);
+  const normalizedDateKey = String(dateKey || '').trim();
+  if (!normalizedDriverId || !normalizedDateKey || normalizedDateKey === 'all') return '';
+  return `${normalizedDriverId}::${normalizedDateKey}`;
+};
 
 const getTripsForRoute = (route, allTrips) => {
   if (!route) return [];
@@ -28,57 +37,6 @@ const getTripsForRoute = (route, allTrips) => {
     const matchesRouteId = String(trip?.routeId || '').trim() === routeId;
     const matchesTripId = tripId && routeTripIds.has(tripId);
     return matchesRouteId || matchesTripId;
-  });
-};
-
-const buildFallbackRoutesFromTrips = trips => {
-  const routeBuckets = new Map();
-  trips.forEach(trip => {
-    const routeId = String(trip?.routeId || '').trim();
-    if (!routeId) return;
-    if (!routeBuckets.has(routeId)) routeBuckets.set(routeId, []);
-    routeBuckets.get(routeId).push(trip);
-  });
-
-  return Array.from(routeBuckets.entries()).map(([routeId, routeTrips], index) => {
-    const firstTrip = routeTrips[0] || {};
-    return {
-      id: routeId,
-      name: String(firstTrip?.routeName || `Route ${index + 1}`),
-      driverId: String(firstTrip?.driverId || ''),
-      secondaryDriverId: String(firstTrip?.secondaryDriverId || ''),
-      serviceDate: getRouteServiceDateKey({ tripIds: routeTrips.map(trip => trip.id) }, routeTrips),
-      tripIds: routeTrips.map(trip => trip.id),
-      notes: String(firstTrip?.routeNotes || ''),
-      isFallback: true
-    };
-  });
-};
-
-const buildSyntheticRoutesFromAssignedTrips = trips => {
-  const buckets = new Map();
-  trips.forEach(trip => {
-    const driverId = String(trip?.driverId || '').trim();
-    if (!driverId) return;
-    const dateKey = getTripServiceDateKey(trip) || 'undated';
-    const bucketKey = `${driverId}::${dateKey}`;
-    if (!buckets.has(bucketKey)) buckets.set(bucketKey, []);
-    buckets.get(bucketKey).push(trip);
-  });
-  return Array.from(buckets.entries()).map(([bucketKey, bucketTrips], index) => {
-    const [driverId, dateKey] = bucketKey.split('::');
-    const firstTrip = bucketTrips[0] || {};
-    return {
-      id: `synthetic-${driverId}-${dateKey}`,
-      name: String(firstTrip?.routeName || `Driver Route ${index + 1}`),
-      driverId,
-      secondaryDriverId: String(firstTrip?.secondaryDriverId || ''),
-      serviceDate: dateKey === 'undated' ? '' : dateKey,
-      tripIds: bucketTrips.map(t => t.id),
-      notes: '',
-      isFallback: true,
-      isSynthetic: true
-    };
   });
 };
 
@@ -154,6 +112,28 @@ const buildRouteSuggestion = ({ route, routeTrips, drivers, trips }) => {
   };
 };
 
+const shiftDateValue = (dateKey, offsetDays) => {
+  if (!dateKey) return '';
+  const [year, month, day] = String(dateKey).split('-').map(Number);
+  const shiftedDate = new Date(year, month - 1, day + offsetDays);
+  const nextYear = shiftedDate.getFullYear();
+  const nextMonth = String(shiftedDate.getMonth() + 1).padStart(2, '0');
+  const nextDay = String(shiftedDate.getDate()).padStart(2, '0');
+  return `${nextYear}-${nextMonth}-${nextDay}`;
+};
+
+const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
+  try {
+    await fetch('/api/system-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventLabel, target, metadata })
+    });
+  } catch (error) {
+    console.error('Error recording route control activity:', error);
+  }
+};
+
 const RouteControlWorkspace = () => {
   const {
     drivers,
@@ -163,41 +143,38 @@ const RouteControlWorkspace = () => {
     refreshDrivers,
     refreshDispatchState,
     assignTripsToDriver,
+    assignTripsToSecondaryDriver,
+    unassignTrips,
     assignRoutePrimaryDriver,
     assignRouteSecondaryDriver,
     updateRoutePlan,
-    deleteRoute
+    deleteRoute,
+    createRoute
   } = useNemtContext();
 
-  const [dateFilter, setDateFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('');
   const [selectedRouteId, setSelectedRouteId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [primaryDriverId, setPrimaryDriverId] = useState('');
   const [secondaryDriverId, setSecondaryDriverId] = useState('');
   const [routeNameDraft, setRouteNameDraft] = useState('');
   const [routeNotesDraft, setRouteNotesDraft] = useState('');
-  const [statusMessage, setStatusMessage] = useState('Route Control ready.');
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('Select a work day to load Route Control.');
+  const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
+  const closedRouteSnapshotRef = useRef('');
 
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const hasSelectedDate = Boolean(dateFilter);
 
-  const effectiveRoutes = useMemo(() => {
-    if (Array.isArray(routePlans) && routePlans.length > 0) return routePlans;
-    const byRouteId = buildFallbackRoutesFromTrips(trips);
-    if (byRouteId.length > 0) return byRouteId;
-    return buildSyntheticRoutesFromAssignedTrips(trips);
-  }, [routePlans, trips]);
+  const effectiveRoutes = useMemo(() => Array.isArray(routePlans) ? routePlans : [], [routePlans]);
 
   useEffect(() => {
     let active = true;
     const sync = async () => {
-      setIsSyncing(true);
       try {
         await Promise.all([refreshDrivers(), refreshDispatchState()]);
       } catch {
         if (active) setStatusMessage('Live sync failed. Showing latest local data.');
-      } finally {
-        if (active) setIsSyncing(false);
       }
     };
     sync();
@@ -206,70 +183,134 @@ const RouteControlWorkspace = () => {
     };
   }, [refreshDispatchState, refreshDrivers]);
 
-  const allDateKeys = useMemo(() => {
-    const routeDates = effectiveRoutes.map(route => String(route?.serviceDate || '').trim()).filter(Boolean);
-    const tripDates = trips.map(getTripServiceDateKey).filter(Boolean);
-    return Array.from(new Set([...routeDates, ...tripDates])).sort();
-  }, [effectiveRoutes, trips]);
+  useEffect(() => {
+    const loadClosedRouteState = () => {
+      try {
+        const rawValue = window.localStorage.getItem(CLOSED_ROUTE_STATE_KEY);
+        if (!rawValue) {
+          if (closedRouteSnapshotRef.current !== '') {
+            closedRouteSnapshotRef.current = '';
+            setClosedRouteStateByKey({});
+          }
+          return;
+        }
+        if (rawValue === closedRouteSnapshotRef.current) return;
+        const parsed = JSON.parse(rawValue);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          if (closedRouteSnapshotRef.current !== '') {
+            closedRouteSnapshotRef.current = '';
+            setClosedRouteStateByKey({});
+          }
+          return;
+        }
+        closedRouteSnapshotRef.current = rawValue;
+        setClosedRouteStateByKey(parsed);
+      } catch {
+        if (closedRouteSnapshotRef.current !== '') {
+          closedRouteSnapshotRef.current = '';
+          setClosedRouteStateByKey({});
+        }
+      }
+    };
 
-  const filteredRoutes = useMemo(() => effectiveRoutes.filter(route => {
-    if (dateFilter === 'all') return true;
+    loadClosedRouteState();
+    window.addEventListener('storage', loadClosedRouteState);
+    return () => {
+      window.removeEventListener('storage', loadClosedRouteState);
+    };
+  }, []);
+
+  const filteredRoutes = useMemo(() => {
+    if (!hasSelectedDate) return [];
+    return effectiveRoutes.filter(route => {
     return String(route?.serviceDate || '').trim() === dateFilter;
-  }), [dateFilter, effectiveRoutes]);
+    });
+  }, [dateFilter, effectiveRoutes, hasSelectedDate]);
 
-  const driversWithInfo = useMemo(() => drivers.map(driver => {
+  const driversWithInfo = useMemo(() => {
+    if (!hasSelectedDate) return [];
+    return drivers.map(driver => {
     const driverId = String(driver.id);
     const driverTrips = trips.filter(trip => {
-      const matchesDriver = String(trip?.driverId || '') === driverId;
-      const matchesDate = dateFilter === 'all' || getTripServiceDateKey(trip) === dateFilter;
+      const matchesDriver = isTripAssignedToDriver(trip, driverId);
+      const matchesDate = getTripTimelineDateKey(trip, effectiveRoutes, trips) === dateFilter;
       return matchesDriver && matchesDate;
     });
-    const driverRoute = effectiveRoutes.find(route => {
+    const driverRoute = filteredRoutes.find(route => {
       const matchesDriver = String(route?.driverId || '') === driverId;
-      const matchesDate = dateFilter === 'all' || String(route?.serviceDate || '') === dateFilter;
+      const matchesDate = String(route?.serviceDate || '') === dateFilter;
       return matchesDriver && matchesDate;
     });
     return { driver, trips: driverTrips, route: driverRoute || null, hasRoute: Boolean(driverRoute) };
-  }).filter(entry => dateFilter === 'all' || entry.trips.length > 0 || entry.hasRoute), [drivers, trips, effectiveRoutes, dateFilter]);
+  });
+  }, [drivers, trips, filteredRoutes, effectiveRoutes, dateFilter, hasSelectedDate]);
 
   const selectedRoute = useMemo(() => {
+    if (!hasSelectedDate) return null;
     if (selectedRouteId) return filteredRoutes.find(route => route.id === selectedRouteId) || null;
     if (selectedDriverId) {
-      return effectiveRoutes.find(route => {
+      return filteredRoutes.find(route => {
         const matchesDriver = String(route?.driverId || '') === selectedDriverId;
-        const matchesDate = dateFilter === 'all' || String(route?.serviceDate || '') === dateFilter;
+        const matchesDate = String(route?.serviceDate || '') === dateFilter;
         return matchesDriver && matchesDate;
       }) || null;
     }
     return null;
-  }, [effectiveRoutes, filteredRoutes, selectedRouteId, selectedDriverId, dateFilter]);
+  }, [filteredRoutes, selectedRouteId, selectedDriverId, dateFilter, hasSelectedDate]);
 
   const selectedRouteTrips = useMemo(() => {
+    if (!hasSelectedDate) return [];
     if (selectedRoute) return sortRouteTrips(getTripsForRoute(selectedRoute, trips));
     if (selectedDriverId) {
       return sortRouteTrips(trips.filter(trip => {
-        const matchesDriver = String(trip?.driverId || '') === selectedDriverId;
-        const matchesDate = dateFilter === 'all' || getTripServiceDateKey(trip) === dateFilter;
+        const matchesDriver = isTripAssignedToDriver(trip, selectedDriverId);
+        const matchesDate = getTripTimelineDateKey(trip, effectiveRoutes, trips) === dateFilter;
         return matchesDriver && matchesDate;
       }));
     }
     return [];
-  }, [selectedRoute, selectedDriverId, trips, dateFilter]);
+  }, [selectedRoute, selectedDriverId, trips, effectiveRoutes, dateFilter, hasSelectedDate]);
+
+  const selectedTripIds = useMemo(() => selectedRouteTrips.map(trip => trip.id).filter(Boolean), [selectedRouteTrips]);
+
+  const resolvedRoute = useMemo(() => {
+    if (selectedRoute) return selectedRoute;
+    if (!hasSelectedDate) return null;
+
+    const selectedTripIdSet = new Set(selectedTripIds.map(value => String(value || '').trim()).filter(Boolean));
+    if (selectedTripIdSet.size === 0) return null;
+
+    const selectedTripRouteIds = new Set(selectedRouteTrips.map(trip => String(trip?.routeId || '').trim()).filter(Boolean));
+
+    return effectiveRoutes.find(route => {
+      const routeId = String(route?.id || '').trim();
+      const sameDate = String(route?.serviceDate || '').trim() === dateFilter;
+      if (!sameDate) return false;
+
+      const hasDirectRouteMatch = routeId && selectedTripRouteIds.has(routeId);
+      if (hasDirectRouteMatch) return true;
+
+      const routeTripIds = Array.isArray(route?.tripIds) ? route.tripIds : [];
+      return routeTripIds.some(routeTripId => selectedTripIdSet.has(String(routeTripId || '').trim()));
+    }) || null;
+  }, [selectedRoute, hasSelectedDate, selectedTripIds, selectedRouteTrips, effectiveRoutes, dateFilter]);
+
+  const isPersistedRoute = Boolean(resolvedRoute);
 
   const selectedRouteDriver = useMemo(() => {
-    const driverId = selectedDriverId || String(selectedRoute?.driverId || '');
+    const driverId = selectedDriverId || String(resolvedRoute?.driverId || '');
     return drivers.find(driver => String(driver.id) === driverId) || null;
-  }, [drivers, selectedRoute, selectedDriverId]);
+  }, [drivers, resolvedRoute, selectedDriverId]);
 
   const routeSuggestion = useMemo(() => {
-    if (selectedRouteTrips.length === 0) return null;
+    if (!hasSelectedDate || selectedRouteTrips.length === 0) return null;
     return buildRouteSuggestion({
       route: selectedRoute || { id: '', driverId: selectedDriverId },
       routeTrips: selectedRouteTrips,
       drivers,
       trips
     });
-  }, [drivers, selectedRoute, selectedDriverId, selectedRouteTrips, trips]);
+  }, [drivers, selectedRoute, selectedDriverId, selectedRouteTrips, trips, hasSelectedDate]);
 
   const mapCenter = useMemo(() => {
     const firstTrip = selectedRouteTrips.find(trip => Array.isArray(trip?.position) && trip.position.length === 2);
@@ -281,16 +322,33 @@ const RouteControlWorkspace = () => {
     .filter(position => Array.isArray(position) && position.length === 2), [selectedRouteTrips]);
 
   const dayHistory = useMemo(() => {
-    const dateKey = selectedRoute?.serviceDate || (dateFilter !== 'all' ? dateFilter : null);
-    const driverId = selectedDriverId || String(selectedRoute?.driverId || '');
+    const dateKey = selectedRoute?.serviceDate || dateFilter || null;
+    const driverId = selectedDriverId || String(resolvedRoute?.driverId || '');
     if (!dateKey || !driverId) return null;
-    const dayTrips = trips.filter(trip => getTripServiceDateKey(trip) === dateKey && String(trip?.driverId || '') === driverId);
+    const dayTrips = trips.filter(trip => {
+      const matchesDriver = isTripAssignedToDriver(trip, driverId);
+      return matchesDriver && getTripTimelineDateKey(trip, effectiveRoutes, trips) === dateKey;
+    });
     if (dayTrips.length === 0) return null;
     const completed = dayTrips.filter(trip => ['completed', 'done', 'closed'].includes(getNormalizedStatus(trip))).length;
     const cancelled = dayTrips.filter(trip => ['cancelled', 'canceled'].includes(getNormalizedStatus(trip))).length;
     const assigned = dayTrips.filter(trip => getNormalizedStatus(trip) === 'assigned').length;
     return { total: dayTrips.length, completed, cancelled, assigned };
-  }, [selectedRoute, selectedDriverId, trips, dateFilter]);
+  }, [selectedRoute, resolvedRoute, selectedDriverId, trips, effectiveRoutes, dateFilter]);
+
+  const selectedClosedRouteState = useMemo(() => {
+    const dateKey = selectedRoute?.serviceDate || dateFilter || '';
+    const driverId = selectedDriverId || String(resolvedRoute?.driverId || '');
+    const routeKey = getClosedRouteKey(driverId, dateKey);
+    if (!routeKey) return null;
+    return closedRouteStateByKey[routeKey] ?? null;
+  }, [closedRouteStateByKey, dateFilter, resolvedRoute?.driverId, selectedDriverId, selectedRoute?.serviceDate]);
+
+  const selectedClosedRouteEvents = useMemo(() => {
+    if (!selectedClosedRouteState) return [];
+    const events = Array.isArray(selectedClosedRouteState.events) ? selectedClosedRouteState.events : [];
+    return [...events].sort((a, b) => Number(a?.at || 0) - Number(b?.at || 0));
+  }, [selectedClosedRouteState]);
 
   const handleSelectDriver = driverInfo => {
     const driverId = String(driverInfo.driver.id);
@@ -311,59 +369,141 @@ const RouteControlWorkspace = () => {
   };
 
   useEffect(() => {
-    if (!selectedRoute) return;
-    setSelectedRouteId(selectedRoute.id);
-    setPrimaryDriverId(String(selectedRoute.driverId || ''));
-    setSecondaryDriverId(String(selectedRoute.secondaryDriverId || ''));
-    setRouteNameDraft(String(selectedRoute.name || ''));
-    setRouteNotesDraft(String(selectedRoute.notes || ''));
-  }, [selectedRoute?.id, selectedRoute?.driverId, selectedRoute?.secondaryDriverId, selectedRoute?.name, selectedRoute?.notes]);
+    if (!resolvedRoute) return;
+    setSelectedRouteId(resolvedRoute.id);
+    setPrimaryDriverId(String(resolvedRoute.driverId || ''));
+    setSecondaryDriverId(String(resolvedRoute.secondaryDriverId || ''));
+    setRouteNameDraft(String(resolvedRoute.name || ''));
+    setRouteNotesDraft(String(resolvedRoute.notes || ''));
+  }, [resolvedRoute?.id, resolvedRoute?.driverId, resolvedRoute?.secondaryDriverId, resolvedRoute?.name, resolvedRoute?.notes]);
 
   const handleApplyPrimary = () => {
-    if (!selectedRoute || !primaryDriverId) return;
-    assignRoutePrimaryDriver(selectedRoute.id, primaryDriverId);
+    if (!primaryDriverId || selectedTripIds.length === 0) return;
+    if (isPersistedRoute) {
+      assignRoutePrimaryDriver(resolvedRoute.id, primaryDriverId);
+    } else {
+      assignTripsToDriver(primaryDriverId, selectedTripIds);
+      setSelectedDriverId(primaryDriverId);
+      setSelectedRouteId('');
+    }
     setStatusMessage('Primary driver updated for full route.');
+    void logSystemActivity('Updated route primary driver', resolvedRoute?.name || selectedRouteDriver?.name || 'Route Control', {
+      driverId: primaryDriverId,
+      tripCount: selectedTripIds.length,
+      routeId: resolvedRoute?.id || ''
+    });
   };
 
   const handleApplySecondary = () => {
-    if (!selectedRoute) return;
-    assignRouteSecondaryDriver(selectedRoute.id, secondaryDriverId);
+    if (selectedTripIds.length === 0) return;
+    if (isPersistedRoute) {
+      assignRouteSecondaryDriver(resolvedRoute.id, secondaryDriverId);
+    } else {
+      assignTripsToSecondaryDriver(secondaryDriverId || '', selectedTripIds);
+    }
     setStatusMessage(secondaryDriverId ? 'Secondary driver assigned to full route.' : 'Secondary driver removed from route.');
+    void logSystemActivity(secondaryDriverId ? 'Assigned route secondary driver' : 'Removed route secondary driver', resolvedRoute?.name || selectedRouteDriver?.name || 'Route Control', {
+      driverId: secondaryDriverId || '',
+      tripCount: selectedTripIds.length,
+      routeId: resolvedRoute?.id || ''
+    });
   };
 
   const handleSaveRouteMeta = () => {
-    if (!selectedRoute) return;
-    updateRoutePlan(selectedRoute.id, {
-      name: routeNameDraft,
+    if (selectedTripIds.length === 0) return;
+    if (isPersistedRoute) {
+      updateRoutePlan(resolvedRoute.id, {
+        name: routeNameDraft,
+        notes: routeNotesDraft,
+        serviceDate: resolvedRoute.serviceDate
+      });
+      setStatusMessage('Route details updated.');
+      void logSystemActivity('Updated route details', routeNameDraft || resolvedRoute?.name || 'Route Control', {
+        routeId: resolvedRoute.id,
+        tripCount: selectedTripIds.length,
+        serviceDate: resolvedRoute.serviceDate
+      });
+      return;
+    }
+
+    const nextDriverId = primaryDriverId || selectedDriverId;
+    if (!nextDriverId) {
+      setStatusMessage('Select a primary driver before saving the route.');
+      return;
+    }
+
+    createRoute({
+      name: routeNameDraft || `${selectedRouteDriver?.name || 'Driver'} Route`,
+      driverId: nextDriverId,
+      tripIds: selectedTripIds,
       notes: routeNotesDraft,
-      serviceDate: selectedRoute.serviceDate
+      serviceDate: resolvedRoute?.serviceDate || dateFilter || getTripServiceDateKey(selectedRouteTrips[0])
     });
-    setStatusMessage('Route details updated.');
+    setSelectedDriverId(nextDriverId);
+    setSelectedRouteId('');
+    setStatusMessage('Route created and saved.');
+    void logSystemActivity('Created route plan', routeNameDraft || `${selectedRouteDriver?.name || 'Driver'} Route`, {
+      driverId: nextDriverId,
+      tripCount: selectedTripIds.length,
+      serviceDate: resolvedRoute?.serviceDate || dateFilter || getTripServiceDateKey(selectedRouteTrips[0])
+    });
   };
 
   const handleDeleteRoute = () => {
-    if (!selectedRoute) return;
-    const ok = window.confirm(`Delete route ${selectedRoute.name || selectedRoute.id}? This will unassign all trips in this route.`);
+    const targetRouteId = String(resolvedRoute?.id || selectedRoute?.id || selectedRouteId || '').trim();
+    if (!targetRouteId && selectedTripIds.length === 0) return;
+    const routeLabel = resolvedRoute?.name || selectedRouteDriver?.name || 'this route';
+    const ok = window.confirm(`Delete route ${routeLabel}? This will unassign all trips in this route.`);
     if (!ok) return;
-    deleteRoute(selectedRoute.id);
+    if (targetRouteId) {
+      deleteRoute(targetRouteId);
+    } else {
+      unassignTrips(selectedTripIds);
+    }
     setSelectedRouteId('');
     setStatusMessage('Route deleted. Trips returned to unassigned.');
+    void logSystemActivity('Deleted route plan', routeLabel, {
+      routeId: targetRouteId,
+      tripCount: selectedTripIds.length
+    });
   };
 
   const handleAutoAssignFix = () => {
-    if (!selectedRoute || !routeSuggestion?.recommendedDriver) {
+    if (selectedTripIds.length === 0 || !routeSuggestion?.recommendedDriver) {
       setStatusMessage('No auto-assign recommendation available.');
       return;
     }
-    assignRoutePrimaryDriver(selectedRoute.id, routeSuggestion.recommendedDriver.id);
+    if (isPersistedRoute) {
+      assignRoutePrimaryDriver(resolvedRoute.id, routeSuggestion.recommendedDriver.id);
+    } else {
+      assignTripsToDriver(routeSuggestion.recommendedDriver.id, selectedTripIds);
+      setSelectedRouteId('');
+    }
+    setSelectedDriverId(String(routeSuggestion.recommendedDriver.id));
     setPrimaryDriverId(String(routeSuggestion.recommendedDriver.id));
     setStatusMessage(`Auto-assign applied. Route moved to ${routeSuggestion.recommendedDriver.name}.`);
+    void logSystemActivity('Applied auto-assign fix', routeSuggestion.recommendedDriver.name, {
+      driverId: routeSuggestion.recommendedDriver.id,
+      tripCount: selectedTripIds.length,
+      routeId: resolvedRoute?.id || ''
+    });
   };
 
   const handleTripReassign = (tripId, driverId) => {
     if (!tripId || !driverId) return;
     assignTripsToDriver(driverId, [tripId]);
     setStatusMessage('Trip reassigned without breaking the route.');
+    void logSystemActivity('Reassigned trip from route control', `Trip ${tripId}`, {
+      tripId,
+      driverId
+    });
+  };
+
+  const handleShiftDateFilter = offsetDays => {
+    const nextDate = shiftDateValue(dateFilter, offsetDays);
+    setDateFilter(nextDate);
+    setSelectedDriverId('');
+    setSelectedRouteId('');
   };
 
   return (
@@ -375,16 +515,14 @@ const RouteControlWorkspace = () => {
               <div className="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
                 <h5 className="mb-0">Route Control</h5>
                 <div className="d-flex gap-2 align-items-center">
-                  {isSyncing ? <Badge bg="secondary">Syncing...</Badge> : null}
-                  <Form.Select value={dateFilter} onChange={event => { setDateFilter(event.target.value); setSelectedDriverId(''); setSelectedRouteId(''); }} style={{ width: 180 }}>
-                    <option value="all">All dates</option>
-                    {allDateKeys.map(dateKey => <option key={dateKey} value={dateKey}>{formatTripDateLabel(dateKey)}</option>)}
-                  </Form.Select>
+                  <Button variant="outline-dark" size="sm" onClick={() => handleShiftDateFilter(-1)} disabled={!dateFilter}>Prev</Button>
+                  <Form.Control size="sm" type="date" value={dateFilter} onChange={event => { setDateFilter(event.target.value); setSelectedDriverId(''); setSelectedRouteId(''); }} style={{ width: 150 }} />
+                  <Button variant="outline-dark" size="sm" onClick={() => handleShiftDateFilter(1)} disabled={!dateFilter}>Next</Button>
                   <Badge bg="light" text="dark">{driversWithInfo.length} drivers</Badge>
                 </div>
               </div>
-              <div className="small text-muted">Click a driver to see their route, trips and map.</div>
-              <div className="small text-muted mt-1">Loaded: {drivers.length} drivers · {trips.length} trips · {effectiveRoutes.length} routes</div>
+              <div className="small text-muted">{hasSelectedDate ? 'Click a driver to see their route, trips and map.' : 'Open the day selector and choose the day you will work.'}</div>
+              {hasSelectedDate ? <div className="small text-muted mt-1">Loaded: {drivers.length} drivers · {trips.length} trips · {effectiveRoutes.length} routes</div> : null}
               <div className="mt-3 table-responsive" style={{ maxHeight: 300 }}>
                 <Table hover className="mb-0 align-middle">
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
@@ -397,14 +535,19 @@ const RouteControlWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {driversWithInfo.length > 0 ? driversWithInfo.map(info => {
+                    {!hasSelectedDate ? <tr><td colSpan={5} className="text-center text-muted py-4">Choose a work day to load drivers and routes.</td></tr> : driversWithInfo.length > 0 ? driversWithInfo.map(info => {
                       const health = info.trips.length > 0 ? getRouteHealth(info.trips) : null;
                       const isSelected = selectedDriverId === String(info.driver.id);
                       return (
                         <tr key={info.driver.id} className={isSelected ? 'table-primary' : ''} onClick={() => handleSelectDriver(info)} style={{ cursor: 'pointer' }}>
                           <td className="fw-semibold">{info.driver.name}</td>
                           <td><Badge bg={String(info.driver.live || '').toLowerCase() === 'online' ? 'success' : 'secondary'}>{info.driver.live || 'Offline'}</Badge></td>
-                          <td>{info.hasRoute ? <Badge bg="info">Has Route</Badge> : <Badge bg="light" text="dark">No Route</Badge>}</td>
+                          <td>{info.hasRoute ? <Badge bg="info">Has Route</Badge> : <Badge bg="light" text="dark">No Route</Badge>}{(() => {
+                        const key = getClosedRouteKey(info.driver.id, dateFilter);
+                        const closure = key ? closedRouteStateByKey[key] : null;
+                        if (!closure?.closedAt) return null;
+                        return <Badge bg={closure.closed ? 'danger' : 'secondary'} className="ms-1">{closure.closed ? 'Closed' : 'Closed (Open)'}</Badge>;
+                      })()}</td>
                           <td>{info.trips.length}</td>
                           <td>{health ? <Badge bg={health.variant}>{health.level}</Badge> : <span className="text-muted small">-</span>}</td>
                         </tr>
@@ -427,8 +570,19 @@ const RouteControlWorkspace = () => {
                   <div><Badge bg="success">Completed: {dayHistory.completed}</Badge></div>
                   <div><Badge bg="warning" text="dark">Assigned: {dayHistory.assigned}</Badge></div>
                   <div><Badge bg="danger">Cancelled: {dayHistory.cancelled}</Badge></div>
+                  {selectedClosedRouteState?.closedAt ? <div><Badge bg="dark">Completed by: {String(selectedClosedRouteState.closedBy || 'Dispatcher')}</Badge></div> : null}
+                  {selectedClosedRouteState?.closed ? <div><Badge bg="danger">Route: Closed</Badge></div> : selectedClosedRouteState?.closedAt ? <div><Badge bg="secondary">Route: Reopened</Badge></div> : null}
                 </div>
-              ) : <div className="small text-muted">Select a route to see day closure summary.</div>}
+              ) : <div className="small text-muted">{hasSelectedDate ? 'Select a driver to see day closure summary.' : 'Choose a day first.'}</div>}
+              {selectedClosedRouteEvents.length > 0 ? <div className="mt-3">
+                  <div className="small text-uppercase fw-semibold mb-2">Daily Route Log</div>
+                  <div className="d-flex flex-column gap-1" style={{ maxHeight: 180, overflowY: 'auto' }}>
+                    {selectedClosedRouteEvents.map(event => <div key={event.id || `${event.type}-${event.at}`} className="small" style={{ color: '#cbd5e1' }}>
+                        {new Date(Number(event.at || Date.now())).toLocaleTimeString()} • {event.type === 'route-closed' ? `Closed by ${event.by || 'Dispatcher'}` : event.type === 'route-reopened' ? `Reopened by ${event.by || 'Dispatcher'}` : event.type === 'trip-added' ? `Trip ${event.tripId || '-'} added by ${event.by || 'Dispatcher'}` : event.type === 'trip-removed' ? `Trip ${event.tripId || '-'} removed by ${event.by || 'Dispatcher'}` : `${event.type || 'event'} by ${event.by || 'Dispatcher'}`}
+                      </div>)}
+                  </div>
+                </div> : null}
+              {hasSelectedDate ? <Alert variant="info" className="mt-3 mb-0 small">Connected to shared dispatch tree for this day. Changes here are reflected across Dispatcher, Trip Dashboard, messaging and AI tools.</Alert> : null}
               <Alert variant="secondary" className="mt-3 mb-0 small">{statusMessage}</Alert>
             </CardBody>
           </Card>
@@ -443,21 +597,23 @@ const RouteControlWorkspace = () => {
                 <h6 className="mb-0">{selectedRouteDriver ? selectedRouteDriver.name : 'Route Mini Map'}</h6>
                 {selectedRouteTrips.length > 0 ? <Badge bg="info">{selectedRouteTrips.length} stops</Badge> : null}
               </div>
-              <div style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
-                <MapContainer center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }}>
-                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
-                  {routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: '#2563eb', weight: 4 }} /> : null}
-                  {selectedRouteTrips.map((trip, index) => Array.isArray(trip?.position) && trip.position.length === 2 ? (
-                    <Marker key={`${trip.id}-${index}`} position={trip.position}>
-                      <Popup>
-                        <div className="fw-semibold">{trip.rider || trip.id}</div>
-                        <div>PU {trip.pickup} • DO {trip.dropoff}</div>
-                        <div>{trip.address || '-'}</div>
-                      </Popup>
-                    </Marker>
-                  ) : null)}
-                </MapContainer>
-              </div>
+              {hasSelectedDate ? (
+                <div style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
+                  <MapContainer center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
+                    {routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: '#2563eb', weight: 4 }} /> : null}
+                    {selectedRouteTrips.map((trip, index) => Array.isArray(trip?.position) && trip.position.length === 2 ? (
+                      <Marker key={`${trip.id}-${index}`} position={trip.position}>
+                        <Popup>
+                          <div className="fw-semibold">{trip.rider || trip.id}</div>
+                          <div>PU {trip.pickup} • DO {trip.dropoff}</div>
+                          <div>{trip.address || '-'}</div>
+                        </Popup>
+                      </Marker>
+                    ) : null)}
+                  </MapContainer>
+                </div>
+              ) : <div className="text-muted small" style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px dashed rgba(255,255,255,0.15)', borderRadius: 8 }}>Choose a work day to load the route map.</div>}
               {routeSuggestion ? (
                 <Alert variant={routeSuggestion.health.variant} className="mt-3 mb-0">
                   <div className="fw-semibold">{routeSuggestion.health.level}</div>
@@ -473,7 +629,7 @@ const RouteControlWorkspace = () => {
           <Card className="h-100">
             <CardBody>
               <h6 className="mb-3">Route Actions</h6>
-              {selectedRoute ? (
+              {selectedDriverId ? (
                 <div className="d-flex flex-column gap-3">
                   <Form.Group>
                     <Form.Label>Route name</Form.Label>
@@ -508,8 +664,9 @@ const RouteControlWorkspace = () => {
                     <Button variant="warning" onClick={handleAutoAssignFix}>Auto-Assign Fix</Button>
                   </div>
                   <div className="small text-muted">Current driver: {selectedRouteDriver?.name || 'Unassigned'}</div>
+                  {!isPersistedRoute ? <div className="small text-muted">This driver view is using trips from the selected day. Save Route will create a formal route.</div> : null}
                 </div>
-              ) : <div className="text-muted">{selectedDriverId ? 'No route found for this driver on this date.' : 'Select a driver first.'}</div>}
+              ) : <div className="text-muted">{hasSelectedDate ? 'Select a driver first.' : 'Select a work day first.'}</div>}
             </CardBody>
           </Card>
         </Col>
@@ -537,7 +694,7 @@ const RouteControlWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedRouteTrips.length > 0 ? selectedRouteTrips.map(trip => {
+                    {!hasSelectedDate ? <tr><td colSpan={7} className="text-center text-muted py-4">Choose a work day to load trips.</td></tr> : selectedRouteTrips.length > 0 ? selectedRouteTrips.map(trip => {
                       const lateMinutes = getTripLateMinutes(trip);
                       const delayed = Number.isFinite(lateMinutes) && lateMinutes > 10;
                       const suggestedDriver = routeSuggestion?.recommendedDriver;

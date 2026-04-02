@@ -39,6 +39,88 @@ const STATUS_VARIANTS = {
   'Opted Out': 'dark'
 };
 
+const BLOCK_REASON_OPTIONS = [
+  { value: 'hospital-rehab', label: 'Hospital / Rehab' },
+  { value: 'no-company', label: 'Does not want our company' },
+  { value: 'patient-request', label: 'Patient Request' },
+  { value: 'family-request', label: 'Family Request' },
+  { value: 'billing-insurance', label: 'Billing / Insurance issue' },
+  { value: 'other', label: 'Other Reason' }
+];
+
+const EMPTY_ARRAY = [];
+const EMPTY_OBJECT = {};
+
+const CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY = '__CARE_CONFIRMATION_OUTPUT_COLUMNS__';
+const CONFIRMATION_OUTPUT_COLUMN_OPTIONS = [
+  { key: 'tripId', label: 'Trip ID' },
+  { key: 'rider', label: 'Rider' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'pickupTime', label: 'Pickup Time' },
+  { key: 'pickupAddress', label: 'PU Address' },
+  { key: 'puZip', label: 'PU ZIP' },
+  { key: 'dropoffAddress', label: 'DO Address' },
+  { key: 'doZip', label: 'DO ZIP' },
+  { key: 'miles', label: 'Miles' },
+  { key: 'leg', label: 'Leg' },
+  { key: 'type', label: 'Type' },
+  { key: 'doNotConfirm', label: 'Do Not Confirm' },
+  { key: 'hospitalRehab', label: 'Hospital/Rehab' },
+  { key: 'confirmation', label: 'Confirmation' },
+  { key: 'dispatchStatus', label: 'Dispatch Status' },
+  { key: 'reply', label: 'Reply' },
+  { key: 'sent', label: 'Sent' },
+  { key: 'responded', label: 'Responded' }
+];
+const DEFAULT_CONFIRMATION_OUTPUT_COLUMNS = ['tripId', 'rider', 'phone', 'pickupTime', 'pickupAddress', 'dropoffAddress', 'miles', 'leg', 'type', 'confirmation', 'dispatchStatus', 'reply'];
+
+const normalizeConfirmationOutputColumns = value => {
+  const allowedKeys = new Set(CONFIRMATION_OUTPUT_COLUMN_OPTIONS.map(option => option.key));
+  const cleaned = Array.isArray(value) ? value.filter(key => allowedKeys.has(key)) : [];
+  const unique = Array.from(new Set(cleaned));
+  return unique.length > 0 ? unique : [...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS];
+};
+
+const escapeHtml = value => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const formatAddressForPrint = value => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '-';
+
+  const byComma = text.split(',').map(part => part.trim()).filter(Boolean);
+  if (byComma.length > 1) {
+    const visible = byComma.slice(0, 3);
+    const suffix = byComma.length > 3 ? ' ...' : '';
+    return `${visible.join('\n')}${suffix}`;
+  }
+
+  const words = text.split(' ').filter(Boolean);
+  const lines = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+    if (nextLine.length <= 28) {
+      currentLine = nextLine;
+      continue;
+    }
+    if (currentLine) lines.push(currentLine);
+    currentLine = word;
+    if (lines.length === 3) break;
+  }
+
+  if (lines.length < 3 && currentLine) lines.push(currentLine);
+  const clamped = lines.slice(0, 3);
+  const hasMore = words.join(' ').length > clamped.join(' ').length;
+  if (hasMore && clamped.length > 0) clamped[clamped.length - 1] = `${clamped[clamped.length - 1]} ...`;
+  return clamped.join('\n');
+};
+
 const getTripTypeLabel = trip => {
   const source = `${trip?.vehicleType || ''} ${trip?.assistanceNeeds || ''} ${trip?.tripType || ''}`.toLowerCase();
   if (source.includes('stretcher') || source.includes('str')) return 'STR';
@@ -99,6 +181,22 @@ const getTripMilesDisplay = trip => {
   const miles = getTripMilesValue(trip);
   if (miles == null) return '-';
   return Number(miles.toFixed(2)).toString();
+};
+
+const normalizeTripTimeDisplay = value => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+
+  const asClockMinutes = parseTripClockMinutes(text);
+  if (asClockMinutes != null) return formatMinutesAsClock(asClockMinutes);
+
+  const numeric = Number(text);
+  if (Number.isFinite(numeric)) {
+    const spreadsheetMinutes = parseSpreadsheetTimeMinutes(numeric);
+    if (spreadsheetMinutes != null) return formatMinutesAsClock(spreadsheetMinutes);
+  }
+
+  return text;
 };
 
 const parseSpreadsheetTimeMinutes = value => {
@@ -207,10 +305,12 @@ const ConfirmationWorkspace = () => {
   const [isMilesMaxManual, setIsMilesMaxManual] = useState(false);
   const [showDetectedMaxBadge, setShowDetectedMaxBadge] = useState(false);
   const [resultViewMode, setResultViewMode] = useState('trips');
-  const [manualConfirmations, setManualConfirmations] = useState({});
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
   const [cancelLegScope, setCancelLegScope] = useState('single');
+  const [blockReasonModalTrip, setBlockReasonModalTrip] = useState(null);
+  const [blockReasonType, setBlockReasonType] = useState('hospital-rehab');
+  const [blockReasonNote, setBlockReasonNote] = useState('');
   
   // Hospital/Rehab states
   const [hospitalRehabModal, setHospitalRehabModal] = useState(null);
@@ -246,11 +346,13 @@ const ConfirmationWorkspace = () => {
   const [patientStatusEndDate, setPatientStatusEndDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [patientStatusReason, setPatientStatusReason] = useState('Rehab stay');
   const [patientStatusSourceNote, setPatientStatusSourceNote] = useState('');
+  const [showOutputColumnPicker, setShowOutputColumnPicker] = useState(false);
+  const [outputColumns, setOutputColumns] = useState([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
 
-  const optOutList = Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [];
-  const blacklistEntries = Array.isArray(blacklistData?.entries) ? blacklistData.entries : [];
-  const groupTemplates = smsData?.sms?.groupTemplates || {};
-  const riderProfiles = smsData?.sms?.riderProfiles || {};
+  const optOutList = useMemo(() => (Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : EMPTY_ARRAY), [smsData?.sms?.optOutList]);
+  const blacklistEntries = useMemo(() => (Array.isArray(blacklistData?.entries) ? blacklistData.entries : EMPTY_ARRAY), [blacklistData?.entries]);
+  const groupTemplates = smsData?.sms?.groupTemplates || EMPTY_OBJECT;
+  const riderProfiles = smsData?.sms?.riderProfiles || EMPTY_OBJECT;
   const buildPatientProfileKey = trip => {
     const phoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
     if (phoneKey) return `phone:${phoneKey}`;
@@ -376,6 +478,23 @@ const ConfirmationWorkspace = () => {
     if (!selectedPatientKey) return null;
     return patientHistoryRows.find(row => row.key === selectedPatientKey) || null;
   }, [patientHistoryRows, selectedPatientKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setOutputColumns(normalizeConfirmationOutputColumns(parsed));
+    } catch {
+      setOutputColumns([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY, JSON.stringify(outputColumns));
+  }, [outputColumns]);
 
   const detectedMaxMilesForWindow = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -542,8 +661,10 @@ const ConfirmationWorkspace = () => {
   const visibleSelectedTripIds = useMemo(() => selectedTripIds.filter(tripId => visibleTripIds.includes(tripId)), [selectedTripIds, visibleTripIds]);
 
   useEffect(() => {
-    setSelectedTripIds(current => current.filter(tripId => visibleTripIds.includes(tripId)));
-  }, [visibleTripIds]);
+    const next = selectedTripIds.filter(tripId => visibleTripIds.includes(tripId));
+    const hasChanged = next.length !== selectedTripIds.length || next.some((id, index) => id !== selectedTripIds[index]);
+    if (hasChanged) setSelectedTripIds(next);
+  }, [selectedTripIds, visibleTripIds]);
 
   const toggleTripSelection = tripId => {
     setSelectedTripIds(current => current.includes(tripId) ? current.filter(id => id !== tripId) : [...current, tripId]);
@@ -565,51 +686,130 @@ const ConfirmationWorkspace = () => {
       defaultCountryCode: smsData?.sms?.defaultCountryCode
     });
 
-    if (blockingState.optOutEntry || blockingState.blacklistEntry) {
-      const requests = [];
-
-      if (blockingState.optOutEntry) {
-        requests.push(saveSmsData({
-          sms: {
-            ...(smsData?.sms || {}),
-            optOutList: optOutList.filter(entry => entry.id !== blockingState.optOutEntry.id)
-          }
-        }));
-      }
-
-      if (blockingState.blacklistEntry) {
-        requests.push(saveBlacklistData({
-          version: blacklistData?.version ?? 1,
-          entries: blacklistEntries.map(entry => entry.id === blockingState.blacklistEntry.id ? {
-            ...entry,
-            status: 'Resolved',
-            updatedAt: new Date().toISOString()
-          } : entry)
-        }));
-      }
-
-      await Promise.all(requests);
-      setCustomStatus('Paciente removido del bloqueo automatico.');
+    if (blockingState.blacklistEntry) {
+      setCustomStatus('This patient is blocked by an Active Black List entry. Remove it in Black List to unblock.');
       return;
     }
 
+    if (blockingState.optOutEntry) {
+      await saveSmsData({
+        sms: {
+          ...(smsData?.sms || {}),
+          optOutList: optOutList.filter(entry => entry.id !== blockingState.optOutEntry.id)
+        }
+      });
+      updateTripRecord(trip.id, {
+        confirmation: {
+          ...(trip.confirmation || {}),
+          status: 'Not Sent',
+          provider: '',
+          respondedAt: '',
+          lastResponseText: 'Unblocked by dispatcher',
+          lastResponseCode: 'UB'
+        },
+        confirmationSignal: {
+          status: 'Not Sent',
+          provider: '',
+          methodCode: 'UB',
+          message: 'Unblocked by dispatcher',
+          eventType: 'unblock',
+          source: 'confirmation-workspace',
+          updatedAt: new Date().toISOString()
+        }
+      });
+      setCustomStatus('Patient removed from temporary do-not-confirm list.');
+      return;
+    }
+
+    setBlockReasonModalTrip(trip);
+    setBlockReasonType('hospital-rehab');
+    setBlockReasonNote('');
+  };
+
+  const handleConfirmBlockReason = async () => {
+    if (!blockReasonModalTrip) return;
+    const trip = blockReasonModalTrip;
+    const reasonLabel = BLOCK_REASON_OPTIONS.find(option => option.value === blockReasonType)?.label || 'Other reason';
+    const details = blockReasonNote.trim();
+    const reasonText = details ? `${reasonLabel}: ${details}` : reasonLabel;
+
+    const nowIso = new Date().toISOString();
     const normalizedTripPhone = String(trip.patientPhoneNumber || '').replace(/\D/g, '');
-    const normalizedRider = String(trip.rider || '').trim().toLowerCase();
-    const nextOptOutList = [{
-      id: `${normalizedTripPhone || normalizedRider.replace(/\s+/g, '-')}-${Date.now()}`,
+    const normalizedRider = String(trip.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const isSamePatient = entry => {
+      const entryPhone = String(entry?.phone || '').replace(/\D/g, '');
+      const entryName = String(entry?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (entryPhone && normalizedTripPhone && entryPhone === normalizedTripPhone) return true;
+      if (entryName && normalizedRider && entryName === normalizedRider) return true;
+      return false;
+    };
+
+    const existingIndex = blacklistEntries.findIndex(entry => isSamePatient(entry));
+    const nextBlacklistEntries = existingIndex >= 0 ? blacklistEntries.map((entry, index) => {
+      if (index !== existingIndex) return entry;
+      const mergedNote = [String(entry.notes || '').trim(), `[UPDATED BLOCK] ${reasonText}`].filter(Boolean).join(' | ');
+      return {
+        ...entry,
+        category: blockReasonType === 'hospital-rehab' ? 'Medical Hold' : entry.category || 'Do Not Schedule',
+        status: 'Active',
+        holdUntil: '',
+        notes: mergedNote,
+        source: entry.source || 'Confirmation Block',
+        updatedAt: nowIso
+      };
+    }) : [{
+      id: `bl-${Date.now()}`,
       name: trip.rider || '',
       phone: trip.patientPhoneNumber || '',
-      reason: 'No automatic confirmation',
-      createdAt: new Date().toISOString()
-    }, ...optOutList];
+      category: blockReasonType === 'hospital-rehab' ? 'Medical Hold' : 'Do Not Schedule',
+      status: 'Active',
+      holdUntil: '',
+      notes: reasonText,
+      source: 'Confirmation Block',
+      createdAt: nowIso,
+      updatedAt: nowIso
+    }, ...blacklistEntries];
 
-    await saveSmsData({
-      sms: {
-        ...(smsData?.sms || {}),
-        optOutList: nextOptOutList
-      }
+    const cleanedOptOutList = optOutList.filter(entry => !isSamePatient(entry));
+
+    await Promise.all([
+      saveBlacklistData({
+        version: blacklistData?.version ?? 1,
+        entries: nextBlacklistEntries
+      }),
+      saveSmsData({
+        sms: {
+          ...(smsData?.sms || {}),
+          optOutList: cleanedOptOutList
+        }
+      })
+    ]);
+
+    updateTripRecord(trip.id, {
+      confirmation: {
+        ...(trip.confirmation || {}),
+        status: 'Opted Out',
+        provider: 'block',
+        respondedAt: new Date().toISOString(),
+        lastResponseText: `Blocked: ${reasonText}`,
+        lastResponseCode: 'B'
+      },
+      confirmationSignal: {
+        status: 'Opted Out',
+        provider: 'block',
+        methodCode: 'B',
+        message: `Blocked: ${reasonText}`,
+        eventType: 'block',
+        source: 'confirmation-workspace',
+        updatedAt: new Date().toISOString()
+      },
+      notes: [String(trip.notes || '').trim(), `[BLOCK] ${new Date().toLocaleString()}: ${reasonText}`].filter(Boolean).join('\n')
     });
-    setCustomStatus('Patient added to Do Not Confirm. Will be blocked every day until removed.');
+
+    setBlockReasonModalTrip(null);
+    setBlockReasonType('hospital-rehab');
+    setBlockReasonNote('');
+    setCustomStatus('Patient blocked and persisted in Black List until manually removed.');
   };
 
   const handleSendCustomMessage = async () => {
@@ -672,6 +872,71 @@ const ConfirmationWorkspace = () => {
     handleOpenConfirmationMethod(tripsToConfirm);
   };
 
+  const selectedOutputColumnOptions = useMemo(() => CONFIRMATION_OUTPUT_COLUMN_OPTIONS.filter(option => outputColumns.includes(option.key)), [outputColumns]);
+
+  const handleToggleOutputColumn = columnKey => {
+    setOutputColumns(current => {
+      const hasColumn = current.includes(columnKey);
+      if (hasColumn && current.length === 1) return current;
+      return hasColumn ? current.filter(key => key !== columnKey) : [...current, columnKey];
+    });
+  };
+
+  const getOutputColumnValue = (trip, columnKey) => {
+    const blockingState = tripBlockingMap.get(trip.id) || { isBlocked: false };
+    const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
+    switch (columnKey) {
+      case 'tripId':
+        return trip.id || '-';
+      case 'rider':
+        return trip.rider || '-';
+      case 'phone':
+        return trip.patientPhoneNumber || '-';
+      case 'pickupTime':
+        return getTripDisplayPickupTime(trip) || '-';
+      case 'pickupAddress':
+        return trip.address || '-';
+      case 'puZip':
+        return trip.pickupZip || trip.puZip || '-';
+      case 'dropoffAddress':
+        return trip.destination || '-';
+      case 'doZip':
+        return trip.dropoffZip || trip.doZip || '-';
+      case 'miles':
+        return getTripMilesDisplay(trip);
+      case 'leg':
+        return getTripLegFilterKey(trip);
+      case 'type':
+        return getTripTypeLabel(trip);
+      case 'doNotConfirm':
+        return blockingState.isBlocked ? 'Blocked' : 'Allowed';
+      case 'hospitalRehab':
+        return trip.hospitalStatus ? `${trip.hospitalStatus.type || 'Hospital'}: ${trip.hospitalStatus.endDate || '-'}` : '-';
+      case 'confirmation':
+        return confirmationStatus;
+      case 'dispatchStatus':
+        return trip.safeRideStatus || trip.status || '-';
+      case 'reply':
+        return trip.confirmation?.lastResponseText || '-';
+      case 'sent':
+        return trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-';
+      case 'responded':
+        return trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-';
+      default:
+        return '-';
+    }
+  };
+
+  const buildTripOutputLine = trip => selectedOutputColumnOptions.map(option => `${option.label}: ${getOutputColumnValue(trip, option.key)}`).join(' | ');
+
+  const getOutputCellHtml = (trip, columnKey) => {
+    const value = getOutputColumnValue(trip, columnKey);
+    if (columnKey === 'pickupAddress' || columnKey === 'dropoffAddress') {
+      return escapeHtml(formatAddressForPrint(value)).replace(/\n/g, '<br/>');
+    }
+    return escapeHtml(value);
+  };
+
   const handleLoadGroupTemplate = () => {
     if (!activeGroupTemplate) {
       setCustomStatus('Ese grupo no tiene mensaje predeterminado guardado todavia.');
@@ -684,20 +949,26 @@ const ConfirmationWorkspace = () => {
   const handleManualConfirm = (tripId, trip) => {
     // Open confirmation method modal if trip info available
     if (trip) {
+      const currentStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+      if (currentStatus === 'Confirmed') {
+        const shouldUnconfirm = window.confirm(`Trip ${trip.id} ya esta confirmado. Quieres marcarlo como UNCONFIRM (Not Sent)?`);
+        if (!shouldUnconfirm) return;
+        applyTripConfirmationState(trip, {
+          status: 'Not Sent',
+          provider: '',
+          methodCode: 'U',
+          message: 'Unconfirmed by dispatcher',
+          eventType: 'unconfirm',
+          noteLine: `[UNCONFIRM] ${new Date().toLocaleString()}: Dispatcher changed status to Not Sent.`
+        });
+        setCustomStatus(`Trip ${trip.id} cambiado a Unconfirm (Not Sent).`);
+        return;
+      }
       setConfirmationSourceTrip(trip);
       setConfirmationLegScope('single');
       handleOpenConfirmationMethod([trip]);
     } else {
-      // Local manual confirmation
-      setManualConfirmations(current => ({
-        ...current,
-        [tripId]: {
-          status: 'Confirmed',
-          method: 'M',
-          timestamp: new Date().toISOString()
-        }
-      }));
-      setCustomStatus(`Trip ${tripId} marcado manualmente como Confirmado.`);
+      setCustomStatus(`Trip ${tripId} listo para confirmacion manual.`);
     }
   };
 
@@ -714,24 +985,14 @@ const ConfirmationWorkspace = () => {
     const targetTrips = cancelLegScope === 'both' ? [cancelNoteModal, ...siblingTrips] : [cancelNoteModal];
 
     targetTrips.forEach(targetTrip => {
-      updateTripRecord(targetTrip.id, {
-        notes: (targetTrip.notes || '') + (targetTrip.notes ? '\n' : '') + `[CANCELADO] ${new Date().toLocaleString()}: ${cancelNoteDraft}`
+      applyTripConfirmationState(targetTrip, {
+        status: 'Cancelled',
+        provider: 'manual',
+        methodCode: 'X',
+        message: 'Cancelled by dispatcher',
+        eventType: 'cancel',
+        noteLine: `[CANCELADO] ${new Date().toLocaleString()}: ${cancelNoteDraft}`
       });
-    });
-
-    setManualConfirmations(current => {
-      const next = {
-        ...current
-      };
-      targetTrips.forEach(targetTrip => {
-        next[targetTrip.id] = {
-          status: 'Cancelled',
-          method: 'MANUAL',
-          timestamp: new Date().toISOString(),
-          note: cancelNoteDraft
-        };
-      });
-      return next;
     });
 
     setCancelNoteModal(null);
@@ -746,6 +1007,10 @@ const ConfirmationWorkspace = () => {
       setCustomStatus('No hay viajes para exportar con el filtro actual.');
       return;
     }
+    if (selectedOutputColumnOptions.length === 0) {
+      setCustomStatus('Selecciona al menos una columna para exportar.');
+      return;
+    }
 
     let htmlContent = `
       <!doctype html>
@@ -757,12 +1022,19 @@ const ConfirmationWorkspace = () => {
             body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
             h1 { margin: 0 0 12px; font-size: 24px; }
             .meta { margin-bottom: 16px; font-size: 13px; }
-            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-            th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 12px; text-align: left; vertical-align: top; word-break: break-word; }
+            table { width: 100%; border-collapse: collapse; table-layout: auto; }
+            th, td { border: 1px solid #d1d5db; padding: 6px; font-size: 11px; text-align: left; vertical-align: top; white-space: nowrap; overflow-wrap: normal; word-break: normal; }
             th { background: #f3f4f6; }
             tr { page-break-inside: avoid; }
+            th.col-pickupAddress, td.col-pickupAddress, th.col-dropoffAddress, td.col-dropoffAddress {
+              min-width: 190px;
+              max-width: 220px;
+              white-space: normal;
+              line-height: 1.2;
+            }
             @media print {
-              body { margin: 12px; }
+              @page { size: A4 landscape; margin: 10mm; }
+              body { margin: 0; }
             }
           </style>
         </head>
@@ -771,23 +1043,13 @@ const ConfirmationWorkspace = () => {
           <div class="meta"><strong>Date:</strong> ${confirmationDate} <br /><strong>Time Range:</strong> ${timeFromFilter} - ${timeToFilter} <br /><strong>Total trips:</strong> ${exportTrips.length}</div>
           <table>
             <thead>
-              <tr><th>Trip ID</th><th>Rider</th><th>Phone</th><th>Leg</th><th>Type</th><th>Status</th><th>Confirmation</th></tr>
+              <tr>${selectedOutputColumnOptions.map(option => `<th class="col-${option.key}">${escapeHtml(option.label)}</th>`).join('')}</tr>
             </thead>
             <tbody>
     `;
 
     exportTrips.forEach(trip => {
-      const blockingState = tripBlockingMap.get(trip.id) || { isBlocked: false };
-      const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
-      htmlContent += `<tr>
-        <td>${trip.id}</td>
-        <td>${trip.rider}</td>
-        <td>${trip.patientPhoneNumber || '-'}</td>
-        <td>${getTripLegFilterKey(trip)}</td>
-        <td>${getTripTypeLabel(trip)}</td>
-        <td>${confirmationStatus}</td>
-        <td>${trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td>
-      </tr>`;
+      htmlContent += `<tr>${selectedOutputColumnOptions.map(option => `<td class="col-${option.key}">${getOutputCellHtml(trip, option.key)}</td>`).join('')}</tr>`;
     });
 
     htmlContent += '</tbody></table></body></html>';
@@ -869,6 +1131,47 @@ const ConfirmationWorkspace = () => {
     if (method === 'sms') return 'SMS';
     if (method === 'call') return 'Call';
     return 'Manual';
+  };
+
+  const buildConfirmationSignalPayload = ({ status, provider, methodCode, message, eventType }) => ({
+    status,
+    provider,
+    methodCode,
+    message,
+    eventType,
+    source: 'confirmation-workspace',
+    updatedAt: new Date().toISOString()
+  });
+
+  const getTripConfirmActionLabel = (trip, confirmationStatus) => {
+    if (confirmationStatus === 'Confirmed') return 'Unconfirm';
+    const code = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
+    if (code) return `Confirm (${code})`;
+    return 'Confirm';
+  };
+
+  const applyTripConfirmationState = (trip, { status, provider = '', methodCode = '', message = '', eventType = 'manual', noteLine = '' }) => {
+    const nowIso = new Date().toISOString();
+    const nextNotes = noteLine ? [String(trip?.notes || '').trim(), noteLine].filter(Boolean).join('\n') : undefined;
+    updateTripRecord(trip.id, {
+      ...(nextNotes !== undefined ? { notes: nextNotes } : {}),
+      confirmation: {
+        ...(trip.confirmation || {}),
+        status,
+        provider,
+        respondedAt: status === 'Confirmed' ? nowIso : '',
+        lastResponseText: message,
+        lastResponseCode: methodCode
+      },
+      confirmationSignal: buildConfirmationSignalPayload({
+        status,
+        provider,
+        methodCode,
+        message,
+        eventType
+      })
+    });
+
   };
 
   const getTripDisplayPickupTime = trip => {
@@ -967,8 +1270,8 @@ const ConfirmationWorkspace = () => {
     const profile = getRiderProfile(trip);
     setTripUpdateModal(trip);
     setTripUpdateConfirmMethod('call');
-    setTripUpdatePickupTime(String(trip?.scheduledPickup || trip?.pickup || ''));
-    setTripUpdateDropoffTime(String(trip?.scheduledDropoff || trip?.dropoff || ''));
+    setTripUpdatePickupTime(normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || ''));
+    setTripUpdateDropoffTime(normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || ''));
     setTripUpdateNote('');
     setTripUpdateCompanionNote(String(profile?.companion || ''));
     setTripUpdateMobilityNote(String(profile?.mobility || ''));
@@ -978,8 +1281,8 @@ const ConfirmationWorkspace = () => {
     if (!tripUpdateModal) return;
     const nowIso = new Date().toISOString();
     const methodLabel = getMethodLabel(tripUpdateConfirmMethod);
-    const oldPickup = String(tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '').trim();
-    const oldDropoff = String(tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '').trim();
+    const oldPickup = normalizeTripTimeDisplay(tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '');
+    const oldDropoff = normalizeTripTimeDisplay(tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '');
     const newPickup = String(tripUpdatePickupTime || '').trim();
     const newDropoff = String(tripUpdateDropoffTime || '').trim();
     const pickupChanged = Boolean(newPickup) && newPickup !== oldPickup;
@@ -1042,15 +1345,6 @@ const ConfirmationWorkspace = () => {
       });
     }
 
-    setManualConfirmations(current => ({
-      ...current,
-      [tripUpdateModal.id]: {
-        status: 'Confirmed',
-        method: getMethodCode(tripUpdateConfirmMethod),
-        timestamp: nowIso
-      }
-    }));
-
     setCustomStatus(`Trip ${tripUpdateModal.id} updated. Method: ${methodLabel}${pickupChanged || dropoffChanged ? ' | Schedule marked NEW' : ''}.`);
     setTripUpdateModal(null);
   };
@@ -1063,13 +1357,15 @@ const ConfirmationWorkspace = () => {
 
     const siblingTrips = confirmationSourceTrip ? getSiblingLegTrips(confirmationSourceTrip, trips) : [];
     const targetTrips = confirmationSourceTrip && confirmationLegScope === 'both' ? Array.from(new Map([confirmationSourceTrip, ...siblingTrips].map(item => [item.id, item])).values()) : confirmationMethodModal;
+    if (selectedOutputColumnOptions.length === 0) {
+      setCustomStatus('Selecciona al menos una columna para enviar.');
+      return;
+    }
 
     setIsSendingConfirmation(true);
     try {
       if (confirmationMethod === 'whatsapp') {
-        const tripsInfo = targetTrips.map(trip => 
-          `${trip.id} - ${trip.rider} (${trip.patientPhoneNumber})`
-        ).join('\n');
+        const tripsInfo = targetTrips.map(trip => buildTripOutputLine(trip)).join('\n');
 
         const message = `CONFIRMATION REQUEST\n\nTrips to confirm:\n${tripsInfo}\n\nPlease confirm receipt.`;
         const firstTripWithPhone = targetTrips.find(trip => trip.patientPhoneNumber);
@@ -1093,28 +1389,17 @@ const ConfirmationWorkspace = () => {
               body: JSON.stringify({
                 method: 'whatsapp',
                 phoneNumber: trip.patientPhoneNumber,
-                message: `Hi ${trip.rider}, this is a confirmation for trip ${trip.id}. Aguarda nuestra confirmacion.`
+                message: `Hi ${trip.rider}, this is your confirmation detail: ${buildTripOutputLine(trip)}.`
               })
             });
           }
-          updateTripRecord(trip.id, {
-            confirmation: {
-              ...(trip.confirmation || {}),
-              status: 'Confirmed',
-              provider: 'whatsapp',
-              respondedAt: new Date().toISOString(),
-              lastResponseText: 'Confirmed via WhatsApp',
-              lastResponseCode: 'W'
-            }
+          applyTripConfirmationState(trip, {
+            status: 'Confirmed',
+            provider: 'whatsapp',
+            methodCode: 'W',
+            message: 'Confirmed via WhatsApp',
+            eventType: 'confirm-whatsapp'
           });
-          setManualConfirmations(current => ({
-            ...current,
-            [trip.id]: {
-              status: 'Confirmed',
-              method: 'W',
-              timestamp: new Date().toISOString()
-            }
-          }));
         }
 
         setCustomStatus(`WhatsApp confirmations sent to ${targetTrips.length} trip(s).`);
@@ -1124,64 +1409,33 @@ const ConfirmationWorkspace = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            tripIds: targetTrips.map(t => t.id)
+            tripIds: targetTrips.map(t => t.id),
+            selectedColumns: outputColumns
           })
         });
         
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Failed to send SMS');
         targetTrips.forEach(trip => {
-          updateTripRecord(trip.id, {
-            confirmation: {
-              ...(trip.confirmation || {}),
-              status: 'Confirmed',
-              provider: 'sms',
-              respondedAt: new Date().toISOString(),
-              lastResponseText: 'Confirmed via SMS',
-              lastResponseCode: 'S'
-            }
+          applyTripConfirmationState(trip, {
+            status: 'Confirmed',
+            provider: 'sms',
+            methodCode: 'S',
+            message: 'Confirmed via SMS',
+            eventType: 'confirm-sms'
           });
-        });
-        setManualConfirmations(current => {
-          const next = {
-            ...current
-          };
-          targetTrips.forEach(trip => {
-            next[trip.id] = {
-              status: 'Confirmed',
-              method: 'S',
-              timestamp: new Date().toISOString()
-            };
-          });
-          return next;
         });
         
         setCustomStatus(`SMS confirmations sent: ${result.sentCount}. Failed: ${result.failedCount || 0}. Skipped: ${result.skippedCount || 0}.`);
       } else if (confirmationMethod === 'call') {
         targetTrips.forEach(trip => {
-          updateTripRecord(trip.id, {
-            confirmation: {
-              ...(trip.confirmation || {}),
-              status: 'Confirmed',
-              provider: 'call',
-              respondedAt: new Date().toISOString(),
-              lastResponseText: 'Confirmed via Call',
-              lastResponseCode: 'C'
-            }
+          applyTripConfirmationState(trip, {
+            status: 'Confirmed',
+            provider: 'call',
+            methodCode: 'C',
+            message: 'Confirmed via Call',
+            eventType: 'confirm-call'
           });
-        });
-        setManualConfirmations(current => {
-          const next = {
-            ...current
-          };
-          targetTrips.forEach(trip => {
-            next[trip.id] = {
-              status: 'Confirmed',
-              method: 'C',
-              timestamp: new Date().toISOString()
-            };
-          });
-          return next;
         });
         setCustomStatus(`Call confirmations saved for ${targetTrips.length} trip(s).`);
       }
@@ -1435,6 +1689,18 @@ const ConfirmationWorkspace = () => {
               </Form.Select>
               <Button style={surfaceStyles.button} onClick={handleSelectVisible}>Select Visible</Button>
               <Button style={surfaceStyles.button} onClick={handleClearSelection}>Clear</Button>
+              <div className="position-relative">
+                <Button style={surfaceStyles.button} onClick={() => setShowOutputColumnPicker(current => !current)}>Output Columns</Button>
+                {showOutputColumnPicker ? <Card className="shadow position-absolute start-0 mt-2" style={{ zIndex: 80, width: 280 }}>
+                    <CardBody className="p-3" style={surfaceStyles.card}>
+                      <div className="fw-semibold mb-2">Escoge columnas de salida</div>
+                      <div className="small text-secondary mb-3">Aplica a Print/PDF/Enviar y se guarda para la proxima vez.</div>
+                      <div className="d-flex flex-column gap-2" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                        {CONFIRMATION_OUTPUT_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`confirmation-output-column-${option.key}`} label={option.label} checked={outputColumns.includes(option.key)} onChange={() => handleToggleOutputColumn(option.key)} />)}
+                      </div>
+                    </CardBody>
+                  </Card> : null}
+              </div>
               <Button style={surfaceStyles.button} onClick={handleSendGroupConfirmation} disabled={confirmationSending}>{confirmationSending ? 'Sending...' : 'Send Confirmation'}</Button>
               <Button style={surfaceStyles.button} onClick={exportToPDF} title="Export visible trips to PDF/Print">Export PDF</Button>
             </div>
@@ -1556,8 +1822,8 @@ const ConfirmationWorkspace = () => {
                       <td>{trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-'}</td>
                       <td>
                         <div className="d-flex gap-1 flex-column">
-                          <Button size="sm" variant={manualConfirmations[trip.id]?.status === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title="Confirm via SMS/WhatsApp" style={{ minWidth: 80 }}>
-                            {manualConfirmations[trip.id]?.method || 'Confirm'}
+                          <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 96 }}>
+                            {getTripConfirmActionLabel(trip, confirmationStatus)}
                           </Button>
                           <Button size="sm" variant="outline-danger" onClick={() => handleCancelWithNote(trip)} title="Cancel with note" style={{ minWidth: 80 }}>
                             Cancel
@@ -1606,6 +1872,27 @@ const ConfirmationWorkspace = () => {
         </Modal.Footer>
       </Modal>
 
+      <Modal show={Boolean(blockReasonModalTrip)} onHide={() => setBlockReasonModalTrip(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Block Patient - Reason Required</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="small text-muted mb-2">Trip: {blockReasonModalTrip?.id}</div>
+          <div className="small text-muted mb-3">Rider: {blockReasonModalTrip?.rider || '-'}</div>
+          <Form.Label className="small text-uppercase text-muted fw-semibold">Reason</Form.Label>
+          <Form.Select className="mb-3" value={blockReasonType} onChange={event => setBlockReasonType(event.target.value)}>
+            {BLOCK_REASON_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Form.Select>
+          <Form.Label className="small text-uppercase text-muted fw-semibold">Details</Form.Label>
+          <Form.Control as="textarea" rows={3} value={blockReasonNote} onChange={event => setBlockReasonNote(event.target.value)} placeholder="Write details (optional)" />
+          <div className="small text-muted mt-2">This will block in Confirmation and create an Active Blacklist entry immediately.</div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setBlockReasonModalTrip(null)}>Close</Button>
+          <Button variant="dark" onClick={handleConfirmBlockReason}>Block Patient</Button>
+        </Modal.Footer>
+      </Modal>
+
       <Modal show={Boolean(confirmationMethodModal)} onHide={() => setConfirmationMethodModal(null)} centered>
         <Modal.Header closeButton>
           <Modal.Title>Send Confirmation</Modal.Title>
@@ -1616,7 +1903,7 @@ const ConfirmationWorkspace = () => {
             {confirmationMethodModal?.length > 0 && (
               <div className="small mt-2">
                 {confirmationMethodModal.slice(0, 5).map(trip => (
-                  <div key={trip.id}>{trip.id} - {trip.rider}</div>
+                  <div key={trip.id}>{buildTripOutputLine(trip)}</div>
                 ))}
                 {confirmationMethodModal.length > 5 && <div className="text-muted">+ {confirmationMethodModal.length - 5} more</div>}
               </div>
@@ -1707,7 +1994,7 @@ const ConfirmationWorkspace = () => {
               <Form.Control value={tripUpdateDropoffTime} onChange={event => setTripUpdateDropoffTime(event.target.value)} placeholder="e.g. 08:15 AM" />
             </Col>
             <Col md={12}>
-              <div className="small text-muted">Current pickup: {tripUpdateModal?.scheduledPickup || tripUpdateModal?.pickup || '-'} | Current dropoff: {tripUpdateModal?.scheduledDropoff || tripUpdateModal?.dropoff || '-'}</div>
+              <div className="small text-muted">Current pickup: {normalizeTripTimeDisplay(tripUpdateModal?.scheduledPickup || tripUpdateModal?.pickup || '') || '-'} | Current dropoff: {normalizeTripTimeDisplay(tripUpdateModal?.scheduledDropoff || tripUpdateModal?.dropoff || '') || '-'}</div>
             </Col>
             <Col md={6}>
               <Form.Label className="small text-uppercase text-muted fw-semibold">Companion Note</Form.Label>

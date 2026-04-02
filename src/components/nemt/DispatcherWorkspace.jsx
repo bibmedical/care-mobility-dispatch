@@ -3,8 +3,11 @@
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel';
 import { useNemtContext } from '@/context/useNemtContext';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import useBlacklistApi from '@/hooks/useBlacklistApi';
+import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
+import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
@@ -25,10 +28,29 @@ const TRIP_COLUMN_MIN_WIDTHS = {
   lateMinutes: 68
 };
 
+const DISPATCHER_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW1_BLOCKS__';
+const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['trip-summary', 'status-filter', 'date-controls', 'trip-search', 'driver-select', 'secondary-driver', 'driver-assigned', 'selected-count'];
+const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
+const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'toolbar-edit', 'columns', 'map-screen', 'trip-order', 'actions', 'leg-buttons', 'type-buttons'];
+const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
+const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['zip-filter', 'route-filter', 'metric-miles', 'metric-duration'];
+
 const greenToolbarButtonStyle = {
   color: '#08131a',
   borderColor: 'rgba(8, 19, 26, 0.35)',
   backgroundColor: 'transparent'
+};
+
+const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
+  try {
+    await fetch('/api/system-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventLabel, target, metadata })
+    });
+  } catch (error) {
+    console.error('Error recording system activity:', error);
+  }
 };
 
 const addressClampStyle = {
@@ -245,22 +267,42 @@ const getTripLegFilterKey = trip => {
   return 'CL';
 };
 
+const getEffectivePickupTimeText = trip => {
+  const scheduledPickup = String(trip?.scheduledPickup || '').trim();
+  const pickup = String(trip?.pickup || '').trim();
+  const scheduledLooksLikeExcelSerial = /^\d{4,6}(?:\.\d+)?$/.test(scheduledPickup);
+  if (scheduledLooksLikeExcelSerial && pickup) return pickup;
+  return scheduledPickup || pickup;
+};
+
 const hasMissingTripTime = trip => {
-  const scheduledPickup = String(trip?.scheduledPickup || trip?.pickup || '').trim();
-  const parsedPickupMinutes = parseTripClockMinutes(scheduledPickup);
-  if (!scheduledPickup) return true;
-  if (['tbd', 'willcall', 'will call', '23:', '23'].includes(scheduledPickup.toLowerCase())) return true;
+  const effectivePickupText = getEffectivePickupTimeText(trip);
+  const parsedPickupMinutes = parseTripClockMinutes(effectivePickupText);
+  const normalizedPickup = effectivePickupText.toLowerCase().replace(/\s+/g, '');
+  if (!effectivePickupText) return true;
+  if (['tbd', 'willcall', 'will call', '23:', '23'].includes(effectivePickupText.toLowerCase())) return true;
+  if (['11:59pm', '11:59p.m.', '11:59p'].includes(normalizedPickup)) return true;
   if (parsedPickupMinutes != null) return false;
   return !Number.isFinite(trip?.pickupSortValue) || trip?.pickupSortValue === Number.MAX_SAFE_INTEGER;
 };
 
+const hasWillCallPickupMarker = trip => {
+  const effectivePickupText = getEffectivePickupTimeText(trip).toLowerCase();
+  if (!effectivePickupText) return false;
+  const normalizedPickup = effectivePickupText.replace(/\s+/g, '');
+  if (['11:59pm', '11:59p.m.', '11:59p'].includes(normalizedPickup)) return true;
+  return ['tbd', 'willcall', 'will call', '23', '23:'].some(marker => effectivePickupText === marker || effectivePickupText.startsWith(marker));
+};
+
 const getEffectiveTripStatus = trip => {
   const normalizedStatus = String(trip?.status || '').trim();
+  const normalizedStatusToken = normalizedStatus.toLowerCase().replace(/\s+/g, '');
   const normalizedOverride = String(trip?.willCallOverride || '').trim().toLowerCase();
-  if (['cancelled', 'canceled'].includes(normalizedStatus.toLowerCase())) return normalizedStatus || 'Cancelled';
-  if (normalizedOverride === 'off') return normalizedStatus === 'WillCall' ? 'Unassigned' : normalizedStatus || 'Unassigned';
+  if (['cancelled', 'canceled'].includes(normalizedStatusToken)) return 'Cancelled';
+  if (normalizedOverride === 'off') return normalizedStatusToken === 'willcall' ? 'Unassigned' : normalizedStatus || 'Unassigned';
   if (normalizedOverride === 'manual') return 'WillCall';
-  if (normalizedStatus === 'WillCall') return 'WillCall';
+  if (normalizedStatusToken === 'willcall') return 'WillCall';
+  if (hasWillCallPickupMarker(trip)) return 'WillCall';
   if (getTripLegFilterKey(trip) !== 'AL' && hasMissingTripTime(trip)) return 'WillCall';
   return normalizedStatus || 'Unassigned';
 };
@@ -289,18 +331,13 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const DispatcherWorkspace = () => {
   const router = useRouter();
+  const { data: smsData } = useSmsIntegrationApi();
+  const { data: blacklistData } = useBlacklistApi();
   const {
     drivers,
     trips,
     routePlans,
-    selectedTripIds,
-    selectedDriverId,
-    selectedRouteId,
-    setSelectedDriverId,
-    setSelectedRouteId,
-    setSelectedTripIds,
     uiPreferences,
-    toggleTripSelection,
     assignTripsToDriver,
     assignTripsToSecondaryDriver,
     unassignTrips,
@@ -318,7 +355,10 @@ const DispatcherWorkspace = () => {
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
-  const [tripDateFilter, setTripDateFilter] = useState('all');
+  const [tripDateFilter, setTripDateFilter] = useState(() => getLocalDateKey());
+  const [selectedTripIds, setSelectedTripIds] = useState([]);
+  const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
   const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
@@ -335,6 +375,13 @@ const DispatcherWorkspace = () => {
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
+  const [toolbarRow1Order, setToolbarRow1Order] = useState(DISPATCHER_ROW1_DEFAULT_BLOCKS);
+  const [toolbarRow2Order, setToolbarRow2Order] = useState(DISPATCHER_ROW2_DEFAULT_BLOCKS);
+  const [toolbarRow3Order, setToolbarRow3Order] = useState(DISPATCHER_ROW3_DEFAULT_BLOCKS);
+  const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
+  const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
+  const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('Dispatcher listo.');
   const [columnSplit, setColumnSplit] = useState(50);
   const [rowSplit, setRowSplit] = useState(56);
@@ -360,6 +407,18 @@ const DispatcherWorkspace = () => {
   const [tripTableScrollLeft, setTripTableScrollLeft] = useState(0);
   const [tripTableMaxScrollLeft, setTripTableMaxScrollLeft] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
+  const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
+  const blacklistEntries = useMemo(() => Array.isArray(blacklistData?.entries) ? blacklistData.entries : [], [blacklistData?.entries]);
+  const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
+    trip,
+    optOutList,
+    blacklistEntries,
+    defaultCountryCode: smsData?.sms?.defaultCountryCode
+  })])), [blacklistEntries, optOutList, smsData?.sms?.defaultCountryCode, trips]);
+
+  const toggleTripSelection = tripId => {
+    setSelectedTripIds(currentTripIds => currentTripIds.includes(tripId) ? currentTripIds.filter(id => id !== tripId) : [...currentTripIds, tripId]);
+  };
 
   const syncTripTableScroll = source => {
     if (tripTableScrollSyncRef.current) return;
@@ -384,9 +443,300 @@ const DispatcherWorkspace = () => {
 
   const selectedDriver = useMemo(() => drivers.find(driver => driver.id === selectedDriverId) ?? null, [drivers, selectedDriverId]);
   const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
+  const dispatchTimeZone = uiPreferences?.timeZone;
+  const todayDateKey = useMemo(() => getLocalDateKey(new Date(), dispatchTimeZone), [dispatchTimeZone]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+
+  useEffect(() => {
+    setTripDateFilter(todayDateKey);
+    setSelectedTripIds([]);
+    setSelectedDriverId(null);
+    setSelectedRouteId(null);
+  }, [todayDateKey]);
+
+  useEffect(() => {
+    const loadToolbarOrder = (storageKey, defaultOrder) => {
+      const storedValue = window.localStorage.getItem(storageKey);
+      if (!storedValue) return defaultOrder;
+      const parsed = JSON.parse(storedValue);
+      if (!Array.isArray(parsed)) return defaultOrder;
+      const normalized = parsed.filter(blockId => defaultOrder.includes(blockId));
+      const missing = defaultOrder.filter(blockId => !normalized.includes(blockId));
+      const nextOrder = [...normalized, ...missing];
+      return nextOrder.length > 0 ? nextOrder : defaultOrder;
+    };
+
+    try {
+      setToolbarRow1Order(loadToolbarOrder(DISPATCHER_ROW1_BLOCKS_KEY, DISPATCHER_ROW1_DEFAULT_BLOCKS));
+      setToolbarRow2Order(loadToolbarOrder(DISPATCHER_ROW2_BLOCKS_KEY, DISPATCHER_ROW2_DEFAULT_BLOCKS));
+      setToolbarRow3Order(loadToolbarOrder(DISPATCHER_ROW3_BLOCKS_KEY, DISPATCHER_ROW3_DEFAULT_BLOCKS));
+    } catch {
+      // Ignore corrupted local toolbar layout preferences.
+    }
+  }, []);
+
+  const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
+    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    setToolbarRow1Order(currentOrder => {
+      const fromIndex = currentOrder.indexOf(fromBlockId);
+      const toIndex = currentOrder.indexOf(toBlockId);
+      if (fromIndex === -1 || toIndex === -1) return currentOrder;
+      const nextOrder = [...currentOrder];
+      const [moved] = nextOrder.splice(fromIndex, 1);
+      nextOrder.splice(toIndex, 0, moved);
+      return nextOrder;
+    });
+  };
+
+  const moveToolbarRow2Block = (fromBlockId, toBlockId) => {
+    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    setToolbarRow2Order(currentOrder => {
+      const fromIndex = currentOrder.indexOf(fromBlockId);
+      const toIndex = currentOrder.indexOf(toBlockId);
+      if (fromIndex === -1 || toIndex === -1) return currentOrder;
+      const nextOrder = [...currentOrder];
+      const [moved] = nextOrder.splice(fromIndex, 1);
+      nextOrder.splice(toIndex, 0, moved);
+      return nextOrder;
+    });
+  };
+
+  const moveToolbarRow3Block = (fromBlockId, toBlockId) => {
+    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    setToolbarRow3Order(currentOrder => {
+      const fromIndex = currentOrder.indexOf(fromBlockId);
+      const toIndex = currentOrder.indexOf(toBlockId);
+      if (fromIndex === -1 || toIndex === -1) return currentOrder;
+      const nextOrder = [...currentOrder];
+      const [moved] = nextOrder.splice(fromIndex, 1);
+      nextOrder.splice(toIndex, 0, moved);
+      return nextOrder;
+    });
+  };
+
+  const getActiveDraggedToolbarBlockId = () => draggingToolbarBlockId || draggingToolbarRow2BlockId || draggingToolbarRow3BlockId || null;
+
+  const clearDraggingToolbarBlockIds = () => {
+    setDraggingToolbarBlockId(null);
+    setDraggingToolbarRow2BlockId(null);
+    setDraggingToolbarRow3BlockId(null);
+  };
+
+  const moveToolbarBlockAcrossRows = (fromBlockId, targetRow, targetBlockId = null) => {
+    if (!fromBlockId || !targetRow) return;
+
+    const nextRow1 = toolbarRow1Order.filter(currentId => currentId !== fromBlockId);
+    const nextRow2 = toolbarRow2Order.filter(currentId => currentId !== fromBlockId);
+    const nextRow3 = toolbarRow3Order.filter(currentId => currentId !== fromBlockId);
+
+    const insertInto = row => {
+      if (!targetBlockId) {
+        row.push(fromBlockId);
+        return;
+      }
+      const targetIndex = row.indexOf(targetBlockId);
+      if (targetIndex === -1) {
+        row.push(fromBlockId);
+        return;
+      }
+      row.splice(targetIndex, 0, fromBlockId);
+    };
+
+    if (targetRow === 'row1') insertInto(nextRow1);
+    if (targetRow === 'row2') insertInto(nextRow2);
+    if (targetRow === 'row3') insertInto(nextRow3);
+
+    setToolbarRow1Order(nextRow1);
+    setToolbarRow2Order(nextRow2);
+    setToolbarRow3Order(nextRow3);
+  };
+
+  const handleSaveToolbarLayout = () => {
+    try {
+      window.localStorage.setItem(DISPATCHER_ROW1_BLOCKS_KEY, JSON.stringify(toolbarRow1Order));
+      window.localStorage.setItem(DISPATCHER_ROW2_BLOCKS_KEY, JSON.stringify(toolbarRow2Order));
+      window.localStorage.setItem(DISPATCHER_ROW3_BLOCKS_KEY, JSON.stringify(toolbarRow3Order));
+      setStatusMessage('Dispatcher toolbar layout guardado.');
+    } catch {
+      setStatusMessage('No se pudo guardar el dispatcher toolbar layout.');
+    } finally {
+      setIsToolbarEditMode(false);
+      clearDraggingToolbarBlockIds();
+    }
+  };
+
+  const handleResetToolbarLayout = () => {
+    const defaultRow1Order = [...DISPATCHER_ROW1_DEFAULT_BLOCKS];
+    const defaultRow2Order = [...DISPATCHER_ROW2_DEFAULT_BLOCKS];
+    const defaultRow3Order = [...DISPATCHER_ROW3_DEFAULT_BLOCKS];
+    setToolbarRow1Order(defaultRow1Order);
+    setToolbarRow2Order(defaultRow2Order);
+    setToolbarRow3Order(defaultRow3Order);
+    setIsToolbarEditMode(false);
+    clearDraggingToolbarBlockIds();
+    try {
+      window.localStorage.setItem(DISPATCHER_ROW1_BLOCKS_KEY, JSON.stringify(defaultRow1Order));
+      window.localStorage.setItem(DISPATCHER_ROW2_BLOCKS_KEY, JSON.stringify(defaultRow2Order));
+      window.localStorage.setItem(DISPATCHER_ROW3_BLOCKS_KEY, JSON.stringify(defaultRow3Order));
+      setStatusMessage('Dispatcher toolbar layout reseteado.');
+    } catch {
+      setStatusMessage('No se pudo resetear el dispatcher toolbar layout.');
+    }
+  };
+
+  const renderToolbarRow1Block = blockId => {
+    switch (blockId) {
+      case 'trip-summary':
+        return <>
+            <strong>Trips</strong>
+            <Badge bg="light" text="dark">{assignedTripsCount}/{trips.length}</Badge>
+          </>;
+      case 'status-filter':
+        return <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 130 }}>
+            <option value="all">All</option>
+            <option value="assigned">Assigned</option>
+            <option value="unassigned">Unassigned</option>
+            <option value="willcall">WillCall</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="block">Block</option>
+          </Form.Select>;
+      case 'date-controls':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(-1)} title="Previous day" style={greenToolbarButtonStyle}>Prev</Button>
+            <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || 'all')} style={{ width: 150 }} title="Filter trips by date" />
+            <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(1)} title="Next day" style={greenToolbarButtonStyle}>Next</Button>
+            <Button variant="outline-dark" size="sm" onClick={() => setTripDateFilter(todayDateKey)} title="Today" style={greenToolbarButtonStyle}>Today</Button>
+          </div>;
+      case 'trip-search':
+        return <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, rider, phone, address..." disabled={mapLocked} style={{ width: 220 }} />;
+      case 'driver-select':
+        return <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
+            <option value="">Select driver</option>
+            {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+          </Form.Select>;
+      case 'secondary-driver':
+        return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
+            <option value="">Second driver</option>
+            {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+          </Form.Select>;
+      case 'driver-assigned':
+        return selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null;
+      case 'selected-count':
+        return <Badge bg={selectedTripIds.length > 0 ? 'dark' : 'light'} text={selectedTripIds.length > 0 ? 'light' : 'dark'}>{selectedTripIds.length} selected trips</Badge>;
+      default:
+        return null;
+    }
+  };
+
+  const renderToolbarRow2Block = blockId => {
+    switch (blockId) {
+      case 'stats':
+        return <>
+            <Badge bg="primary">{trips.length} trips</Badge>
+            <Badge bg="info">{drivers.length} drivers</Badge>
+            <Badge bg="secondary">{liveDrivers} live</Badge>
+          </>;
+      case 'toolbar-edit':
+        return <>
+            {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save Toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)} disabled={mapLocked}>Edit Toolbar</Button>}
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout} disabled={mapLocked}>Reset Toolbar</Button>
+          </>;
+      case 'columns':
+        return <>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)} disabled={mapLocked}>
+              Columns
+            </Button>
+            {showColumnPicker ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 80, width: 240 }}>
+                <CardBody className="p-3 text-dark">
+                  <div className="fw-semibold mb-2">Escoge que quieres ver</div>
+                  <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
+                  <div className="d-flex flex-column gap-2">
+                    {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dispatcher-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
+                  </div>
+                </CardBody>
+              </Card> : null}
+          </>;
+      case 'map-screen':
+        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)} disabled={mapLocked}>
+            {showInlineMap ? 'Map Screen' : 'Show Map Here'}
+          </Button>;
+      case 'trip-order':
+        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle} disabled={mapLocked}>
+            {tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}
+          </Button>;
+      case 'actions':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked}>I</Button> : <>
+                <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)} disabled={mapLocked}>A</Button>
+                <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} disabled={mapLocked} title="Assign second driver">A2</Button>
+                <Button variant="secondary" size="sm" onClick={handleUnassign} disabled={mapLocked}>U</Button>
+                <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} disabled={mapLocked}>C</Button>
+              </>}
+          </div>;
+      case 'leg-buttons':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Leg</span>
+            <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} disabled={mapLocked} title="Primer viaje a la cita">AL</Button>
+            <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} disabled={mapLocked} title="Return-leg trips">BL</Button>
+            <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} disabled={mapLocked} title="Tercer viaje o connector leg">CL</Button>
+          </div>;
+      case 'type-buttons':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Type</span>
+            <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} disabled={mapLocked} title="Ambulatory">A</Button>
+            <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} disabled={mapLocked} title="Wheelchair">W</Button>
+            <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} disabled={mapLocked} title="Stretcher">STR</Button>
+          </div>;
+      default:
+        return null;
+    }
+  };
+
+  const renderToolbarRow3Block = blockId => {
+    switch (blockId) {
+      case 'zip-filter':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">ZIP</span>
+            <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} disabled={mapLocked} style={{ width: 110 }} title="ZIP de origen">
+              <option value="">PU ZIP</option>
+              {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
+            </Form.Select>
+            <span className="text-muted small">→</span>
+            <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} disabled={mapLocked} style={{ width: 110 }} title="ZIP de destino">
+              <option value="">DO ZIP</option>
+              {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
+            </Form.Select>
+            <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" disabled={mapLocked} style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
+          </div>;
+      case 'route-filter':
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Ruta</span>
+            <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} disabled={mapLocked} style={{ width: 140 }} title="Ciudad de recogida">
+              <option value="">Origen</option>
+              {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
+            </Form.Select>
+            <span className="text-muted small">→</span>
+            <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} disabled={mapLocked} style={{ width: 140 }} title="Ciudad de destino">
+              <option value="">Destino</option>
+              {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
+            </Form.Select>
+            {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
+          </div>;
+      case 'metric-miles':
+        return routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
+      case 'metric-duration':
+        return routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null;
+      default:
+        return null;
+    }
+  };
+
+  const activeDateTripIdSet = useMemo(() => {
+    if (tripDateFilter === 'all') return null;
+    return new Set(trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter).map(trip => String(trip?.id || '').trim()).filter(Boolean));
+  }, [tripDateFilter, routePlans, trips]);
   const hasSelectedTrips = selectedTripIds.length > 0;
-  const isTripAssignedToSelectedDriver = trip => Boolean(selectedDriverId && (trip?.driverId === selectedDriverId || trip?.secondaryDriverId === selectedDriverId));
+  const isTripAssignedToSelectedDriver = trip => isTripAssignedToDriver(trip, selectedDriverId);
   const getTripDriverDisplay = trip => {
     const primaryDriverName = getDriverName(trip?.driverId);
     const hasPrimary = Boolean(trip?.driverId);
@@ -399,11 +749,11 @@ const DispatcherWorkspace = () => {
   };
 
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
-    const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase();
-    const matchesStatus = tripStatusFilter === 'all' ? normalizedStatus !== 'cancelled' : normalizedStatus === tripStatusFilter;
+    const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
+    const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+    const matchesStatus = tripStatusFilter === 'all' ? normalizedStatus !== 'cancelled' : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : normalizedStatus === tripStatusFilter;
     if (!matchesStatus) return false;
-    const tripDate = getTripServiceDateKey(trip);
-    if (tripDate && tripDate !== tripDateFilter) return false;
+    if (tripDateFilter !== 'all' && getTripTimelineDateKey(trip, routePlans, trips) !== tripDateFilter) return false;
     return true;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
@@ -414,7 +764,9 @@ const DispatcherWorkspace = () => {
   }).filter(trip => {
     const searchValue = tripIdSearch.trim().toLowerCase();
     if (!searchValue) return true;
-    return String(trip.id || '').toLowerCase().includes(searchValue) || String(trip.brokerTripId || '').toLowerCase().includes(searchValue);
+    const tokens = searchValue.split(/\s+/).filter(Boolean);
+    const haystack = [trip.id, trip.brokerTripId, trip.rideId, trip.rider, trip.patientFirstName, trip.patientLastName, trip.patientName, trip.patientPhoneNumber, trip.address, trip.destination, getPickupZip(trip), getDropoffZip(trip), getPickupCity(trip), getDropoffCity(trip), trip.notes, trip.status, trip.safeRideStatus].filter(Boolean).join(' ').toLowerCase();
+    return tokens.every(token => haystack.includes(token));
   }).filter(trip => {
     const pickupZipValue = pickupZipFilter.trim();
     if (!pickupZipValue) return true;
@@ -427,7 +779,7 @@ const DispatcherWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, tripDateFilter, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, tripDateFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -498,8 +850,8 @@ const DispatcherWorkspace = () => {
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
-      const leftAssignedToSelectedDriver = selectedDriverId && leftTrip.driverId === selectedDriverId ? 1 : 0;
-      const rightAssignedToSelectedDriver = selectedDriverId && rightTrip.driverId === selectedDriverId ? 1 : 0;
+      const leftAssignedToSelectedDriver = isTripAssignedToDriver(leftTrip, selectedDriverId) ? 1 : 0;
+      const rightAssignedToSelectedDriver = isTripAssignedToDriver(rightTrip, selectedDriverId) ? 1 : 0;
       if (leftAssignedToSelectedDriver !== rightAssignedToSelectedDriver) return rightAssignedToSelectedDriver - leftAssignedToSelectedDriver;
       if (tripOrderMode === 'time') {
         const leftTime = leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
@@ -546,16 +898,26 @@ const DispatcherWorkspace = () => {
   }, [filteredTrips, getDriverName, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key]);
 
   const routeTrips = useMemo(() => {
-    const baseTrips = selectedRoute ? trips.filter(trip => selectedRoute.tripIds.includes(trip.id)) : selectedDriver ? trips.filter(trip => trip.driverId === selectedDriver.id) : trips.filter(trip => selectedTripIds.includes(trip.id));
+    const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
+    const selectedRouteTripIdSet = new Set((Array.isArray(selectedRoute?.tripIds) ? selectedRoute.tripIds : []).map(id => String(id || '').trim()).filter(Boolean));
+    const baseTrips = selectedRoute ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim())) : selectedDriver ? trips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id)) : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
+    const scopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
     const term = deferredRouteSearch.trim().toLowerCase();
-    return sortTripsByPickupTime(baseTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => value.toLowerCase().includes(term))));
-  }, [deferredRouteSearch, selectedDriver, selectedRoute, selectedTripIds, trips]);
+    return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => value.toLowerCase().includes(term))));
+  }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedRoute, selectedTripIds, trips]);
 
   const routeStops = useMemo(() => {
     if (!showRoute) return [];
 
     if (selectedTripIds.length > 0) {
-      return sortTripsByPickupTime(trips.filter(trip => selectedTripIds.includes(trip.id))).flatMap((trip, index) => [{
+      const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
+      const selectedTripsForMap = trips.filter(trip => {
+        const tripId = String(trip?.id || '').trim();
+        if (!selectedTripIdSet.has(tripId)) return false;
+        if (!activeDateTripIdSet) return true;
+        return activeDateTripIdSet.has(tripId);
+      });
+      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => [{
         key: `${trip.id}-pickup`,
         label: `${index * 2 + 1}`,
         variant: 'pickup',
@@ -591,7 +953,7 @@ const DispatcherWorkspace = () => {
     }
 
     return [];
-  }, [routeTrips, selectedRoute, selectedTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds, showRoute, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
@@ -608,7 +970,7 @@ const DispatcherWorkspace = () => {
     }
 
     if (selectedDriver) {
-      return trips.find(trip => trip.driverId === selectedDriver.id) ?? null;
+      return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
     }
 
     return null;
@@ -617,11 +979,11 @@ const DispatcherWorkspace = () => {
   const tripTableColumnCount = visibleTripColumns.length + 3;
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
-    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && trip.driverId === selectedDriver.id);
+    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && isTripAssignedToDriver(trip, selectedDriver.id));
     if (preferredTrip) return preferredTrip;
-    const routeTrip = routeTrips.find(trip => trip.driverId === selectedDriver.id);
+    const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id));
     if (routeTrip) return routeTrip;
-    return trips.find(trip => trip.driverId === selectedDriver.id) ?? null;
+    return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
   }, [routeTrips, selectedDriver, selectedTripIds, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
@@ -637,6 +999,23 @@ const DispatcherWorkspace = () => {
     return onlineDrivers.length > 0 ? onlineDrivers : drivers;
   }, [drivers]);
   const noteModalTrip = useMemo(() => noteModalTripId ? trips.find(trip => trip.id === noteModalTripId) ?? null : null, [noteModalTripId, trips]);
+
+  useEffect(() => {
+    if (!activeDateTripIdSet) return;
+
+    const selectedIds = selectedTripIds.map(id => String(id || '').trim()).filter(Boolean);
+    const prunedSelectedIds = selectedIds.filter(id => activeDateTripIdSet.has(id));
+    if (prunedSelectedIds.length !== selectedIds.length) {
+      setSelectedTripIds(prunedSelectedIds);
+    }
+
+    if (selectedRouteId) {
+      const selectedRouteDate = getRouteServiceDateKey(selectedRoute, trips);
+      if (selectedRouteDate && selectedRouteDate !== tripDateFilter) {
+        setSelectedRouteId('');
+      }
+    }
+  }, [activeDateTripIdSet, selectedRoute, selectedRouteId, selectedTripIds, setSelectedRouteId, setSelectedTripIds, tripDateFilter, trips]);
 
   const handleOpenTripNote = trip => {
     setNoteModalTripId(trip.id);
@@ -687,7 +1066,7 @@ const DispatcherWorkspace = () => {
   };
 
   const handleShiftTripDate = offsetDays => {
-    const baseDate = tripDateFilter === 'all' ? new Date().toISOString().slice(0, 10) : tripDateFilter;
+    const baseDate = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
     const nextDate = shiftTripDateKey(baseDate, offsetDays);
     if (nextDate) setTripDateFilter(nextDate);
   };
@@ -871,6 +1250,13 @@ const DispatcherWorkspace = () => {
       willCallOverride: 'manual'
     };
     updateTripRecord(tripId, updatePayload);
+    const nextActionLabel = updatePayload.status === 'WillCall' ? 'Marked trip as WillCall' : 'Removed trip from WillCall';
+    void logSystemActivity(nextActionLabel, `Trip ${tripId}`, {
+      tripId,
+      rider: trip.rider || '',
+      nextStatus: updatePayload.status,
+      driverId: trip.driverId || ''
+    });
 
     if (updatePayload.status === 'WillCall') {
       setStatusMessage(`Trip ${tripId} marcado como WillCall - Notificación enviada al chofer.`);
@@ -1341,110 +1727,123 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                 {/* Row 1: Trip filters and selection */}
-                <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
-                  <strong>Trips</strong>
-                  <Badge bg="light" text="dark">{assignedTripsCount}/{trips.length}</Badge>
-                  <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 130 }}>
-                    <option value="all">All</option>
-                    <option value="assigned">Assigned</option>
-                    <option value="unassigned">Unassigned</option>
-                    <option value="willcall">WillCall</option>
-                    <option value="cancelled">Cancelled</option>
-                  </Form.Select>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(-1)} title="Previous day" style={greenToolbarButtonStyle}>Prev</Button>
-                    <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || 'all')} style={{ width: 150 }} title="Filter trips by date" />
-                    <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(1)} title="Next day" style={greenToolbarButtonStyle}>Next</Button>
-                    <Button variant="outline-dark" size="sm" onClick={() => setTripDateFilter(new Date().toISOString().slice(0, 10))} title="Today" style={greenToolbarButtonStyle}>Today</Button>
-                  </div>
-                  <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search Trip ID" disabled={mapLocked} style={{ width: 150 }} />
-                  <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
-                    <option value="">Select driver</option>
-                    {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
-                  </Form.Select>
-                  <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
-                    <option value="">Second driver</option>
-                    {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
-                  </Form.Select>
-                  {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
-                  <Badge bg={selectedTripIds.length > 0 ? 'dark' : 'light'} text={selectedTripIds.length > 0 ? 'light' : 'dark'}>{selectedTripIds.length} selected trips</Badge>
+                <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
+                if (!isToolbarEditMode) return;
+                event.preventDefault();
+              }} onDrop={() => {
+                if (!isToolbarEditMode) return;
+                const draggedBlockId = getActiveDraggedToolbarBlockId();
+                moveToolbarBlockAcrossRows(draggedBlockId, 'row1');
+                clearDraggingToolbarBlockIds();
+              }}>
+                  {toolbarRow1Order.map(blockId => <div
+                    key={blockId}
+                    draggable={isToolbarEditMode}
+                    onDragStart={() => {
+                    setDraggingToolbarBlockId(blockId);
+                    setDraggingToolbarRow2BlockId(null);
+                    setDraggingToolbarRow3BlockId(null);
+                  }}
+                    onDragOver={event => {
+                    if (!isToolbarEditMode) return;
+                    event.preventDefault();
+                  }}
+                    onDrop={() => {
+                    if (!isToolbarEditMode) return;
+                    const draggedBlockId = getActiveDraggedToolbarBlockId();
+                    moveToolbarBlockAcrossRows(draggedBlockId, 'row1', blockId);
+                  }}
+                    onDragEnd={clearDraggingToolbarBlockIds}
+                    style={isToolbarEditMode ? {
+                    border: '1px dashed rgba(8, 19, 26, 0.55)',
+                    borderRadius: 8,
+                    padding: '2px 4px',
+                    cursor: 'move',
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                  } : undefined}
+                  >
+                      {renderToolbarRow1Block(blockId) || isToolbarEditMode ? renderToolbarRow1Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                    </div>)}
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }}>
-                  <Badge bg="primary">{trips.length} trips</Badge>
-                  <Badge bg="info">{drivers.length} drivers</Badge>
-                  <Badge bg="secondary">{liveDrivers} live</Badge>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)} disabled={mapLocked}>
-                    Columns
-                  </Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)} disabled={mapLocked}>
-                    {showInlineMap ? 'Map Screen' : 'Show Map Here'}
-                  </Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle} disabled={mapLocked}>
-                    {tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}
-                  </Button>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked}>I</Button> : <>
-                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)} disabled={mapLocked}>A</Button>
-                      <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} disabled={mapLocked} title="Assign second driver">A2</Button>
-                      <Button variant="secondary" size="sm" onClick={handleUnassign} disabled={mapLocked}>U</Button>
-                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} disabled={mapLocked}>C</Button>
-                    </>}
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Leg</span>
-                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} disabled={mapLocked} title="Primer viaje a la cita">AL</Button>
-                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} disabled={mapLocked} title="Return-leg trips">BL</Button>
-                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} disabled={mapLocked} title="Tercer viaje o connector leg">CL</Button>
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Type</span>
-                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} disabled={mapLocked} title="Ambulatory">A</Button>
-                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} disabled={mapLocked} title="Wheelchair">W</Button>
-                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} disabled={mapLocked} title="Stretcher">STR</Button>
-                  </div>
-                  {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 80, width: 240 }}>
-                      <CardBody className="p-3 text-dark">
-                        <div className="fw-semibold mb-2">Escoge que quieres ver</div>
-                        <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
-                        <div className="d-flex flex-column gap-2">
-                          {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dispatcher-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
-                        </div>
-                      </CardBody>
-                    </Card> : null}
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }} onDragOver={event => {
+                if (!isToolbarEditMode) return;
+                event.preventDefault();
+              }} onDrop={() => {
+                if (!isToolbarEditMode) return;
+                const draggedBlockId = getActiveDraggedToolbarBlockId();
+                moveToolbarBlockAcrossRows(draggedBlockId, 'row2');
+                clearDraggingToolbarBlockIds();
+              }}>
+                  {toolbarRow2Order.map(blockId => <div
+                    key={blockId}
+                    draggable={isToolbarEditMode}
+                    onDragStart={() => {
+                    setDraggingToolbarBlockId(null);
+                    setDraggingToolbarRow2BlockId(blockId);
+                    setDraggingToolbarRow3BlockId(null);
+                  }}
+                    onDragOver={event => {
+                    if (!isToolbarEditMode) return;
+                    event.preventDefault();
+                  }}
+                    onDrop={() => {
+                    if (!isToolbarEditMode) return;
+                    const draggedBlockId = getActiveDraggedToolbarBlockId();
+                    moveToolbarBlockAcrossRows(draggedBlockId, 'row2', blockId);
+                  }}
+                    onDragEnd={clearDraggingToolbarBlockIds}
+                    style={isToolbarEditMode ? {
+                    border: '1px dashed rgba(8, 19, 26, 0.55)',
+                    borderRadius: 8,
+                    padding: '2px 4px',
+                    cursor: 'move',
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                  } : undefined}
+                  >
+                      {renderToolbarRow2Block(blockId) || isToolbarEditMode ? renderToolbarRow2Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                    </div>)}
                 </div>
                 
                 {/* Row 3: Leg/Type filters and misc buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }}>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">ZIP</span>
-                    <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} disabled={mapLocked} style={{ width: 110 }} title="ZIP de origen">
-                      <option value="">PU ZIP</option>
-                      {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
-                    </Form.Select>
-                    <span className="text-muted small">→</span>
-                    <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} disabled={mapLocked} style={{ width: 110 }} title="ZIP de destino">
-                      <option value="">DO ZIP</option>
-                      {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
-                    </Form.Select>
-                    <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" disabled={mapLocked} style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
-                  </div>
-                  <div className="d-flex align-items-center gap-1 flex-nowrap">
-                    <span className="fw-semibold small">Ruta</span>
-                    <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} disabled={mapLocked} style={{ width: 140 }} title="Ciudad de recogida">
-                      <option value="">Origen</option>
-                      {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
-                    </Form.Select>
-                    <span className="text-muted small">→</span>
-                    <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} disabled={mapLocked} style={{ width: 140 }} title="Ciudad de destino">
-                      <option value="">Destino</option>
-                      {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
-                    </Form.Select>
-                    {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
-                  </div>
-                  {routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null}
-                  {routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null}
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
+                if (!isToolbarEditMode) return;
+                event.preventDefault();
+              }} onDrop={() => {
+                if (!isToolbarEditMode) return;
+                const draggedBlockId = getActiveDraggedToolbarBlockId();
+                moveToolbarBlockAcrossRows(draggedBlockId, 'row3');
+                clearDraggingToolbarBlockIds();
+              }}>
+                  {toolbarRow3Order.map(blockId => <div
+                    key={blockId}
+                    draggable={isToolbarEditMode}
+                    onDragStart={() => {
+                    setDraggingToolbarBlockId(null);
+                    setDraggingToolbarRow2BlockId(null);
+                    setDraggingToolbarRow3BlockId(blockId);
+                  }}
+                    onDragOver={event => {
+                    if (!isToolbarEditMode) return;
+                    event.preventDefault();
+                  }}
+                    onDrop={() => {
+                    if (!isToolbarEditMode) return;
+                    const draggedBlockId = getActiveDraggedToolbarBlockId();
+                    moveToolbarBlockAcrossRows(draggedBlockId, 'row3', blockId);
+                  }}
+                    onDragEnd={clearDraggingToolbarBlockIds}
+                    style={isToolbarEditMode ? {
+                    border: '1px dashed rgba(8, 19, 26, 0.55)',
+                    borderRadius: 8,
+                    padding: '2px 4px',
+                    cursor: 'move',
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                  } : undefined}
+                  >
+                      {renderToolbarRow3Block(blockId) || isToolbarEditMode ? renderToolbarRow3Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                    </div>)}
                 </div>
               </div>
                   {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} style={{ width: '100%', marginBottom: 4, padding: '2px 0 4px', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>

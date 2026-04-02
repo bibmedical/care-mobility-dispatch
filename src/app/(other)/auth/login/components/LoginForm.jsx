@@ -1,19 +1,15 @@
 'use client';
 
-import PasswordFormInput from '@/components/form/PasswordFormInput';
-import TextFormInput from '@/components/form/TextFormInput';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
-import { Controller } from 'react-hook-form';
-import { Alert, Col, FormControl, FormLabel, FormGroup } from 'react-bootstrap';
+import { Alert, Button, Col, Form, FormControl, FormGroup, FormLabel } from 'react-bootstrap';
 import { useState } from 'react';
 import useSignIn, { PAGE_OPTIONS } from '../useSignIn';
 
 const LoginForm = () => {
   const {
     loading,
-    login,
-    control,
+    submitCredentialsLogin,
     loginMode,
     setLoginMode,
     emailLoading,
@@ -25,63 +21,91 @@ const LoginForm = () => {
     setEmailValue,
     codeValue,
     setCodeValue,
+    requires2FA,
+    twoFACode,
+    setTwoFACode,
+    verify2FALogin,
+    cancel2FA,
     lockoutStatus
   } = useSignIn();
 
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleSubmit = async event => {
+    event.preventDefault();
+    await submitCredentialsLogin({
+      identifier,
+      password,
+      companyKey: 'CMS255',
+      portalPage: PAGE_OPTIONS[0].value
+    });
+  };
+
   return <>
-      {loginMode === 'credentials' ? <form onSubmit={login} className="my-4">
+      {requires2FA ? <Alert variant="warning" className="mb-4">
+          <div className="fw-semibold">Admin 2FA required</div>
+          <div className="small mb-3">Enter the 6-digit code from your authenticator app to finish the sign-in.</div>
+          <Form onSubmit={verify2FALogin}>
+            <FormGroup className="mb-3">
+              <FormLabel>2FA Code</FormLabel>
+              <FormControl value={twoFACode} onChange={event => setTwoFACode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" />
+            </FormGroup>
+            <div className="d-flex gap-2">
+              <Button type="submit" variant="dark" disabled={loading || twoFACode.length !== 6}>Verify</Button>
+              <Button type="button" variant="outline-secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
+            </div>
+          </Form>
+        </Alert> : null}
+
+        {loginMode === 'credentials' ? <div className="mt-4 mb-2">
           {lockoutStatus?.isBlocked ? <Alert variant="danger" className="mb-3 py-2">
               <div className="fw-semibold">Account temporarily locked</div>
               <div className="small">{lockoutStatus.message}</div>
               {lockoutStatus.lockRemaining ? <div className="small mt-1">Time remaining: {lockoutStatus.lockRemaining}</div> : null}
               <div className="small mt-1">If you need immediate access, contact your admin.</div>
             </Alert> : null}
-
-          <Controller name="companyKey" control={control} render={({
-          field
-        }) => <input {...field} type="hidden" />} />
-
-          <Controller name="portalPage" control={control} render={({
-          field
-        }) => <input {...field} type="hidden" value={field.value || PAGE_OPTIONS[0].value} />} />
-
-          <TextFormInput control={control} name="identifier" label="Username or Email" containerClassName="form-group mb-2" placeholder="Enter your username or email" />
-
-          <PasswordFormInput control={control} name="password" label="Password" containerClassName="form-group" placeholder="Enter your password" />
-
-          <div className="form-group row mt-3">
-            <Col sm={12} className="text-end">
-              <Link href="/auth/reset-pass" className="text-muted font-13">
-                Forgot password?
-              </Link>
-            </Col>
-          </div>
-
-          <div className="form-group mb-0 row">
-            <Col xs={12}>
-              <div className="d-grid mt-3">
-                <button className="btn btn-primary flex-centered" type="submit" disabled={loading}>
-                  {loading ? 'Logging in...' : 'Log In'} <IconifyIcon icon="fa6-solid:right-to-bracket" className="ms-1" />
+          <Form onSubmit={handleSubmit}>
+            <FormGroup className="mb-3">
+              <FormLabel>Username or Email</FormLabel>
+              <FormControl value={identifier} onChange={e => setIdentifier(e.target.value)} placeholder="Enter your username or email" autoComplete="username" />
+            </FormGroup>
+            <FormGroup className="mb-2">
+              <FormLabel>Password</FormLabel>
+              <div className="input-group">
+                <FormControl type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" />
+                <button type="button" className="btn btn-outline-secondary" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
+                  <IconifyIcon icon={showPassword ? 'fa6-solid:eye-slash' : 'fa6-solid:eye'} />
                 </button>
               </div>
-            </Col>
+            </FormGroup>
+            <div className="text-end mb-3">
+              <Link href="/auth/reset-pass" className="text-muted font-13">Forgot password?</Link>
+            </div>
+            <div className="d-grid mb-3">
+              <Button type="submit" variant="primary" disabled={loading}>
+                {loading ? 'Logging in...' : 'Log In'} <IconifyIcon icon="fa6-solid:right-to-bracket" className="ms-1" />
+              </Button>
+            </div>
+          </Form>
+          <div className="text-center">
+            <button type="button" className="btn btn-link p-0 font-13" onClick={() => setLoginMode('email')}>or Log In with Email Code →</button>
           </div>
-
-          <div className="text-center mt-4">
-            <button type="button" className="btn btn-link text-primary p-0 font-13" onClick={() => setLoginMode('email')}>
-              or Log In with Email Code →
-            </button>
-          </div>
-        </form> : <form onSubmit={emailStep === 'send' ? sendEmailCode : verifyEmailCode} className="my-4">
-          <Controller name="companyKey" control={control} render={({
-          field
-        }) => <input {...field} type="hidden" />} />
-
-          <Controller name="portalPage" control={control} render={({
-          field
-        }) => <input {...field} type="hidden" value={field.value || PAGE_OPTIONS[0].value} />} />
-
-          {emailStep === 'send' ? <>
+        </div> : <form onSubmit={emailStep === 'send' ? sendEmailCode : verifyEmailCode} className="my-4">
+          <Card style={shellStyles} className="overflow-hidden">
+            <CardBody style={headerStyles.admin} className="p-4 border-0">
+              <div className="d-flex align-items-center justify-content-between gap-3">
+                <div>
+                  <div className="text-uppercase small fw-semibold" style={{ letterSpacing: '0.14em', opacity: 0.8 }}>Administrator</div>
+                  <h4 className="mt-2 mb-1 text-white">Email code access</h4>
+                  <div className="small" style={{ opacity: 0.82 }}>Passwordless admin sign-in for web access.</div>
+                </div>
+                <PortalMark size={52} />
+              </div>
+            </CardBody>
+            <CardBody className="p-4">
+              {emailStep === 'send' ? <>
               <FormGroup className="form-group mb-2">
                 <FormLabel>Email Address</FormLabel>
                 <FormControl value={emailValue} onChange={e => setEmailValue(e.target.value)} placeholder="Enter your email" disabled={emailLoading} />
@@ -117,16 +141,18 @@ const LoginForm = () => {
               </div>
             </>}
 
-          <div className="text-center mt-4">
-            <button type="button" className="btn btn-link text-primary p-0 font-13" onClick={() => {
-            setEmailStep('send');
-            setEmailValue('');
-            setCodeValue('');
-            setLoginMode('credentials');
-          }}>
-              ← Back to Username/Password
-            </button>
-          </div>
+              <div className="text-center mt-4">
+                <button type="button" className="btn btn-link text-primary p-0 font-13" onClick={() => {
+                setEmailStep('send');
+                setEmailValue('');
+                setCodeValue('');
+                setLoginMode('credentials');
+              }}>
+                  ← Back to admin and driver login
+                </button>
+              </div>
+            </CardBody>
+          </Card>
         </form>}
     </>;
 };

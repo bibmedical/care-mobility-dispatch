@@ -9,7 +9,7 @@ export const metadata = {
 };
 
 const Login = () => {
-  return <Col lg={4} className="mx-auto">
+  return <Col xl={5} lg={6} md={8} sm={11} className="mx-auto">
       <Card>
         <CardBody className="p-0 bg-black auth-header-box rounded-top">
           <div className="text-center p-3">

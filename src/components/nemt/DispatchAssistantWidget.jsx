@@ -1,5 +1,6 @@
 'use client';
 
+import { useNemtContext } from '@/context/useNemtContext';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { signOut, useSession } from 'next-auth/react';
@@ -10,7 +11,6 @@ import { Button } from 'react-bootstrap';
 const STORAGE_KEY = '__CARE_MOBILITY_AI_ASSISTANT__';
 const CLIENT_KEY = '__CARE_MOBILITY_AI_ASSISTANT_CLIENT__';
 const MODE_KEY = '__CARE_MOBILITY_AI_ASSISTANT_MODE__';
-const DRIVER_MESSAGES_KEY = '__CARE_MOBILITY_DISPATCH_MESSAGES__';
 const WIDGET_HIDDEN_KEY = '__CARE_MOBILITY_AI_WIDGET_HIDDEN__';
 
 const buildInitialState = assistantName => ({
@@ -239,43 +239,8 @@ const applyAvatarPayload = payload => ({
   visible: payload?.avatar?.visible !== false && payload?.visible !== false
 });
 
-const appendDriverThreadMessage = action => {
-  if (typeof window === 'undefined' || !action?.driverId || !action?.message) return;
-  const existingThreads = (() => {
-    try {
-      const storedValue = window.localStorage.getItem(DRIVER_MESSAGES_KEY);
-      return storedValue ? JSON.parse(storedValue) : [];
-    } catch {
-      return [];
-    }
-  })();
-  const nextThreads = Array.isArray(existingThreads) ? [...existingThreads] : [];
-  const threadIndex = nextThreads.findIndex(thread => thread?.driverId === action.driverId);
-  const outgoingMessage = {
-    id: `${action.driverId}-${Date.now()}`,
-    direction: 'outgoing',
-    text: String(action.message || '').trim(),
-    timestamp: new Date().toISOString(),
-    status: 'sent'
-  };
-  if (threadIndex >= 0) {
-    nextThreads[threadIndex] = {
-      ...nextThreads[threadIndex],
-      messages: [...(Array.isArray(nextThreads[threadIndex]?.messages) ? nextThreads[threadIndex].messages : []), outgoingMessage]
-    };
-  } else {
-    nextThreads.push({
-      driverId: action.driverId,
-      messages: [outgoingMessage]
-    });
-  }
-  window.localStorage.setItem(DRIVER_MESSAGES_KEY, JSON.stringify(nextThreads));
-  window.dispatchEvent(new CustomEvent('care-mobility-driver-message-sent', {
-    detail: action
-  }));
-};
-
 const DispatchAssistantWidget = () => {
+  const { upsertDispatchThreadMessage } = useNemtContext();
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
@@ -770,7 +735,16 @@ const DispatchAssistantWidget = () => {
           router.push(payload.action.href);
         }, 300);
       } else if (payload?.action?.type === 'driver-message') {
-        appendDriverThreadMessage(payload.action);
+        upsertDispatchThreadMessage({
+          driverId: payload.action.driverId,
+          message: {
+            id: `${payload.action.driverId}-${Date.now()}`,
+            direction: 'outgoing',
+            text: String(payload.action.message || '').trim(),
+            timestamp: new Date().toISOString(),
+            status: 'sent'
+          }
+        });
       } else if (['create-route', 'assign-trips', 'confirm-trip'].includes(payload?.action?.type)) {
         window.dispatchEvent(new CustomEvent('nemt-assistant-action', { detail: payload.action }));
       }
