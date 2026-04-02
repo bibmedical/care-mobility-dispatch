@@ -417,6 +417,99 @@ const buildTripEditDraft = trip => ({
   onTimeStatus: String(trip?.onTimeStatus || '').trim()
 });
 
+const INLINE_EDITABLE_TRIP_COLUMNS = new Set(['pickup', 'dropoff', 'rider', 'address', 'puZip', 'destination', 'doZip', 'phone', 'miles', 'vehicle']);
+
+const getInlineEditableTripValue = (trip, columnKey) => {
+  switch (columnKey) {
+    case 'pickup':
+      return getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup);
+    case 'dropoff':
+      return getEffectiveTimeText(trip?.scheduledDropoff, trip?.dropoff);
+    case 'rider':
+      return String(trip?.rider || '').trim();
+    case 'address':
+      return String(trip?.address || '').trim();
+    case 'puZip':
+      return getPickupZip(trip);
+    case 'destination':
+      return String(trip?.destination || '').trim();
+    case 'doZip':
+      return getDropoffZip(trip);
+    case 'phone':
+      return String(trip?.patientPhoneNumber || '').trim();
+    case 'miles':
+      return String(trip?.miles ?? '').trim();
+    case 'vehicle':
+      return String(trip?.vehicleType || '').trim();
+    default:
+      return '';
+  }
+};
+
+const buildInlineTripTimeSortValue = (trip, timeText, routePlans, trips, fallbackKey) => {
+  const parsedMinutes = parseTripClockMinutes(timeText);
+  if (parsedMinutes == null) return Number.MAX_SAFE_INTEGER;
+  const serviceDateKey = getTripTimelineDateKey(trip, routePlans, trips) || getLocalDateKey(new Date());
+  const [year, month, day] = String(serviceDateKey || '').split('-').map(Number);
+  if (!year || !month || !day) {
+    return Number.isFinite(Number(trip?.[fallbackKey])) ? Number(trip[fallbackKey]) : Number.MAX_SAFE_INTEGER;
+  }
+  const hours = Math.floor(parsedMinutes / 60);
+  const minutes = parsedMinutes % 60;
+  return new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
+};
+
+const buildInlineTripUpdatePayload = ({ trip, columnKey, value, routePlans, trips }) => {
+  const nextValue = String(value ?? '').trim();
+  switch (columnKey) {
+    case 'pickup':
+      return {
+        pickup: nextValue,
+        scheduledPickup: nextValue,
+        pickupSortValue: buildInlineTripTimeSortValue(trip, nextValue, routePlans, trips, 'pickupSortValue')
+      };
+    case 'dropoff':
+      return {
+        dropoff: nextValue,
+        scheduledDropoff: nextValue,
+        dropoffSortValue: buildInlineTripTimeSortValue(trip, nextValue, routePlans, trips, 'dropoffSortValue')
+      };
+    case 'rider':
+      return {
+        rider: nextValue,
+        patientName: nextValue
+      };
+    case 'address':
+      return { address: nextValue };
+    case 'puZip':
+      return {
+        fromZipcode: nextValue,
+        fromZip: nextValue,
+        pickupZipcode: nextValue,
+        pickupZip: nextValue,
+        originZip: nextValue
+      };
+    case 'destination':
+      return { destination: nextValue };
+    case 'doZip':
+      return {
+        toZipcode: nextValue,
+        toZip: nextValue,
+        dropoffZipcode: nextValue,
+        dropoffZip: nextValue,
+        destinationZip: nextValue
+      };
+    case 'phone':
+      return { patientPhoneNumber: nextValue };
+    case 'miles':
+      return { miles: nextValue };
+    case 'vehicle':
+      return { vehicleType: nextValue };
+    default:
+      return null;
+  }
+};
+
 const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
   className: 'route-stop-icon-shell',
   html: `<div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:${variant === 'pickup' ? '#16a34a' : '#ef4444'};border:2px solid #ffffff;box-shadow:0 6px 18px rgba(15,23,42,0.28);color:#ffffff;font-size:13px;font-weight:700;line-height:1;">${label}</div>`,
@@ -508,6 +601,8 @@ const TripDashboardWorkspace = () => {
   const [noteModalTripId, setNoteModalTripId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [tripEditDraft, setTripEditDraft] = useState(buildTripEditDraft(null));
+  const [inlineTripEditCell, setInlineTripEditCell] = useState(null);
+  const [inlineTripEditValue, setInlineTripEditValue] = useState('');
   const [aiPlannerMode, setAiPlannerMode] = useState('local');
   const [aiPlannerAnchorTripId, setAiPlannerAnchorTripId] = useState('');
   const [aiPlannerStartZip, setAiPlannerStartZip] = useState('');
@@ -1508,6 +1603,88 @@ const TripDashboardWorkspace = () => {
     });
     setStatusMessage(`Puntualidad y nota guardadas para ${getDisplayTripId(noteModalTrip)}.`);
     handleCloseTripNote();
+  };
+
+  const isInlineTripCellEditing = (tripId, columnKey) => inlineTripEditCell?.tripId === tripId && inlineTripEditCell?.columnKey === columnKey;
+
+  const handleStartInlineTripEdit = (trip, columnKey) => {
+    if (!trip || !INLINE_EDITABLE_TRIP_COLUMNS.has(columnKey)) return;
+    setInlineTripEditCell({
+      tripId: trip.id,
+      columnKey
+    });
+    setInlineTripEditValue(getInlineEditableTripValue(trip, columnKey));
+  };
+
+  const handleCancelInlineTripEdit = () => {
+    setInlineTripEditCell(null);
+    setInlineTripEditValue('');
+  };
+
+  const handleSaveInlineTripEdit = trip => {
+    if (!trip || !inlineTripEditCell?.columnKey) return;
+    const currentValue = String(getInlineEditableTripValue(trip, inlineTripEditCell.columnKey) || '').trim();
+    const nextValue = String(inlineTripEditValue ?? '').trim();
+    if (currentValue === nextValue) {
+      handleCancelInlineTripEdit();
+      return;
+    }
+
+    const updates = buildInlineTripUpdatePayload({
+      trip,
+      columnKey: inlineTripEditCell.columnKey,
+      value: nextValue,
+      routePlans,
+      trips
+    });
+    if (!updates) {
+      handleCancelInlineTripEdit();
+      return;
+    }
+
+    updateTripRecord(trip.id, updates);
+    setStatusMessage(`${getDisplayTripId(trip)} actualizado en ${inlineTripEditCell.columnKey}.`);
+    handleCancelInlineTripEdit();
+  };
+
+  const renderInlineEditableTripCell = ({ trip, columnKey, displayValue, cellStyle, displayStyle, inputType = 'text', placeholder = '' }) => {
+    const isEditing = isInlineTripCellEditing(trip.id, columnKey);
+    return <td
+      style={{
+        ...cellStyle,
+        cursor: 'text'
+      }}
+      onDoubleClick={() => handleStartInlineTripEdit(trip, columnKey)}
+      title="Doble clic para editar"
+    >
+      {isEditing ? <Form.Control
+        size="sm"
+        type={inputType}
+        autoFocus
+        value={inlineTripEditValue}
+        placeholder={placeholder}
+        onChange={event => setInlineTripEditValue(event.target.value)}
+        onBlur={() => handleSaveInlineTripEdit(trip)}
+        onClick={stopInputEventPropagation}
+        onDoubleClick={stopInputEventPropagation}
+        onKeyDown={event => {
+          stopInputEventPropagation(event);
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            handleSaveInlineTripEdit(trip);
+            return;
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            handleCancelInlineTripEdit();
+          }
+        }}
+      /> : <span style={{
+        borderBottom: '1px dashed rgba(107, 114, 128, 0.5)',
+        display: 'inline-block',
+        ...displayStyle
+      }}>{displayValue || '-'}</span>}
+    </td>;
   };
 
   const groupedFilteredTripRows = useMemo(() => {
@@ -2978,27 +3155,101 @@ const TripDashboardWorkspace = () => {
                           </td> : null}
                         {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}{getTripAddedByLabel(row.trip) ? <div className="mt-1"><Badge bg="dark">{getTripAddedByLabel(row.trip)}</Badge></div> : null}{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
                         {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}><div>{getTripDriverDisplay(row.trip)}</div>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}</td> : null}
-                        {visibleTripColumns.includes('pickup') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.pickup}</td> : null}
-                        {visibleTripColumns.includes('dropoff') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.dropoff}</td> : null}
-                        {visibleTripColumns.includes('miles') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.miles || '-'}</td> : null}
-                        {visibleTripColumns.includes('rider') ? <td>
-                            {(() => {
+                        {visibleTripColumns.includes('pickup') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'pickup',
+                      displayValue: row.trip.pickup,
+                      cellStyle: {
+                        whiteSpace: 'nowrap'
+                      },
+                      placeholder: '07:40 AM'
+                    }) : null}
+                        {visibleTripColumns.includes('dropoff') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'dropoff',
+                      displayValue: row.trip.dropoff,
+                      cellStyle: {
+                        whiteSpace: 'nowrap'
+                      },
+                      placeholder: '08:15 AM'
+                    }) : null}
+                        {visibleTripColumns.includes('miles') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'miles',
+                      displayValue: row.trip.miles || '-',
+                      cellStyle: {
+                        whiteSpace: 'nowrap'
+                      },
+                      placeholder: '12.5'
+                    }) : null}
+                        {visibleTripColumns.includes('rider') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'rider',
+                      displayValue: (() => {
                           const {
                             firstName,
                             lastName
                           } = splitRiderName(row.trip.rider);
-                          return <div style={riderNameStackStyle}>
-                                  <div className="fw-semibold">{firstName}</div>
-                                  {lastName ? <div className="small text-secondary">{lastName}</div> : null}
-                                </div>;
-                        })()}
-                          </td> : null}
-                        {visibleTripColumns.includes('address') ? <td><div style={addressClampStyle}>{row.trip.address}</div></td> : null}
-                        {visibleTripColumns.includes('puZip') ? <td style={{ whiteSpace: 'nowrap' }}>{getPickupZip(row.trip) || '-'}</td> : null}
-                        {visibleTripColumns.includes('destination') ? <td><div style={addressClampStyle}>{row.trip.destination || '-'}</div></td> : null}
-                        {visibleTripColumns.includes('doZip') ? <td style={{ whiteSpace: 'nowrap' }}>{getDropoffZip(row.trip) || '-'}</td> : null}
-                        {visibleTripColumns.includes('phone') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.patientPhoneNumber || '-'}</td> : null}
-                        {visibleTripColumns.includes('vehicle') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.vehicleType || '-'}</td> : null}
+                          return [firstName, lastName].filter(Boolean).join(' ');
+                        })(),
+                      cellStyle: {
+                        whiteSpace: 'normal'
+                      },
+                      displayStyle: riderNameStackStyle,
+                      placeholder: 'Nombre del paciente'
+                    }) : null}
+                        {visibleTripColumns.includes('address') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'address',
+                      displayValue: row.trip.address,
+                      cellStyle: {},
+                      displayStyle: addressClampStyle,
+                      placeholder: 'Pickup address'
+                    }) : null}
+                        {visibleTripColumns.includes('puZip') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'puZip',
+                      displayValue: getPickupZip(row.trip) || '-',
+                      cellStyle: {
+                        whiteSpace: 'nowrap'
+                      },
+                      placeholder: '32808'
+                    }) : null}
+                        {visibleTripColumns.includes('destination') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'destination',
+                      displayValue: row.trip.destination || '-',
+                      cellStyle: {},
+                      displayStyle: addressClampStyle,
+                      placeholder: 'Dropoff address'
+                    }) : null}
+                        {visibleTripColumns.includes('doZip') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'doZip',
+                      displayValue: getDropoffZip(row.trip) || '-',
+                      cellStyle: {
+                        whiteSpace: 'nowrap'
+                      },
+                      placeholder: '32714'
+                    }) : null}
+                        {visibleTripColumns.includes('phone') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'phone',
+                      displayValue: row.trip.patientPhoneNumber || '-',
+                      cellStyle: {
+                        whiteSpace: 'nowrap'
+                      },
+                      placeholder: '(407) 555-0000'
+                    }) : null}
+                        {visibleTripColumns.includes('vehicle') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'vehicle',
+                      displayValue: row.trip.vehicleType || '-',
+                      cellStyle: {
+                        whiteSpace: 'nowrap'
+                      },
+                      placeholder: 'Ambulatory'
+                    }) : null}
                         {visibleTripColumns.includes('leg') ? <td style={{ whiteSpace: 'nowrap' }}>{getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant}>{getLegBadge(row.trip).label}</Badge> : '-'}</td> : null}
                         {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
                         {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}
