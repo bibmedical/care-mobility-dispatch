@@ -264,6 +264,7 @@ export const createBlankDriver = () => ({
   profileStatus: 'Active',
   portalUsername: '',
   portalEmail: '',
+  mobilePin: '',
   mfaEnabled: false,
   passwordResetRequired: false,
   backgroundCheckStatus: 'Pending',
@@ -342,6 +343,14 @@ export const createBlankGrouping = () => ({
 
 export const getFullName = person => [person.firstName, person.middleInitial, person.lastName].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 
+const getDefaultDriverMobilePin = driver => {
+  const configuredPin = String(driver?.mobilePin || '').trim();
+  if (configuredPin) return configuredPin;
+
+  const phoneDigits = normalizePhoneDigits(driver?.phone);
+  return phoneDigits.length >= 4 ? phoneDigits.slice(-4) : '';
+};
+
 export const isDriverOnline = driver => {
   if (normalizeAuthValue(driver?.trackingSource) !== 'android') return false;
   const lastSeen = safeDate(driver?.trackingLastSeen);
@@ -351,6 +360,7 @@ export const isDriverOnline = driver => {
 
 export const normalizeDriverTracking = driver => ({
   ...driver,
+  mobilePin: getDefaultDriverMobilePin(driver),
   routeRoster: normalizeRouteRoster(driver?.routeRoster, driver),
   trackingSource: driver?.trackingSource || '',
   trackingLastSeen: driver?.trackingLastSeen || '',
