@@ -48,6 +48,7 @@ const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#08
 const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
+const DISPATCH_SYNC_POLL_MS = 5000;
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
   if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;
@@ -174,6 +175,9 @@ export const NemtProvider = ({
           const localState = buildClientState(currentState ?? createInitialState());
           const useLocalTrips = !forceServer && hasLocalDispatchChangesRef.current;
           const useLocalRoutes = !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalDispatchThreads = !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalDailyDrivers = !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalAuditLog = !forceServer && hasLocalDispatchChangesRef.current;
           const localColumns = normalizeDispatcherVisibleTripColumns(localState.uiPreferences?.dispatcherVisibleTripColumns);
           const serverColumns = normalizeDispatcherVisibleTripColumns(payload.uiPreferences?.dispatcherVisibleTripColumns);
           const localMapProvider = normalizeMapProviderPreference(localState.uiPreferences?.mapProvider);
@@ -187,9 +191,12 @@ export const NemtProvider = ({
             ...localState,
             trips: useLocalTrips ? localState.trips : payload.trips,
             routePlans: useLocalRoutes ? localState.routePlans : payload.routePlans,
+            dispatchThreads: useLocalDispatchThreads ? localState.dispatchThreads : payload.dispatchThreads,
+            dailyDrivers: useLocalDailyDrivers ? localState.dailyDrivers : payload.dailyDrivers,
+            auditLog: useLocalAuditLog ? localState.auditLog : payload.auditLog,
             uiPreferences: useLocalPreferences ? localState.uiPreferences : payload.uiPreferences
           });
-          lastPersistedSnapshotRef.current = useLocalTrips || useLocalRoutes || useLocalPreferences ? '' : JSON.stringify(createPersistedSnapshot(nextState));
+          lastPersistedSnapshotRef.current = useLocalTrips || useLocalRoutes || useLocalDispatchThreads || useLocalDailyDrivers || useLocalAuditLog || useLocalPreferences ? '' : JSON.stringify(createPersistedSnapshot(nextState));
           return nextState;
         });
       });
@@ -261,6 +268,36 @@ export const NemtProvider = ({
       window.removeEventListener('focus', handleAdminUpdate);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDispatchLoaded) return;
+
+    let active = true;
+
+    const syncLiveState = async () => {
+      if (!active) return;
+      await Promise.allSettled([syncDriversFromServer(), syncDispatchFromServer()]);
+    };
+
+    const intervalId = window.setInterval(() => {
+      void syncLiveState();
+    }, DISPATCH_SYNC_POLL_MS);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      void syncLiveState();
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [isDispatchLoaded]);
 
   const updateState = (updater, options = {}) => {
     const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;

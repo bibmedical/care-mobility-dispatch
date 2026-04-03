@@ -6,8 +6,46 @@ import {
   resolveSystemMessageById,
   upsertSystemMessage
 } from '@/server/system-messages-store';
+import { readNemtAdminState } from '@/server/nemt-admin-store';
 
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+
+const readDriverPushTokens = async driverId => {
+  if (!driverId) return [];
+
+  const adminState = await readNemtAdminState();
+  const drivers = Array.isArray(adminState?.drivers) ? adminState.drivers : [];
+  const driver = drivers.find(item => String(item?.id || '').trim() === String(driverId).trim());
+  const tokens = Array.isArray(driver?.mobilePushTokens) ? driver.mobilePushTokens : [];
+  return tokens.map(token => String(token || '').trim()).filter(Boolean);
+};
+
+const sendExpoPush = async (pushTokens, message) => {
+  if (!Array.isArray(pushTokens) || pushTokens.length === 0) return;
+
+  const payload = pushTokens.map(to => ({
+    to,
+    sound: 'default',
+    title: message.subject || 'Dispatch update',
+    body: message.body || 'You have a new message from dispatch.',
+    data: {
+      driverId: message.driverId || null,
+      messageId: message.id
+    }
+  }));
+
+  try {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch {
+    // Push delivery failures should not block dispatch message creation.
+  }
+};
 
 export async function GET() {
   const session = await getServerSession(options);
@@ -42,6 +80,8 @@ export async function POST(request) {
   };
 
   const saved = await upsertSystemMessage(msg);
+  const driverPushTokens = await readDriverPushTokens(saved.driverId);
+  await sendExpoPush(driverPushTokens, saved);
   return NextResponse.json({ message: saved });
 }
 

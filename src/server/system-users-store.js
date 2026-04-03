@@ -1,11 +1,7 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
 import { buildStableDriverId, createBlankDriver, getFullName } from '@/helpers/nemt-admin-model';
 import { DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED, authorizeSystemUser, buildPasswordForUser, enrichSystemUser, getUserSyncStatus, isAdminRole, isDriverRole, isProtectedSystemUser, normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('system-users.json');
+import { query } from '@/server/db';
 
 const parseJsonSafe = raw => {
   const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
@@ -66,19 +62,6 @@ const normalizeUsersState = value => {
     protectedUserIds: normalizeProtectedIds(value?.protectedUserIds, users),
     users
   };
-};
-
-const ensureStorageFile = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    await writeFile(STORAGE_FILE, JSON.stringify({
-      version: 6,
-      protectedUserIds: normalizeProtectedIds(DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED),
-      users: USER_SEED.map(normalizeUserRecord)
-    }, null, 2), 'utf8');
-  }
 };
 
 const findLinkedDriverIndex = (drivers, user) => drivers.findIndex(driver => driver.authUserId === user.id || normalizeAuthValue(driver.username) === normalizeAuthValue(user.username) || normalizeAuthValue(driver.email) === normalizeAuthValue(user.email));
@@ -174,10 +157,33 @@ const syncUsersToAdminState = async (users, previousUsers = []) => {
   });
 };
 
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS system_users_state (
+      id TEXT PRIMARY KEY DEFAULT 'singleton',
+      version INTEGER NOT NULL DEFAULT 6,
+      protected_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+      users JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  const seedUsers = USER_SEED.map(normalizeUserRecord);
+  const seedProtected = normalizeProtectedIds(DEFAULT_PROTECTED_SYSTEM_USER_IDS, seedUsers);
+  await query(
+    `INSERT INTO system_users_state (id, version, protected_user_ids, users) VALUES ('singleton', 6, $1, $2) ON CONFLICT (id) DO NOTHING`,
+    [JSON.stringify(seedProtected), JSON.stringify(seedUsers)]
+  );
+};
+
 export const readSystemUsersState = async () => {
-  await ensureStorageFile();
-  const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizeUsersState(parseJsonSafe(fileContents));
+  await ensureTable();
+  const result = await query(`SELECT version, protected_user_ids, users FROM system_users_state WHERE id = 'singleton'`);
+  const row = result.rows[0];
+  return normalizeUsersState({
+    version: row?.version,
+    protectedUserIds: row?.protected_user_ids,
+    users: row?.users
+  });
 };
 
 export const readSystemUsersPayload = async () => {
@@ -186,11 +192,14 @@ export const readSystemUsersPayload = async () => {
 };
 
 export const writeSystemUsersState = async nextState => {
-  await ensureStorageFile();
+  await ensureTable();
   const currentState = await readSystemUsersState();
   const normalized = normalizeUsersState(nextState);
   ensureAtLeastOneAdminRemains(normalized.users);
-  await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
+  await query(
+    `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
+    [normalized.version, JSON.stringify(normalized.protectedUserIds), JSON.stringify(normalized.users)]
+  );
   await syncUsersToAdminState(normalized.users.map(user => enrichSystemUser(user, normalized.protectedUserIds)), currentState.users.map(user => enrichSystemUser(user, currentState.protectedUserIds)));
   return buildUsersPayload(normalized);
 };
@@ -202,3 +211,6 @@ export const authorizePersistedSystemUser = async credentials => {
     ...credentials
   });
 };
+
+
+

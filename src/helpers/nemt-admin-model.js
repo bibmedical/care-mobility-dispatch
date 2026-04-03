@@ -635,7 +635,11 @@ export const mapAdminDataToDispatchDrivers = state => {
     routeRoster: normalizedDriver.routeRoster,
     position: Array.isArray(normalizedDriver.position) ? normalizedDriver.position : ORLANDO_CENTER,
     hasRealLocation: isLiveTracking && Array.isArray(normalizedDriver.position) && normalizedDriver.position.length === 2,
-    trackingSource: normalizedDriver.trackingSource || ''
+    trackingSource: normalizedDriver.trackingSource || '',
+    trackingLastSeen: normalizedDriver.trackingLastSeen || '',
+    heading: normalizedDriver.heading == null ? null : Number(normalizedDriver.heading),
+    speed: normalizedDriver.speed == null ? null : Number(normalizedDriver.speed),
+    accuracy: normalizedDriver.accuracy == null ? null : Number(normalizedDriver.accuracy)
   };
   });
 };

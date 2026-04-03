@@ -1,59 +1,19 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
+import { query, queryOne } from '@/server/db';
 
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('email-auth-codes.json');
 const CODE_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_ATTEMPTS = 3;
 
-const ensureStorageFile = async () => {
-  try {
-    await mkdir(STORAGE_DIR, { recursive: true });
-    try {
-      await readFile(STORAGE_FILE, 'utf8');
-    } catch {
-      await writeFile(STORAGE_FILE, JSON.stringify({ codes: {} }, null, 2), 'utf8');
-    }
-  } catch (error) {
-    console.error('Error ensuring email auth storage:', error);
-  }
-};
-
-const readAuthCodesState = async () => {
-  try {
-    await ensureStorageFile();
-    const content = await readFile(STORAGE_FILE, 'utf8');
-    return JSON.parse(content) || { codes: {} };
-  } catch (error) {
-    console.error('Error reading email auth codes:', error);
-    return { codes: {} };
-  }
-};
-
-const writeAuthCodesState = async state => {
-  try {
-    await ensureStorageFile();
-    await writeFile(STORAGE_FILE, JSON.stringify(state, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error writing email auth codes:', error);
-  }
-};
-
 const generateCode = () => Math.random().toString().slice(2, 8).padStart(6, '0');
 
-const isCodeExpired = createdAt => Date.now() - createdAt > CODE_EXPIRY_MS;
-
-const cleanupExpiredCodes = state => {
-  const now = Date.now();
-  const codes = { ...state.codes };
-  
-  for (const email in codes) {
-    if (isCodeExpired(codes[email].createdAt)) {
-      delete codes[email];
-    }
-  }
-  
-  return { codes };
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS email_auth_codes (
+      email TEXT PRIMARY KEY,
+      code TEXT NOT NULL DEFAULT '',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL DEFAULT 0
+    )
+  `);
 };
 
 /**
@@ -66,17 +26,17 @@ export const generateEmailAuthCode = async email => {
     throw new Error('Invalid email address');
   }
 
-  let state = await readAuthCodesState();
-  state = cleanupExpiredCodes(state);
+  await ensureTable();
+  // Clean up expired codes
+  await query(`DELETE FROM email_auth_codes WHERE created_at < $1`, [Date.now() - CODE_EXPIRY_MS]);
 
   const code = generateCode();
-  state.codes[normalizedEmail] = {
-    code,
-    createdAt: Date.now(),
-    attempts: 0
-  };
+  await query(
+    `INSERT INTO email_auth_codes (email, code, attempts, created_at) VALUES ($1,$2,0,$3)
+     ON CONFLICT (email) DO UPDATE SET code=$2, attempts=0, created_at=$3`,
+    [normalizedEmail, code, Date.now()]
+  );
 
-  await writeAuthCodesState(state);
   
   return { code, email: normalizedEmail, expiresIn: CODE_EXPIRY_MS };
 };
@@ -92,36 +52,31 @@ export const verifyEmailAuthCode = async (email, submittedCode) => {
     throw new Error('Email and code are required');
   }
 
-  let state = await readAuthCodesState();
-  state = cleanupExpiredCodes(state);
-
-  const authRecord = state.codes[normalizedEmail];
+  await ensureTable();
+  await query(`DELETE FROM email_auth_codes WHERE created_at < $1`, [Date.now() - CODE_EXPIRY_MS]);
+  const authRecord = await queryOne(`SELECT * FROM email_auth_codes WHERE email = $1`, [normalizedEmail]);
 
   if (!authRecord) {
     throw new Error('No verification code found. Request a new code.');
   }
 
-  if (isCodeExpired(authRecord.createdAt)) {
-    delete state.codes[normalizedEmail];
-    await writeAuthCodesState(state);
+  if (Date.now() - authRecord.created_at > CODE_EXPIRY_MS) {
+    await query(`DELETE FROM email_auth_codes WHERE email = $1`, [normalizedEmail]);
     throw new Error('Verification code expired. Request a new code.');
   }
 
   if (authRecord.attempts >= MAX_ATTEMPTS) {
-    delete state.codes[normalizedEmail];
-    await writeAuthCodesState(state);
+    await query(`DELETE FROM email_auth_codes WHERE email = $1`, [normalizedEmail]);
     throw new Error('Too many failed attempts. Request a new code.');
   }
 
   if (authRecord.code !== normalizedCode) {
-    authRecord.attempts += 1;
-    await writeAuthCodesState(state);
+    await query(`UPDATE email_auth_codes SET attempts = attempts + 1 WHERE email = $1`, [normalizedEmail]);
     throw new Error('Invalid code. Please try again.');
   }
 
   // Code is valid, clean it up
-  delete state.codes[normalizedEmail];
-  await writeAuthCodesState(state);
+  await query(`DELETE FROM email_auth_codes WHERE email = $1`, [normalizedEmail]);
 
   return { success: true, email: normalizedEmail };
 };

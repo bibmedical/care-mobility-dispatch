@@ -1,62 +1,22 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
+import { query } from '@/server/db';
 
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('login-failures.json');
-const MAX_FAILURES_KEPT = 1000; // Keep last 1000 failures
-const FAILURE_LOG_RETENTION_DAYS = 30; // Delete logs older than 30 days
+const MAX_FAILURES_KEPT = 1000;
+const FAILURE_LOG_RETENTION_DAYS = 30;
 
-const parseJsonSafe = raw => {
-  const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
-  return JSON.parse(normalized);
-};
-
-const ensureStorageFile = async () => {
-  try {
-    await mkdir(STORAGE_DIR, { recursive: true });
-    try {
-      await readFile(STORAGE_FILE, 'utf8');
-    } catch {
-      await writeFile(STORAGE_FILE, JSON.stringify({ failures: [] }, null, 2), 'utf8');
-    }
-  } catch (error) {
-    console.error('Error ensuring login failures storage:', error);
-  }
-};
-
-const readFailuresState = async () => {
-  try {
-    await ensureStorageFile();
-    const content = await readFile(STORAGE_FILE, 'utf8');
-    return parseJsonSafe(content) || { failures: [] };
-  } catch (error) {
-    console.error('Error reading login failures:', error);
-    return { failures: [] };
-  }
-};
-
-const writeFailuresState = async state => {
-  try {
-    await ensureStorageFile();
-    await writeFile(STORAGE_FILE, JSON.stringify(state, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error writing login failures:', error);
-  }
-};
-
-const cleanup0ldLogs = state => {
-  const now = Date.now();
-  const retentionMs = FAILURE_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-  
-  // Remove old entries
-  state.failures = state.failures.filter(failure => now - failure.timestamp < retentionMs);
-  
-  // Keep only latest entries
-  if (state.failures.length > MAX_FAILURES_KEPT) {
-    state.failures = state.failures.slice(-MAX_FAILURES_KEPT);
-  }
-
-  return state;
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS login_failures (
+      id SERIAL PRIMARY KEY,
+      identifier TEXT NOT NULL DEFAULT '',
+      reason TEXT NOT NULL DEFAULT '',
+      client_type TEXT NOT NULL DEFAULT 'web',
+      ip TEXT NOT NULL DEFAULT 'unknown',
+      timestamp BIGINT NOT NULL DEFAULT 0,
+      date TEXT NOT NULL DEFAULT ''
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_login_failures_identifier ON login_failures (identifier)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_login_failures_timestamp ON login_failures (timestamp)`);
 };
 
 /**
@@ -64,19 +24,21 @@ const cleanup0ldLogs = state => {
  */
 export const logLoginFailure = async ({ identifier, reason, clientType = 'web', ip = 'unknown' }) => {
   try {
-    let state = await readFailuresState();
-    
-    state.failures.push({
-      timestamp: Date.now(),
-      identifier: String(identifier ?? '').toLowerCase(),
-      reason,
-      clientType,
-      ip,
-      date: new Date().toISOString()
-    });
-
-    state = cleanup0ldLogs(state);
-    await writeFailuresState(state);
+    await ensureTable();
+    await query(
+      `INSERT INTO login_failures (identifier, reason, client_type, ip, timestamp, date)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [String(identifier ?? '').toLowerCase(), String(reason ?? ''), clientType, ip, Date.now(), new Date().toISOString()]
+    );
+    // Trim: keep only last MAX_FAILURES_KEPT
+    await query(
+      `DELETE FROM login_failures WHERE id NOT IN (
+        SELECT id FROM login_failures ORDER BY timestamp DESC LIMIT ${MAX_FAILURES_KEPT}
+      )`
+    );
+    // Purge old entries
+    const cutoff = Date.now() - FAILURE_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    await query(`DELETE FROM login_failures WHERE timestamp < $1`, [cutoff]);
   } catch (error) {
     console.error('Error logging login failure:', error);
   }
@@ -84,21 +46,17 @@ export const logLoginFailure = async ({ identifier, reason, clientType = 'web', 
 
 /**
  * Get recent failures for a specific identifier
- * @param {string} identifier - username or email
- * @param {number} withinMinutes - look back this many minutes (default 30)
  */
 export const getRecentFailures = async (identifier, withinMinutes = 30) => {
   try {
-    const state = await readFailuresState();
-    const now = Date.now();
+    await ensureTable();
     const lookbackMs = withinMinutes * 60 * 1000;
-    const normalizedIdentifier = String(identifier ?? '').toLowerCase();
-
-    return state.failures.filter(
-      failure =>
-        failure.identifier === normalizedIdentifier &&
-        now - failure.timestamp < lookbackMs
+    const cutoff = Date.now() - lookbackMs;
+    const result = await query(
+      `SELECT * FROM login_failures WHERE identifier = $1 AND timestamp > $2 ORDER BY timestamp DESC`,
+      [String(identifier ?? '').toLowerCase(), cutoff]
     );
+    return result.rows.map(r => ({ ...r, clientType: r.client_type }));
   } catch (error) {
     console.error('Error reading recent failures:', error);
     return [];
@@ -110,8 +68,12 @@ export const getRecentFailures = async (identifier, withinMinutes = 30) => {
  */
 export const getAllFailureLogs = async (limit = 100) => {
   try {
-    const state = await readFailuresState();
-    return state.failures.slice(-limit).reverse();
+    await ensureTable();
+    const result = await query(
+      `SELECT * FROM login_failures ORDER BY timestamp DESC LIMIT $1`,
+      [limit]
+    );
+    return result.rows.map(r => ({ ...r, clientType: r.client_type }));
   } catch (error) {
     console.error('Error reading all failures:', error);
     return [];

@@ -7,6 +7,11 @@ import styles from './SystemLogsWorkspace.module.scss';
 
 const SESSION_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT']);
 const WORK_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT', 'ACTION']);
+const DRIVER_ALERT_ACTION_LABELS = {
+  'Sent dispatcher SMS escalation': 'sms-escalation',
+  'Resolved mobile driver alert': 'resolve-alert',
+  'Loaded mobile driver alert into draft': 'use-as-draft'
+};
 
 const getTodayDateKey = nowMs => new Date(nowMs).toISOString().split('T')[0];
 const getDateKeyFromTimestampMs = timestampMs => new Date(timestampMs).toISOString().split('T')[0];
@@ -172,6 +177,49 @@ const getRoleFilterKey = role => {
   return 'admin';
 };
 
+const getDriverAlertActionKey = log => {
+  const eventLabel = String(log?.eventLabel || '').trim();
+  if (DRIVER_ALERT_ACTION_LABELS[eventLabel]) return DRIVER_ALERT_ACTION_LABELS[eventLabel];
+  const metadataAction = String(log?.metadata?.action || '').trim();
+  if (metadataAction) return metadataAction;
+  return '';
+};
+
+const isDriverAlertActionLog = log => {
+  if (log?.eventType !== 'ACTION') return false;
+  return Boolean(getDriverAlertActionKey(log));
+};
+
+const getDriverAlertTypeLabel = alertType => {
+  if (alertType === 'delay-alert') return 'Late ETA';
+  if (alertType === 'backup-driver-request') return 'Backup Driver';
+  if (alertType === 'uber-request') return 'Uber Coverage';
+  return 'Driver Alert';
+};
+
+const getDriverAlertActionLabel = actionKey => {
+  if (actionKey === 'sms-escalation') return 'SMS Escalated';
+  if (actionKey === 'resolve-alert') return 'Resolved';
+  if (actionKey === 'use-as-draft') return 'Loaded Draft';
+  return actionKey || 'Action';
+};
+
+const getDriverAlertChannelLabel = log => {
+  const actionKey = getDriverAlertActionKey(log);
+  if (actionKey === 'sms-escalation') return log?.metadata?.mode === 'template' ? 'SMS Template' : 'SMS Raw';
+  if (actionKey === 'resolve-alert') return 'Resolved In App';
+  if (actionKey === 'use-as-draft') return 'Draft Prepared';
+  return 'Internal';
+};
+
+const buildDriverAlertSummary = log => {
+  if (log?.metadata?.smsMessage) return String(log.metadata.smsMessage).trim();
+  if (log?.metadata?.driverName && log?.metadata?.alertType) {
+    return `${log.metadata.driverName} | ${getDriverAlertTypeLabel(log.metadata.alertType)}`;
+  }
+  return String(log?.target || '').trim();
+};
+
 const SystemLogsWorkspace = () => {
   const { showNotification } = useNotificationContext();
   const { themeMode } = useLayoutContext();
@@ -186,6 +234,8 @@ const SystemLogsWorkspace = () => {
     onlineUsers: []
   });
   const [filterRole, setFilterRole] = useState('all');
+  const [activityView, setActivityView] = useState('workers');
+  const [alertActionFilter, setAlertActionFilter] = useState('all');
   const [selectedUser, setSelectedUser] = useState(null);
   const [userDetailLogs, setUserDetailLogs] = useState([]);
   const [showUserDetail, setShowUserDetail] = useState(false);
@@ -307,6 +357,44 @@ const SystemLogsWorkspace = () => {
     [workdayState]
   );
 
+  const driverAlertLogs = useMemo(() => {
+    return allLogs.filter(log => {
+      if (!isDriverAlertActionLog(log)) return false;
+      if (filterRole !== 'all' && getRoleFilterKey(log.userRole) !== filterRole) return false;
+      if (alertActionFilter !== 'all' && getDriverAlertActionKey(log) !== alertActionFilter) return false;
+      return true;
+    }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [alertActionFilter, allLogs, filterRole]);
+
+  const driverAlertStats = useMemo(() => {
+    const statsAccumulator = {
+      total: driverAlertLogs.length,
+      smsEscalations: 0,
+      resolved: 0,
+      drafts: 0,
+      uniqueDrivers: new Set(),
+      uniqueDispatchers: new Set()
+    };
+
+    driverAlertLogs.forEach(log => {
+      const actionKey = getDriverAlertActionKey(log);
+      if (actionKey === 'sms-escalation') statsAccumulator.smsEscalations += 1;
+      if (actionKey === 'resolve-alert') statsAccumulator.resolved += 1;
+      if (actionKey === 'use-as-draft') statsAccumulator.drafts += 1;
+      if (log?.metadata?.driverId) statsAccumulator.uniqueDrivers.add(log.metadata.driverId);
+      if (log?.userId) statsAccumulator.uniqueDispatchers.add(log.userId);
+    });
+
+    return {
+      total: statsAccumulator.total,
+      smsEscalations: statsAccumulator.smsEscalations,
+      resolved: statsAccumulator.resolved,
+      drafts: statsAccumulator.drafts,
+      uniqueDrivers: statsAccumulator.uniqueDrivers.size,
+      uniqueDispatchers: statsAccumulator.uniqueDispatchers.size
+    };
+  }, [driverAlertLogs]);
+
   const todayLogs = useMemo(() => summaryLogs.filter(log => log.date === todayDateKey), [todayDateKey, summaryLogs]);
 
   const activeUsersTodayCount = useMemo(
@@ -346,6 +434,14 @@ const SystemLogsWorkspace = () => {
   const selectedUserTodayWorkedMs = selectedUser?.userId
     ? detailWorkdayState.totalByUserDate.get(`${selectedUser.userId}::${todayDateKey}`) || 0
     : 0;
+
+  const renderEventDetail = log => {
+    if (isDriverAlertActionLog(log)) {
+      return `Chofer: ${log?.metadata?.driverName || log?.metadata?.driverId || '-'} | Alerta: ${getDriverAlertTypeLabel(log?.metadata?.alertType)} | Canal: ${getDriverAlertChannelLabel(log)}`;
+    }
+    if (log.metadata?.preview) return `Detalle: ${log.metadata.preview}`;
+    return '';
+  };
 
   return (
     <div className={`${styles.systemLogsWorkspace} ${themeMode === 'light' ? styles.lightTheme : ''}`}>
@@ -391,6 +487,24 @@ const SystemLogsWorkspace = () => {
           </select>
         </div>
 
+        <div className={styles.filterGroup}>
+          <label>Vista:</label>
+          <select value={activityView} onChange={event => setActivityView(event.target.value)} className={styles.select}>
+            <option value="workers">Trabajadores</option>
+            <option value="driver-alerts">Escalaciones de Alertas</option>
+          </select>
+        </div>
+
+        {activityView === 'driver-alerts' ? <div className={styles.filterGroup}>
+            <label>Accion:</label>
+            <select value={alertActionFilter} onChange={event => setAlertActionFilter(event.target.value)} className={styles.select}>
+              <option value="all">Todas</option>
+              <option value="sms-escalation">SMS</option>
+              <option value="resolve-alert">Resueltas</option>
+              <option value="use-as-draft">Draft</option>
+            </select>
+          </div> : null}
+
         <div className={styles.controlsMeta}>
           <span>{stats.todayEvents} eventos hoy en todo el sistema</span>
           <button onClick={fetchLogs} className={styles.button} disabled={loading}>
@@ -399,7 +513,30 @@ const SystemLogsWorkspace = () => {
         </div>
       </div>
 
-      {!showUserDetail ? (
+      {activityView === 'driver-alerts' ? <div className={styles.statsContainer}>
+          <div className={styles.statCard}>
+            <div className={styles.statLabel}>Escalaciones Totales</div>
+            <div className={styles.statValue}>{driverAlertStats.total}</div>
+            <div className={styles.statHint}>Acciones auditadas de alertas del chofer</div>
+          </div>
+          <div className={styles.statCard}>
+            <div className={styles.statLabel}>SMS Enviados</div>
+            <div className={styles.statValue}>{driverAlertStats.smsEscalations}</div>
+            <div className={styles.statHint}>Seguimientos salidos por SMS</div>
+          </div>
+          <div className={styles.statCard}>
+            <div className={styles.statLabel}>Alertas Resueltas</div>
+            <div className={styles.statValue}>{driverAlertStats.resolved}</div>
+            <div className={styles.statHint}>Cierres operativos desde Dispatcher</div>
+          </div>
+          <div className={styles.statCard}>
+            <div className={styles.statLabel}>Choferes Impactados</div>
+            <div className={styles.statValue}>{driverAlertStats.uniqueDrivers}</div>
+            <div className={styles.statHint}>{driverAlertStats.uniqueDispatchers} dispatchers actuaron</div>
+          </div>
+        </div> : null}
+
+      {!showUserDetail && activityView === 'workers' ? (
         <div className={styles.logsTableContainer}>
           <div className={styles.tableHeader}>
             <div>
@@ -463,6 +600,60 @@ const SystemLogsWorkspace = () => {
             </tbody>
           </table>
         </div>
+      ) : !showUserDetail ? (
+        <div className={styles.logsTableContainer}>
+          <div className={styles.tableHeader}>
+            <div>
+              <h3>Escalaciones de Alertas del Chofer</h3>
+              <p>Auditoria operativa de respuestas desde Dispatcher: draft, resolucion y SMS.</p>
+            </div>
+            <div className={styles.tableBadge}>{driverAlertLogs.length} acciones</div>
+          </div>
+          <table className={styles.logsTable}>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Dispatcher</th>
+                <th>Chofer</th>
+                <th>Alerta</th>
+                <th>Accion</th>
+                <th>Canal</th>
+                <th>Resumen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan="7" className={styles.loading}>Cargando...</td>
+                </tr>
+              ) : driverAlertLogs.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className={styles.noData}>No hay escalaciones de alertas para este filtro</td>
+                </tr>
+              ) : (
+                driverAlertLogs.slice(0, 300).map((log, index) => (
+                  <tr key={`${log.id || 'alert-log'}-${index}`}>
+                    <td>{log.date} {formatClock12(log.time)}</td>
+                    <td className={styles.userNameCell}>{log.userName || log.userId}</td>
+                    <td>{log.metadata?.driverName || log.metadata?.driverId || '-'}</td>
+                    <td>
+                      <span className={`${styles.badge} ${styles.alertTypeBadge}`}>
+                        {getDriverAlertTypeLabel(log.metadata?.alertType)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`${styles.badge} ${styles[`alertAction${getDriverAlertActionKey(log).replace(/(^|-)\w/g, match => match.replace('-', '').toUpperCase())}`] || styles.alertActionDefault}`}>
+                        {getDriverAlertActionLabel(getDriverAlertActionKey(log))}
+                      </span>
+                    </td>
+                    <td>{getDriverAlertChannelLabel(log)}</td>
+                    <td className={styles.alertSummaryCell}>{buildDriverAlertSummary(log)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className={styles.detailView}>
           <button onClick={() => setShowUserDetail(false)} className={styles.backButton}>
@@ -507,7 +698,7 @@ const SystemLogsWorkspace = () => {
                               {getActionLabel(log)}
                             </span>
                             {log.target ? <span className={styles.eventMeta}>Target: {log.target}</span> : null}
-                            {log.metadata?.preview ? <span className={styles.eventMeta}>Detalle: {log.metadata.preview}</span> : null}
+                            {renderEventDetail(log) ? <span className={styles.eventMeta}>{renderEventDetail(log)}</span> : null}
                           </div>
                         </div>
                       ))}

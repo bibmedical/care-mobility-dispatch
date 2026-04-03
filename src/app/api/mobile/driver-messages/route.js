@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
+import { normalizeDispatchMessageRecord } from '@/helpers/nemt-dispatch-state';
 import { normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
+import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readSystemMessages, upsertSystemMessage } from '@/server/system-messages-store';
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
@@ -11,6 +13,39 @@ const resolveDriverByLookup = async lookup => {
   return (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(driver => {
     return [driver?.id, driver?.code, driver?.name, driver?.nickname].map(normalizeLookupValue).filter(Boolean).includes(lookupValue);
   }) || null;
+};
+
+const appendIncomingDriverThreadMessage = (dispatchThreads, driverId, message) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) return Array.isArray(dispatchThreads) ? dispatchThreads : [];
+
+  const nextMessage = normalizeDispatchMessageRecord({
+    id: message.id,
+    direction: 'incoming',
+    text: message.body,
+    timestamp: message.createdAt,
+    status: 'sent'
+  });
+
+  const currentThreads = Array.isArray(dispatchThreads) ? dispatchThreads : [];
+  const existingThread = currentThreads.find(thread => String(thread?.driverId || '').trim() === normalizedDriverId);
+
+  if (!existingThread) {
+    return [...currentThreads, {
+      driverId: normalizedDriverId,
+      messages: [nextMessage]
+    }];
+  }
+
+  const existingMessages = Array.isArray(existingThread.messages) ? existingThread.messages : [];
+  if (existingMessages.some(entry => String(entry?.id || '').trim() === nextMessage.id)) {
+    return currentThreads;
+  }
+
+  return currentThreads.map(thread => String(thread?.driverId || '').trim() === normalizedDriverId ? {
+    ...thread,
+    messages: [...existingMessages, nextMessage]
+  } : thread);
 };
 
 export async function GET(request) {
@@ -39,9 +74,11 @@ export async function POST(request) {
   const body = await request.json();
   const driverLookup = body?.driverId || body?.driverCode;
   const messageText = String(body?.body || '').trim();
+  const mediaUrl = String(body?.mediaUrl || '').trim();
+  const mediaType = String(body?.mediaType || '').trim();
 
-  if (!driverLookup || !messageText) {
-    return NextResponse.json({ ok: false, error: 'driverId or driverCode and body are required.' }, { status: 400 });
+  if (!driverLookup || (!messageText && !mediaUrl)) {
+    return NextResponse.json({ ok: false, error: 'driverId or driverCode and at least one of body/mediaUrl are required.' }, { status: 400 });
   }
 
   const driver = await resolveDriverByLookup(driverLookup);
@@ -56,6 +93,8 @@ export async function POST(request) {
     audience: 'Dispatcher',
     subject: body.subject || `Driver message from ${driver.name}`,
     body: messageText,
+    mediaUrl: mediaUrl || null,
+    mediaType: mediaType || null,
     driverId: driver.id,
     driverName: driver.name,
     driverEmail: null,
@@ -67,5 +106,10 @@ export async function POST(request) {
   };
 
   await upsertSystemMessage(message);
+  const dispatchState = await readNemtDispatchState();
+  await writeNemtDispatchState({
+    ...dispatchState,
+    dispatchThreads: appendIncomingDriverThreadMessage(dispatchState?.dispatchThreads, driver.id, message)
+  });
   return NextResponse.json({ ok: true, message });
 }

@@ -1,13 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('blacklist.json');
-
-const DEFAULT_STATE = {
-  version: 1,
-  entries: []
-};
+import { query } from '@/server/db';
 
 const normalizeBlacklistEntry = value => ({
   id: String(value?.id ?? `bl-${Date.now()}`),
@@ -27,24 +18,53 @@ const normalizeBlacklistState = value => ({
   entries: Array.isArray(value?.entries) ? value.entries.map(normalizeBlacklistEntry).filter(entry => entry.name || entry.phone) : []
 });
 
-const ensureStorageFile = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    await writeFile(STORAGE_FILE, JSON.stringify(DEFAULT_STATE, null, 2), 'utf8');
-  }
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS blacklist_entries (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'Do Not Schedule',
+      status TEXT NOT NULL DEFAULT 'Active',
+      hold_until TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      source TEXT NOT NULL DEFAULT 'Dispatcher',
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT ''
+    )
+  `);
 };
 
 export const readBlacklistState = async () => {
-  await ensureStorageFile();
-  const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizeBlacklistState(JSON.parse(fileContents));
+  await ensureTable();
+  const result = await query(`SELECT * FROM blacklist_entries ORDER BY created_at DESC`);
+  const entries = result.rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    phone: r.phone,
+    category: r.category,
+    status: r.status,
+    holdUntil: r.hold_until,
+    notes: r.notes,
+    source: r.source,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  }));
+  return normalizeBlacklistState({ entries });
 };
 
 export const writeBlacklistState = async nextState => {
-  await ensureStorageFile();
+  await ensureTable();
   const normalized = normalizeBlacklistState(nextState);
-  await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
+  await query(`DELETE FROM blacklist_entries`);
+  for (const entry of normalized.entries) {
+    await query(
+      `INSERT INTO blacklist_entries (id, name, phone, category, status, hold_until, notes, source, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (id) DO UPDATE SET
+         name=$2, phone=$3, category=$4, status=$5, hold_until=$6, notes=$7, source=$8, updated_at=$10`,
+      [entry.id, entry.name, entry.phone, entry.category, entry.status, entry.holdUntil, entry.notes, entry.source, entry.createdAt, entry.updatedAt]
+    );
+  }
   return normalized;
 };

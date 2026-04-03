@@ -1,8 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('email-templates.json');
+import { query } from '@/server/db';
 
 const DEFAULT_TEMPLATES = {
   licenseExpiry: {
@@ -34,26 +30,42 @@ Please contact your dispatcher or update your license information immediately.
   }
 };
 
-const ensureFile = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    await writeFile(STORAGE_FILE, JSON.stringify({ templates: DEFAULT_TEMPLATES }, null, 2), 'utf8');
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL DEFAULT '{}'
+    )
+  `);
+  // Seed defaults if table is empty
+  for (const [id, tpl] of Object.entries(DEFAULT_TEMPLATES)) {
+    await query(
+      `INSERT INTO email_templates (id, data) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING`,
+      [id, JSON.stringify(tpl)]
+    );
   }
 };
 
 export const readEmailTemplates = async () => {
-  await ensureFile();
-  const content = await readFile(STORAGE_FILE, 'utf8');
-  const parsed = JSON.parse(content);
+  await ensureTable();
+  const result = await query(`SELECT id, data FROM email_templates`);
+  const stored = {};
+  for (const row of result.rows) {
+    stored[row.id] = row.data;
+  }
   // Merge with defaults so new template keys always exist
-  return { ...DEFAULT_TEMPLATES, ...(parsed.templates || {}) };
+  return { ...DEFAULT_TEMPLATES, ...stored };
 };
 
 export const writeEmailTemplates = async templates => {
-  await ensureFile();
-  await writeFile(STORAGE_FILE, JSON.stringify({ templates }, null, 2), 'utf8');
+  await ensureTable();
+  for (const [id, tpl] of Object.entries(templates)) {
+    await query(
+      `INSERT INTO email_templates (id, data) VALUES ($1,$2)
+       ON CONFLICT (id) DO UPDATE SET data=$2`,
+      [id, JSON.stringify(tpl)]
+    );
+  }
   return templates;
 };
 

@@ -37,10 +37,12 @@ services:
         sync: false
       - key: LICENSE_WARNING_DAYS
         value: "30"
+      - key: DATABASE_URL
+        sync: false
     disk:
       name: care-mobility-storage
       mountPath: /var/data/care-mobility
-      sizeGB: 5
+      sizeGB: 50
 
   - type: cron
     name: care-mobility-license-check
@@ -69,3 +71,5 @@ services:
         sync: false
       - key: LICENSE_WARNING_DAYS
         value: "30"
+      - key: DATABASE_URL
+        sync: false

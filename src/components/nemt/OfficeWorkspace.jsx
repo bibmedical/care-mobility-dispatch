@@ -41,7 +41,7 @@ const OfficeWorkspace = () => {
           <Card>
             <CardBody>
               <h4 className="mb-2">Print Setup</h4>
-              <p className="text-muted mb-3">Escoge el template que quieres usar al imprimir rutas.</p>
+              <p className="text-muted mb-3">Choose the template you want to use when printing routes.</p>
               <Button as={Link} href="/settings/office/print-setup" variant="primary">Open Print Setup</Button>
             </CardBody>
           </Card>
@@ -50,8 +50,8 @@ const OfficeWorkspace = () => {
           <Card>
             <CardBody>
               <h4 className="mb-2">Templates</h4>
-              <p className="text-muted mb-3">Prepara formatos de oficina y deja este espacio listo para mas layouts.</p>
-              <Button as={Link} href="/settings/office/templates" variant="outline-secondary">Abrir Templates</Button>
+              <p className="text-muted mb-3">Prepare office templates and keep this space ready for more layouts.</p>
+              <Button as={Link} href="/settings/office/templates" variant="outline-secondary">Open Templates</Button>
             </CardBody>
           </Card>
         </Col>
@@ -59,8 +59,8 @@ const OfficeWorkspace = () => {
           <Card>
             <CardBody>
               <h4 className="mb-2">Printers</h4>
-              <p className="text-muted mb-3">Deja un modulo separado para impresoras y destinos de impresion.</p>
-              <Button as={Link} href="/settings/office/printers" variant="outline-secondary">Abrir Printers</Button>
+              <p className="text-muted mb-3">Keep a separate module for printers and print destinations.</p>
+              <Button as={Link} href="/settings/office/printers" variant="outline-secondary">Open Printers</Button>
             </CardBody>
           </Card>
         </Col>
@@ -68,7 +68,7 @@ const OfficeWorkspace = () => {
           <Card>
             <CardBody>
               <h4 className="mb-2">Browser Data</h4>
-              <p className="text-muted mb-3">Limpia cache, localStorage y sessionStorage para forzar la version mas nueva del deploy.</p>
+              <p className="text-muted mb-3">Clear cache, localStorage, and sessionStorage to force the latest deployed version.</p>
               <Button variant="outline-danger" onClick={handleClearBrowserData} disabled={clearingCache}>{clearingCache ? 'Clearing...' : 'Clear Cache & Data'}</Button>
               {cacheMessage ? <div className="small mt-2 text-muted">{cacheMessage}</div> : null}
             </CardBody>

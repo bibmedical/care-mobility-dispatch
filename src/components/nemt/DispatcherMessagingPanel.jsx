@@ -3,14 +3,57 @@
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useNemtContext } from '@/context/useNemtContext';
 import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
+import { normalizePhoneDigits } from '@/helpers/system-users';
 import useLocalStorage from '@/hooks/useLocalStorage';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Form } from 'react-bootstrap';
 
 const greenToolbarButtonStyle = {
   color: '#08131a',
   borderColor: 'rgba(8, 19, 26, 0.35)',
   backgroundColor: 'transparent'
+};
+
+const MOBILE_ALERT_POLL_MS = 5000;
+
+const DRIVER_ALERT_SMS_TEMPLATES = {
+  'delay-alert': driverName => `Dispatch update for ${driverName}: we received your delay alert. Send your best ETA as soon as traffic clears or conditions change.`,
+  'backup-driver-request': driverName => `Dispatch update for ${driverName}: we are reviewing backup driver coverage now. Stay with the trip until dispatch confirms the swap.`,
+  'uber-request': driverName => `Dispatch update for ${driverName}: dispatch is reviewing Uber backup coverage now. Keep dispatch updated before leaving the trip.`,
+  fallback: driverName => `Dispatch update for ${driverName}: your alert was received. Keep dispatch updated and wait for coverage instructions.`
+};
+
+const getAlertVariant = priority => {
+  if (priority === 'high' || priority === 'urgent') return 'danger';
+  if (priority === 'normal') return 'warning';
+  return 'secondary';
+};
+
+const getAlertSurfaceStyle = alert => {
+  if (alert?.type === 'uber-request') return { backgroundColor: '#fff1f2', borderColor: '#be123c', borderWidth: 2 };
+  if (alert?.type === 'backup-driver-request') return { backgroundColor: '#eff6ff', borderColor: '#1d4ed8', borderWidth: 2 };
+  if (alert?.type === 'delay-alert') return { backgroundColor: '#fff7ed', borderColor: '#ea580c', borderWidth: 2 };
+  if (alert?.priority === 'high' || alert?.priority === 'urgent') return { backgroundColor: '#fef2f2', borderColor: '#b91c1c', borderWidth: 2 };
+  return { backgroundColor: '#fff8e1', borderColor: '#f59e0b', borderWidth: 1 };
+};
+
+const getAlertLabel = alert => {
+  if (alert?.type === 'delay-alert') return 'Late ETA';
+  if (alert?.type === 'backup-driver-request') return 'Backup Driver';
+  if (alert?.type === 'uber-request') return 'Uber Coverage';
+  return 'Driver Alert';
+};
+
+const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
+  try {
+    await fetch('/api/system-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventLabel, target, metadata })
+    });
+  } catch (error) {
+    console.error('Error recording dispatcher messaging activity:', error);
+  }
 };
 
 const mergeThreads = (threads, drivers) => {
@@ -42,6 +85,12 @@ const DispatcherMessagingPanel = ({
   const [draftMessage, setDraftMessage] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
   const [showAddDriver, setShowAddDriver] = useState(false);
+  const [driverAlerts, setDriverAlerts] = useState([]);
+  const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
+  const [alertsError, setAlertsError] = useState('');
+  const [isSendingSms, setIsSendingSms] = useState(false);
+  const [smsStatus, setSmsStatus] = useState('');
+  const [resolvingAlertId, setResolvingAlertId] = useState('');
   const photoInputRef = useRef(null);
   const documentInputRef = useRef(null);
 
@@ -68,12 +117,55 @@ const DispatcherMessagingPanel = ({
   }), [allDrivers, normalizedSearch, visibleThreads]);
   const activeDriverId = selectedDriverId && visibleThreads.some(thread => thread.driverId === selectedDriverId) ? selectedDriverId : visibleThreads[0]?.driverId ?? null;
   const activeThread = normalizedThreads.find(thread => thread.driverId === activeDriverId) ?? null;
+  const activeAlertCounts = useMemo(() => driverAlerts.reduce((accumulator, alert) => {
+    if (!alert?.driverId || alert?.status === 'resolved') return accumulator;
+    accumulator[alert.driverId] = (accumulator[alert.driverId] || 0) + 1;
+    return accumulator;
+  }, {}), [driverAlerts]);
   const unreadCount = visibleThreads.reduce((total, thread) => total + thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length, 0);
+  const activeDriverAlerts = useMemo(() => driverAlerts.filter(alert => alert.driverId === activeDriverId && alert.status !== 'resolved'), [activeDriverId, driverAlerts]);
 
   const handleSelectDriver = driverId => {
     setSelectedDriverId(driverId);
     markDispatchThreadRead(driverId);
+    setSmsStatus('');
   };
+
+  useEffect(() => {
+    let active = true;
+
+    const loadDriverAlerts = async () => {
+      if (active) setIsLoadingAlerts(true);
+      try {
+        const response = await fetch('/api/system-messages', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Unable to load driver alerts.');
+        if (!active) return;
+
+        const nextAlerts = (Array.isArray(payload?.messages) ? payload.messages : []).filter(message => {
+          return message?.driverId && message?.source === 'mobile-driver-app';
+        }).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
+
+        setDriverAlerts(nextAlerts);
+        setAlertsError('');
+      } catch (error) {
+        if (!active) return;
+        setAlertsError(error.message || 'Unable to load driver alerts.');
+      } finally {
+        if (active) setIsLoadingAlerts(false);
+      }
+    };
+
+    void loadDriverAlerts();
+    const intervalId = window.setInterval(() => {
+      void loadDriverAlerts();
+    }, MOBILE_ALERT_POLL_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const handleSendMessage = (text, options = {}) => {
     const messageText = text.trim();
@@ -89,6 +181,83 @@ const DispatcherMessagingPanel = ({
     };
     upsertDispatchThreadMessage({ driverId: activeDriverId, message: outgoingMessage });
     setDraftMessage('');
+  };
+
+  const handleResolveAlert = async alertId => {
+    if (!alertId) return;
+    setResolvingAlertId(alertId);
+    setAlertsError('');
+    try {
+      const response = await fetch('/api/system-messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: alertId, action: 'resolve' })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to resolve alert.');
+      setDriverAlerts(currentAlerts => currentAlerts.map(alert => alert.id === alertId ? payload.message : alert));
+      await logSystemActivity('Resolved mobile driver alert', activeDriverId || '', {
+        alertId,
+        driverId: activeDriverId || '',
+        driverName: activeDriver?.name || '',
+        action: 'resolve-alert'
+      });
+    } catch (error) {
+      setAlertsError(error.message || 'Unable to resolve alert.');
+    } finally {
+      setResolvingAlertId('');
+    }
+  };
+
+  const handleEscalateAlertSms = async alert => {
+    await handleSendSmsTemplate(alert, `Dispatch follow-up: ${alert.body}`);
+  };
+
+  const handleSendSmsTemplate = async (alert, smsMessage) => {
+    const phoneNumber = normalizePhoneDigits(activeDriver?.phone);
+    if (!activeDriverId || !phoneNumber || !smsMessage) {
+      setSmsStatus('Driver phone is missing, so SMS escalation cannot be sent.');
+      return;
+    }
+
+    setIsSendingSms(true);
+    setSmsStatus('');
+    try {
+      const response = await fetch('/api/extensions/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'sms',
+          phoneNumber,
+          message: smsMessage,
+          driverId: activeDriverId,
+          driverName: activeDriver?.name || 'Driver'
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok || payload?.success === false) throw new Error(payload?.error || 'Unable to escalate via SMS.');
+
+      handleSendMessage(`SMS escalation sent: ${smsMessage}`);
+      await logSystemActivity('Sent dispatcher SMS escalation', activeDriverId || '', {
+        alertId: alert?.id || '',
+        driverId: activeDriverId || '',
+        driverName: activeDriver?.name || '',
+        alertType: alert?.type || 'unknown',
+        smsMessage,
+        mode: alert?.body === smsMessage.replace(/^Dispatch follow-up:\s*/, '') ? 'raw-forward' : 'template'
+      });
+      setSmsStatus(payload?.demo ? 'SMS escalation sent in demo mode.' : 'SMS escalation sent to driver.');
+    } catch (error) {
+      setSmsStatus(error.message || 'Unable to escalate via SMS.');
+    } finally {
+      setIsSendingSms(false);
+    }
+  };
+
+  const handleSendTemplateByType = async alert => {
+    const driverName = activeDriver?.name || 'driver';
+    const templateBuilder = DRIVER_ALERT_SMS_TEMPLATES[alert?.type] || DRIVER_ALERT_SMS_TEMPLATES.fallback;
+    await handleSendSmsTemplate(alert, templateBuilder(driverName));
   };
 
   const readFileAsDataUrl = file => new Promise((resolve, reject) => {
@@ -207,8 +376,10 @@ const DispatcherMessagingPanel = ({
               const isDaily = driver?._isDaily === true;
               const lastMessage = thread.messages[thread.messages.length - 1];
               const threadUnreadCount = thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length;
+              const threadAlertCount = activeAlertCounts[thread.driverId] || 0;
+              const hasUrgentAlert = driverAlerts.some(alert => alert.driverId === thread.driverId && alert.status !== 'resolved' && (alert.priority === 'high' || alert.priority === 'urgent'));
               return (
-                <div key={thread.driverId} className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`} style={{ backgroundColor: thread.driverId === activeDriverId ? '#6c5ce7' : 'transparent' }}>
+                <div key={thread.driverId} className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`} style={{ backgroundColor: thread.driverId === activeDriverId ? '#6c5ce7' : hasUrgentAlert ? '#fff7ed' : 'transparent', borderLeft: hasUrgentAlert ? '4px solid #ea580c' : '4px solid transparent' }}>
                   <div className="d-flex align-items-start gap-2 px-2 pt-2">
                     <div className="flex-grow-1">
                       <button type="button" onClick={() => handleSelectDriver(thread.driverId)} className={`w-100 text-start border-0 px-1 pb-2 ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`} style={{ backgroundColor: 'transparent' }}>
@@ -229,6 +400,7 @@ const DispatcherMessagingPanel = ({
                           <div className="text-end">
                             <div className="small">{lastMessage ? formatDispatchTime(lastMessage.timestamp, uiPreferences?.timeZone) : '--:--'}</div>
                             {threadUnreadCount > 0 ? <Badge bg="danger">{threadUnreadCount}</Badge> : null}
+                            {threadAlertCount > 0 ? <Badge bg="warning" text="dark" className="ms-1">{threadAlertCount} alert</Badge> : null}
                           </div>
                         </div>
                       </button>
@@ -249,10 +421,56 @@ const DispatcherMessagingPanel = ({
         </div>
         <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
           <div className="p-3 border-bottom bg-light">
-            <div className="fw-semibold">{activeDriver?.name ?? 'Select a driver'}</div>
-            <div className="small text-muted">{activeDriver ? `${activeDriver.live} | ${activeDriver.vehicle}` : 'Choose a thread to start dispatch messaging.'}</div>
+            <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+              <div>
+                <div className="fw-semibold">{activeDriver?.name ?? 'Select a driver'}</div>
+                <div className="small text-muted">{activeDriver ? `${activeDriver.live} | ${activeDriver.vehicle}` : 'Choose a thread to start dispatch messaging.'}</div>
+              </div>
+              {activeDriver ? <div className="d-flex gap-2 align-items-center flex-wrap">
+                  {activeDriverAlerts.length > 0 ? <Badge bg="danger">{activeDriverAlerts.length} active mobile alert{activeDriverAlerts.length === 1 ? '' : 's'}</Badge> : null}
+                  <Badge bg={normalizePhoneDigits(activeDriver.phone).length >= 10 ? 'success' : 'secondary'}>{normalizePhoneDigits(activeDriver.phone).length >= 10 ? 'SMS ready' : 'No SMS number'}</Badge>
+                </div> : null}
+            </div>
           </div>
           <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', minHeight: 0 }}>
+            {isLoadingAlerts && activeDriverAlerts.length === 0 ? <div className="small text-muted mb-3">Loading driver alerts...</div> : null}
+            {alertsError ? <div className="alert alert-warning py-2 mb-3">{alertsError}</div> : null}
+            {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') ? 'alert-warning' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}
+            {activeDriverAlerts.length > 0 ? <div className="d-flex flex-column gap-2 mb-3">
+                {activeDriverAlerts.map(alert => <div key={alert.id} className="border rounded p-3 shadow-sm" style={getAlertSurfaceStyle(alert)}>
+                    <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                      <div>
+                        <div className="d-flex align-items-center gap-2 flex-wrap">
+                          <strong>{alert.subject || 'Driver alert'}</strong>
+                          <Badge bg={getAlertVariant(alert.priority)}>{alert.priority || 'normal'}</Badge>
+                          <Badge bg="dark">{getAlertLabel(alert)}</Badge>
+                        </div>
+                        <div className="small text-muted mt-1">{formatDispatchTime(alert.createdAt, uiPreferences?.timeZone)} | {alert.deliveryMethod || 'in-app'}</div>
+                      </div>
+                      <div className="d-flex gap-2 flex-wrap">
+                        <Button size="sm" variant="outline-secondary" onClick={() => {
+                          setDraftMessage(alert.body || '');
+                          void logSystemActivity('Loaded mobile driver alert into draft', activeDriverId || '', {
+                            alertId: alert.id,
+                            driverId: activeDriverId || '',
+                            driverName: activeDriver?.name || '',
+                            alertType: alert?.type || 'unknown',
+                            action: 'use-as-draft'
+                          });
+                        }}>Use As Draft</Button>
+                        <Button size="sm" variant="outline-dark" onClick={() => void handleSendTemplateByType(alert)} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Send Template</Button>
+                        <Button size="sm" variant="outline-danger" onClick={() => void handleEscalateAlertSms(alert)} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Forward Raw</Button>
+                        <Button size="sm" variant="success" onClick={() => void handleResolveAlert(alert.id)} disabled={resolvingAlertId === alert.id}>{resolvingAlertId === alert.id ? 'Resolving...' : 'Resolve'}</Button>
+                      </div>
+                    </div>
+                    <div className="mt-2 small">{alert.body}</div>
+                    <div className="mt-3 d-flex gap-2 flex-wrap">
+                      <Button size="sm" variant="warning" onClick={() => void handleSendSmsTemplate(alert, DRIVER_ALERT_SMS_TEMPLATES['delay-alert'](activeDriver?.name || 'driver'))} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Late ETA SMS</Button>
+                      <Button size="sm" variant="primary" onClick={() => void handleSendSmsTemplate(alert, DRIVER_ALERT_SMS_TEMPLATES['backup-driver-request'](activeDriver?.name || 'driver'))} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Backup Driver SMS</Button>
+                      <Button size="sm" variant="danger" onClick={() => void handleSendSmsTemplate(alert, DRIVER_ALERT_SMS_TEMPLATES['uber-request'](activeDriver?.name || 'driver'))} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Uber SMS</Button>
+                    </div>
+                  </div>)}
+              </div> : null}
             {activeThread?.messages?.length ? activeThread.messages.map(message => (
               <div key={message.id} className={`d-flex mb-3 ${message.direction === 'outgoing' ? 'justify-content-end' : 'justify-content-start'}`}>
                 <div className={`rounded-3 px-3 py-2 ${message.direction === 'outgoing' ? 'bg-primary text-white' : 'bg-light border'}`} style={{ maxWidth: '80%' }}>

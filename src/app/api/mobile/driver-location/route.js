@@ -11,6 +11,7 @@ export async function POST(request) {
   const heading = body?.heading == null ? null : Number(body.heading);
   const speed = body?.speed == null ? null : Number(body.speed);
   const accuracy = body?.accuracy == null ? null : Number(body.accuracy);
+  const city = String(body?.city || '').trim();
   const sourceTimestamp = Number(body?.timestamp);
 
   if (!driverId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
@@ -31,7 +32,8 @@ export async function POST(request) {
     position: [latitude, longitude],
     trackingSource: 'android',
     trackingLastSeen,
-    checkpoint: body?.checkpoint || formatCheckpoint(latitude, longitude),
+    checkpoint: body?.checkpoint || city || formatCheckpoint(latitude, longitude),
+    city,
     heading,
     speed,
     accuracy

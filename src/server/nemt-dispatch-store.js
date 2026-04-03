@@ -1,26 +1,27 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
 import { normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
-import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
+import { query } from '@/server/db';
 
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('nemt-dispatch.json');
-
-const parseJsonSafe = raw => JSON.parse(String(raw ?? '').replace(/^\uFEFF/, ''));
-
-const ensureStorageFile = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    await writeFile(STORAGE_FILE, JSON.stringify(normalizePersistentDispatchState(), null, 2), 'utf8');
-  }
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS dispatch_state (
+      id TEXT PRIMARY KEY DEFAULT 'singleton',
+      version INTEGER NOT NULL DEFAULT 1,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query(`
+    INSERT INTO dispatch_state (id, version, data)
+    VALUES ('singleton', 1, '{}'::jsonb)
+    ON CONFLICT (id) DO NOTHING
+  `);
 };
 
 export const readNemtDispatchState = async () => {
-  await ensureStorageFile();
-  const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizePersistentDispatchState(parseJsonSafe(fileContents));
+  await ensureTable();
+  const result = await query(`SELECT data FROM dispatch_state WHERE id = 'singleton'`);
+  const raw = result.rows[0]?.data ?? {};
+  return normalizePersistentDispatchState(raw);
 };
 
 const getTripUpdatedAt = trip => {
@@ -39,16 +40,15 @@ const mergeTripsByLatestUpdate = (currentTrips, incomingTrips) => {
 };
 
 export const writeNemtDispatchState = async nextState => {
-  await ensureStorageFile();
+  await ensureTable();
   const currentState = await readNemtDispatchState();
   const normalized = normalizePersistentDispatchState({
     ...nextState,
     trips: mergeTripsByLatestUpdate(currentState?.trips, nextState?.trips)
   });
-  await writeJsonFileWithSnapshots({
-    filePath: STORAGE_FILE,
-    nextValue: normalized,
-    backupName: 'nemt-dispatch'
-  });
+  await query(
+    `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
+    [JSON.stringify(normalized)]
+  );
   return normalized;
 };

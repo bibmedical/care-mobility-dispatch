@@ -157,8 +157,8 @@ const HelpPage = () => {
         <CardBody>
           <div className="d-flex flex-column flex-lg-row justify-content-between gap-3">
             <div>
-              <h5 className="mb-1">Mapa completo de instrucciones</h5>
-              <p className="text-muted mb-0">Indice alfabetico para ubicar cada modulo del sistema, que hace y donde abrirlo.</p>
+              <h5 className="mb-1">Full instruction map</h5>
+              <p className="text-muted mb-0">Alphabetical index to locate each system module, what it does, and where to open it.</p>
             </div>
             <div className="d-flex flex-wrap gap-2">
               <Button as={Link} href="/dispatcher" variant="primary">Open Dispatcher</Button>
@@ -172,7 +172,7 @@ const HelpPage = () => {
         <Col xl={5}>
           <Card className="h-100">
             <CardBody>
-              <h5 className="mb-3">Flujo recomendado</h5>
+              <h5 className="mb-3">Recommended flow</h5>
               <div className="d-flex flex-column gap-2">
                 {QUICK_FLOW.map(item => <div key={item.step} className="border rounded p-2">
                     <div className="fw-semibold">{item.step}</div>
@@ -185,14 +185,14 @@ const HelpPage = () => {
         <Col xl={7}>
           <Card className="h-100">
             <CardBody>
-              <h5 className="mb-3">Atajos rapidos</h5>
+              <h5 className="mb-3">Quick shortcuts</h5>
               <div className="d-flex flex-wrap gap-2">
                 <Badge bg="primary">A/U/C = Assign, Unassign, Cancel</Badge>
-                <Badge bg="secondary">AL/BL/CL = filtro de leg</Badge>
-                <Badge bg="info">A/W/STR = tipo de movilidad</Badge>
-                <Badge bg="dark">Route = construir secuencia</Badge>
-                <Badge bg="warning" text="dark">Clear = limpiar seleccion</Badge>
-                <Badge bg="success">Selected trips = conteo actual</Badge>
+                <Badge bg="secondary">AL/BL/CL = leg filter</Badge>
+                <Badge bg="info">A/W/STR = mobility type</Badge>
+                <Badge bg="dark">Route = build sequence</Badge>
+                <Badge bg="warning" text="dark">Clear = clear selection</Badge>
+                <Badge bg="success">Selected trips = current count</Badge>
               </div>
             </CardBody>
           </Card>

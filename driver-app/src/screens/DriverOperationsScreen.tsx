@@ -1,0 +1,109 @@
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { DriverAlertsSection } from '../components/driver/DriverAlertsSection';
+import { DriverControlSection } from '../components/driver/DriverControlSection';
+import { DriverDashboardSection } from '../components/driver/DriverDashboardSection';
+import { DriverDocumentsSection } from '../components/driver/DriverDocumentsSection';
+import { DriverDrawerMenu } from '../components/driver/DriverDrawerMenu';
+import { DriverGpsSection } from '../components/driver/DriverGpsSection';
+import { DriverHelpSection } from '../components/driver/DriverHelpSection';
+import { DriverHistorySection } from '../components/driver/DriverHistorySection';
+import { DriverMessagesSection } from '../components/driver/DriverMessagesSection';
+import { DriverProfileSection } from '../components/driver/DriverProfileSection';
+import { DriverTripsSection } from '../components/driver/DriverTripsSection';
+import { driverSharedStyles, driverTheme } from '../components/driver/driverTheme';
+import { DriverRuntime } from '../hooks/useDriverRuntime';
+import { DriverAppTab } from '../types/driver';
+import { useState } from 'react';
+
+type Props = {
+  runtime: DriverRuntime;
+};
+
+const SCREEN_TITLES: Record<DriverAppTab, string> = {
+  home: 'Home',
+  trips: 'Trips',
+  messages: 'Messages',
+  alerts: 'Alerts',
+  gps: 'GPS',
+  settings: 'Settings',
+  profile: 'Profile',
+  history: 'History',
+  documents: 'Documents',
+  help: 'Help'
+};
+
+export const DriverOperationsScreen = ({ runtime }: Props) => {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const renderBody = () => {
+    if (runtime.activeTab === 'home') return <DriverDashboardSection runtime={runtime} />;
+    if (runtime.activeTab === 'trips') return <DriverTripsSection runtime={runtime} />;
+    if (runtime.activeTab === 'messages') return <DriverMessagesSection runtime={runtime} />;
+    if (runtime.activeTab === 'alerts') return <DriverAlertsSection runtime={runtime} />;
+    if (runtime.activeTab === 'gps') return <DriverGpsSection runtime={runtime} />;
+    if (runtime.activeTab === 'profile') return <DriverProfileSection runtime={runtime} />;
+    if (runtime.activeTab === 'history') return <DriverHistorySection runtime={runtime} />;
+    if (runtime.activeTab === 'documents') return <DriverDocumentsSection runtime={runtime} />;
+    if (runtime.activeTab === 'help') return <DriverHelpSection runtime={runtime} />;
+    return <DriverControlSection runtime={runtime} />;
+  };
+
+  return <View style={styles.screen}>
+      <View style={styles.topBar}>
+        <Pressable style={styles.menuButton} onPress={() => setIsDrawerOpen(true)}>
+          <Text style={styles.menuButtonText}>Menu</Text>
+        </Pressable>
+        <View style={styles.titleBlock}>
+          <Text style={styles.titleEyebrow}>Driver App</Text>
+          <Text style={styles.titleText}>{SCREEN_TITLES[runtime.activeTab]}</Text>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={driverSharedStyles.screen}>
+        {renderBody()}
+      </ScrollView>
+
+      {isDrawerOpen ? <DriverDrawerMenu activeTab={runtime.activeTab} onChange={runtime.setActiveTab} onClose={() => setIsDrawerOpen(false)} driverName={runtime.driverSession?.name || runtime.driverCode || 'Driver'} /> : null}
+    </View>;
+};
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 4,
+    backgroundColor: driverTheme.colors.headerBg
+  },
+  menuButton: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
+  },
+  menuButtonText: {
+    color: '#ffffff',
+    fontWeight: '800'
+  },
+  titleBlock: {
+    flex: 1
+  },
+  titleEyebrow: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase'
+  },
+  titleText: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontWeight: '800'
+  }
+});

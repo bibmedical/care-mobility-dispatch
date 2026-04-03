@@ -5,7 +5,7 @@ export const metadata = {
 };
 
 const PreferencesPage = () => {
-  return <ModulePage title="Preferences" description="Ajustes generales de despacho, mapas, notificaciones y comportamiento del sistema." stats={[{
+  return <ModulePage title="Preferences" description="General dispatch, map, notification, and system behavior settings." stats={[{
       label: 'Dispatch rules',
       value: '0'
     }, {

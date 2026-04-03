@@ -1,9 +1,5 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
+import { query, queryOne } from '@/server/db';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
-
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('integrations.json');
 
 const DEFAULT_STATE = {
   version: 1,
@@ -193,24 +189,31 @@ const normalizeState = value => ({
   sms: normalizeSmsState(value?.sms)
 });
 
-const ensureStorageFile = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    await writeFile(STORAGE_FILE, JSON.stringify(DEFAULT_STATE, null, 2), 'utf8');
-  }
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS integrations_state (
+      id TEXT PRIMARY KEY DEFAULT 'singleton',
+      data JSONB NOT NULL DEFAULT '{}'
+    )
+  `);
+  await query(
+    `INSERT INTO integrations_state (id, data) VALUES ('singleton',$1) ON CONFLICT (id) DO NOTHING`,
+    [JSON.stringify(DEFAULT_STATE)]
+  );
 };
 
 export const readIntegrationsState = async () => {
-  await ensureStorageFile();
-  const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizeState(JSON.parse(fileContents));
+  await ensureTable();
+  const row = await queryOne(`SELECT data FROM integrations_state WHERE id = 'singleton'`);
+  return normalizeState(row?.data || DEFAULT_STATE);
 };
 
 export const writeIntegrationsState = async nextState => {
-  await ensureStorageFile();
+  await ensureTable();
   const normalized = normalizeState(nextState);
-  await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
+  await query(
+    `UPDATE integrations_state SET data=$1 WHERE id='singleton'`,
+    [JSON.stringify(normalized)]
+  );
   return normalized;
 };

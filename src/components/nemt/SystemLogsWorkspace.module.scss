@@ -182,6 +182,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+    flex-wrap: wrap;
   }
 
   .filterGroup {
@@ -366,6 +367,31 @@
     color: #9bc7ff;
   }
 
+  .alertTypeBadge {
+    background: rgba(249, 115, 22, 0.16);
+    color: #fdba74;
+  }
+
+  .alertActionSmsEscalation {
+    background: rgba(190, 24, 93, 0.18);
+    color: #f9a8d4;
+  }
+
+  .alertActionResolveAlert {
+    background: rgba(34, 197, 94, 0.18);
+    color: #a7f3d0;
+  }
+
+  .alertActionUseAsDraft {
+    background: rgba(59, 130, 246, 0.18);
+    color: #bfdbfe;
+  }
+
+  .alertActionDefault {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--sl-text-soft);
+  }
+
   .badgeAttendant {
     background: rgba(168, 85, 247, 0.18);
     color: #d7b4ff;
@@ -538,6 +564,12 @@
   .eventMeta {
     color: var(--sl-text-muted);
     font-size: 0.78rem;
+  }
+
+  .alertSummaryCell {
+    max-width: 420px;
+    color: var(--sl-text-soft);
+    line-height: 1.35;
   }
 
   .onlineUsersList {

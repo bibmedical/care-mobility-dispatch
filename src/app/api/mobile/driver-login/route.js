@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
+import { authorizePersistedSystemUser } from '@/server/system-users-store';
+import { isDriverRole, normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
 import { getFullName, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
 
@@ -32,6 +33,23 @@ const matchesDriverIdentifier = (driver, state, identifier) => {
   return candidates.includes(lookupValue);
 };
 
+const findDriverFromAuthUser = (drivers, authUser) => {
+  const normalizedUsername = normalizeLookupValue(authUser?.username);
+  const normalizedEmail = normalizeLookupValue(authUser?.email);
+
+  return drivers.find(driver => {
+    const sameAuthUser = String(driver?.authUserId || '').trim() === String(authUser?.id || '').trim();
+    if (sameAuthUser) return true;
+
+    const sameUsername = normalizedUsername && normalizeLookupValue(driver?.username) === normalizedUsername;
+    const samePortalUsername = normalizedUsername && normalizeLookupValue(driver?.portalUsername) === normalizedUsername;
+    const sameEmail = normalizedEmail && normalizeLookupValue(driver?.email) === normalizedEmail;
+    const samePortalEmail = normalizedEmail && normalizeLookupValue(driver?.portalEmail) === normalizedEmail;
+
+    return sameUsername || samePortalUsername || sameEmail || samePortalEmail;
+  });
+};
+
 export async function POST(request) {
   let payload;
 
@@ -41,16 +59,61 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 });
   }
 
-  const identifier = String(payload?.identifier || '').trim();
+  const identifier = String(payload?.identifier || payload?.email || '').trim();
+  const password = String(payload?.password || '').trim();
   const pin = String(payload?.pin || '').trim();
 
+  const state = await readNemtAdminState();
+  const normalizedDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(normalizeDriverTracking);
+
+  // Primary auth path: same credentials as web (identifier + password).
+  if (identifier && password) {
+    try {
+      const authUser = await authorizePersistedSystemUser({
+        identifier,
+        password,
+        clientType: 'android'
+      });
+
+      if (!isDriverRole(authUser?.role)) {
+        return NextResponse.json({ ok: false, error: 'This account is not a driver profile.' }, { status: 403 });
+      }
+
+      const driver = findDriverFromAuthUser(normalizedDrivers, authUser);
+      if (!driver) {
+        return NextResponse.json({ ok: false, error: 'Driver profile not found.' }, { status: 404 });
+      }
+
+      if (normalizeLookupValue(driver.profileStatus) !== 'active') {
+        return NextResponse.json({ ok: false, error: 'Driver profile is not active.' }, { status: 403 });
+      }
+
+      const driverCode = buildDriverCode(driver, state);
+
+      return NextResponse.json({
+        ok: true,
+        session: {
+          driverId: driver.id,
+          driverCode,
+          name: getFullName(driver),
+          username: authUser.username || driver.portalUsername || driver.username || '',
+          email: authUser.email || driver.portalEmail || driver.email || '',
+          phone: normalizePhoneDigits(driver.phone),
+          vehicleId: driver.vehicleId || '',
+          passwordResetRequired: Boolean(driver.passwordResetRequired)
+        }
+      });
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Invalid credentials.' }, { status: 401 });
+    }
+  }
+
+  // Legacy fallback path: identifier + mobile PIN.
   if (!identifier || !pin) {
     return NextResponse.json({ ok: false, error: 'Identifier and PIN are required.' }, { status: 400 });
   }
 
-  const state = await readNemtAdminState();
-  const driver = (Array.isArray(state?.drivers) ? state.drivers : [])
-    .map(normalizeDriverTracking)
+  const driver = normalizedDrivers
     .find(item => matchesDriverIdentifier(item, state, identifier));
 
   if (!driver) {

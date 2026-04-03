@@ -198,6 +198,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
         username: entity.username || entity.portalUsername || fallbackUsername,
         portalUsername: entity.portalUsername || entity.username || fallbackUsername,
         portalEmail: entity.portalEmail || entity.email,
+        mobilePin: String(entity.mobilePin || '').replace(/\D+/g, '').slice(0, 12),
         checkpoint: entity.checkpoint || (entity.vehicleId ? 'Vehicle ready' : 'Needs assignment')
       };
     }
@@ -354,7 +355,26 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
     }
 
     if (editorTab === 'credentials') {
-      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Portal Username</Form.Label><Form.Control value={draftEntity.portalUsername} style={shellStyles.modalInput} onChange={event => updateDraftField('portalUsername', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Portal Email</Form.Label><Form.Control value={draftEntity.portalEmail} style={shellStyles.modalInput} onChange={event => updateDraftField('portalEmail', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Broker ID</Form.Label><Form.Control value={draftEntity.brokerId} style={shellStyles.modalInput} onChange={event => updateDraftField('brokerId', event.target.value)} /></Col><Col md={3}><Form.Check label="MFA Enabled" checked={draftEntity.mfaEnabled} onChange={event => updateDraftField('mfaEnabled', event.target.checked)} /></Col><Col md={3}><Form.Check label="Password Reset Required" checked={draftEntity.passwordResetRequired} onChange={event => updateDraftField('passwordResetRequired', event.target.checked)} /></Col><Col md={3}><Form.Check label="Background Check Clear" checked={draftEntity.backgroundCheckStatus === 'Clear'} onChange={event => updateDraftField('backgroundCheckStatus', event.target.checked ? 'Clear' : 'Pending')} /></Col><Col md={3}><Form.Check label="Drug Screen Clear" checked={draftEntity.drugScreenStatus === 'Clear'} onChange={event => updateDraftField('drugScreenStatus', event.target.checked ? 'Clear' : 'Pending')} /></Col><Col md={3}><Form.Check label="CPR Certified" checked={draftEntity.cprCertified} onChange={event => updateDraftField('cprCertified', event.target.checked)} /></Col><Col md={3}><Form.Check label="Defensive Driving" checked={draftEntity.defensiveDrivingCertified} onChange={event => updateDraftField('defensiveDrivingCertified', event.target.checked)} /></Col><Col md={3}><Form.Check label="HIPAA Certified" checked={draftEntity.hipaaCertified} onChange={event => updateDraftField('hipaaCertified', event.target.checked)} /></Col><Col md={3}><Form.Check label="NEMT Certified" checked={draftEntity.nemtCertified} onChange={event => updateDraftField('nemtCertified', event.target.checked)} /></Col></Row></div>;
+      return <div style={shellStyles.modalSection}>
+          <Row className="g-3">
+            <Col md={4}><Form.Label className={formLabelClassName}>Portal Username</Form.Label><Form.Control value={draftEntity.portalUsername} style={shellStyles.modalInput} onChange={event => updateDraftField('portalUsername', event.target.value)} /></Col>
+            <Col md={4}><Form.Label className={formLabelClassName}>Portal Email</Form.Label><Form.Control value={draftEntity.portalEmail} style={shellStyles.modalInput} onChange={event => updateDraftField('portalEmail', event.target.value)} /></Col>
+            <Col md={4}><Form.Label className={formLabelClassName}>Broker ID</Form.Label><Form.Control value={draftEntity.brokerId} style={shellStyles.modalInput} onChange={event => updateDraftField('brokerId', event.target.value)} /></Col>
+            <Col md={4}>
+              <Form.Label className={formLabelClassName}>Mobile PIN</Form.Label>
+              <Form.Control value={draftEntity.mobilePin || ''} inputMode="numeric" style={shellStyles.modalInput} placeholder="Last 4 digits by default" onChange={event => updateDraftField('mobilePin', event.target.value.replace(/\D+/g, '').slice(0, 12))} />
+              <div className="small text-secondary mt-2">If empty, the driver app uses the last 4 digits of the driver phone as the PIN.</div>
+            </Col>
+            <Col md={3}><Form.Check label="MFA Enabled" checked={draftEntity.mfaEnabled} onChange={event => updateDraftField('mfaEnabled', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="Password Reset Required" checked={draftEntity.passwordResetRequired} onChange={event => updateDraftField('passwordResetRequired', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="Background Check Clear" checked={draftEntity.backgroundCheckStatus === 'Clear'} onChange={event => updateDraftField('backgroundCheckStatus', event.target.checked ? 'Clear' : 'Pending')} /></Col>
+            <Col md={3}><Form.Check label="Drug Screen Clear" checked={draftEntity.drugScreenStatus === 'Clear'} onChange={event => updateDraftField('drugScreenStatus', event.target.checked ? 'Clear' : 'Pending')} /></Col>
+            <Col md={3}><Form.Check label="CPR Certified" checked={draftEntity.cprCertified} onChange={event => updateDraftField('cprCertified', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="Defensive Driving" checked={draftEntity.defensiveDrivingCertified} onChange={event => updateDraftField('defensiveDrivingCertified', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="HIPAA Certified" checked={draftEntity.hipaaCertified} onChange={event => updateDraftField('hipaaCertified', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="NEMT Certified" checked={draftEntity.nemtCertified} onChange={event => updateDraftField('nemtCertified', event.target.checked)} /></Col>
+          </Row>
+        </div>;
     }
 
     if (editorTab === 'license') {

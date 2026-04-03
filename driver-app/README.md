@@ -1,22 +1,83 @@
 # Driver App
 
-Expo app separated from the web dispatcher.
+Expo app for the driver mobile rebuild.
 
-## Purpose
+## Current State
 
-- Driver login
-- Real GPS tracking from the phone
-- Active trip view
-- Status updates like en route, arrived, completed
-- Future sync with the dispatcher web app
+`V1` is complete and `V2` is now started.
 
-## Current Base
+The app now includes:
 
-- Expo TypeScript app
-- GPS permission flow with `expo-location`
-- Live location watcher
-- Driver shift state buttons
-- Placeholder backend URL for future sync
+- modular Expo structure under `src/`
+- shared runtime hook for driver session, trip sync, and GPS foundation
+- screen split between login and driver home
+- tabs for `Today`, `Active Trip`, `Messages`, and `Settings`
+- visible roadmap from `V1` through `V8`
+- mobile login endpoint backed by shared driver records
+- persistent Expo driver session restore
+
+## Roadmap
+
+### V1
+
+- app shell and structure
+- config and API foundation
+- runtime hook
+- visible roadmap inside app
+
+### V2
+
+- real driver login endpoint
+- persistent session
+- logout and session restore
+- current PIN fallback: last 4 digits of the driver phone unless `mobilePin` is set in the shared driver record
+
+### V3
+
+- assigned trips for today
+- active trip detail
+- dispatcher notes in app
+
+### V4
+
+- en route
+- arrived
+- picked up
+- dropped off
+- delay and no-show actions
+
+### V5
+
+- real foreground GPS sync
+- checkpoint updates
+- online-offline visibility in dispatcher
+
+### V6
+
+- background GPS on Android
+- EAS builds and physical device testing
+- tracking hardening for operations
+
+### V7
+
+- dispatcher alerts
+- trip changes and cancellations
+- driver message center
+
+### V8
+
+- offline resilience
+- crash logging
+- push notifications
+- release hardening
+
+## Existing Backend Base
+
+Right now the driver app can already read assigned trips from:
+
+`/api/mobile/driver-trips?driverCode=...`
+
+That is still a starter endpoint and will need expansion in later versions.
 
 ## Run
 
@@ -33,13 +94,6 @@ npm run web
 
 ## Important
 
-- Replace `YOUR-COMPUTER-IP` with the local IP of the machine running the web dispatcher.
-- Phone cannot use `localhost` to reach your web server.
-- Dispatcher web is currently running separately and should remain separate from this app.
-
-## Next Recommended Steps
-
-- Add real backend login
-- Add trip pull from dispatcher
-- Add POST endpoint for driver GPS updates
-- Add background location tracking for active shifts
+- Replace `YOUR-COMPUTER-IP` with the machine IP running the web server.
+- A real phone cannot use `localhost` to reach the web backend.
+- For real GPS production work, plan around `EAS Build` and device testing, especially for background tracking.

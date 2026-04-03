@@ -1,41 +1,15 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
+import { query } from '@/server/db';
 import { generateSecret, generateURI, verify } from 'otplib';
 
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('2fa-secrets.json');
-
-const ensureStorageFile = async () => {
-  try {
-    await mkdir(STORAGE_DIR, { recursive: true });
-    try {
-      await readFile(STORAGE_FILE, 'utf8');
-    } catch {
-      await writeFile(STORAGE_FILE, JSON.stringify({ secrets: {} }, null, 2), 'utf8');
-    }
-  } catch (error) {
-    console.error('Error ensuring 2FA secrets storage:', error);
-  }
-};
-
-const read2FAState = async () => {
-  try {
-    await ensureStorageFile();
-    const content = await readFile(STORAGE_FILE, 'utf8');
-    return JSON.parse(content) || { secrets: {} };
-  } catch (error) {
-    console.error('Error reading 2FA secrets:', error);
-    return { secrets: {} };
-  }
-};
-
-const write2FAState = async state => {
-  try {
-    await ensureStorageFile();
-    await writeFile(STORAGE_FILE, JSON.stringify(state, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error writing 2FA secrets:', error);
-  }
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS two_fa_secrets (
+      user_id TEXT PRIMARY KEY,
+      secret TEXT NOT NULL DEFAULT '',
+      enabled_at TEXT NOT NULL DEFAULT '',
+      verified BOOLEAN NOT NULL DEFAULT FALSE
+    )
+  `);
 };
 
 /**
@@ -85,14 +59,13 @@ export const verify2FASecretAndEnable = async (userId, secret, token) => {
       return { success: false, error: 'Invalid verification code' };
     }
 
-    // Save secret for user
-    const state = await read2FAState();
-    state.secrets[userId] = {
-      secret,
-      enabledAt: new Date().toISOString(),
-      verified: true
-    };
-    await write2FAState(state);
+    await ensureTable();
+    await query(
+      `INSERT INTO two_fa_secrets (user_id, secret, enabled_at, verified)
+       VALUES ($1,$2,$3,TRUE)
+       ON CONFLICT (user_id) DO UPDATE SET secret=$2, enabled_at=$3, verified=TRUE`,
+      [String(userId), secret, new Date().toISOString()]
+    );
 
     return { success: true };
   } catch (error) {
@@ -106,8 +79,9 @@ export const verify2FASecretAndEnable = async (userId, secret, token) => {
  */
 export const verify2FAToken = async (userId, token) => {
   try {
-    const state = await read2FAState();
-    const userSecret = state.secrets[userId];
+    await ensureTable();
+    const result = await query(`SELECT * FROM two_fa_secrets WHERE user_id = $1`, [String(userId)]);
+    const userSecret = result.rows[0];
 
     if (!userSecret) {
       return { valid: false, error: 'No 2FA secret found' };
@@ -134,8 +108,9 @@ export const verify2FAToken = async (userId, token) => {
  */
 export const is2FAEnabled = async userId => {
   try {
-    const state = await read2FAState();
-    return !!state.secrets[userId]?.verified;
+    await ensureTable();
+    const result = await query(`SELECT verified FROM two_fa_secrets WHERE user_id = $1`, [String(userId)]);
+    return !!result.rows[0]?.verified;
   } catch (error) {
     console.error('Error checking 2FA status:', error);
     return false;
@@ -147,9 +122,8 @@ export const is2FAEnabled = async userId => {
  */
 export const disable2FA = async userId => {
   try {
-    const state = await read2FAState();
-    delete state.secrets[userId];
-    await write2FAState(state);
+    await ensureTable();
+    await query(`DELETE FROM two_fa_secrets WHERE user_id = $1`, [String(userId)]);
     return { success: true };
   } catch (error) {
     console.error('Error disabling 2FA:', error);
@@ -162,11 +136,12 @@ export const disable2FA = async userId => {
  */
 export const get2FAStatus = async userId => {
   try {
-    const state = await read2FAState();
-    const userSecret = state.secrets[userId];
+    await ensureTable();
+    const result = await query(`SELECT * FROM two_fa_secrets WHERE user_id = $1`, [String(userId)]);
+    const userSecret = result.rows[0];
     return {
       enabled: !!userSecret?.verified,
-      enabledAt: userSecret?.enabledAt || null
+      enabledAt: userSecret?.enabled_at || null
     };
   } catch (error) {
     console.error('Error getting 2FA status:', error);

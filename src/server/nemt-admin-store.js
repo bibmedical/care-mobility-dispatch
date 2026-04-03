@@ -1,10 +1,5 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
 import { buildInitialAdminData, buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
-import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('nemt-admin.json');
+import { query } from '@/server/db';
 
 const parseJsonSafe = raw => {
   const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
@@ -85,39 +80,39 @@ const normalizeState = value => ({
   groupings: Array.isArray(value?.groupings) ? value.groupings : []
 });
 
-const ensureStorageFile = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    const initialState = buildInitialAdminData();
-    await writeFile(STORAGE_FILE, JSON.stringify(initialState, null, 2), 'utf8');
-  }
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS admin_state (
+      id TEXT PRIMARY KEY DEFAULT 'singleton',
+      version INTEGER NOT NULL DEFAULT 2,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  const initial = buildInitialAdminData();
+  await query(
+    `INSERT INTO admin_state (id, version, data) VALUES ('singleton', 2, $1) ON CONFLICT (id) DO NOTHING`,
+    [JSON.stringify(initial)]
+  );
 };
 
 export const readNemtAdminState = async () => {
-  await ensureStorageFile();
-  const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  const parsed = parseJsonSafe(fileContents);
-  const normalized = normalizeState(parsed);
-  if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
-    await writeFile(STORAGE_FILE, JSON.stringify(normalized, null, 2), 'utf8');
-  }
+  await ensureTable();
+  const result = await query(`SELECT data FROM admin_state WHERE id = 'singleton'`);
+  const raw = result.rows[0]?.data ?? {};
+  const normalized = normalizeState(raw);
   return normalized;
 };
 
 export const writeNemtAdminState = async nextState => {
-  await ensureStorageFile();
-  const currentFileContents = await readFile(STORAGE_FILE, 'utf8');
-  const currentParsed = parseJsonSafe(currentFileContents);
-  const currentNormalized = normalizeState(currentParsed);
-  const mergedState = mergePreservedDriverData(currentNormalized, nextState);
+  await ensureTable();
+  const currentState = await readNemtAdminState();
+  const mergedState = mergePreservedDriverData(currentState, nextState);
   const normalized = normalizeState(mergedState);
-  await writeJsonFileWithSnapshots({
-    filePath: STORAGE_FILE,
-    nextValue: normalized,
-    backupName: 'nemt-admin'
-  });
+  await query(
+    `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
+    [JSON.stringify(normalized)]
+  );
   return normalized;
 };
 

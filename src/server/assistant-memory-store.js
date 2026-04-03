@@ -1,9 +1,4 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('assistant-memory.json');
+import { query, queryOne } from '@/server/db';
 
 const DEFAULT_STATE = {
   version: 1,
@@ -38,29 +33,32 @@ const normalizeState = value => ({
   facts: Array.isArray(value?.facts) ? value.facts.map(normalizeFact).filter(f => f.subject && f.value) : []
 });
 
-const ensureStorageFile = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    await writeFile(STORAGE_FILE, JSON.stringify(DEFAULT_STATE, null, 2), 'utf8');
-  }
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS assistant_memory (
+      id TEXT PRIMARY KEY DEFAULT 'singleton',
+      conversations JSONB NOT NULL DEFAULT '{}',
+      facts JSONB NOT NULL DEFAULT '[]'
+    )
+  `);
+  await query(
+    `INSERT INTO assistant_memory (id, conversations, facts) VALUES ('singleton','{}','[]') ON CONFLICT (id) DO NOTHING`
+  );
 };
 
 export const readAssistantMemoryState = async () => {
-  await ensureStorageFile();
-  const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizeState(JSON.parse(fileContents));
+  await ensureTable();
+  const row = await queryOne(`SELECT * FROM assistant_memory WHERE id = 'singleton'`);
+  return normalizeState({ conversations: row?.conversations || {}, facts: row?.facts || [] });
 };
 
 export const writeAssistantMemoryState = async nextState => {
-  await ensureStorageFile();
+  await ensureTable();
   const normalized = normalizeState(nextState);
-  await writeJsonFileWithSnapshots({
-    filePath: STORAGE_FILE,
-    nextValue: normalized,
-    backupName: 'assistant-memory'
-  });
+  await query(
+    `UPDATE assistant_memory SET conversations=$1, facts=$2 WHERE id='singleton'`,
+    [JSON.stringify(normalized.conversations), JSON.stringify(normalized.facts)]
+  );
   return normalized;
 };
 

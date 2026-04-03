@@ -1,54 +1,30 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
+import { query } from '@/server/db';
 
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('activity-logs.json');
 const STALE_OPEN_SESSION_MS = 18 * 60 * 60 * 1000;
 
-const ensureStorageFile = async () => {
-  try {
-    await mkdir(STORAGE_DIR, { recursive: true });
-    try {
-      await readFile(STORAGE_FILE, 'utf8');
-    } catch {
-      await writeFile(STORAGE_FILE, JSON.stringify({ logs: [] }, null, 2), 'utf8');
-    }
-  } catch (error) {
-    console.error('Error ensuring activity logs storage:', error);
-  }
+const ensureTable = async () => {
+  await query(`
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      user_role TEXT,
+      user_email TEXT,
+      ip_address TEXT,
+      event_type TEXT NOT NULL,
+      event_label TEXT,
+      target TEXT,
+      metadata JSONB,
+      timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      date TEXT,
+      time TEXT
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs(timestamp DESC)`);
 };
 
-const readActivityLogs = async () => {
-  try {
-    await ensureStorageFile();
-    const content = await readFile(STORAGE_FILE, 'utf8');
-    return JSON.parse(content) || { logs: [] };
-  } catch (error) {
-    console.error('Error reading activity logs:', error);
-    return { logs: [] };
-  }
-};
-
-const writeActivityLogs = async state => {
-  try {
-    await ensureStorageFile();
-    await writeFile(STORAGE_FILE, JSON.stringify(state, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error writing activity logs:', error);
-  }
-};
-
-const buildBaseLogEntry = ({
-  userId,
-  userName,
-  userRole,
-  userEmail,
-  ipAddress = '',
-  eventType,
-  eventLabel = '',
-  metadata = null,
-  target = ''
-}) => {
+const buildBaseLogEntry = ({ userId, userName, userRole, userEmail, ipAddress = '', eventType, eventLabel = '', metadata = null, target = '' }) => {
   const timestamp = new Date().toISOString();
   return {
     id: `${userId}-${timestamp}`,
@@ -63,261 +39,132 @@ const buildBaseLogEntry = ({
     metadata,
     timestamp,
     date: new Date(timestamp).toISOString().split('T')[0],
-    time: new Date(timestamp).toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
+    time: new Date(timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
   };
 };
 
-const getSessionLogsAscending = logs => [...(Array.isArray(logs) ? logs : [])]
-  .filter(log => log?.userId && (log.eventType === 'LOGIN' || log.eventType === 'LOGOUT'))
-  .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-const getOpenSessionsByUserId = logs => {
-  const openSessions = new Map();
-  getSessionLogsAscending(logs).forEach(log => {
-    if (log.eventType === 'LOGIN') {
-      openSessions.set(log.userId, log);
-      return;
-    }
-    openSessions.delete(log.userId);
-  });
-  return openSessions;
+const insertLogEntry = async (entry) => {
+  await ensureTable();
+  await query(
+    `INSERT INTO activity_logs (id, user_id, user_name, user_role, user_email, ip_address, event_type, event_label, target, metadata, timestamp, date, time)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+     ON CONFLICT (id) DO NOTHING`,
+    [entry.id, entry.userId, entry.userName, entry.userRole, entry.userEmail, entry.ipAddress, entry.eventType, entry.eventLabel, entry.target, entry.metadata ? JSON.stringify(entry.metadata) : null, entry.timestamp, entry.date, entry.time]
+  );
+  return entry;
 };
 
-/**
- * Log a login event
- */
 export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAddress = '') => {
   try {
-    const state = await readActivityLogs();
-    const openSessions = getOpenSessionsByUserId(state.logs);
-    const openSession = openSessions.get(userId);
-    if (openSession) {
-      const openSessionAgeMs = Date.now() - new Date(openSession.timestamp).getTime();
-      if (Number.isFinite(openSessionAgeMs) && openSessionAgeMs >= 0 && openSessionAgeMs < STALE_OPEN_SESSION_MS) {
-        return openSession;
-      }
-    }
-
-    const logEntry = buildBaseLogEntry({
-      userId,
-      userName,
-      userRole,
-      userEmail,
-      ipAddress,
-      eventType: 'LOGIN',
-      eventLabel: 'Signed in'
-    });
-    
-    state.logs.push(logEntry);
-    await writeActivityLogs(state);
-    
-    return logEntry;
+    await ensureTable();
+    const cutoff = new Date(Date.now() - STALE_OPEN_SESSION_MS).toISOString();
+    const existing = await query(
+      `SELECT * FROM activity_logs WHERE user_id = $1 AND event_type = 'LOGIN' AND timestamp > $2 ORDER BY timestamp DESC LIMIT 1`,
+      [userId, cutoff]
+    );
+    if (existing.rows[0]) return existing.rows[0];
+    const entry = buildBaseLogEntry({ userId, userName, userRole, userEmail, ipAddress, eventType: 'LOGIN', eventLabel: 'Signed in' });
+    return await insertLogEntry(entry);
   } catch (error) {
     console.error('Error logging login event:', error);
     throw error;
   }
 };
 
-/**
- * Log a logout event
- */
 export const logLogoutEvent = async (userId) => {
   try {
-    const state = await readActivityLogs();
-    // Find the corresponding login entry to get user details
-    const lastLoginEntry = state.logs
-      .filter(log => log.userId === userId && log.eventType === 'LOGIN')
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
-    
-    const logEntry = buildBaseLogEntry({
-      userId,
-      userName: lastLoginEntry?.userName || 'Unknown',
-      userRole: lastLoginEntry?.userRole || 'Unknown',
-      userEmail: lastLoginEntry?.userEmail || 'Unknown',
-      ipAddress: lastLoginEntry?.ipAddress || '',
-      eventType: 'LOGOUT',
-      eventLabel: 'Signed out'
-    });
-    
-    state.logs.push(logEntry);
-    await writeActivityLogs(state);
-    
-    return logEntry;
+    await ensureTable();
+    const lastLogin = await query(
+      `SELECT * FROM activity_logs WHERE user_id = $1 AND event_type = 'LOGIN' ORDER BY timestamp DESC LIMIT 1`,
+      [userId]
+    );
+    const ref = lastLogin.rows[0] || {};
+    const entry = buildBaseLogEntry({ userId, userName: ref.user_name || 'Unknown', userRole: ref.user_role || 'Unknown', userEmail: ref.user_email || 'Unknown', ipAddress: ref.ip_address || '', eventType: 'LOGOUT', eventLabel: 'Signed out' });
+    return await insertLogEntry(entry);
   } catch (error) {
     console.error('Error logging logout event:', error);
   }
 };
 
-/**
- * Get all activity logs
- */
 export const getAllActivityLogs = async () => {
   try {
-    const state = await readActivityLogs();
-    return state.logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    await ensureTable();
+    const result = await query(`SELECT * FROM activity_logs ORDER BY timestamp DESC`);
+    return result.rows.map(r => ({ ...r, userId: r.user_id, userName: r.user_name, userRole: r.user_role, userEmail: r.user_email, ipAddress: r.ip_address, eventType: r.event_type, eventLabel: r.event_label }));
   } catch (error) {
     console.error('Error getting all activity logs:', error);
     return [];
   }
 };
 
-/**
- * Log a generic user action event (SMS, assistant, dispatch operations, etc)
- */
-export const logUserActionEvent = async ({
-  userId,
-  userName,
-  userRole,
-  userEmail,
-  ipAddress = '',
-  eventLabel,
-  target = '',
-  metadata = null
-}) => {
+export const logUserActionEvent = async ({ userId, userName, userRole, userEmail, ipAddress = '', eventLabel, target = '', metadata = null }) => {
   try {
     if (!userId) return null;
-    const state = await readActivityLogs();
-    const logEntry = buildBaseLogEntry({
-      userId,
-      userName: userName || 'Unknown',
-      userRole: userRole || 'Unknown',
-      userEmail: userEmail || 'Unknown',
-      ipAddress,
-      eventType: 'ACTION',
-      eventLabel: String(eventLabel || 'Action performed'),
-      target: String(target || ''),
-      metadata: metadata && typeof metadata === 'object' ? metadata : null
-    });
-    state.logs.push(logEntry);
-    await writeActivityLogs(state);
-    return logEntry;
+    const entry = buildBaseLogEntry({ userId, userName: userName || 'Unknown', userRole: userRole || 'Unknown', userEmail: userEmail || 'Unknown', ipAddress, eventType: 'ACTION', eventLabel: String(eventLabel || 'Action performed'), target: String(target || ''), metadata: metadata && typeof metadata === 'object' ? metadata : null });
+    return await insertLogEntry(entry);
   } catch (error) {
     console.error('Error logging user action event:', error);
     return null;
   }
 };
 
-/**
- * Get logs by user ID
- */
 export const getActivityLogsByUserId = async (userId) => {
   try {
-    const state = await readActivityLogs();
-    return state.logs
-      .filter(log => log.userId === userId)
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    await ensureTable();
+    const result = await query(`SELECT * FROM activity_logs WHERE user_id = $1 ORDER BY timestamp DESC`, [userId]);
+    return result.rows;
   } catch (error) {
     console.error('Error getting activity logs for user:', error);
     return [];
   }
 };
 
-/**
- * Get logs by role (admin, driver, attendant, etc.)
- */
 export const getActivityLogsByRole = async (role) => {
   try {
-    const state = await readActivityLogs();
-    return state.logs
-      .filter(log => log.userRole === role)
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    await ensureTable();
+    const result = await query(`SELECT * FROM activity_logs WHERE user_role = $1 ORDER BY timestamp DESC`, [role]);
+    return result.rows;
   } catch (error) {
-    console.error('Error getting activity logs by role:', error);
     return [];
   }
 };
 
-/**
- * Get logs by date
- */
 export const getActivityLogsByDate = async (date) => {
   try {
-    const state = await readActivityLogs();
-    return state.logs
-      .filter(log => log.date === date)
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    await ensureTable();
+    const result = await query(`SELECT * FROM activity_logs WHERE date = $1 ORDER BY timestamp DESC`, [date]);
+    return result.rows;
   } catch (error) {
-    console.error('Error getting activity logs by date:', error);
     return [];
   }
 };
 
-/**
- * Get summary stats
- */
 export const getActivityLogsSummary = async () => {
   try {
-    const state = await readActivityLogs();
-    const logs = state.logs;
-    
-    // Count events today
+    await ensureTable();
     const today = new Date().toISOString().split('T')[0];
-    const todayLogs = logs.filter(log => log.date === today);
-    
-    // Unique users
-    const uniqueUsers = new Set(logs.map(log => log.userId)).size;
-    
-    // Count by role
+    const [total, todayCount, roles, online] = await Promise.all([
+      query(`SELECT COUNT(*) FROM activity_logs`),
+      query(`SELECT COUNT(*) FROM activity_logs WHERE date = $1`, [today]),
+      query(`SELECT user_role, COUNT(*) FROM activity_logs GROUP BY user_role`),
+      query(`SELECT DISTINCT ON (user_id) user_id, user_name, user_role, user_email, event_type, timestamp FROM activity_logs ORDER BY user_id, timestamp DESC`)
+    ]);
     const roleCount = {};
-    logs.forEach(log => {
-      if (!roleCount[log.userRole]) {
-        roleCount[log.userRole] = 0;
-      }
-      roleCount[log.userRole]++;
-    });
-    
-    // Count online (last event was login)
-    const onlineUsers = Array.from(getOpenSessionsByUserId(logs).values())
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .map(log => ({
-        userId: log.userId,
-        userName: log.userName,
-        userRole: log.userRole,
-        userEmail: log.userEmail,
-        lastEvent: 'LOGIN',
-        lastTimestamp: log.timestamp,
-        isOnline: true,
-        activeLoginId: log.id,
-        activeLoginTimestamp: log.timestamp
-      }));
-    
-    return {
-      totalEvents: logs.length,
-      todayEvents: todayLogs.length,
-      uniqueUsers,
-      roleCount,
-      onlineUsers
-    };
+    roles.rows.forEach(r => { roleCount[r.user_role] = Number(r.count); });
+    const onlineUsers = online.rows.filter(r => r.event_type === 'LOGIN').map(r => ({ userId: r.user_id, userName: r.user_name, userRole: r.user_role, userEmail: r.user_email, lastEvent: 'LOGIN', lastTimestamp: r.timestamp, isOnline: true }));
+    return { totalEvents: Number(total.rows[0].count), todayEvents: Number(todayCount.rows[0].count), uniqueUsers: online.rows.length, roleCount, onlineUsers };
   } catch (error) {
     console.error('Error getting activity logs summary:', error);
-    return {
-      totalEvents: 0,
-      todayEvents: 0,
-      uniqueUsers: 0,
-      roleCount: {},
-      onlineUsers: []
-    };
+    return { totalEvents: 0, todayEvents: 0, uniqueUsers: 0, roleCount: {}, onlineUsers: [] };
   }
 };
 
-/**
- * Clear old logs (older than N days)
- */
 export const clearOldActivityLogs = async (daysOld = 90) => {
   try {
-    const state = await readActivityLogs();
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-    
-    state.logs = state.logs.filter(log => new Date(log.timestamp) > cutoffDate);
-    
-    await writeActivityLogs(state);
-    return state.logs.length;
+    await ensureTable();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - daysOld);
+    await query(`DELETE FROM activity_logs WHERE timestamp < $1`, [cutoff.toISOString()]);
   } catch (error) {
     console.error('Error clearing old activity logs:', error);
   }

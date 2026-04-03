@@ -115,9 +115,9 @@ export async function POST(req) {
 
       const attemptsLeft = Math.max(0, MAX_LOGIN_FAILURES - updatedFailures.length);
       return new Response(JSON.stringify({
-        error: 'Username o password incorrecto.',
+        error: 'Incorrect username or password.',
         attemptsLeft,
-        message: attemptsLeft > 0 ? `Credenciales invalidas. Te quedan ${attemptsLeft} intento(s) antes del bloqueo temporal.` : 'Credenciales invalidas.'
+        message: attemptsLeft > 0 ? `Invalid credentials. You have ${attemptsLeft} attempt(s) left before temporary lockout.` : 'Invalid credentials.'
       }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }

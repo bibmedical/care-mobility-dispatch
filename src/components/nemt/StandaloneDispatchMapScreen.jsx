@@ -122,7 +122,26 @@ const sortTripsByPickupTime = items => [...items].sort((leftTrip, rightTrip) => 
   return String(leftTrip.id).localeCompare(String(rightTrip.id));
 });
 
-const getTripTargetPosition = trip => trip?.status === 'In Progress' ? trip?.destinationPosition ?? trip?.position : trip?.position;
+const getTripTravelState = trip => String(trip?.driverTripStatus || trip?.status || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+
+const isTripEnRoute = trip => {
+  const travelState = getTripTravelState(trip);
+  return travelState === 'enroute' || travelState === 'inprogress';
+};
+
+const getTripTargetPosition = trip => isTripEnRoute(trip) ? trip?.destinationPosition ?? trip?.position : trip?.position;
+
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false }) => {
+  const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
+  const bodyColor = isOnline ? '#16a34a' : '#475569';
+  return divIcon({
+    className: 'driver-live-vehicle-icon-shell',
+    html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 4px 12px rgba(15,23,42,0.35));"><svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.2 8.4L8.3 5.5C8.7 5 9.3 4.7 9.9 4.7H14.1C14.8 4.7 15.4 5 15.7 5.5L17.8 8.4H19C20.1 8.4 21 9.3 21 10.4V15.8C21 16.4 20.6 16.8 20 16.8H18.8C18.7 18 17.7 19 16.5 19C15.3 19 14.3 18 14.2 16.8H9.8C9.7 18 8.7 19 7.5 19C6.3 19 5.3 18 5.2 16.8H4C3.4 16.8 3 16.4 3 15.8V10.4C3 9.3 3.9 8.4 5 8.4H6.2Z" fill="${bodyColor}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.7 8.4H15.3L13.9 6.4C13.8 6.2 13.5 6 13.2 6H10.8C10.5 6 10.2 6.2 10.1 6.4L8.7 8.4Z" fill="#dbeafe" opacity="0.95"/><circle cx="7.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><circle cx="16.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><path d="M18.9 11.2H19.7" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/><path d="M4.3 11.2H5.1" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/></svg></div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14]
+  });
+};
 
 const createRouteStopIcon = (label, variant = 'pickup', timeLabel = '', isLarge = false) => {
   const normalizedLabel = String(label || '').trim();
@@ -455,10 +474,16 @@ const StandaloneDispatchMapScreen = () => {
   }, [dashboardRouteStops, timeFilterRange]);
   const dashboardDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
+    const preferredTrip = trips.find(trip => selectedDashboardTripIds.has(normalizeTripId(trip?.id)) && trip.driverId === selectedDriver.id && isTripEnRoute(trip));
+    if (preferredTrip) return preferredTrip;
+    return activeDashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id && isTripEnRoute(trip)) || dashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id && isTripEnRoute(trip)) || trips.find(trip => trip.driverId === selectedDriver.id && isTripEnRoute(trip)) || null;
+  }, [activeDashboardRouteTrips, dashboardRouteTrips, selectedDashboardTripIds, selectedDriver, trips]);
+  const dashboardDriverPendingEtaTrip = useMemo(() => {
+    if (!selectedDriver || dashboardDriverActiveTrip) return null;
     const preferredTrip = trips.find(trip => selectedDashboardTripIds.has(normalizeTripId(trip?.id)) && trip.driverId === selectedDriver.id);
     if (preferredTrip) return preferredTrip;
     return activeDashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id) || dashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id) || trips.find(trip => trip.driverId === selectedDriver.id) || null;
-  }, [activeDashboardRouteTrips, dashboardRouteTrips, selectedDashboardTripIds, selectedDriver, trips]);
+  }, [activeDashboardRouteTrips, dashboardDriverActiveTrip, dashboardRouteTrips, selectedDashboardTripIds, selectedDriver, trips]);
   const dashboardDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !dashboardDriverActiveTrip) return null;
     const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(dashboardDriverActiveTrip));
@@ -933,10 +958,10 @@ const StandaloneDispatchMapScreen = () => {
                 <div className="mt-2 fw-semibold" style={{ fontSize: 20 }}>{selectedDriver?.name || 'No driver selected'}</div>
                 <div className="small mt-1" style={{ color: '#cbd5e1' }}>{dashboardRouteTrips.length} viaje(s){dashboardRouteHealth?.candidateCount ? ` • ${dashboardRouteHealth.candidateCount} seleccionados` : ''}</div>
                 <div className="mt-3 d-flex gap-2 flex-wrap">
-                  <Badge bg={dashboardRouteHealth?.lateCount ? 'danger' : 'info'}>{dashboardRouteHealth?.lateCount ? 'Late risk' : dashboardDriverEta?.label || 'ETA unavailable'}</Badge>
+                  <Badge bg={dashboardRouteHealth?.lateCount ? 'danger' : 'info'}>{dashboardRouteHealth?.lateCount ? 'Late risk' : dashboardDriverEta?.label || (dashboardDriverPendingEtaTrip ? 'Waiting for En Route' : 'ETA unavailable')}</Badge>
                   <Badge bg="secondary">{dashboardDriverEta?.miles != null ? `${dashboardDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
                 </div>
-                <div className="small mt-2" style={{ color: '#94a3b8' }}>Ruta activa segun modo seleccionado. Puedes cambiarla sin cerrar esta ventana.</div>
+                <div className="small mt-2" style={{ color: '#94a3b8' }}>{dashboardDriverPendingEtaTrip && !dashboardDriverActiveTrip ? 'ETA appears after the driver starts En Route in the mobile app.' : 'Ruta activa segun modo seleccionado. Puedes cambiarla sin cerrar esta ventana.'}</div>
               </div>
 
               {dashboardRouteOptions.length > 0 ? <div className="rounded-4 d-flex flex-column gap-2" style={{ ...darkCardStyle, padding: 16 }}>
@@ -1013,10 +1038,11 @@ const StandaloneDispatchMapScreen = () => {
               return <Polyline key={`route-option-${routeOption.id}`} positions={routeOption.geometry} pathOptions={getDashboardRouteStyle(index === selectedDashboardRouteIndex, index)} />;
             }) : null}
               {activeDashboardViewMode !== 'route' && routeGeometry.length > 1 && !hideRoutes ? <Polyline positions={routeGeometry} pathOptions={{ color: '#f59e0b', weight: 4, dashArray: '10 8' }} /> : null}
-              {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createRouteStopIcon('D', 'driver')}>
+              {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online' })}>
                   <Popup>
                     <div className="fw-semibold">{selectedDriver.name}</div>
                     <div>{selectedDriver.live || 'Offline'}</div>
+                    <div className="small text-muted">{selectedDriver.trackingLastSeen ? new Date(selectedDriver.trackingLastSeen).toLocaleTimeString() : 'Live position'}</div>
                   </Popup>
                 </Marker> : null}
               {activeDashboardViewMode !== 'addresses' && selectedDriver?.hasRealLocation && dashboardDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(dashboardDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
