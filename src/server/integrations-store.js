@@ -210,10 +210,47 @@ export const readIntegrationsState = async () => {
 
 export const writeIntegrationsState = async nextState => {
   await ensureTable();
+  const currentState = await readIntegrationsState();
   const normalized = normalizeState(nextState);
+
+  const currentOptOutList = Array.isArray(currentState?.sms?.optOutList) ? currentState.sms.optOutList : [];
+  const incomingOptOutList = Array.isArray(normalized?.sms?.optOutList) ? normalized.sms.optOutList : [];
+  const mergedOptOutMap = new Map();
+
+  currentOptOutList.forEach(entry => {
+    const key = String(entry?.id || `${String(entry?.phone || '').trim().replace(/\D/g, '')}-${String(entry?.name || '').trim().toLowerCase()}`);
+    mergedOptOutMap.set(key, entry);
+  });
+
+  incomingOptOutList.forEach(entry => {
+    const key = String(entry?.id || `${String(entry?.phone || '').trim().replace(/\D/g, '')}-${String(entry?.name || '').trim().toLowerCase()}`);
+    mergedOptOutMap.set(key, {
+      ...mergedOptOutMap.get(key),
+      ...entry
+    });
+  });
+
+  const currentPatientsMemory = String(currentState?.ai?.memorySections?.patients || '').trim();
+  const nextPatientsMemory = String(normalized?.ai?.memorySections?.patients || '').trim();
+
+  const protectedState = {
+    ...normalized,
+    ai: {
+      ...normalized.ai,
+      memorySections: {
+        ...normalized.ai.memorySections,
+        patients: nextPatientsMemory || currentPatientsMemory
+      }
+    },
+    sms: {
+      ...normalized.sms,
+      optOutList: Array.from(mergedOptOutMap.values()).filter(entry => entry.name || entry.phone)
+    }
+  };
+
   await query(
     `UPDATE integrations_state SET data=$1 WHERE id='singleton'`,
-    [JSON.stringify(normalized)]
+    [JSON.stringify(protectedState)]
   );
-  return normalized;
+  return protectedState;
 };

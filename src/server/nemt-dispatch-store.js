@@ -52,8 +52,8 @@ const mergeTripsByLatestUpdate = (currentTrips, incomingTrips) => {
   return Array.from(mergedTripMap.values());
 };
 
-export const writeNemtDispatchState = async (nextState, options = {}) => {
-  const allowTripShrink = options?.allowTripShrink === true;
+export const writeNemtDispatchState = async (nextState, _options = {}) => {
+  const allowTripShrink = false;
   await ensureTable();
   const currentState = await readNemtDispatchState();
   const incomingNormalized = normalizePersistentDispatchState(nextState);

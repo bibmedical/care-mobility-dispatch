@@ -55,9 +55,24 @@ export const readBlacklistState = async () => {
 
 export const writeBlacklistState = async nextState => {
   await ensureTable();
+  const currentState = await readBlacklistState();
   const normalized = normalizeBlacklistState(nextState);
-  await query(`DELETE FROM blacklist_entries`);
-  for (const entry of normalized.entries) {
+  const mergedEntriesMap = new Map();
+
+  currentState.entries.forEach(entry => {
+    mergedEntriesMap.set(String(entry.id || ''), entry);
+  });
+
+  normalized.entries.forEach(entry => {
+    mergedEntriesMap.set(String(entry.id || ''), {
+      ...mergedEntriesMap.get(String(entry.id || '')),
+      ...entry
+    });
+  });
+
+  const mergedEntries = Array.from(mergedEntriesMap.values()).filter(entry => entry.name || entry.phone);
+
+  for (const entry of mergedEntries) {
     await query(
       `INSERT INTO blacklist_entries (id, name, phone, category, status, hold_until, notes, source, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -66,5 +81,5 @@ export const writeBlacklistState = async nextState => {
       [entry.id, entry.name, entry.phone, entry.category, entry.status, entry.holdUntil, entry.notes, entry.source, entry.createdAt, entry.updatedAt]
     );
   }
-  return normalized;
+  return normalizeBlacklistState({ entries: mergedEntries });
 };
