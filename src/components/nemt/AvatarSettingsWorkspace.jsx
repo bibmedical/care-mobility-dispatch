@@ -4,7 +4,7 @@ import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
 import useAvatarSettingsApi from '@/hooks/useAvatarSettingsApi';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
 
 const buildSurfaceStyles = isLight => ({
@@ -81,6 +81,7 @@ const AvatarSettingsWorkspace = () => {
   const { data, loading, saving, error, refresh, saveData } = useAvatarSettingsApi();
   const { changeTheme, themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
+  const avatarFileInputRef = useRef(null);
   const [draft, setDraft] = useState(buildDraft());
   const [message, setMessage] = useState('Change the assistant name and photo. The floating widget will update automatically.');
 
@@ -232,6 +233,12 @@ const AvatarSettingsWorkspace = () => {
                   </Col>
                   <Col md={12}>
                     <Form.Label className="small text-uppercase text-secondary fw-semibold">Upload a new photo</Form.Label>
+                    <input ref={avatarFileInputRef} type="file" accept={AVATAR_FILE_ACCEPT} style={{ display: 'none' }} onChange={handlePickFile} />
+                    <div className="d-flex flex-wrap gap-2 align-items-center">
+                      <Button type="button" style={surfaceStyles.button} className="rounded-pill" onClick={() => avatarFileInputRef.current?.click()}>
+                        Choose JPG/PNG
+                      </Button>
+                    </div>
                     <input type="file" accept={AVATAR_FILE_ACCEPT} style={{
                     ...surfaceStyles.input,
                     width: '100%',
