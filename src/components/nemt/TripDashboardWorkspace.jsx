@@ -1156,7 +1156,8 @@ const TripDashboardWorkspace = () => {
     return normalizedStatus === tripStatusFilter;
   }).filter(trip => {
     if (tripDateFilter === 'all') {
-      // With no date selected, only blocked patients should be visible.
+      // With no date selected, keep blocked/cancelled aggregate views available.
+      if (tripStatusFilter === 'cancelled') return true;
       if (tripStatusFilter === 'block') return true;
       return false;
     }
