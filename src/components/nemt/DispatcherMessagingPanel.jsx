@@ -363,8 +363,8 @@ const DispatcherMessagingPanel = ({
   };
 
   return (
-    <div className="h-100 d-flex flex-column">
-      <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark flex-wrap gap-2">
+    <div className="d-flex flex-column border rounded-3 overflow-hidden" style={{ height: 'clamp(380px, 62vh, 560px)', backgroundColor: '#0b1220' }}>
+      <div className="d-flex justify-content-between align-items-center p-2 border-bottom text-white flex-wrap gap-2" style={{ backgroundColor: '#0f172a', borderColor: '#1f2937' }}>
         <div className="d-flex align-items-center gap-2 flex-wrap">
           <strong>Messaging</strong>
           <Badge bg="light" text="dark">{visibleThreads.length} threads</Badge>
@@ -376,8 +376,8 @@ const DispatcherMessagingPanel = ({
         </div>
       </div>
       <div className="d-flex flex-grow-1" style={{ minHeight: 0, overflow: 'hidden' }}>
-        <div className="border-end d-flex flex-column" style={{ width: '40%', minWidth: 220, minHeight: 0 }}>
-          <div className="p-3 border-bottom bg-light">
+        <div className="border-end d-flex flex-column" style={{ width: '40%', minWidth: 220, minHeight: 0, borderColor: '#1f2937' }}>
+          <div className="p-3 border-bottom" style={{ backgroundColor: '#111827', borderColor: '#1f2937' }}>
             <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" />
             {showAddDriver ? (
               <div className="mt-3 border rounded p-2 bg-white">
@@ -417,7 +417,7 @@ const DispatcherMessagingPanel = ({
                   key={thread.driverId}
                   className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
                   style={{
-                    backgroundColor: thread.driverId === activeDriverId ? '#1d4ed8' : hasUrgentAlert ? '#fff7ed' : '#f8fafc',
+                    backgroundColor: thread.driverId === activeDriverId ? '#1e3a8a' : hasUrgentAlert ? '#3f1d1d' : '#0f172a',
                     borderLeft: hasUrgentAlert ? '4px solid #ea580c' : '4px solid transparent'
                   }}
                 >
@@ -426,7 +426,7 @@ const DispatcherMessagingPanel = ({
                       <button
                         type="button"
                         onClick={() => handleSelectDriver(thread.driverId)}
-                        className={`w-100 text-start border-0 px-1 ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
+                        className={`w-100 text-start border-0 px-1 ${thread.driverId === activeDriverId ? 'text-white' : 'text-light'}`}
                         style={{ backgroundColor: 'transparent' }}
                       >
                         <div className="d-flex justify-content-between align-items-center gap-2">
@@ -442,7 +442,7 @@ const DispatcherMessagingPanel = ({
                                 {driver?.name ?? 'Driver'}
                                 {driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
                               </div>
-                              <div className="small text-muted text-truncate" style={{ maxWidth: 220 }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
+                              <div className="small text-secondary text-truncate" style={{ maxWidth: 220 }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                             </div>
                           </div>
                           <div className="text-end">
@@ -467,8 +467,8 @@ const DispatcherMessagingPanel = ({
             }) : <div className="text-center text-muted py-4 small">{driverSearch.trim() ? 'No drivers match this search.' : 'No driver threads available.'}</div>}
           </div>
         </div>
-        <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
-          <div className="p-3 border-bottom bg-light">
+        <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0, backgroundColor: '#020617' }}>
+          <div className="p-3 border-bottom" style={{ backgroundColor: '#111827', borderColor: '#1f2937', color: '#e5e7eb' }}>
             <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
               <div>
                 <div className="fw-semibold">{activeDriver?.name ?? 'Select a driver'}</div>
@@ -544,7 +544,7 @@ const DispatcherMessagingPanel = ({
               </div>
             )) : <div className="text-center text-muted py-5">No messages yet for this driver.</div>}
           </div>
-          <div className="p-3 border-top bg-light">
+          <div className="p-3 border-top" style={{ backgroundColor: '#111827', borderColor: '#1f2937' }}>
             <div className="d-flex gap-2 mb-2">
               <Button variant="outline-secondary" size="sm" disabled={!activeDriver} onClick={() => photoInputRef.current?.click()}>Foto</Button>
               <Button variant="outline-secondary" size="sm" disabled={!activeDriver} onClick={() => documentInputRef.current?.click()}>Documento</Button>
