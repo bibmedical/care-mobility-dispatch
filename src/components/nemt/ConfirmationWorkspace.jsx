@@ -1752,6 +1752,7 @@ const ConfirmationWorkspace = () => {
         </Modal.Footer>
       </Modal>
 
+      <Card style={surfaceStyles.card} className="border mb-3">
         <CardBody>
           <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 align-items-start align-items-xl-center">
             <div>
