@@ -36,6 +36,71 @@ try {
     //collapsed
     var collapsedToggle = document.querySelector(".mobile-menu-btn");
     const sidebarOverlay = document.querySelector('.startbar-overlay');
+    const startbar = document.querySelector('.startbar');
+    const revealZoneId = 'startbar-reveal-zone';
+    const revealZoneWidth = 14;
+    let pointerX = -1;
+    let pointerY = -1;
+
+    const isDesktopViewport = () => window.innerWidth >= 1024;
+
+    const ensureRevealZone = () => {
+        let revealZone = document.getElementById(revealZoneId);
+        if (!revealZone) {
+            revealZone = document.createElement('div');
+            revealZone.id = revealZoneId;
+            revealZone.style.position = 'fixed';
+            revealZone.style.left = '0';
+            revealZone.style.top = '0';
+            revealZone.style.width = `${revealZoneWidth}px`;
+            revealZone.style.height = '100vh';
+            revealZone.style.zIndex = '1040';
+            revealZone.style.background = 'transparent';
+            revealZone.style.pointerEvents = 'auto';
+            document.body.appendChild(revealZone);
+        }
+        return revealZone;
+    };
+
+    const collapseSidebar = () => {
+        if (!isDesktopViewport()) return;
+        if (document.body.getAttribute('data-sidebar-size') !== 'collapsed') {
+            document.body.setAttribute('data-sidebar-size', 'collapsed');
+        }
+    };
+
+    const tryAutoCollapseAfterReveal = () => {
+        if (!isDesktopViewport()) return;
+        if (!startbar) return;
+        if (document.body.getAttribute('data-sidebar-size') !== 'default') return;
+        if (pointerX < 0 || pointerY < 0) return;
+
+        const startbarBounds = startbar.getBoundingClientRect();
+        const overSidebar = pointerX >= startbarBounds.left && pointerX <= startbarBounds.right && pointerY >= startbarBounds.top && pointerY <= startbarBounds.bottom;
+        const overRevealZone = pointerX >= 0 && pointerX <= revealZoneWidth;
+
+        if (!overSidebar && !overRevealZone) {
+            collapseSidebar();
+        }
+    };
+
+    const revealZone = ensureRevealZone();
+    revealZone.addEventListener('mouseenter', () => {
+        if (!isDesktopViewport()) return;
+        if (document.body.getAttribute('data-sidebar-size') === 'collapsed') {
+            document.body.setAttribute('data-sidebar-size', 'default');
+        }
+    });
+
+    document.addEventListener('mousemove', (event) => {
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+        if (!isDesktopViewport()) return;
+        if (document.body.getAttribute('data-sidebar-size') !== 'default') return;
+        window.clearTimeout(window.__cmSidebarAutoCollapseTimer);
+        window.__cmSidebarAutoCollapseTimer = window.setTimeout(tryAutoCollapseAfterReveal, 90);
+    });
+
     collapsedToggle?.addEventListener('click', function () {
 
         var sidebarSize = document.body.getAttribute("data-sidebar-size");

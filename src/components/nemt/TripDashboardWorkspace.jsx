@@ -1016,10 +1016,10 @@ const TripDashboardWorkspace = () => {
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
             setShowToolbarTools(current => !current);
             setShowColumnPicker(false);
-          }}>TOOLBAR TOOLS</Button>
+          }}>Toolbar</Button>
             {showToolbarTools ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 82, width: 300 }}>
                 <CardBody className="p-3 text-dark">
-                  <div className="fw-semibold mb-2">Toolbar Tools</div>
+                  <div className="fw-semibold mb-2">Toolbar</div>
                   <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
                   <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
                     {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-${blockId}`} type="switch" id={`toolbar-tools-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
@@ -2852,10 +2852,10 @@ const TripDashboardWorkspace = () => {
                     <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
                   setShowToolbarTools(current => !current);
                   setShowColumnPicker(false);
-                }}>Toolbar tools</Button>
+                }}>Toolbar</Button>
                     {showToolbarTools ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 82, width: 300 }}>
                         <CardBody className="p-3 text-dark">
-                          <div className="fw-semibold mb-2">Toolbar Tools</div>
+                          <div className="fw-semibold mb-2">Toolbar</div>
                           <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
                           <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
                             {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-fallback-${blockId}`} type="switch" id={`toolbar-tools-fallback-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}

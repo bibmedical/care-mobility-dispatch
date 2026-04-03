@@ -147,7 +147,7 @@ html[data-bs-theme="light"]{
 
 @media (min-width: 1023.98px) {
     body[data-sidebar-size="collapsed"] .topbar {
-        width: calc(100% - var(--#{$prefix}startbar-collapsed-width));
+        width: 100%;
     }
     .welcome-text {
         display: inline-block;

@@ -12,6 +12,7 @@ const STORAGE_KEY = '__CARE_MOBILITY_AI_ASSISTANT__';
 const CLIENT_KEY = '__CARE_MOBILITY_AI_ASSISTANT_CLIENT__';
 const MODE_KEY = '__CARE_MOBILITY_AI_ASSISTANT_MODE__';
 const WIDGET_HIDDEN_KEY = '__CARE_MOBILITY_AI_WIDGET_HIDDEN__';
+const PER_USER_ASSISTANT_AVATARS = ['/ai-avatar/robot-blue.svg', '/ai-avatar/robot-green.svg', '/ai-avatar/robot-amber.svg', '/ai-avatar/cartoon-owner.svg'];
 
 const buildInitialState = assistantName => ({
   open: false,
@@ -242,6 +243,24 @@ const applyAvatarPayload = payload => ({
   visible: payload?.avatar?.visible !== false && payload?.visible !== false
 });
 
+const hashString = value => {
+  const text = String(value || '');
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+};
+
+const resolvePerUserAvatarImage = ({ userId, username, baseImage }) => {
+  const normalizedBaseImage = String(baseImage || '').trim() || DEFAULT_ASSISTANT_AVATAR.image;
+  const pool = [normalizedBaseImage, ...PER_USER_ASSISTANT_AVATARS.filter(image => image !== normalizedBaseImage)];
+  const identity = String(userId || username || '').trim();
+  if (!identity) return normalizedBaseImage;
+  const slot = hashString(identity) % pool.length;
+  return pool[slot] || normalizedBaseImage;
+};
+
 const DispatchAssistantWidget = () => {
   const { upsertDispatchThreadMessage } = useNemtContext();
   const pathname = usePathname();
@@ -286,7 +305,11 @@ const DispatchAssistantWidget = () => {
 
   const open = Boolean(storedAssistantState?.open);
   const assistantName = avatarConfig?.name || DEFAULT_ASSISTANT_AVATAR.name;
-  const avatarImage = avatarConfig?.image || DEFAULT_ASSISTANT_AVATAR.image;
+  const avatarImage = resolvePerUserAvatarImage({
+    userId: session?.user?.id,
+    username: session?.user?.username,
+    baseImage: avatarConfig?.image || DEFAULT_ASSISTANT_AVATAR.image
+  });
   const assistantVisible = avatarConfig?.visible !== false;
   const messages = Array.isArray(storedAssistantState?.messages) && storedAssistantState.messages.length > 0 ? storedAssistantState.messages : buildInitialState(assistantName).messages;
   const speechRecognitionSupported = useMemo(() => Boolean(getSpeechRecognition()), []);
