@@ -15,6 +15,15 @@ const ensureTable = async () => {
     VALUES ('singleton', 1, '{}'::jsonb)
     ON CONFLICT (id) DO NOTHING
   `);
+  await query(`
+    CREATE TABLE IF NOT EXISTS dispatch_state_history (
+      id BIGSERIAL PRIMARY KEY,
+      snapshot JSONB NOT NULL,
+      trip_count INTEGER NOT NULL DEFAULT 0,
+      reason TEXT NOT NULL DEFAULT 'auto-backup',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 };
 
 export const readNemtDispatchState = async () => {
@@ -30,22 +39,39 @@ const getTripUpdatedAt = trip => {
 };
 
 const mergeTripsByLatestUpdate = (currentTrips, incomingTrips) => {
-  const currentTripMap = new Map((Array.isArray(currentTrips) ? currentTrips : []).map(trip => [String(trip?.id || ''), trip]));
-  return (Array.isArray(incomingTrips) ? incomingTrips : []).map(incomingTrip => {
+  const mergedTripMap = new Map((Array.isArray(currentTrips) ? currentTrips : []).map(trip => [String(trip?.id || ''), trip]));
+  (Array.isArray(incomingTrips) ? incomingTrips : []).forEach(incomingTrip => {
     const tripId = String(incomingTrip?.id || '');
-    const currentTrip = currentTripMap.get(tripId);
-    if (!currentTrip) return incomingTrip;
-    return getTripUpdatedAt(incomingTrip) >= getTripUpdatedAt(currentTrip) ? incomingTrip : currentTrip;
+    const currentTrip = mergedTripMap.get(tripId);
+    if (!currentTrip) {
+      mergedTripMap.set(tripId, incomingTrip);
+      return;
+    }
+    mergedTripMap.set(tripId, getTripUpdatedAt(incomingTrip) >= getTripUpdatedAt(currentTrip) ? incomingTrip : currentTrip);
   });
+  return Array.from(mergedTripMap.values());
 };
 
-export const writeNemtDispatchState = async nextState => {
+export const writeNemtDispatchState = async (nextState, options = {}) => {
+  const allowTripShrink = options?.allowTripShrink === true;
   await ensureTable();
   const currentState = await readNemtDispatchState();
+  const incomingNormalized = normalizePersistentDispatchState(nextState);
+  const currentTrips = Array.isArray(currentState?.trips) ? currentState.trips : [];
+  const incomingTrips = Array.isArray(incomingNormalized?.trips) ? incomingNormalized.trips : [];
+  const shouldProtectTripCount = !allowTripShrink && incomingTrips.length < currentTrips.length;
+  const nextTrips = shouldProtectTripCount ? mergeTripsByLatestUpdate(currentTrips, incomingTrips) : incomingTrips;
   const normalized = normalizePersistentDispatchState({
-    ...nextState,
-    trips: mergeTripsByLatestUpdate(currentState?.trips, nextState?.trips)
+    ...incomingNormalized,
+    trips: nextTrips
   });
+
+  await query(
+    `INSERT INTO dispatch_state_history (snapshot, trip_count, reason)
+     VALUES ($1, $2, $3)`,
+    [JSON.stringify(currentState), currentTrips.length, shouldProtectTripCount ? 'protected-shrink-blocked' : 'auto-backup']
+  );
+
   await query(
     `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
     [JSON.stringify(normalized)]

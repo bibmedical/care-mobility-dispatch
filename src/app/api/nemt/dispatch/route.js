@@ -8,7 +8,10 @@ export async function GET() {
 
 export async function PUT(request) {
   const body = await request.json();
-  const nextState = await writeNemtDispatchState(body);
+  const allowTripShrink = request.headers.get('x-dispatch-allow-trip-shrink') === '1';
+  const nextState = await writeNemtDispatchState(body, {
+    allowTripShrink
+  });
   return NextResponse.json({
     ...nextState,
     ok: true

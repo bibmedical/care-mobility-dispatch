@@ -140,20 +140,25 @@ export const NemtProvider = ({
   const hasLocalDispatchChangesRef = useRef(false);
   const persistInFlightRef = useRef(false);
   const pendingPersistSnapshotRef = useRef('');
+  const allowTripShrinkNextPersistRef = useRef(false);
+  const pendingAllowTripShrinkRef = useRef(false);
 
   const flushPersistQueue = async () => {
     if (persistInFlightRef.current) return;
     const nextSnapshot = pendingPersistSnapshotRef.current;
     if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return;
+    const allowTripShrink = pendingAllowTripShrinkRef.current;
 
     persistInFlightRef.current = true;
     pendingPersistSnapshotRef.current = '';
+    pendingAllowTripShrinkRef.current = false;
 
     try {
       const response = await fetch('/api/nemt/dispatch', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-dispatch-allow-trip-shrink': allowTripShrink ? '1' : '0'
         },
         body: nextSnapshot
       });
@@ -274,6 +279,8 @@ export const NemtProvider = ({
     if (snapshot === lastPersistedSnapshotRef.current) return;
 
     pendingPersistSnapshotRef.current = snapshot;
+    pendingAllowTripShrinkRef.current = allowTripShrinkNextPersistRef.current;
+    allowTripShrinkNextPersistRef.current = false;
 
     const timeoutId = window.setTimeout(async () => {
       await flushPersistQueue();
@@ -332,11 +339,15 @@ export const NemtProvider = ({
 
   const updateState = (updater, options = {}) => {
     const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;
+    const shouldAllowTripShrink = options.allowTripShrink ?? false;
     const buildAuditEntry = typeof options.buildAuditEntry === 'function' ? options.buildAuditEntry : null;
     setState(currentState => {
       const baseState = currentState ?? createInitialState();
       if (shouldMarkDispatchDirty) {
         hasLocalDispatchChangesRef.current = true;
+        if (shouldAllowTripShrink) {
+          allowTripShrinkNextPersistRef.current = true;
+        }
       }
       const nextState = updater(baseState);
       if (!buildAuditEntry || !shouldMarkDispatchDirty) return nextState;
@@ -800,7 +811,10 @@ export const NemtProvider = ({
     selectedTripIds: [],
     selectedRouteId: null,
     selectedDriverId: null
-  }), { markDispatchDirty: true });
+  }), {
+    markDispatchDirty: true,
+    allowTripShrink: true
+  });
 
   const upsertImportedTrips = trips => updateState(currentState => {
     const currentTrips = normalizeTripRecords(currentState.trips);
@@ -851,7 +865,10 @@ export const NemtProvider = ({
       selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(tripId)),
       selectedRouteId: currentState.selectedRouteId && currentState.routePlans.some(routePlan => routePlan.id === currentState.selectedRouteId && routePlan.tripIds.some(tripId => nextTripIds.has(tripId))) ? currentState.selectedRouteId : null
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    allowTripShrink: true
+  });
 
   const clearTrips = () => updateState(currentState => ({
     ...currentState,
@@ -860,7 +877,10 @@ export const NemtProvider = ({
     selectedTripIds: [],
     selectedRouteId: null,
     selectedDriverId: null
-  }), { markDispatchDirty: true });
+  }), {
+    markDispatchDirty: true,
+    allowTripShrink: true
+  });
 
   const updateTripNotes = (tripId, notes) => updateState(currentState => {
     const normalizedTripId = String(tripId || '').trim();
