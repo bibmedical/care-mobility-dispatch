@@ -1123,6 +1123,7 @@ const ConfirmationWorkspace = () => {
     if (method === 'whatsapp') return 'W';
     if (method === 'sms') return 'S';
     if (method === 'call') return 'C';
+    if (method === 'sms-left-unconfirmed') return 'SL';
     return 'M';
   };
 
@@ -1130,6 +1131,7 @@ const ConfirmationWorkspace = () => {
     if (method === 'whatsapp') return 'WhatsApp';
     if (method === 'sms') return 'SMS';
     if (method === 'call') return 'Call';
+    if (method === 'sms-left-unconfirmed') return 'Could not confirm, SMS left (English)';
     return 'Manual';
   };
 
@@ -1281,6 +1283,7 @@ const ConfirmationWorkspace = () => {
     if (!tripUpdateModal) return;
     const nowIso = new Date().toISOString();
     const methodLabel = getMethodLabel(tripUpdateConfirmMethod);
+    const isSmsLeftUnconfirmed = tripUpdateConfirmMethod === 'sms-left-unconfirmed';
     const oldPickup = normalizeTripTimeDisplay(tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '');
     const oldDropoff = normalizeTripTimeDisplay(tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '');
     const newPickup = String(tripUpdatePickupTime || '').trim();
@@ -1289,7 +1292,11 @@ const ConfirmationWorkspace = () => {
     const dropoffChanged = Boolean(newDropoff) && newDropoff !== oldDropoff;
 
     const detailLines = [];
-    detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
+    if (isSmsLeftUnconfirmed) {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Could not confirm by phone. English SMS was left for follow-up.`);
+    } else {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
+    }
     if (pickupChanged || dropoffChanged) {
       detailLines.push(`[SCHEDULE NEW] Pickup: ${oldPickup || '-'} -> ${newPickup || oldPickup || '-'} | Dropoff: ${oldDropoff || '-'} -> ${newDropoff || oldDropoff || '-'}`);
     }
@@ -1305,10 +1312,10 @@ const ConfirmationWorkspace = () => {
       notes: mergedNotes,
       confirmation: {
         ...(tripUpdateModal.confirmation || {}),
-        status: 'Confirmed',
+        status: isSmsLeftUnconfirmed ? 'Needs Call' : 'Confirmed',
         provider: tripUpdateConfirmMethod,
         respondedAt: nowIso,
-        lastResponseText: `Confirmed via ${methodLabel}`,
+        lastResponseText: isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : `Confirmed via ${methodLabel}`,
         lastResponseCode: getMethodCode(tripUpdateConfirmMethod)
       },
       scheduleChange: pickupChanged || dropoffChanged ? {
@@ -1983,6 +1990,7 @@ const ConfirmationWorkspace = () => {
                 <option value="call">Call</option>
                 <option value="sms">SMS</option>
                 <option value="whatsapp">WhatsApp</option>
+                <option value="sms-left-unconfirmed">Could not confirm, SMS left (English)</option>
               </Form.Select>
             </Col>
             <Col md={4}>
