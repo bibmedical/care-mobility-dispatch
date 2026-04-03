@@ -363,7 +363,7 @@ const DispatcherMessagingPanel = ({
   };
 
   return (
-    <div className="d-flex flex-column border rounded-3 overflow-hidden" style={{ height: 'clamp(380px, 62vh, 560px)', backgroundColor: '#0b1220' }}>
+    <div className="d-flex flex-column border rounded-3 overflow-hidden" style={{ height: 'clamp(300px, 44vh, 410px)', backgroundColor: '#0b1220' }}>
       <div className="d-flex justify-content-between align-items-center p-2 border-bottom text-white flex-wrap gap-2" style={{ backgroundColor: '#0f172a', borderColor: '#1f2937' }}>
         <div className="d-flex align-items-center gap-2 flex-wrap">
           <strong>Messaging</strong>
