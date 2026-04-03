@@ -958,9 +958,11 @@ const DispatcherWorkspace = () => {
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
     const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
     const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
-    const autoExcluded = isPatientExclusionActiveForTripDate(trip, tripDateKey);
+    const blockingState = tripBlockingMap.get(trip.id);
+    const hasActiveBlacklistBlock = blockingState?.source === 'blacklist';
+    const autoExcluded = !hasActiveBlacklistBlock && isPatientExclusionActiveForTripDate(trip, tripDateKey);
     const effectiveStatus = autoExcluded ? 'cancelled' : normalizedStatus;
-    const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+    const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
     const matchesStatus = tripStatusFilter === 'all' ? effectiveStatus !== 'cancelled' : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : effectiveStatus === tripStatusFilter;
     if (!matchesStatus) return false;
     if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) return false;

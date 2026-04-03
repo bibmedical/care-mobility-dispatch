@@ -311,7 +311,7 @@ const ConfirmationWorkspace = () => {
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
   const [cancelLegScope, setCancelLegScope] = useState('single');
   const [blockReasonModalTrip, setBlockReasonModalTrip] = useState(null);
-  const [blockReasonType, setBlockReasonType] = useState('hospital-rehab');
+  const [blockReasonType, setBlockReasonType] = useState('other');
   const [blockReasonNote, setBlockReasonNote] = useState('');
   
   // Hospital/Rehab states
@@ -519,7 +519,8 @@ const ConfirmationWorkspace = () => {
     const toMinutes = applyTimeFilter && timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
 
     const candidateMiles = trips.filter(trip => {
-      const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+      const blockingState = tripBlockingMap.get(trip.id);
+      const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
       if (statusFilter !== 'all' && confirmationStatus !== statusFilter) return false;
       if (legFilter !== 'all' && getTripLegFilterKey(trip) !== legFilter) return false;
       if (rideTypeFilter !== 'all' && getTripTypeLabel(trip) !== rideTypeFilter) return false;
@@ -578,7 +579,8 @@ const ConfirmationWorkspace = () => {
       }
 
       const riderProfile = getPatientProfileForTrip(trip);
-      if (isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
+      const hasActiveBlacklistBlock = blockingState?.source === 'blacklist';
+      if (!hasActiveBlacklistBlock && isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
       
       if (!normalizedSearch) return true;
       const haystack = [trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
@@ -738,13 +740,14 @@ const ConfirmationWorkspace = () => {
     }
 
     setBlockReasonModalTrip(trip);
-    setBlockReasonType('hospital-rehab');
+    setBlockReasonType('other');
     setBlockReasonNote('');
   };
 
   const handleConfirmBlockReason = async () => {
     if (!blockReasonModalTrip) return;
     const trip = blockReasonModalTrip;
+    const patientKey = buildPatientProfileKey(trip);
     const reasonLabel = BLOCK_REASON_OPTIONS.find(option => option.value === blockReasonType)?.label || 'Other reason';
     const details = blockReasonNote.trim();
     const reasonText = details ? `${reasonLabel}: ${details}` : reasonLabel;
@@ -788,6 +791,18 @@ const ConfirmationWorkspace = () => {
 
     const cleanedOptOutList = optOutList.filter(entry => !isSamePatient(entry));
 
+    const nextRiderProfiles = {
+      ...riderProfiles
+    };
+    if (patientKey && nextRiderProfiles[patientKey]) {
+      const nextProfile = {
+        ...nextRiderProfiles[patientKey],
+        updatedAt: nowIso
+      };
+      delete nextProfile.exclusion;
+      nextRiderProfiles[patientKey] = nextProfile;
+    }
+
     await Promise.all([
       saveBlacklistData({
         version: blacklistData?.version ?? 1,
@@ -796,7 +811,8 @@ const ConfirmationWorkspace = () => {
       saveSmsData({
         sms: {
           ...(smsData?.sms || {}),
-          optOutList: cleanedOptOutList
+          optOutList: cleanedOptOutList,
+          riderProfiles: nextRiderProfiles
         }
       })
     ]);
@@ -823,9 +839,9 @@ const ConfirmationWorkspace = () => {
     });
 
     setBlockReasonModalTrip(null);
-    setBlockReasonType('hospital-rehab');
+    setBlockReasonType('other');
     setBlockReasonNote('');
-    setCustomStatus('Patient blocked and persisted in Black List until manually removed.');
+    setCustomStatus('Patient blocked in Black List. Future trips will stay visible, but confirmation remains blocked until manually removed.');
   };
 
   const handleSendCustomMessage = async () => {
