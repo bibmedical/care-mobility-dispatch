@@ -39,6 +39,7 @@ try {
     const startbar = document.querySelector('.startbar');
     const revealZoneId = 'startbar-reveal-zone';
     const revealZoneWidth = 14;
+    const hoverRevealStateAttr = 'data-sidebar-hover-revealed';
     let pointerX = -1;
     let pointerY = -1;
 
@@ -64,6 +65,7 @@ try {
 
     const collapseSidebar = () => {
         if (!isDesktopViewport()) return;
+        document.body.removeAttribute(hoverRevealStateAttr);
         if (document.body.getAttribute('data-sidebar-size') !== 'collapsed') {
             document.body.setAttribute('data-sidebar-size', 'collapsed');
         }
@@ -72,6 +74,7 @@ try {
     const tryAutoCollapseAfterReveal = () => {
         if (!isDesktopViewport()) return;
         if (!startbar) return;
+        if (document.body.getAttribute(hoverRevealStateAttr) !== 'true') return;
         if (document.body.getAttribute('data-sidebar-size') !== 'default') return;
         if (pointerX < 0 || pointerY < 0) return;
 
@@ -88,35 +91,33 @@ try {
     revealZone.addEventListener('mouseenter', () => {
         if (!isDesktopViewport()) return;
         if (document.body.getAttribute('data-sidebar-size') === 'collapsed') {
+            document.body.setAttribute(hoverRevealStateAttr, 'true');
             document.body.setAttribute('data-sidebar-size', 'default');
         }
+    });
+
+    startbar?.addEventListener('mouseleave', () => {
+        window.clearTimeout(window.__cmSidebarAutoCollapseTimer);
+        window.__cmSidebarAutoCollapseTimer = window.setTimeout(tryAutoCollapseAfterReveal, 90);
     });
 
     document.addEventListener('mousemove', (event) => {
         pointerX = event.clientX;
         pointerY = event.clientY;
         if (!isDesktopViewport()) return;
+        if (document.body.getAttribute(hoverRevealStateAttr) !== 'true') return;
         if (document.body.getAttribute('data-sidebar-size') !== 'default') return;
         window.clearTimeout(window.__cmSidebarAutoCollapseTimer);
         window.__cmSidebarAutoCollapseTimer = window.setTimeout(tryAutoCollapseAfterReveal, 90);
     });
 
     collapsedToggle?.addEventListener('click', function () {
-
-        var sidebarSize = document.body.getAttribute("data-sidebar-size");
-
-        if (sidebarSize == "collapsed") {
-            document.body.setAttribute("data-sidebar-size", "default")
-
-        } else {
-            document.body.setAttribute("data-sidebar-size", "collapsed")
-        }
-
+        document.body.removeAttribute(hoverRevealStateAttr);
     });
 
     if (sidebarOverlay) {
         sidebarOverlay.addEventListener('click', () => {
-            document.body.setAttribute("data-sidebar-size", "collapsed")
+            document.body.removeAttribute(hoverRevealStateAttr);
         })
     }
 
