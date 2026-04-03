@@ -413,28 +413,42 @@ const DispatcherMessagingPanel = ({
               const threadAlertCount = activeAlertCounts[thread.driverId] || 0;
               const hasUrgentAlert = driverAlerts.some(alert => alert.driverId === thread.driverId && alert.status !== 'resolved' && (alert.priority === 'high' || alert.priority === 'urgent'));
               return (
-                <div key={thread.driverId} className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`} style={{ backgroundColor: thread.driverId === activeDriverId ? '#6c5ce7' : hasUrgentAlert ? '#fff7ed' : 'transparent', borderLeft: hasUrgentAlert ? '4px solid #ea580c' : '4px solid transparent' }}>
-                  <div className="d-flex align-items-start gap-2 px-2 pt-2">
+                <div
+                  key={thread.driverId}
+                  className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
+                  style={{
+                    backgroundColor: thread.driverId === activeDriverId ? '#1d4ed8' : hasUrgentAlert ? '#fff7ed' : '#f8fafc',
+                    borderLeft: hasUrgentAlert ? '4px solid #ea580c' : '4px solid transparent'
+                  }}
+                >
+                  <div className="d-flex align-items-center gap-2 px-2 py-1" style={{ minHeight: 58 }}>
                     <div className="flex-grow-1">
-                      <button type="button" onClick={() => handleSelectDriver(thread.driverId)} className={`w-100 text-start border-0 px-1 pb-2 ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`} style={{ backgroundColor: 'transparent' }}>
-                        <div className="d-flex justify-content-between align-items-start gap-2">
-                          <div className="d-flex align-items-start gap-2">
-                            <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectDriver(thread.driverId)}
+                        className={`w-100 text-start border-0 px-1 ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
+                        style={{ backgroundColor: 'transparent' }}
+                      >
+                        <div className="d-flex justify-content-between align-items-center gap-2">
+                          <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+                            <div className="d-flex align-items-center gap-1">
+                              <IconifyIcon icon="iconoir:triangle-flag" className="text-danger" />
                               <IconifyIcon icon="iconoir:map-pin" className={driver?.live === 'Online' ? 'text-success' : 'text-secondary'} />
+                              <IconifyIcon icon="iconoir:message-text" className={threadAlertCount > 0 ? 'text-danger' : 'text-secondary'} />
+                              {threadAlertCount > 0 ? <span className="rounded-circle bg-danger d-inline-block" style={{ width: 7, height: 7 }} /> : null}
                             </div>
-                            <div>
-                              <div className="fw-semibold d-flex align-items-center gap-2">
+                            <div style={{ minWidth: 0 }}>
+                              <div className="fw-semibold d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: 210 }}>
                                 {driver?.name ?? 'Driver'}
                                 {driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
                               </div>
-                              <div className="small text-muted">{isDaily ? <span className="badge bg-warning text-dark">Daily Driver</span> : driver?.vehicle || 'Vehicle pending'}</div>
-                              <div className="small text-muted">{lastMessage?.text ?? 'No messages yet.'}</div>
+                              <div className="small text-muted text-truncate" style={{ maxWidth: 220 }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                             </div>
                           </div>
                           <div className="text-end">
                             <div className="small">{lastMessage ? formatDispatchTime(lastMessage.timestamp, uiPreferences?.timeZone) : '--:--'}</div>
                             {threadUnreadCount > 0 ? <Badge bg="danger">{threadUnreadCount}</Badge> : null}
-                            {threadAlertCount > 0 ? <Badge bg="warning" text="dark" className="ms-1">{threadAlertCount} alert</Badge> : null}
+                            {threadAlertCount > 0 ? <Badge bg="warning" text="dark" className="ms-1">{threadAlertCount}</Badge> : null}
                           </div>
                         </div>
                       </button>
