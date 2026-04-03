@@ -27,12 +27,12 @@ const buildShellStyles = isLight => ({
   activeTab: {
     backgroundColor: '#8dc63f',
     borderColor: '#8dc63f',
-    color: '#fff'
+    color: '#08131a'
   },
   inactiveTab: {
     backgroundColor: isLight ? '#f6f7fb' : '#101521',
     borderColor: isLight ? '#cfd6e4' : '#2a3144',
-    color: '#08131a'
+    color: isLight ? '#08131a' : '#e6ecff'
   },
   tableShell: {
     borderColor: isLight ? '#d5deea' : '#2a3144',

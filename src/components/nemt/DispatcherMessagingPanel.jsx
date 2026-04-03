@@ -370,7 +370,7 @@ const DispatcherMessagingPanel = ({
               </div>
             ) : null}
           </div>
-          <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+          <div style={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
             {filteredThreads.length > 0 ? filteredThreads.map(thread => {
               const driver = allDrivers.find(item => item.id === thread.driverId);
               const isDaily = driver?._isDaily === true;
