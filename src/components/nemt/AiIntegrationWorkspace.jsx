@@ -4,7 +4,6 @@ import PageTitle from '@/components/PageTitle';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import useAiIntegrationApi from '@/hooks/useAiIntegrationApi';
-import useAvatarSettingsApi from '@/hooks/useAvatarSettingsApi';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
 
@@ -73,18 +72,9 @@ const AiIntegrationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const { data, loading, saving, error, refresh, saveData } = useAiIntegrationApi();
-  const {
-    data: avatarData,
-    loading: avatarLoading,
-    saving: avatarSaving,
-    error: avatarError,
-    refresh: refreshAvatar,
-    saveData: saveAvatarData
-  } = useAvatarSettingsApi();
   const [draft, setDraft] = useState(buildBlankDraft());
   const [message, setMessage] = useState('Pega aqui tu OpenAI API key para que el asistente de la esquina responda con IA real en lugar del modo basico.');
   const [showKey, setShowKey] = useState(false);
-  const [assistantVisible, setAssistantVisible] = useState(true);
   const [knowledgeData, setKnowledgeData] = useState(EMPTY_KNOWLEDGE);
   const [knowledgeLoading, setKnowledgeLoading] = useState(true);
   const [knowledgeUploading, setKnowledgeUploading] = useState(false);
@@ -98,28 +88,10 @@ const AiIntegrationWorkspace = () => {
     });
   }, [data]);
 
-  useEffect(() => {
-    if (!avatarData?.avatar) return;
-    setAssistantVisible(avatarData.avatar.visible !== false);
-  }, [avatarData]);
-
   const readiness = useMemo(() => buildConnectionStatus(draft), [draft]);
-  const pageLoading = loading || avatarLoading;
-  const pageSaving = saving || avatarSaving;
-  const pageError = error || avatarError;
-
-  const buildAvatarPayload = visible => ({
-    name: String(avatarData?.avatar?.name || draft.avatarName || ''),
-    image: String(avatarData?.avatar?.image || draft.avatarImage || ''),
-    memoryNotes: String(avatarData?.avatar?.memoryNotes || draft.memoryNotes || ''),
-    visible,
-    memorySections: {
-      patients: String(avatarData?.avatar?.memorySections?.patients || draft.memorySections?.patients || ''),
-      drivers: String(avatarData?.avatar?.memorySections?.drivers || draft.memorySections?.drivers || ''),
-      rules: String(avatarData?.avatar?.memorySections?.rules || draft.memorySections?.rules || ''),
-      phones: String(avatarData?.avatar?.memorySections?.phones || draft.memorySections?.phones || '')
-    }
-  });
+  const pageLoading = loading;
+  const pageSaving = saving;
+  const pageError = error;
 
   const refreshKnowledge = async () => {
     setKnowledgeLoading(true);
@@ -170,18 +142,7 @@ const AiIntegrationWorkspace = () => {
   };
 
   const handleRefresh = async () => {
-    await Promise.all([refresh(), refreshAvatar(), refreshKnowledge()]);
-  };
-
-  const handleAssistantVisibilityChange = async event => {
-    const nextVisible = event.target.checked;
-    setAssistantVisible(nextVisible);
-    try {
-      await saveAvatarData(buildAvatarPayload(nextVisible));
-      setMessage(nextVisible ? 'La IA flotante ya esta visible en pantalla.' : 'La IA flotante se escondio de la pantalla.');
-    } catch {
-      setAssistantVisible(!nextVisible);
-    }
+    await Promise.all([refresh(), refreshKnowledge()]);
   };
 
   const handleKnowledgeUpload = async event => {
@@ -313,7 +274,6 @@ const AiIntegrationWorkspace = () => {
                 ...current,
                 enabled: event.target.checked
               }))} />
-                <Form.Check type="switch" id="assistant-visible" label={assistantVisible ? 'Mostrar IA en pantalla' : 'IA escondida de la pantalla'} checked={assistantVisible} onChange={handleAssistantVisibilityChange} disabled={avatarSaving} />
               </Col>
               <Col md={12}>
                 <Form.Label className="small text-uppercase text-secondary fw-semibold">OpenAI API Key</Form.Label>
@@ -342,7 +302,7 @@ const AiIntegrationWorkspace = () => {
                     </div>
                     <span style={buildStatusPillStyle(surfaceStyles.pill, readiness === 'Ready')}>{readiness}</span>
                   </div>
-                  <div className="small text-secondary">Tip: use this switch to hide or show the AI widget from the corner without leaving this page.</div>
+                  <div className="small text-secondary">Tip: La visibilidad y foto del widget se controla solo en Settings &gt; Avatar.</div>
                 </div>
               </Col>
             </Row>}
