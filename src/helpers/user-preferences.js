@@ -2,6 +2,11 @@ import { normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, 
 
 export const DEFAULT_USER_PREFERENCES = {
   nemtUiPreferences: normalizeNemtUiPreferences(null),
+  assistantAvatar: {
+    name: '',
+    image: '',
+    updatedAt: ''
+  },
   dispatcherToolbar: {
     row1: [],
     row2: [],
@@ -55,11 +60,18 @@ const normalizeDispatcherMessagingPreferences = value => ({
   hiddenDriverIds: normalizeStringArray(value?.hiddenDriverIds)
 });
 
+const normalizeAssistantAvatarPreferences = value => ({
+  name: String(value?.name || ''),
+  image: String(value?.image || ''),
+  updatedAt: String(value?.updatedAt || '')
+});
+
 export const normalizeUserPreferences = value => ({
   nemtUiPreferences: {
     ...DEFAULT_USER_PREFERENCES.nemtUiPreferences,
     ...normalizeNemtUiPreferences(value?.nemtUiPreferences)
   },
+  assistantAvatar: normalizeAssistantAvatarPreferences(value?.assistantAvatar),
   dispatcherToolbar: normalizeDispatcherToolbarPreferences(value?.dispatcherToolbar),
   tripDashboard: normalizeTripDashboardPreferences(value?.tripDashboard),
   confirmation: normalizeConfirmationPreferences(value?.confirmation),
@@ -80,6 +92,10 @@ export const mergeUserPreferences = (currentValue, patchValue) => {
       timeZone: patch.nemtUiPreferences.timeZone || current.nemtUiPreferences.timeZone,
       printSetup: patch.nemtUiPreferences.printSetup ? patch.nemtUiPreferences.printSetup : current.nemtUiPreferences.printSetup
     } : current.nemtUiPreferences,
+    assistantAvatar: patch.assistantAvatar ? {
+      ...current.assistantAvatar,
+      ...patch.assistantAvatar
+    } : current.assistantAvatar,
     dispatcherToolbar: patch.dispatcherToolbar ? {
       ...current.dispatcherToolbar,
       ...patch.dispatcherToolbar
