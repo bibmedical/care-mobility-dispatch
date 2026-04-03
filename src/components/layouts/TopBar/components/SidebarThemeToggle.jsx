@@ -9,7 +9,7 @@ const SidebarThemeToggle = () => {
   return (
     <button
       onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')}
-      className="nav-link mobile-menu-btn nav-icon"
+      className="nav-link nav-icon"
       id="sidebar-light-dark-mode"
       type="button"
       title={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}

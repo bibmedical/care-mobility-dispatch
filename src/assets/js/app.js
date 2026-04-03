@@ -34,7 +34,7 @@ try {
 try {
 
     //collapsed
-    var collapsedToggle = document.querySelector(".mobile-menu-btn");
+    var collapsedToggle = document.getElementById('togglemenu');
     const sidebarOverlay = document.querySelector('.startbar-overlay');
     const startbar = document.querySelector('.startbar');
     const revealZoneId = 'startbar-reveal-zone';
@@ -88,13 +88,16 @@ try {
     };
 
     const revealZone = ensureRevealZone();
-    revealZone.addEventListener('mouseenter', () => {
+    const revealSidebar = () => {
         if (!isDesktopViewport()) return;
         if (document.body.getAttribute('data-sidebar-size') === 'collapsed') {
             document.body.setAttribute(hoverRevealStateAttr, 'true');
             document.body.setAttribute('data-sidebar-size', 'default');
         }
-    });
+    };
+
+    revealZone.addEventListener('mouseenter', revealSidebar);
+    revealZone.addEventListener('click', revealSidebar);
 
     startbar?.addEventListener('mouseleave', () => {
         window.clearTimeout(window.__cmSidebarAutoCollapseTimer);
