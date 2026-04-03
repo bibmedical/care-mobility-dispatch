@@ -794,7 +794,7 @@ const DispatcherWorkspace = () => {
     switch (canonicalizeToolbarBlockId(blockId)) {
       case 'stats':
         return <>
-            <Badge bg="primary">{trips.length} trips</Badge>
+            <Badge bg="primary">{filteredTrips.length} trips</Badge>
             <Badge bg="info">{drivers.length} drivers</Badge>
             <Badge bg="secondary">{liveDrivers} live</Badge>
           </>;
