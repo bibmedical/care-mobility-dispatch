@@ -49,6 +49,12 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "owner": "caremobility"
+    "owner": "caremobility",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/18100902-f02f-4e6e-a660-d3718fd5200d"
+    }
   }
 }

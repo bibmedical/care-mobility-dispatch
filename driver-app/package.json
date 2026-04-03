@@ -16,8 +16,11 @@
     "expo-notifications": "~55.0.16",
     "expo-status-bar": "~55.0.5",
     "expo-task-manager": "~55.0.12",
+    "expo-updates": "~55.0.18",
     "react": "19.2.0",
-    "react-native": "0.83.4"
+    "react-dom": "19.2.0",
+    "react-native": "0.83.4",
+    "react-native-web": "^0.21.0"
   },
   "devDependencies": {
     "@expo/ngrok": "^4.1.3",
