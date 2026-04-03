@@ -37,15 +37,26 @@ const mergeDriverDocuments = (currentDriver, nextDriver) => {
   };
 };
 
-const mergePreservedDriverData = (currentState, nextState) => {
+const mergePreservedDriverData = (currentState, nextState, options = {}) => {
+  const allowFullClear = options?.allowFullClear === true;
   const currentDrivers = Array.isArray(currentState?.drivers) ? currentState.drivers : [];
-  const nextDrivers = Array.isArray(nextState?.drivers) ? nextState.drivers : [];
+  const nextDriversCandidate = Array.isArray(nextState?.drivers) ? nextState.drivers : currentDrivers;
+  const nextVehiclesCandidate = Array.isArray(nextState?.vehicles) ? nextState.vehicles : Array.isArray(currentState?.vehicles) ? currentState.vehicles : [];
+  const nextAttendantsCandidate = Array.isArray(nextState?.attendants) ? nextState.attendants : Array.isArray(currentState?.attendants) ? currentState.attendants : [];
+  const nextGroupingsCandidate = Array.isArray(nextState?.groupings) ? nextState.groupings : Array.isArray(currentState?.groupings) ? currentState.groupings : [];
+
+  const nextDrivers = !allowFullClear && currentDrivers.length > 0 && nextDriversCandidate.length === 0 ? currentDrivers : nextDriversCandidate;
+  const currentVehicles = Array.isArray(currentState?.vehicles) ? currentState.vehicles : [];
+  const nextVehicles = !allowFullClear && currentVehicles.length > 0 && nextVehiclesCandidate.length === 0 ? currentVehicles : nextVehiclesCandidate;
 
   const currentDriversById = new Map(currentDrivers.map(driver => [String(driver?.id || '').trim(), driver]));
   const currentDriversByStableId = new Map(currentDrivers.map(driver => [buildStableDriverId(driver), driver]));
 
   return {
     ...nextState,
+    attendants: nextAttendantsCandidate,
+    vehicles: nextVehicles,
+    groupings: nextGroupingsCandidate,
     drivers: nextDrivers.map(nextDriver => {
       const currentById = currentDriversById.get(String(nextDriver?.id || '').trim());
       const currentByStableId = currentDriversByStableId.get(buildStableDriverId(nextDriver));
@@ -104,10 +115,10 @@ export const readNemtAdminState = async () => {
   return normalized;
 };
 
-export const writeNemtAdminState = async nextState => {
+export const writeNemtAdminState = async (nextState, options = {}) => {
   await ensureTable();
   const currentState = await readNemtAdminState();
-  const mergedState = mergePreservedDriverData(currentState, nextState);
+  const mergedState = mergePreservedDriverData(currentState, nextState, options);
   const normalized = normalizeState(mergedState);
   await query(
     `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
