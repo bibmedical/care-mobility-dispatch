@@ -179,11 +179,29 @@ export const readSystemUsersState = async () => {
   await ensureTable();
   const result = await query(`SELECT version, protected_user_ids, users FROM system_users_state WHERE id = 'singleton'`);
   const row = result.rows[0];
-  return normalizeUsersState({
+  const normalizedState = normalizeUsersState({
     version: row?.version,
     protectedUserIds: row?.protected_user_ids,
     users: row?.users
   });
+
+  if (normalizedState.users.length === 0) {
+    const seedUsers = USER_SEED.map(normalizeUserRecord);
+    const seedProtected = normalizeProtectedIds(DEFAULT_PROTECTED_SYSTEM_USER_IDS, seedUsers);
+
+    await query(
+      `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
+      [6, JSON.stringify(seedProtected), JSON.stringify(seedUsers)]
+    );
+
+    return normalizeUsersState({
+      version: 6,
+      protectedUserIds: seedProtected,
+      users: seedUsers
+    });
+  }
+
+  return normalizedState;
 };
 
 export const readSystemUsersPayload = async () => {
