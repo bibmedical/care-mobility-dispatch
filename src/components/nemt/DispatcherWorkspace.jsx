@@ -2420,16 +2420,16 @@ const DispatcherWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0, display: showBottomPanels ? 'block' : 'none' }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
+              <div className="d-flex justify-content-between align-items-center p-2 border-bottom gap-2 flex-wrap" style={{ backgroundColor: '#0f172a', borderColor: '#1f2937', color: '#e5e7eb' }}>
                 <div className="d-flex gap-2 flex-wrap align-items-center">
-                    <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
+                    <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220, backgroundColor: '#1e293b', color: '#e5e7eb', borderColor: '#334155' }}>
                     <option value="">Reassign to active driver</option>
                     {activeDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
+                  <Button variant="outline-secondary" size="sm" onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
+                  <Button variant="outline-secondary" size="sm" onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
+                  <Button variant="outline-secondary" size="sm" onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
+                  <Button variant="outline-secondary" size="sm" onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
                 </div>
               </div>
               <div className="table-responsive flex-grow-1" style={{ minHeight: 0 }}>

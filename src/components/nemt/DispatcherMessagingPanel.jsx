@@ -468,19 +468,6 @@ const DispatcherMessagingPanel = ({
           </div>
         </div>
         <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0, backgroundColor: '#020617' }}>
-          <div className="p-3 border-bottom" style={{ backgroundColor: '#111827', borderColor: '#1f2937', color: '#e5e7eb' }}>
-            <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
-              <div>
-                <div className="fw-semibold">{activeDriver?.name ?? 'Select a driver'}</div>
-                <div className="small text-muted">{activeDriver ? `${activeDriver.live} | ${activeDriver.vehicle}` : 'Choose a thread to start dispatch messaging.'}</div>
-              </div>
-              {activeDriver ? <div className="d-flex gap-2 align-items-center flex-wrap">
-                  {activeDriverAlerts.length > 0 ? <Badge bg="danger">{activeDriverAlerts.length} active mobile alert{activeDriverAlerts.length === 1 ? '' : 's'}</Badge> : null}
-                  <Badge bg={normalizePhoneDigits(activeDriver.phone).length >= 10 ? 'success' : 'secondary'}>{normalizePhoneDigits(activeDriver.phone).length >= 10 ? 'SMS ready' : 'No SMS number'}</Badge>
-                  {alertsError ? <Badge bg="warning" text="dark" title={alertsError}>Alerts issue</Badge> : null}
-                </div> : null}
-            </div>
-          </div>
           <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', minHeight: 0 }}>
             {isLoadingAlerts && activeDriverAlerts.length === 0 ? <div className="small text-muted mb-3">Loading driver alerts...</div> : null}
             {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') ? 'alert-warning' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}
