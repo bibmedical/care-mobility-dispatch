@@ -1188,13 +1188,9 @@ const TripDashboardWorkspace = () => {
     if (tripStatusFilter === 'unconfirm') return confirmationStatus === 'Not Sent' || String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase() === 'U';
     return normalizedStatus === tripStatusFilter;
   }).filter(trip => {
-    if (tripDateFilter === 'all') {
-      // With no date selected, keep blocked/cancelled aggregate views available.
-      if (tripStatusFilter === 'cancelled') return true;
-      if (tripStatusFilter === 'block') return true;
-      return false;
-    }
-    return getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter;
+    const effectiveTripDateFilter = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
+    if (!effectiveTripDateFilter) return false;
+    return getTripTimelineDateKey(trip, routePlans, trips) === effectiveTripDateFilter;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
     return getTripLegFilterKey(trip) === tripLegFilter;
@@ -1219,7 +1215,7 @@ const TripDashboardWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, todayDateKey, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));

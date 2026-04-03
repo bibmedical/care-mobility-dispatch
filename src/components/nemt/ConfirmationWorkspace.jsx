@@ -562,16 +562,17 @@ const ConfirmationWorkspace = () => {
     const matchedTrips = trips.filter(trip => {
       // Check if trip is in hospital/rehab (should be excluded from normal confirmation)
       const isInHospitalRehab = trip.hospitalStatus && trip.hospitalStatus.startDate <= today && today <= trip.hospitalStatus.endDate;
-      
-      const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+
+      const blockingState = tripBlockingMap.get(trip.id);
+      const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
       if (statusFilter !== 'all' && confirmationStatus !== statusFilter) return false;
       if (legFilter !== 'all' && getTripLegFilterKey(trip) !== legFilter) return false;
       if (rideTypeFilter !== 'all' && getTripTypeLabel(trip) !== rideTypeFilter) return false;
-      
+
       // Optionally hide trips in active hospital/rehab status from normal confirmation view
       // Uncomment below if you want to hide them automatically:
       // if (isInHospitalRehab) return false;
-      
+
       // Filter by date
       const tripDateKey = getTripServiceDateKey(trip);
       if (confirmationDate !== 'all') {
@@ -581,7 +582,7 @@ const ConfirmationWorkspace = () => {
       const riderProfile = getPatientProfileForTrip(trip);
       const hasActiveBlacklistBlock = blockingState?.source === 'blacklist';
       if (!hasActiveBlacklistBlock && isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
-      
+
       if (!normalizedSearch) return true;
       const haystack = [trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(normalizedSearch);
