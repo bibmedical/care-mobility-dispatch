@@ -19,7 +19,7 @@ const LeftSideBarToggle = () => {
   useEffect(() => {
     if (width <= 1440 && size === 'default') changeMenuSize('collapsed');else if (width > 1440) changeMenuSize('default');
   }, [width]);
-  return <button onClick={() => size === 'default' ? changeMenuSize('collapsed') : changeMenuSize('default')} className="nav-link mobile-menu-btn nav-icon" id="togglemenu" type="button">
+  return <button onClick={() => size === 'default' ? changeMenuSize('collapsed') : changeMenuSize('default')} className="nav-link mobile-menu-btn nav-icon" id="togglemenu" type="button" title={size === 'default' ? 'Hide sidebar' : 'Show sidebar'} aria-label={size === 'default' ? 'Hide sidebar' : 'Show sidebar'}>
     <IconifyIcon icon='iconoir:menu' height={20} width={20} />
   </button>;
 };

@@ -1,4 +1,3 @@
-import LeftSideBarToggle from '@/components/layouts/TopBar/components/LeftSideBarToggle';
 import SidebarThemeToggle from '@/components/layouts/TopBar/components/SidebarThemeToggle';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -10,9 +9,6 @@ const LogoBox = () => {
         <Image src="/app.png" alt="Care Mobility logo" width={38} height={38} style={{ objectFit: 'cover' }} />
       </Link>
       <div style={{ position: 'absolute', left: 'calc(100% + 10px)', top: '50%', transform: 'translateY(-50%)', zIndex: 1100 }}>
-        <LeftSideBarToggle />
-      </div>
-      <div style={{ position: 'absolute', left: 'calc(100% + 52px)', top: '50%', transform: 'translateY(-50%)', zIndex: 1100 }}>
         <SidebarThemeToggle />
       </div>
     </div>;

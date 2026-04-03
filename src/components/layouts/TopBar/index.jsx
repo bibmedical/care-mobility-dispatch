@@ -59,6 +59,9 @@ const TopBar = () => {
       <div className="container-fluid">
         <nav className="topbar-custom d-flex justify-content-between" id="topbar-custom">
           <ul className="topbar-item list-unstyled d-inline-flex align-items-center mb-0">
+            <li className="me-2">
+              <LeftSideBarToggle />
+            </li>
             <li className="mx-2 welcome-text">
               <Link className="btn btn-sm text-primary btn-soft-primary" href="/forms-safe-ride-import"><i className="fas fa-plus me-2" />New Task</Link>
             </li>
