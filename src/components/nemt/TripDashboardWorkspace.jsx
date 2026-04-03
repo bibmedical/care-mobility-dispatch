@@ -1013,6 +1013,19 @@ const TripDashboardWorkspace = () => {
         return <>
             {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)}>Edit toolbar</Button>}
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout}>Reset toolbar</Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+            setShowToolbarTools(current => !current);
+            setShowColumnPicker(false);
+          }}>Toolbar</Button>
+            {showToolbarTools ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 82, width: 300 }}>
+                <CardBody className="p-3 text-dark">
+                  <div className="fw-semibold mb-2">Toolbar</div>
+                  <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
+                  <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
+                    {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-${blockId}`} type="switch" id={`toolbar-tools-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
+                  </div>
+                </CardBody>
+              </Card> : null}
           </>;
       case 'columns':
         return <>
@@ -2833,6 +2846,23 @@ const TripDashboardWorkspace = () => {
             </Card> : <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+                {shouldShowPinnedToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap">
+                    {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
+                    <Button variant="dark" size="sm" onClick={handleResetToolbarLayout}>Restore toolbar</Button>
+                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+                  setShowToolbarTools(current => !current);
+                  setShowColumnPicker(false);
+                }}>Toolbar</Button>
+                    {showToolbarTools ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 82, width: 300 }}>
+                        <CardBody className="p-3 text-dark">
+                          <div className="fw-semibold mb-2">Toolbar</div>
+                          <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
+                          <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
+                            {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-fallback-${blockId}`} type="switch" id={`toolbar-tools-fallback-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
+                          </div>
+                        </CardBody>
+                      </Card> : null}
+                  </div> : null}
                 {/* Row 1: Date selection and trip filters */}
                 <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
@@ -2977,22 +3007,7 @@ const TripDashboardWorkspace = () => {
                       <div className="fw-semibold">AI Smart Route</div>
                       <div className="small text-muted">Driver + anchor trip + ZIP + cutoff time. Then Local or GPT builds the route.</div>
                     </div>
-                    <div className="d-flex align-items-center gap-2 position-relative">
-                      {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
-                      {shouldShowPinnedToolbarRecovery ? <Button variant="dark" size="sm" onClick={handleResetToolbarLayout}>Restore toolbar</Button> : null}
-                      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-                    setShowToolbarTools(current => !current);
-                    setShowColumnPicker(false);
-                  }}>Toolbar</Button>
-                      {showToolbarTools ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 82, width: 300, top: '100%' }}>
-                          <CardBody className="p-3 text-dark">
-                            <div className="fw-semibold mb-2">Toolbar</div>
-                            <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
-                            <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
-                              {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-ai-${blockId}`} type="switch" id={`toolbar-tools-ai-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
-                            </div>
-                          </CardBody>
-                        </Card> : null}
+                    <div className="d-flex align-items-center gap-2">
                       <Badge bg={aiPlannerMode === 'openai' ? 'primary' : 'secondary'}>{aiPlannerMode === 'openai' ? 'GPT' : 'LOCAL'}</Badge>
                       <Button variant="light" size="sm" onClick={() => setAiPlannerCollapsed(true)} style={{ minWidth: 38 }} title="Hide AI Smart Route">
                         <IconifyIcon icon="iconoir:eye-closed" />
