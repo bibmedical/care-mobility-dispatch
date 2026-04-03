@@ -805,11 +805,10 @@ export const NemtProvider = ({
   const upsertImportedTrips = trips => updateState(currentState => {
     const currentTrips = normalizeTripRecords(currentState.trips);
     const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
-    const importedServiceDateKeys = new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean));
-    const currentTripsForImportedDays = currentTrips.filter(trip => importedServiceDateKeys.has(getTripServiceDateKey(trip)));
     const currentTripLookup = new Map();
+    const consumedCurrentTripIds = new Set();
 
-    currentTripsForImportedDays.forEach(trip => {
+    currentTrips.forEach(trip => {
       getTripLookupKeys(trip).forEach(key => {
         if (key && !currentTripLookup.has(key)) {
           currentTripLookup.set(key, trip);
@@ -822,11 +821,12 @@ export const NemtProvider = ({
       if (!currentTrip) {
         return importedTrip;
       }
+      consumedCurrentTripIds.add(String(currentTrip.id || '').trim());
       return mergeImportedTripWithCurrent(currentTrip, importedTrip);
     });
 
-    const remainingTrips = currentTrips.filter(trip => !importedServiceDateKeys.has(getTripServiceDateKey(trip)));
-    const nextTrips = normalizeTripRecords([...remainingTrips, ...mergedImportedTrips]);
+    const untouchedCurrentTrips = currentTrips.filter(trip => !consumedCurrentTripIds.has(String(trip.id || '').trim()));
+    const nextTrips = normalizeTripRecords([...untouchedCurrentTrips, ...mergedImportedTrips]);
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
 
     return {

@@ -38,7 +38,7 @@ try {
     const sidebarOverlay = document.querySelector('.startbar-overlay');
     const startbar = document.querySelector('.startbar');
     const revealZoneId = 'startbar-reveal-zone';
-    const revealZoneWidth = 14;
+    const revealZoneWidth = 24;
     const hoverRevealStateAttr = 'data-sidebar-hover-revealed';
     let pointerX = -1;
     let pointerY = -1;
@@ -55,7 +55,7 @@ try {
             revealZone.style.top = '0';
             revealZone.style.width = `${revealZoneWidth}px`;
             revealZone.style.height = '100vh';
-            revealZone.style.zIndex = '1040';
+            revealZone.style.zIndex = '2000';
             revealZone.style.background = 'transparent';
             revealZone.style.pointerEvents = 'auto';
             document.body.appendChild(revealZone);
@@ -89,11 +89,10 @@ try {
 
     const revealZone = ensureRevealZone();
     const revealSidebar = () => {
-        if (!isDesktopViewport()) return;
-        if (document.body.getAttribute('data-sidebar-size') === 'collapsed') {
+        if (isDesktopViewport()) {
             document.body.setAttribute(hoverRevealStateAttr, 'true');
-            document.body.setAttribute('data-sidebar-size', 'default');
         }
+        document.body.setAttribute('data-sidebar-size', 'default');
     };
 
     revealZone.addEventListener('mouseenter', revealSidebar);
