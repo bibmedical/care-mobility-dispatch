@@ -375,8 +375,8 @@ const DispatcherMessagingPanel = ({
           <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleSendMessage('ETA update sent from dispatch.')}>Quick ETA</Button>
         </div>
       </div>
-      <div className="d-flex flex-grow-1" style={{ minHeight: 0 }}>
-        <div className="border-end" style={{ width: '40%', minWidth: 220 }}>
+      <div className="d-flex flex-grow-1" style={{ minHeight: 0, overflow: 'hidden' }}>
+        <div className="border-end d-flex flex-column" style={{ width: '40%', minWidth: 220, minHeight: 0 }}>
           <div className="p-3 border-bottom bg-light">
             <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" />
             {showAddDriver ? (
@@ -404,7 +404,7 @@ const DispatcherMessagingPanel = ({
               </div>
             ) : null}
           </div>
-          <div style={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {filteredThreads.length > 0 ? filteredThreads.map(thread => {
               const driver = allDrivers.find(item => item.id === thread.driverId);
               const isDaily = driver?._isDaily === true;
