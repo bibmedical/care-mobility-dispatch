@@ -805,6 +805,8 @@ const TripDashboardWorkspace = () => {
   }, [toolbarBlockVisibility]);
 
   const isToolbarBlockEnabled = blockId => toolbarBlockVisibility[blockId] !== false;
+  const hasAnyVisibleToolbarBlock = TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.some(blockId => isToolbarBlockEnabled(blockId));
+  const shouldShowPinnedToolbarRecovery = !isToolbarBlockEnabled('toolbar-edit') || !hasAnyVisibleToolbarBlock;
 
   const handleToggleToolbarBlockVisibility = (blockId, enabled) => {
     setToolbarBlockVisibility(current => ({
@@ -907,15 +909,19 @@ const TripDashboardWorkspace = () => {
     const defaultRow1Order = [...TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS];
     const defaultRow2Order = [...TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS];
     const defaultRow3Order = [...TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS];
+    const defaultVisibility = Object.fromEntries(TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => [blockId, true]));
     setToolbarRow1Order(defaultRow1Order);
     setToolbarRow2Order(defaultRow2Order);
     setToolbarRow3Order(defaultRow3Order);
+    setToolbarBlockVisibility(defaultVisibility);
+    setShowToolbarTools(false);
     setIsToolbarEditMode(false);
     clearDraggingToolbarBlockIds();
     try {
       window.localStorage.setItem(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, JSON.stringify(defaultRow1Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, JSON.stringify(defaultRow2Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, JSON.stringify(defaultRow3Order));
+      window.localStorage.setItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY, JSON.stringify(defaultVisibility));
       setStatusMessage('Toolbar layout reset.');
     } catch {
       setStatusMessage('Could not reset toolbar layout.');
@@ -2840,6 +2846,23 @@ const TripDashboardWorkspace = () => {
             </Card> : <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+                {shouldShowPinnedToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap">
+                    {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
+                    <Button variant="dark" size="sm" onClick={handleResetToolbarLayout}>Restore toolbar</Button>
+                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+                  setShowToolbarTools(current => !current);
+                  setShowColumnPicker(false);
+                }}>Toolbar tools</Button>
+                    {showToolbarTools ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 82, width: 300 }}>
+                        <CardBody className="p-3 text-dark">
+                          <div className="fw-semibold mb-2">Toolbar Tools</div>
+                          <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
+                          <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
+                            {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-fallback-${blockId}`} type="switch" id={`toolbar-tools-fallback-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
+                          </div>
+                        </CardBody>
+                      </Card> : null}
+                  </div> : null}
                 {/* Row 1: Date selection and trip filters */}
                 <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
