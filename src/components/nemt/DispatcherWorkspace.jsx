@@ -1844,13 +1844,14 @@ const DispatcherWorkspace = () => {
   }, [refreshDispatchState]);
 
   const workspaceHeight = expanded ? 'clamp(760px, calc(100vh - 96px), 1100px)' : 'clamp(700px, calc(100vh - 132px), 980px)';
+  const workspaceHeightNoBottomPanels = 'calc(100vh - 18px)';
   const dividerSize = 10;
   const workspaceGridStyle = {
     display: 'grid',
     gridTemplateColumns: `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)`,
     gridTemplateRows: showBottomPanels ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
-    height: workspaceHeight,
-    minHeight: workspaceHeight,
+    height: showBottomPanels ? workspaceHeight : workspaceHeightNoBottomPanels,
+    minHeight: showBottomPanels ? workspaceHeight : workspaceHeightNoBottomPanels,
     position: 'relative'
   };
   const dividerBaseStyle = {
