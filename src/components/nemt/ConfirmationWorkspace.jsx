@@ -1163,6 +1163,7 @@ const ConfirmationWorkspace = () => {
       entries: nextBlacklistEntries
     });
 
+    const siblingTrips = getSiblingLegTrips(hospitalRehabModal, trips);
     const matchingTrips = trips.filter(trip => {
       if (patientKey && buildPatientProfileKey(trip) === patientKey) {
         const serviceDate = getTripServiceDateKey(trip);
@@ -1174,7 +1175,7 @@ const ConfirmationWorkspace = () => {
       });
     });
 
-    const targetTrips = matchingTrips.length > 0 ? matchingTrips : [hospitalRehabModal];
+    const targetTrips = Array.from(new Map([hospitalRehabModal, ...siblingTrips, ...matchingTrips].map(trip => [String(trip.id || ''), trip])).values()).filter(Boolean);
     targetTrips.forEach(trip => {
       updateTripRecord(trip.id, {
         status: 'Cancelled',
@@ -1197,7 +1198,7 @@ const ConfirmationWorkspace = () => {
       });
     });
 
-    setCustomStatus(`${targetTrips.length} trip(s) cancelled for ${hospitalRehabModal.rider || 'patient'} through ${hospitalRehabEndDate}. New trips for this patient in that date range will be auto-hidden unless you filter Cancelled.`);
+    setCustomStatus(`${targetTrips.length} trip(s) marked ${hospitalRehabType} for ${hospitalRehabModal.rider || 'patient'} through ${hospitalRehabEndDate}, including both legs when they exist. New trips in that range will be auto-hidden unless you filter Cancelled.`);
     setHospitalRehabModal(null);
   };
 
@@ -2164,6 +2165,7 @@ const ConfirmationWorkspace = () => {
         </Modal.Header>
         <Modal.Body>
           <div className="small text-muted mb-3">Trip: {hospitalRehabModal?.id} | Rider: {hospitalRehabModal?.rider}</div>
+          <div className="small text-muted mb-3">Cuando este viaje tenga dos patas, las dos se marcaran como Rehab/Hospital automaticamente.</div>
           
           <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Type</Form.Label>
           <Form.Select value={hospitalRehabType} onChange={event => setHospitalRehabType(event.target.value)} className="mb-3">
