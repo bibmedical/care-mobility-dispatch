@@ -9,6 +9,8 @@ import {
 import { readNemtAdminState } from '@/server/nemt-admin-store';
 
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+const badRequest = message => NextResponse.json({ error: message }, { status: 400 });
+const internalError = error => NextResponse.json({ error: error?.message || 'Unable to process system messages' }, { status: 500 });
 
 const readDriverPushTokens = async driverId => {
   if (!driverId) return [];
@@ -48,55 +50,67 @@ const sendExpoPush = async (pushTokens, message) => {
 };
 
 export async function GET() {
-  const session = await getServerSession(options);
-  if (!session?.user?.id) return unauthorized();
+  try {
+    const session = await getServerSession(options);
+    if (!session?.user?.id) return unauthorized();
 
-  const messages = await readSystemMessages();
-  return NextResponse.json({ messages });
+    const messages = await readSystemMessages();
+    return NextResponse.json({ messages });
+  } catch (error) {
+    return internalError(error);
+  }
 }
 
 export async function POST(request) {
-  const session = await getServerSession(options);
-  if (!session?.user?.id) return unauthorized();
+  try {
+    const session = await getServerSession(options);
+    if (!session?.user?.id) return unauthorized();
 
-  const body = await request.json();
-  const msg = {
-    id: body.id || `sysmsg-${Date.now()}`,
-    type: body.type || 'manual',
-    priority: body.priority || 'normal',
-    audience: body.audience || 'System',
-    subject: body.subject || '(no subject)',
-    body: body.body || '',
-    driverId: body.driverId || null,
-    driverName: body.driverName || null,
-    driverEmail: body.driverEmail || null,
-    expirationDate: body.expirationDate || null,
-    daysUntilExpiry: body.daysUntilExpiry ?? null,
-    status: 'active',
-    createdAt: new Date().toISOString(),
-    lastEmailSentAt: body.lastEmailSentAt || null,
-    emailSentCount: body.emailSentCount || 0,
-    resolvedAt: null
-  };
+    const body = await request.json();
+    const msg = {
+      id: body.id || `sysmsg-${Date.now()}`,
+      type: body.type || 'manual',
+      priority: body.priority || 'normal',
+      audience: body.audience || 'System',
+      subject: body.subject || '(no subject)',
+      body: body.body || '',
+      driverId: body.driverId || null,
+      driverName: body.driverName || null,
+      driverEmail: body.driverEmail || null,
+      expirationDate: body.expirationDate || null,
+      daysUntilExpiry: body.daysUntilExpiry ?? null,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      lastEmailSentAt: body.lastEmailSentAt || null,
+      emailSentCount: body.emailSentCount || 0,
+      resolvedAt: null
+    };
 
-  const saved = await upsertSystemMessage(msg);
-  const driverPushTokens = await readDriverPushTokens(saved.driverId);
-  await sendExpoPush(driverPushTokens, saved);
-  return NextResponse.json({ message: saved });
+    const saved = await upsertSystemMessage(msg);
+    const driverPushTokens = await readDriverPushTokens(saved.driverId);
+    await sendExpoPush(driverPushTokens, saved);
+    return NextResponse.json({ message: saved });
+  } catch (error) {
+    return internalError(error);
+  }
 }
 
 export async function PATCH(request) {
-  const session = await getServerSession(options);
-  if (!session?.user?.id) return unauthorized();
+  try {
+    const session = await getServerSession(options);
+    if (!session?.user?.id) return unauthorized();
 
-  const { id, action } = await request.json();
-  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+    const { id, action } = await request.json();
+    if (!id) return badRequest('Missing id');
 
-  if (action === 'resolve') {
-    const updated = await resolveSystemMessageById(id);
-    if (!updated) return NextResponse.json({ error: 'Message not found' }, { status: 404 });
-    return NextResponse.json({ message: updated });
+    if (action === 'resolve') {
+      const updated = await resolveSystemMessageById(id);
+      if (!updated) return NextResponse.json({ error: 'Message not found' }, { status: 404 });
+      return NextResponse.json({ message: updated });
+    }
+
+    return badRequest('Unknown action');
+  } catch (error) {
+    return internalError(error);
   }
-
-  return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }

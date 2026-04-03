@@ -56,6 +56,23 @@ const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
   }
 };
 
+const readJsonResponse = async response => {
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  const rawText = await response.text();
+  if (!rawText) return {};
+  if (!contentType.includes('application/json')) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Your session expired or this account cannot open dispatcher alerts.');
+    }
+    throw new Error('Driver alerts API returned HTML instead of JSON.');
+  }
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    throw new Error('Driver alerts API returned invalid JSON.');
+  }
+};
+
 const mergeThreads = (threads, drivers) => {
   const existingThreads = Array.isArray(threads) ? threads : [];
   const byDriverId = new Map(existingThreads.map(thread => [thread.driverId, thread]));
@@ -155,7 +172,7 @@ const DispatcherMessagingPanel = ({
       if (active) setIsLoadingAlerts(true);
       try {
         const response = await fetch('/api/system-messages', { cache: 'no-store' });
-        const payload = await response.json();
+        const payload = await readJsonResponse(response);
         if (!response.ok) throw new Error(payload?.error || 'Unable to load driver alerts.');
         if (!active) return;
 
@@ -210,7 +227,7 @@ const DispatcherMessagingPanel = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: alertId, action: 'resolve' })
       });
-      const payload = await response.json();
+      const payload = await readJsonResponse(response);
       if (!response.ok) throw new Error(payload?.error || 'Unable to resolve alert.');
       setDriverAlerts(currentAlerts => currentAlerts.map(alert => alert.id === alertId ? payload.message : alert));
       await logSystemActivity('Resolved mobile driver alert', activeDriverId || '', {
@@ -446,12 +463,12 @@ const DispatcherMessagingPanel = ({
               {activeDriver ? <div className="d-flex gap-2 align-items-center flex-wrap">
                   {activeDriverAlerts.length > 0 ? <Badge bg="danger">{activeDriverAlerts.length} active mobile alert{activeDriverAlerts.length === 1 ? '' : 's'}</Badge> : null}
                   <Badge bg={normalizePhoneDigits(activeDriver.phone).length >= 10 ? 'success' : 'secondary'}>{normalizePhoneDigits(activeDriver.phone).length >= 10 ? 'SMS ready' : 'No SMS number'}</Badge>
+                  {alertsError ? <Badge bg="warning" text="dark" title={alertsError}>Alerts issue</Badge> : null}
                 </div> : null}
             </div>
           </div>
           <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', minHeight: 0 }}>
             {isLoadingAlerts && activeDriverAlerts.length === 0 ? <div className="small text-muted mb-3">Loading driver alerts...</div> : null}
-            {alertsError ? <div className="alert alert-warning py-2 mb-3">{alertsError}</div> : null}
             {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') ? 'alert-warning' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}
             {activeDriverAlerts.length > 0 ? <div className="d-flex flex-column gap-2 mb-3">
                 {activeDriverAlerts.map(alert => <div key={alert.id} className="border rounded p-3 shadow-sm" style={getAlertSurfaceStyle(alert)}>
