@@ -557,13 +557,15 @@ const DispatcherWorkspace = () => {
   const [tripTableMaxScrollLeft, setTripTableMaxScrollLeft] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
   const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
+  const riderProfiles = useMemo(() => smsData?.sms?.riderProfiles || {}, [smsData?.sms?.riderProfiles]);
   const blacklistEntries = useMemo(() => Array.isArray(blacklistData?.entries) ? blacklistData.entries : [], [blacklistData?.entries]);
   const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
     trip,
     optOutList,
     blacklistEntries,
-    defaultCountryCode: smsData?.sms?.defaultCountryCode
-  })])), [blacklistEntries, optOutList, smsData?.sms?.defaultCountryCode, trips]);
+    defaultCountryCode: smsData?.sms?.defaultCountryCode,
+    tripDateKey: getTripTimelineDateKey(trip, routePlans, trips)
+  })])), [blacklistEntries, optOutList, routePlans, smsData?.sms?.defaultCountryCode, trips]);
 
   const toggleTripSelection = tripId => {
     setSelectedTripIds(currentTripIds => currentTripIds.includes(tripId) ? currentTripIds.filter(id => id !== tripId) : [...currentTripIds, tripId]);
@@ -911,13 +913,38 @@ const DispatcherWorkspace = () => {
     if (!hasPrimary) return secondaryDriverName;
     return `${primaryDriverName} + ${secondaryDriverName}`;
   };
+  const getTripPatientProfileKey = trip => {
+    const phoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
+    if (phoneKey) return `phone:${phoneKey}`;
+    const riderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
+    return riderKey ? `rider:${riderKey}` : '';
+  };
+  const isPatientExclusionActiveForTripDate = (trip, tripDateKey) => {
+    const profileKey = getTripPatientProfileKey(trip);
+    if (!profileKey) return false;
+    const exclusion = riderProfiles?.[profileKey]?.exclusion;
+    if (!exclusion || !tripDateKey) return false;
+    const mode = String(exclusion.mode || '').trim().toLowerCase();
+    if (mode === 'always') return true;
+    if (mode === 'single-day') return tripDateKey === String(exclusion.startDate || '').trim();
+    if (mode === 'range') {
+      const start = String(exclusion.startDate || '').trim();
+      const end = String(exclusion.endDate || '').trim();
+      if (!start || !end) return false;
+      return tripDateKey >= start && tripDateKey <= end;
+    }
+    return false;
+  };
 
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
+    const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
     const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
+    const autoExcluded = isPatientExclusionActiveForTripDate(trip, tripDateKey);
+    const effectiveStatus = autoExcluded ? 'cancelled' : normalizedStatus;
     const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
-    const matchesStatus = tripStatusFilter === 'all' ? normalizedStatus !== 'cancelled' : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : normalizedStatus === tripStatusFilter;
+    const matchesStatus = tripStatusFilter === 'all' ? effectiveStatus !== 'cancelled' : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : effectiveStatus === tripStatusFilter;
     if (!matchesStatus) return false;
-    if (tripDateFilter !== 'all' && getTripTimelineDateKey(trip, routePlans, trips) !== tripDateFilter) return false;
+    if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) return false;
     return true;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
@@ -943,7 +970,7 @@ const DispatcherWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, tripDateFilter, routePlans, tripBlockingMap, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, tripDateFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));

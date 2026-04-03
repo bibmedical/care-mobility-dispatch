@@ -659,13 +659,15 @@ const TripDashboardWorkspace = () => {
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
   const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
+  const riderProfiles = useMemo(() => smsData?.sms?.riderProfiles || {}, [smsData?.sms?.riderProfiles]);
   const blacklistEntries = useMemo(() => Array.isArray(blacklistData?.entries) ? blacklistData.entries : [], [blacklistData?.entries]);
   const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
     trip,
     optOutList,
     blacklistEntries,
-    defaultCountryCode: smsData?.sms?.defaultCountryCode
-  })])), [blacklistEntries, optOutList, smsData?.sms?.defaultCountryCode, trips]);
+    defaultCountryCode: smsData?.sms?.defaultCountryCode,
+    tripDateKey: getTripTimelineDateKey(trip, routePlans, trips)
+  })])), [blacklistEntries, optOutList, routePlans, smsData?.sms?.defaultCountryCode, trips]);
 
   const toggleTripSelection = tripId => {
     setSelectedTripIds(currentTripIds => currentTripIds.includes(tripId) ? currentTripIds.filter(id => id !== tripId) : [...currentTripIds, tripId]);
@@ -1134,9 +1136,18 @@ const TripDashboardWorkspace = () => {
     }
   };
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
-    const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
+    const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
+    const profilePhoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
+    const profileRiderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
+    const profileKey = profilePhoneKey ? `phone:${profilePhoneKey}` : profileRiderKey ? `rider:${profileRiderKey}` : '';
+    const exclusion = profileKey ? riderProfiles?.[profileKey]?.exclusion : null;
+    const exclusionMode = String(exclusion?.mode || '').trim().toLowerCase();
+    const exclusionStart = String(exclusion?.startDate || '').trim();
+    const exclusionEnd = String(exclusion?.endDate || '').trim();
+    const isAutoCancelledByExclusion = Boolean(tripDateKey) && (exclusionMode === 'always' || exclusionMode === 'single-day' && tripDateKey === exclusionStart || exclusionMode === 'range' && exclusionStart && exclusionEnd && tripDateKey >= exclusionStart && tripDateKey <= exclusionEnd);
+    const normalizedStatus = isAutoCancelledByExclusion ? 'cancelled' : String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
     const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
-    if (tripStatusFilter === 'all') return true;
+    if (tripStatusFilter === 'all') return !['cancelled', 'canceled'].includes(normalizedStatus);
     if (tripStatusFilter === 'unassigned') return !trip.driverId && !trip.secondaryDriverId && !['cancelled', 'canceled'].includes(normalizedStatus);
     if (tripStatusFilter === 'willcall') return normalizedStatus === 'willcall';
     if (tripStatusFilter === 'block') return confirmationStatus === 'Opted Out';
@@ -1174,7 +1185,7 @@ const TripDashboardWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));

@@ -15,6 +15,13 @@ const parseHoldUntil = value => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const parseTripDateReference = tripDateKey => {
+  const value = String(tripDateKey || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T23:59:59`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 export const isBlacklistEntryActive = (entry, referenceDate = new Date()) => {
   if (String(entry?.status || '').trim() !== 'Active') return false;
   const holdUntil = parseHoldUntil(entry?.holdUntil);
@@ -49,7 +56,8 @@ export const findTripBlacklistEntry = ({ trip, blacklistEntries, defaultCountryC
   }) || null;
 };
 
-export const getTripBlockingState = ({ trip, optOutList, blacklistEntries, defaultCountryCode = DEFAULT_COUNTRY_CODE, referenceDate = new Date() }) => {
+export const getTripBlockingState = ({ trip, optOutList, blacklistEntries, defaultCountryCode = DEFAULT_COUNTRY_CODE, referenceDate = new Date(), tripDateKey = '' }) => {
+  const resolvedReferenceDate = parseTripDateReference(tripDateKey) || referenceDate;
   const optOutEntry = findTripOptOutEntry({
     trip,
     optOutList,
@@ -59,7 +67,7 @@ export const getTripBlockingState = ({ trip, optOutList, blacklistEntries, defau
     trip,
     blacklistEntries,
     defaultCountryCode,
-    referenceDate
+    referenceDate: resolvedReferenceDate
   });
 
   if (blacklistEntry) {

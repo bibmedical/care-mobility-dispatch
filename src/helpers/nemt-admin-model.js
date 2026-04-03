@@ -589,7 +589,8 @@ export const buildVehiclesRows = state => state.vehicles.map((vehicle, index) =>
       wheelchair: vehicle.wheelchairCapacity,
       stretcher: vehicle.stretcherCapacity
     },
-    assignment: assignedDrivers.join('; ') || 'Open vehicle',
+    assignment: assignedDrivers.length > 0 ? `${assignedDrivers.length} driver(s)` : 'Open vehicle',
+    driverNames: assignedDrivers.join('; ') || 'No driver assigned',
     notes: vehicle.notes || 'No notes',
     raw: vehicle
   };

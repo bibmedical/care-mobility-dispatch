@@ -368,7 +368,8 @@ const ConfirmationWorkspace = () => {
     trip,
     optOutList,
     blacklistEntries,
-    defaultCountryCode: smsData?.sms?.defaultCountryCode
+    defaultCountryCode: smsData?.sms?.defaultCountryCode,
+    tripDateKey: getTripServiceDateKey(trip)
   })])), [blacklistEntries, optOutList, smsData?.sms?.defaultCountryCode, trips]);
   const activeGroupTemplate = useMemo(() => {
     if (legFilter !== 'all' && groupTemplates[legFilter]) return groupTemplates[legFilter];
@@ -1084,20 +1085,119 @@ const ConfirmationWorkspace = () => {
     }
   };
 
-  const handleSaveHospitalRehab = () => {
+  const handleSaveHospitalRehab = async () => {
     if (!hospitalRehabModal) return;
-    
-    updateTripRecord(hospitalRehabModal.id, {
-      hospitalStatus: {
-        type: hospitalRehabType,
-        startDate: hospitalRehabStartDate,
-        endDate: hospitalRehabEndDate,
-        notes: hospitalRehabNotes,
-        createdAt: new Date().toISOString()
-      }
+    if (!hospitalRehabStartDate || !hospitalRehabEndDate) {
+      setCustomStatus('Selecciona fecha de inicio y fin para Hospital/Rehab.');
+      return;
+    }
+    if (hospitalRehabEndDate < hospitalRehabStartDate) {
+      setCustomStatus('La fecha final no puede ser menor que la fecha inicial.');
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const patientKey = buildPatientProfileKey(hospitalRehabModal);
+    const normalizedTripPhone = String(hospitalRehabModal.patientPhoneNumber || '').replace(/\D/g, '');
+    const normalizedRider = String(hospitalRehabModal.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const isSamePatient = entry => {
+      const entryPhone = String(entry?.phone || '').replace(/\D/g, '');
+      const entryName = String(entry?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (entryPhone && normalizedTripPhone && entryPhone === normalizedTripPhone) return true;
+      if (entryName && normalizedRider && entryName === normalizedRider) return true;
+      return false;
+    };
+
+    if (patientKey) {
+      const existingProfile = riderProfiles[patientKey] || {};
+      await saveSmsData({
+        sms: {
+          ...(smsData?.sms || {}),
+          riderProfiles: {
+            ...riderProfiles,
+            [patientKey]: {
+              ...existingProfile,
+              exclusion: {
+                mode: 'range',
+                startDate: hospitalRehabStartDate,
+                endDate: hospitalRehabEndDate,
+                reason: `${hospitalRehabType} stay`,
+                sourceNote: hospitalRehabNotes,
+                updatedAt: nowIso
+              },
+              updatedAt: nowIso
+            }
+          }
+        }
+      });
+    }
+
+    const matchingBlacklistIndex = blacklistEntries.findIndex(entry => isSamePatient(entry));
+    const nextBlacklistEntries = matchingBlacklistIndex >= 0 ? blacklistEntries.map((entry, index) => {
+      if (index !== matchingBlacklistIndex) return entry;
+      const mergedNote = [String(entry.notes || '').trim(), `[${hospitalRehabType.toUpperCase()}] ${hospitalRehabNotes}`].filter(Boolean).join(' | ');
+      return {
+        ...entry,
+        category: 'Medical Hold',
+        status: 'Active',
+        holdUntil: hospitalRehabEndDate,
+        notes: mergedNote,
+        source: 'Confirmation Hospital/Rehab',
+        updatedAt: nowIso
+      };
+    }) : [{
+      id: `bl-${Date.now()}`,
+      name: hospitalRehabModal.rider || '',
+      phone: hospitalRehabModal.patientPhoneNumber || '',
+      category: 'Medical Hold',
+      status: 'Active',
+      holdUntil: hospitalRehabEndDate,
+      notes: `[${hospitalRehabType.toUpperCase()}] ${hospitalRehabNotes}`.trim(),
+      source: 'Confirmation Hospital/Rehab',
+      createdAt: nowIso,
+      updatedAt: nowIso
+    }, ...blacklistEntries];
+
+    await saveBlacklistData({
+      version: blacklistData?.version ?? 1,
+      entries: nextBlacklistEntries
     });
-    
-    setCustomStatus(`Trip ${hospitalRehabModal.id} marcado como ${hospitalRehabType} hasta ${hospitalRehabEndDate}. Será excluido de confirmaciones hasta esa fecha.`);
+
+    const matchingTrips = trips.filter(trip => {
+      if (patientKey && buildPatientProfileKey(trip) === patientKey) {
+        const serviceDate = getTripServiceDateKey(trip);
+        return Boolean(serviceDate) && serviceDate >= hospitalRehabStartDate && serviceDate <= hospitalRehabEndDate;
+      }
+      return isSamePatient({
+        name: trip.rider,
+        phone: trip.patientPhoneNumber
+      });
+    });
+
+    const targetTrips = matchingTrips.length > 0 ? matchingTrips : [hospitalRehabModal];
+    targetTrips.forEach(trip => {
+      updateTripRecord(trip.id, {
+        status: 'Cancelled',
+        hospitalStatus: {
+          type: hospitalRehabType,
+          startDate: hospitalRehabStartDate,
+          endDate: hospitalRehabEndDate,
+          notes: hospitalRehabNotes,
+          createdAt: nowIso
+        },
+        confirmation: {
+          ...(trip.confirmation || {}),
+          status: 'Cancelled',
+          provider: 'hospital-rehab',
+          respondedAt: nowIso,
+          lastResponseText: `${hospitalRehabType} until ${hospitalRehabEndDate}`,
+          lastResponseCode: 'HR'
+        },
+        notes: [String(trip.notes || '').trim(), `[AUTO-CANCEL ${hospitalRehabType.toUpperCase()}] ${new Date().toLocaleString()}: until ${hospitalRehabEndDate}. ${hospitalRehabNotes}`.trim()].filter(Boolean).join('\n')
+      });
+    });
+
+    setCustomStatus(`${targetTrips.length} trip(s) cancelled for ${hospitalRehabModal.rider || 'patient'} through ${hospitalRehabEndDate}. New trips for this patient in that date range will be auto-hidden unless you filter Cancelled.`);
     setHospitalRehabModal(null);
   };
 

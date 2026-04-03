@@ -116,7 +116,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const config = useMemo(() => {
     if (activeTab === 'drivers') return { rows: buildDriversRows(state), pageSize: 14, columns: ['№', 'Ctrl', 'Info', 'Vehicle Assignment', 'Hours', 'Trips', 'Notes'], title: 'Users' };
     if (activeTab === 'attendants') return { rows: buildAttendantsRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Attendant', 'Phone', 'Certification', 'Assigned Drivers', 'Notes'], title: 'VDR Change' };
-    if (activeTab === 'vehicles') return { rows: buildVehiclesRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Info', 'Capacity', 'Driver Assignment', 'Notes'], title: 'VDR Change' };
+    if (activeTab === 'vehicles') return { rows: buildVehiclesRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Info', 'Capacity', 'Driver Assignment', 'Driver Name', 'Notes'], title: 'VDR Change' };
     return { rows: buildGroupingRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Group', 'Drivers', 'Vehicles', 'Notes'], title: 'VDR Change' };
   }, [activeTab, state]);
 
@@ -162,6 +162,9 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
 
   const openEditor = entity => {
     const nextDraft = entity ? JSON.parse(JSON.stringify(entity)) : activeTab === 'drivers' ? createBlankDriver() : activeTab === 'attendants' ? createBlankAttendant() : activeTab === 'vehicles' ? createBlankVehicle() : createBlankGrouping();
+    if (activeTab === 'vehicles') {
+      nextDraft.assignedDriverIds = state.drivers.filter(driver => driver.vehicleId === nextDraft.id).map(driver => driver.id);
+    }
     setDraftEntity(nextDraft);
     setEditorTab('profile');
     setValidationErrors([]);
@@ -224,6 +227,35 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
 
     const nextCollection = state[collectionKey].some(entity => entity.id === normalizedEntity.id) ? state[collectionKey].map(entity => entity.id === normalizedEntity.id ? normalizedEntity : entity) : [normalizedEntity, ...state[collectionKey]];
     const nextState = { ...state, [collectionKey]: nextCollection };
+
+    if (activeTab === 'vehicles') {
+      const assignedDriverIds = new Set((Array.isArray(draftEntity?.assignedDriverIds) ? draftEntity.assignedDriverIds : []).filter(Boolean).map(id => String(id)));
+      const vehicleId = String(normalizedEntity.id || '');
+      nextState.drivers = state.drivers.map(driver => {
+        const driverId = String(driver.id || '');
+        const currentlyAssignedHere = String(driver.vehicleId || '') === vehicleId;
+        const shouldAssignHere = assignedDriverIds.has(driverId);
+
+        if (shouldAssignHere) {
+          return {
+            ...driver,
+            vehicleId,
+            checkpoint: driver.checkpoint || 'Vehicle ready'
+          };
+        }
+
+        if (currentlyAssignedHere) {
+          return {
+            ...driver,
+            vehicleId: '',
+            checkpoint: 'Needs assignment'
+          };
+        }
+
+        return driver;
+      });
+    }
+
     await persistNextState(nextState);
     setSelectedRowId(normalizedEntity.id);
     setShowEditor(false);
@@ -294,7 +326,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
       return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => {
             event.stopPropagation();
             openEditor(row.raw);
-          }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="info"><div>{row.info.split('\n')[0]}</div><div className="small text-secondary">{row.info.split('\n')[1]}</div></td>, <td key="capacity"><div>Type: {row.capacity.type}</div><div className="d-flex gap-3 small mt-1"><span><IconifyIcon icon="iconoir:user" /> {row.capacity.ambulatory}</span><span><IconifyIcon icon="healthicons:wheelchair-outline" /> {row.capacity.wheelchair}</span><span><IconifyIcon icon="iconoir:hospital" /> {row.capacity.stretcher}</span></div></td>, <td key="assignment">{row.assignment}</td>, <td key="notes">{row.notes}</td>];
+          }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="info"><div>{row.info.split('\n')[0]}</div><div className="small text-secondary">{row.info.split('\n')[1]}</div></td>, <td key="capacity"><div>Type: {row.capacity.type}</div><div className="d-flex gap-3 small mt-1"><span><IconifyIcon icon="iconoir:user" /> {row.capacity.ambulatory}</span><span><IconifyIcon icon="healthicons:wheelchair-outline" /> {row.capacity.wheelchair}</span><span><IconifyIcon icon="iconoir:hospital" /> {row.capacity.stretcher}</span></div></td>, <td key="assignment">{row.assignment}</td>, <td key="driverNames" style={{ maxWidth: 260, whiteSpace: 'normal' }}>{row.driverNames}</td>, <td key="notes">{row.notes}</td>];
     }
 
     return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => {
@@ -404,7 +436,11 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
     }
 
     if (activeTab === 'vehicles') {
-      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Vehicle Label</Form.Label><Form.Control value={draftEntity.label} style={shellStyles.modalInput} onChange={event => updateDraftField('label', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>VIN</Form.Label><Form.Control value={draftEntity.vin} style={shellStyles.modalInput} onChange={event => updateDraftField('vin', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Plate</Form.Label><Form.Control value={draftEntity.plate} style={shellStyles.modalInput} onChange={event => updateDraftField('plate', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Unit Number</Form.Label><Form.Control value={draftEntity.unitNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('unitNumber', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Type</Form.Label><Form.Select value={draftEntity.type} style={shellStyles.modalInput} onChange={event => updateDraftField('type', event.target.value)}><option>Van</option><option>Ambulance</option><option>Sedan</option></Form.Select></Col><Col md={2}><Form.Label className={formLabelClassName}>Amb</Form.Label><Form.Control type="number" value={draftEntity.ambulatoryCapacity} style={shellStyles.modalInput} onChange={event => updateDraftField('ambulatoryCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>WC</Form.Label><Form.Control type="number" value={draftEntity.wheelchairCapacity} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>Str</Form.Label><Form.Control type="number" value={draftEntity.stretcherCapacity} style={shellStyles.modalInput} onChange={event => updateDraftField('stretcherCapacity', Number(event.target.value))} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Vehicle Image URL</Form.Label><Form.Control value={draftEntity.imageUrl || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('imageUrl', event.target.value)} placeholder="https://..." /></Col>{String(draftEntity.imageUrl || '').trim() ? <Col md={12}><div className="border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 190, backgroundColor: '#0c111b' }}><img src={String(draftEntity.imageUrl || '').trim()} alt={draftEntity.label || 'Vehicle'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div></Col> : null}<Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
+      const assignedDriverIds = Array.isArray(draftEntity.assignedDriverIds) ? draftEntity.assignedDriverIds.map(id => String(id)) : [];
+      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Vehicle Label</Form.Label><Form.Control value={draftEntity.label} style={shellStyles.modalInput} onChange={event => updateDraftField('label', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>VIN</Form.Label><Form.Control value={draftEntity.vin} style={shellStyles.modalInput} onChange={event => updateDraftField('vin', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Plate</Form.Label><Form.Control value={draftEntity.plate} style={shellStyles.modalInput} onChange={event => updateDraftField('plate', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Unit Number</Form.Label><Form.Control value={draftEntity.unitNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('unitNumber', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Type</Form.Label><Form.Select value={draftEntity.type} style={shellStyles.modalInput} onChange={event => updateDraftField('type', event.target.value)}><option>Van</option><option>Ambulance</option><option>Sedan</option></Form.Select></Col><Col md={2}><Form.Label className={formLabelClassName}>Amb</Form.Label><Form.Control type="number" value={draftEntity.ambulatoryCapacity} style={shellStyles.modalInput} onChange={event => updateDraftField('ambulatoryCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>WC</Form.Label><Form.Control type="number" value={draftEntity.wheelchairCapacity} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>Str</Form.Label><Form.Control type="number" value={draftEntity.stretcherCapacity} style={shellStyles.modalInput} onChange={event => updateDraftField('stretcherCapacity', Number(event.target.value))} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Assigned Drivers</Form.Label><Form.Select multiple value={assignedDriverIds} style={{ ...shellStyles.modalInput, minHeight: 164 }} onChange={event => {
+        const values = Array.from(event.target.selectedOptions || []).map(option => option.value).filter(Boolean);
+        updateDraftField('assignedDriverIds', values);
+      }}>{state.drivers.map(driver => <option key={driver.id} value={driver.id}>{getFullName(driver) || driver.username || driver.id}</option>)}</Form.Select><div className="small text-secondary mt-2">Selecciona choferes para este carro. Si no seleccionas ninguno, el carro queda abierto.</div></Col><Col md={12}><Form.Label className={formLabelClassName}>Vehicle Image URL</Form.Label><Form.Control value={draftEntity.imageUrl || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('imageUrl', event.target.value)} placeholder="https://..." /></Col>{String(draftEntity.imageUrl || '').trim() ? <Col md={12}><div className="border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 190, backgroundColor: '#0c111b' }}><img src={String(draftEntity.imageUrl || '').trim()} alt={draftEntity.label || 'Vehicle'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div></Col> : null}<Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
     }
 
     return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={6}><Form.Label className={formLabelClassName}>Grouping Name</Form.Label><Form.Control value={draftEntity.name} style={shellStyles.modalInput} onChange={event => updateDraftField('name', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Dispatch Tag</Form.Label><Form.Control value={draftEntity.dispatchTag} style={shellStyles.modalInput} onChange={event => updateDraftField('dispatchTag', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Status</Form.Label><Form.Select value={draftEntity.status} style={shellStyles.modalInput} onChange={event => updateDraftField('status', event.target.value)}><option>Active</option><option>Attention</option><option>Pending</option></Form.Select></Col><Col md={12}><Form.Label className={formLabelClassName}>Description</Form.Label><Form.Control as="textarea" rows={2} value={draftEntity.description} style={shellStyles.modalInput} onChange={event => updateDraftField('description', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;

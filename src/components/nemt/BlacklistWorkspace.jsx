@@ -24,7 +24,7 @@ const buildSurfaceStyles = isLight => ({
   }
 });
 
-const CATEGORY_OPTIONS = ['Do Not Schedule', 'Deceased', 'This Week Only', 'Legal / Claim', 'Safety Risk', 'Other'];
+const CATEGORY_OPTIONS = ['Do Not Schedule', 'Medical Hold', 'Deceased', 'This Week Only', 'Legal / Claim', 'Safety Risk', 'Other'];
 const STATUS_OPTIONS = ['Active', 'Resolved'];
 
 const createEmptyEntry = () => ({
@@ -39,6 +39,7 @@ const createEmptyEntry = () => ({
 
 const getCategoryVariant = category => {
   if (category === 'Deceased') return 'dark';
+  if (category === 'Medical Hold') return 'warning';
   if (category === 'Legal / Claim') return 'danger';
   if (category === 'This Week Only') return 'warning';
   if (category === 'Safety Risk') return 'danger';
