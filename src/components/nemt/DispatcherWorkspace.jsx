@@ -2405,9 +2405,9 @@ const DispatcherWorkspace = () => {
         display: showBottomPanels ? 'block' : 'none'
       }} />
 
-        <div style={{ minWidth: 0, minHeight: 0, display: showBottomPanels ? 'block' : 'none' }}>
+        <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: showBottomPanels ? 'block' : 'none' }}>
           <Card className="h-100">
-            <CardBody className="p-0">
+            <CardBody className="p-0 h-100">
               <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} openFullChat={() => {
               refreshDrivers();
               router.push('/driver-chat');
