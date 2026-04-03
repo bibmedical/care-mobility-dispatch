@@ -533,7 +533,7 @@ const DispatcherWorkspace = () => {
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('Dispatcher listo.');
   const [columnSplit, setColumnSplit] = useState(50);
-  const [rowSplit, setRowSplit] = useState(56);
+  const [rowSplit, setRowSplit] = useState(66);
   const [dragMode, setDragMode] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [routeMetrics, setRouteMetrics] = useState(null);
