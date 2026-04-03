@@ -5,6 +5,7 @@ import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel
 import { useNemtContext } from '@/context/useNemtContext';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
@@ -480,6 +481,7 @@ const DispatcherWorkspace = () => {
   const router = useRouter();
   const { data: smsData } = useSmsIntegrationApi();
   const { data: blacklistData } = useBlacklistApi();
+  const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const {
     drivers,
     trips,
@@ -606,6 +608,7 @@ const DispatcherWorkspace = () => {
   }, [todayDateKey]);
 
   useEffect(() => {
+    if (userPreferencesLoading) return;
     const loadToolbarOrder = (storageKey, defaultOrder) => {
       const storedValue = window.localStorage.getItem(storageKey);
       if (!storedValue) return defaultOrder;
@@ -614,9 +617,9 @@ const DispatcherWorkspace = () => {
     };
 
     try {
-      const loadedRow1 = loadToolbarOrder(DISPATCHER_ROW1_BLOCKS_KEY, DISPATCHER_ROW1_DEFAULT_BLOCKS);
-      const loadedRow2 = loadToolbarOrder(DISPATCHER_ROW2_BLOCKS_KEY, DISPATCHER_ROW2_DEFAULT_BLOCKS);
-      const loadedRow3 = loadToolbarOrder(DISPATCHER_ROW3_BLOCKS_KEY, DISPATCHER_ROW3_DEFAULT_BLOCKS);
+      const loadedRow1 = userPreferences?.dispatcherToolbar?.row1?.length ? userPreferences.dispatcherToolbar.row1 : loadToolbarOrder(DISPATCHER_ROW1_BLOCKS_KEY, DISPATCHER_ROW1_DEFAULT_BLOCKS);
+      const loadedRow2 = userPreferences?.dispatcherToolbar?.row2?.length ? userPreferences.dispatcherToolbar.row2 : loadToolbarOrder(DISPATCHER_ROW2_BLOCKS_KEY, DISPATCHER_ROW2_DEFAULT_BLOCKS);
+      const loadedRow3 = userPreferences?.dispatcherToolbar?.row3?.length ? userPreferences.dispatcherToolbar.row3 : loadToolbarOrder(DISPATCHER_ROW3_BLOCKS_KEY, DISPATCHER_ROW3_DEFAULT_BLOCKS);
       const normalizedRows = normalizeDispatcherToolbarRows(loadedRow1, loadedRow2, loadedRow3);
       setToolbarRow1Order(normalizedRows.row1);
       setToolbarRow2Order(normalizedRows.row2);
@@ -624,7 +627,7 @@ const DispatcherWorkspace = () => {
     } catch {
       // Ignore corrupted local toolbar layout preferences.
     }
-  }, []);
+  }, [userPreferences?.dispatcherToolbar?.row1, userPreferences?.dispatcherToolbar?.row2, userPreferences?.dispatcherToolbar?.row3, userPreferencesLoading]);
 
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
     const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
@@ -720,6 +723,14 @@ const DispatcherWorkspace = () => {
       window.localStorage.setItem(DISPATCHER_ROW1_BLOCKS_KEY, JSON.stringify(normalizedRows.row1));
       window.localStorage.setItem(DISPATCHER_ROW2_BLOCKS_KEY, JSON.stringify(normalizedRows.row2));
       window.localStorage.setItem(DISPATCHER_ROW3_BLOCKS_KEY, JSON.stringify(normalizedRows.row3));
+      void saveUserPreferences({
+        ...userPreferences,
+        dispatcherToolbar: {
+          row1: normalizedRows.row1,
+          row2: normalizedRows.row2,
+          row3: normalizedRows.row3
+        }
+      });
       setStatusMessage('Dispatcher toolbar layout guardado.');
     } catch {
       setStatusMessage('No se pudo guardar el dispatcher toolbar layout.');
@@ -742,6 +753,14 @@ const DispatcherWorkspace = () => {
       window.localStorage.setItem(DISPATCHER_ROW1_BLOCKS_KEY, JSON.stringify(defaultRow1Order));
       window.localStorage.setItem(DISPATCHER_ROW2_BLOCKS_KEY, JSON.stringify(defaultRow2Order));
       window.localStorage.setItem(DISPATCHER_ROW3_BLOCKS_KEY, JSON.stringify(defaultRow3Order));
+      void saveUserPreferences({
+        ...userPreferences,
+        dispatcherToolbar: {
+          row1: defaultRow1Order,
+          row2: defaultRow2Order,
+          row3: defaultRow3Order
+        }
+      });
       setStatusMessage('Dispatcher toolbar layout reseteado.');
     } catch {
       setStatusMessage('No se pudo resetear el dispatcher toolbar layout.');

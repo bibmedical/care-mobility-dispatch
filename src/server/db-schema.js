@@ -169,6 +169,15 @@ export const runMigrations = async () => {
     ON CONFLICT (id) DO NOTHING
   `);
 
+  // ─── USER UI PREFERENCES ────────────────────────────────────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS user_ui_preferences (
+      user_id      TEXT PRIMARY KEY,
+      preferences  JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // ─── ASSISTANT MEMORY ────────────────────────────────────────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS assistant_memory (

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { withAuth } from 'next-auth/middleware';
 
 const AUTH_ROUTES = ['/auth/login', '/auth/register', '/auth/reset-pass', '/auth/lock-screen'];
+const DRIVER_PORTAL_PATH = '/driver-portal';
+const isDriverRole = role => String(role ?? '').trim().toLowerCase().includes('driver');
 
 const normalizeIp = value => {
   const raw = String(value ?? '').split(',')[0].trim();
@@ -22,9 +24,11 @@ const getRequestIp = req => {
 export default withAuth(
   function middleware(request) {
     const { pathname } = request.nextUrl;
+    const role = request.nextauth.token?.user?.role;
+    const driverUser = isDriverRole(role);
 
     if (pathname === '/') {
-      return NextResponse.redirect(new URL('/trip-analytics', request.url));
+      return NextResponse.redirect(new URL(driverUser ? DRIVER_PORTAL_PATH : '/trip-analytics', request.url));
     }
 
     // Allow access to login page even if logged in - user can logout and re-authenticate
@@ -33,7 +37,11 @@ export default withAuth(
     }
 
     if (AUTH_ROUTES.some(route => pathname.startsWith(route)) && request.nextauth.token) {
-      return NextResponse.redirect(new URL('/trip-analytics', request.url));
+      return NextResponse.redirect(new URL(driverUser ? DRIVER_PORTAL_PATH : '/trip-analytics', request.url));
+    }
+
+    if (driverUser && !pathname.startsWith(DRIVER_PORTAL_PATH)) {
+      return NextResponse.redirect(new URL(DRIVER_PORTAL_PATH, request.url));
     }
 
     return NextResponse.next();

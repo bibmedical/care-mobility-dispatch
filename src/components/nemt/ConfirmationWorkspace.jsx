@@ -7,6 +7,7 @@ import { getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dis
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { openWhatsAppConversation } from '@/utils/whatsapp';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -277,9 +278,10 @@ const ConfirmationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const router = useRouter();
-  const { trips, refreshDispatchState, updateTripRecord } = useNemtContext();
+  const { trips, refreshDispatchState, updateTripRecord, deleteTripRecord } = useNemtContext();
   const { data: smsData, saveData: saveSmsData } = useSmsIntegrationApi();
   const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
+  const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedTripIds, setSelectedTripIds] = useState([]);
@@ -482,20 +484,29 @@ const ConfirmationWorkspace = () => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (userPreferencesLoading) return;
     try {
-      const raw = window.localStorage.getItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
+      const parsed = userPreferences?.confirmation?.outputColumns?.length ? userPreferences.confirmation.outputColumns : JSON.parse(window.localStorage.getItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY) || 'null');
+      if (!parsed) return;
       setOutputColumns(normalizeConfirmationOutputColumns(parsed));
     } catch {
       setOutputColumns([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
     }
-  }, []);
+  }, [userPreferences?.confirmation?.outputColumns, userPreferencesLoading]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY, JSON.stringify(outputColumns));
-  }, [outputColumns]);
+    if (!userPreferencesLoading) {
+      void saveUserPreferences({
+        ...userPreferences,
+        confirmation: {
+          ...userPreferences?.confirmation,
+          outputColumns
+        }
+      });
+    }
+  }, [outputColumns, saveUserPreferences, userPreferences, userPreferencesLoading]);
 
   const detectedMaxMilesForWindow = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);

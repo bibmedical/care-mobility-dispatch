@@ -2,6 +2,7 @@
 
 import { getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
+import { normalizeUserPreferences } from '@/helpers/user-preferences';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { useSession } from 'next-auth/react';
 import { createContext, startTransition, use, useEffect, useMemo, useRef, useState } from 'react';
@@ -157,6 +158,8 @@ export const NemtProvider = ({
 }) => {
   const { data: session } = useSession();
   const [state, setState] = useLocalStorage('__CARE_MOBILITY_NEMT__', createInitialState());
+  const [userUiPreferences, setUserUiPreferences] = useState(normalizeNemtUiPreferences(null));
+  const [hasLoadedUserUiPreferences, setHasLoadedUserUiPreferences] = useState(false);
   const [isDispatchLoaded, setIsDispatchLoaded] = useState(false);
   const lastPersistedSnapshotRef = useRef('');
   const hasLocalDispatchChangesRef = useRef(false);
@@ -321,6 +324,61 @@ export const NemtProvider = ({
       window.clearTimeout(timeoutId);
     };
   }, [isDispatchLoaded, state]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadUserUiPreferences = async () => {
+      if (!session?.user?.id) {
+        if (active) {
+          setUserUiPreferences(normalizeNemtUiPreferences(null));
+          setHasLoadedUserUiPreferences(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/user-preferences', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Unable to load user preferences');
+        const nextPreferences = normalizeUserPreferences(payload?.preferences);
+        if (active) {
+          setUserUiPreferences(normalizeNemtUiPreferences(nextPreferences.nemtUiPreferences));
+          setHasLoadedUserUiPreferences(true);
+        }
+      } catch {
+        if (active) {
+          setUserUiPreferences(normalizeNemtUiPreferences(state?.uiPreferences));
+          setHasLoadedUserUiPreferences(true);
+        }
+      }
+    };
+
+    loadUserUiPreferences();
+
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id, state?.uiPreferences]);
+
+  const persistUserUiPreferences = async nextPreferences => {
+    if (!session?.user?.id) return;
+    try {
+      await fetch('/api/user-preferences', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          preferences: {
+            nemtUiPreferences: nextPreferences
+          }
+        })
+      });
+    } catch {
+      // Keep local in-memory preferences if the user preference API is temporarily unavailable.
+    }
+  };
 
   useEffect(() => {
     syncDriversFromServer();
@@ -1032,32 +1090,60 @@ export const NemtProvider = ({
     return nextTripId;
   };
 
-  const setDispatcherVisibleTripColumns = columnKeys => updateState(currentState => ({
-    ...currentState,
-    uiPreferences: {
-      ...currentState.uiPreferences,
+  const deleteTripRecord = (tripId) => {
+    const normalizedTripId = String(tripId || '').trim();
+    if (!normalizedTripId) return;
+    updateState(currentState => ({
+      ...currentState,
+      selectedTripIds: currentState.selectedTripIds.filter(id => id !== normalizedTripId),
+      routePlans: currentState.routePlans.map(routePlan => ({
+        ...routePlan,
+        tripIds: routePlan.tripIds.filter(id => id !== normalizedTripId)
+      })).filter(routePlan => routePlan.tripIds.length > 0),
+      trips: currentState.trips.filter(trip => String(trip?.id || '').trim() !== normalizedTripId)
+    }), {
+      markDispatchDirty: true,
+      allowTripShrink: true,
+      allowTripShrinkReason: 'manual-admin-delete',
+      buildAuditEntry: () => ({
+        action: 'delete-trip',
+        entityType: 'trip',
+        entityId: normalizedTripId,
+        source: 'confirmation',
+        summary: `Deleted trip ${normalizedTripId}`
+      })
+    });
+  };
+
+  const setDispatcherVisibleTripColumns = columnKeys => {
+    const nextPreferences = normalizeNemtUiPreferences({
+      ...userUiPreferences,
       dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(columnKeys)
-    }
-  }), { markDispatchDirty: true });
+    });
+    setUserUiPreferences(nextPreferences);
+    void persistUserUiPreferences(nextPreferences);
+  };
 
-  const setMapProvider = provider => updateState(currentState => ({
-    ...currentState,
-    uiPreferences: {
-      ...currentState.uiPreferences,
+  const setMapProvider = provider => {
+    const nextPreferences = normalizeNemtUiPreferences({
+      ...userUiPreferences,
       mapProvider: normalizeMapProviderPreference(provider)
-    }
-  }), { markDispatchDirty: true });
+    });
+    setUserUiPreferences(nextPreferences);
+    void persistUserUiPreferences(nextPreferences);
+  };
 
-  const setPrintSetup = updates => updateState(currentState => ({
-    ...currentState,
-    uiPreferences: {
-      ...currentState.uiPreferences,
+  const setPrintSetup = updates => {
+    const nextPreferences = normalizeNemtUiPreferences({
+      ...userUiPreferences,
       printSetup: normalizePrintSetup({
-        ...currentState.uiPreferences?.printSetup,
+        ...userUiPreferences?.printSetup,
         ...(updates || {})
       })
-    }
-  }), { markDispatchDirty: true });
+    });
+    setUserUiPreferences(nextPreferences);
+    void persistUserUiPreferences(nextPreferences);
+  };
 
   const resetNemtState = () => {
     startTransition(() => {
@@ -1070,8 +1156,11 @@ export const NemtProvider = ({
     return driver ? driver.name : 'Unassigned';
   };
 
+  const resolvedUiPreferences = hasLoadedUserUiPreferences ? userUiPreferences : normalizeNemtUiPreferences(state?.uiPreferences);
+
   return <NemtContext.Provider value={useMemo(() => ({
     ...state,
+    uiPreferences: resolvedUiPreferences,
     setSelectedTripIds,
     setSelectedDriverId,
     setSelectedRouteId,
@@ -1094,6 +1183,7 @@ export const NemtProvider = ({
     updateTripNotes,
     updateTripRecord,
     cloneTripRecord,
+    deleteTripRecord,
     upsertDispatchThreadMessage,
     markDispatchThreadRead,
     addDailyDriver,
@@ -1105,7 +1195,7 @@ export const NemtProvider = ({
     getDriverName,
     refreshDrivers: syncDriversFromServer,
     refreshDispatchState: syncDispatchFromServer
-  }), [state])}>
+  }), [resolvedUiPreferences, state])}>
       {children}
     </NemtContext.Provider>;
 };

@@ -7,6 +7,7 @@ import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
@@ -553,6 +554,7 @@ const TripDashboardWorkspace = () => {
   const { changeTheme, themeMode } = useLayoutContext();
   const { data: smsData } = useSmsIntegrationApi();
   const { data: blacklistData } = useBlacklistApi();
+  const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const {
     drivers,
     trips,
@@ -766,6 +768,7 @@ const TripDashboardWorkspace = () => {
   }, [closedRouteStateByKey]);
 
   useEffect(() => {
+    if (userPreferencesLoading) return;
     const loadToolbarOrder = (storageKey, defaultOrder) => {
       const storedValue = window.localStorage.getItem(storageKey);
       if (!storedValue) return defaultOrder;
@@ -778,34 +781,42 @@ const TripDashboardWorkspace = () => {
     };
 
     try {
-      setToolbarRow1Order(loadToolbarOrder(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS));
-      setToolbarRow2Order(loadToolbarOrder(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS));
-      setToolbarRow3Order(loadToolbarOrder(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS));
+      setToolbarRow1Order(userPreferences?.tripDashboard?.row1?.length ? userPreferences.tripDashboard.row1 : loadToolbarOrder(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS));
+      setToolbarRow2Order(userPreferences?.tripDashboard?.row2?.length ? userPreferences.tripDashboard.row2 : loadToolbarOrder(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS));
+      setToolbarRow3Order(userPreferences?.tripDashboard?.row3?.length ? userPreferences.tripDashboard.row3 : loadToolbarOrder(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS));
     } catch {
       // Ignore corrupted local toolbar layout preferences.
     }
-  }, []);
+  }, [userPreferences?.tripDashboard?.row1, userPreferences?.tripDashboard?.row2, userPreferences?.tripDashboard?.row3, userPreferencesLoading]);
 
   useEffect(() => {
+    if (userPreferencesLoading) return;
     try {
-      const rawValue = window.localStorage.getItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY);
-      if (!rawValue) return;
-      const parsed = JSON.parse(rawValue);
+      const parsed = userPreferences?.tripDashboard?.toolbarVisibility && Object.keys(userPreferences.tripDashboard.toolbarVisibility).length > 0 ? userPreferences.tripDashboard.toolbarVisibility : JSON.parse(window.localStorage.getItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY) || '{}');
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
       const normalized = Object.fromEntries(TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => [blockId, parsed[blockId] !== false]));
       setToolbarBlockVisibility(normalized);
     } catch {
       // Ignore corrupted toolbar visibility preferences.
     }
-  }, []);
+  }, [userPreferences?.tripDashboard?.toolbarVisibility, userPreferencesLoading]);
 
   useEffect(() => {
     try {
       window.localStorage.setItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY, JSON.stringify(toolbarBlockVisibility));
+      if (!userPreferencesLoading) {
+        void saveUserPreferences({
+          ...userPreferences,
+          tripDashboard: {
+            ...userPreferences?.tripDashboard,
+            toolbarVisibility: toolbarBlockVisibility
+          }
+        });
+      }
     } catch {
       // Ignore localStorage write errors.
     }
-  }, [toolbarBlockVisibility]);
+  }, [saveUserPreferences, toolbarBlockVisibility, userPreferences, userPreferencesLoading]);
 
   const isToolbarBlockEnabled = blockId => toolbarBlockVisibility[blockId] !== false;
   const hasAnyVisibleToolbarBlock = TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.some(blockId => isToolbarBlockEnabled(blockId));
@@ -899,6 +910,15 @@ const TripDashboardWorkspace = () => {
       window.localStorage.setItem(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, JSON.stringify(toolbarRow1Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, JSON.stringify(toolbarRow2Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, JSON.stringify(toolbarRow3Order));
+      void saveUserPreferences({
+        ...userPreferences,
+        tripDashboard: {
+          ...userPreferences?.tripDashboard,
+          row1: toolbarRow1Order,
+          row2: toolbarRow2Order,
+          row3: toolbarRow3Order
+        }
+      });
       setStatusMessage('Toolbar layout saved.');
     } catch {
       setStatusMessage('Could not save toolbar layout.');
@@ -925,6 +945,16 @@ const TripDashboardWorkspace = () => {
       window.localStorage.setItem(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, JSON.stringify(defaultRow2Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, JSON.stringify(defaultRow3Order));
       window.localStorage.setItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY, JSON.stringify(defaultVisibility));
+      void saveUserPreferences({
+        ...userPreferences,
+        tripDashboard: {
+          ...userPreferences?.tripDashboard,
+          row1: defaultRow1Order,
+          row2: defaultRow2Order,
+          row3: defaultRow3Order,
+          toolbarVisibility: defaultVisibility
+        }
+      });
       setStatusMessage('Toolbar layout reset.');
     } catch {
       setStatusMessage('Could not reset toolbar layout.');
@@ -2451,7 +2481,7 @@ const TripDashboardWorkspace = () => {
   }, [dragMode]);
 
   useEffect(() => {
-    const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
+    const storedLayout = userPreferences?.tripDashboard?.layoutMode || window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
     if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
       setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
       setShowMapPane(true);
@@ -2469,31 +2499,58 @@ const TripDashboardWorkspace = () => {
     setShowMapPane(true);
     setRightPanelCollapsed(true);
     setColumnSplit(94);
-  }, []);
+  }, [userPreferences?.tripDashboard?.layoutMode]);
 
   useEffect(() => {
-    const storedPanelView = window.localStorage.getItem(TRIP_DASHBOARD_PANEL_VIEW_KEY);
+    const storedPanelView = userPreferences?.tripDashboard?.panelView || window.localStorage.getItem(TRIP_DASHBOARD_PANEL_VIEW_KEY);
     if (storedPanelView && Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(storedPanelView)) {
       setPanelView(storedPanelView);
     }
 
-    const storedPanelOrder = window.localStorage.getItem(TRIP_DASHBOARD_PANEL_ORDER_KEY);
+    const storedPanelOrder = userPreferences?.tripDashboard?.panelOrder || window.localStorage.getItem(TRIP_DASHBOARD_PANEL_ORDER_KEY);
     if (storedPanelOrder && Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(storedPanelOrder)) {
       setPanelOrder(storedPanelOrder);
     }
-  }, []);
+  }, [userPreferences?.tripDashboard?.panelOrder, userPreferences?.tripDashboard?.panelView]);
 
   useEffect(() => {
     window.localStorage.setItem(TRIP_DASHBOARD_LAYOUT_KEY, layoutMode);
-  }, [layoutMode]);
+    if (!userPreferencesLoading) {
+      void saveUserPreferences({
+        ...userPreferences,
+        tripDashboard: {
+          ...userPreferences?.tripDashboard,
+          layoutMode
+        }
+      });
+    }
+  }, [layoutMode, saveUserPreferences, userPreferences, userPreferencesLoading]);
 
   useEffect(() => {
     window.localStorage.setItem(TRIP_DASHBOARD_PANEL_VIEW_KEY, panelView);
-  }, [panelView]);
+    if (!userPreferencesLoading) {
+      void saveUserPreferences({
+        ...userPreferences,
+        tripDashboard: {
+          ...userPreferences?.tripDashboard,
+          panelView
+        }
+      });
+    }
+  }, [panelView, saveUserPreferences, userPreferences, userPreferencesLoading]);
 
   useEffect(() => {
     window.localStorage.setItem(TRIP_DASHBOARD_PANEL_ORDER_KEY, panelOrder);
-  }, [panelOrder]);
+    if (!userPreferencesLoading) {
+      void saveUserPreferences({
+        ...userPreferences,
+        tripDashboard: {
+          ...userPreferences?.tripDashboard,
+          panelOrder
+        }
+      });
+    }
+  }, [panelOrder, saveUserPreferences, userPreferences, userPreferencesLoading]);
 
   useEffect(() => {
     const updateTripTableScrollWidth = () => {

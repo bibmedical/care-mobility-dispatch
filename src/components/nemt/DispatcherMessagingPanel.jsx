@@ -4,7 +4,7 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useNemtContext } from '@/context/useNemtContext';
 import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
 import { normalizePhoneDigits } from '@/helpers/system-users';
-import useLocalStorage from '@/hooks/useLocalStorage';
+import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Form } from 'react-bootstrap';
 
@@ -80,7 +80,8 @@ const DispatcherMessagingPanel = ({
     addDailyDriver,
     removeDailyDriver
   } = useNemtContext();
-  const [hiddenDriverIds, setHiddenDriverIds] = useLocalStorage('__CARE_MOBILITY_DISPATCH_HIDDEN_DRIVERS__', []);
+  const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
+  const [hiddenDriverIds, setHiddenDriverIds] = useState([]);
   const [dailyForm, setDailyForm] = useState({ firstName: '', lastNameOrOrg: '' });
   const [draftMessage, setDraftMessage] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
@@ -108,6 +109,22 @@ const DispatcherMessagingPanel = ({
   const normalizedThreads = useMemo(() => mergeThreads(dispatchThreads, allDrivers), [allDrivers, dispatchThreads]);
   const hiddenDriverIdSet = useMemo(() => new Set(Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []), [hiddenDriverIds]);
   const visibleThreads = useMemo(() => normalizedThreads.filter(thread => !hiddenDriverIdSet.has(thread.driverId)), [hiddenDriverIdSet, normalizedThreads]);
+
+  useEffect(() => {
+    if (userPreferencesLoading) return;
+    setHiddenDriverIds(Array.isArray(userPreferences?.dispatcherMessaging?.hiddenDriverIds) ? userPreferences.dispatcherMessaging.hiddenDriverIds : []);
+  }, [userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferencesLoading]);
+
+  useEffect(() => {
+    if (userPreferencesLoading) return;
+    void saveUserPreferences({
+      ...userPreferences,
+      dispatcherMessaging: {
+        ...userPreferences?.dispatcherMessaging,
+        hiddenDriverIds
+      }
+    });
+  }, [hiddenDriverIds, saveUserPreferences, userPreferences, userPreferencesLoading]);
   const normalizedSearch = driverSearch.trim().toLowerCase();
   const filteredThreads = useMemo(() => visibleThreads.filter(thread => {
     if (!normalizedSearch) return true;
