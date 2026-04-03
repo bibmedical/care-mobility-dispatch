@@ -4,7 +4,7 @@ import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
 import useAvatarSettingsApi from '@/hooks/useAvatarSettingsApi';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
 
 const buildSurfaceStyles = isLight => ({
@@ -26,43 +26,6 @@ const buildSurfaceStyles = isLight => ({
 });
 
 const AVATAR_PRESETS = [DEFAULT_ASSISTANT_AVATAR.image, '/ai-avatar/cartoon-owner.svg', '/care-mobility-logo.png'];
-const AVATAR_FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp';
-
-const fileToDataUrl = file => new Promise((resolve, reject) => {
-  const reader = new FileReader();
-  reader.onload = () => resolve(String(reader.result || ''));
-  reader.onerror = () => reject(new Error('Unable to read image file.'));
-  reader.readAsDataURL(file);
-});
-
-const loadImageFromDataUrl = dataUrl => new Promise((resolve, reject) => {
-  const image = new Image();
-  image.onload = () => resolve(image);
-  image.onerror = () => reject(new Error('Unable to decode image.'));
-  image.src = dataUrl;
-});
-
-const compressAvatarFile = async file => {
-  const rawDataUrl = await fileToDataUrl(file);
-  const image = await loadImageFromDataUrl(rawDataUrl);
-  const sourceWidth = Math.max(1, Number(image.width) || 1);
-  const sourceHeight = Math.max(1, Number(image.height) || 1);
-  const sourceSide = Math.min(sourceWidth, sourceHeight);
-  const sourceX = Math.floor((sourceWidth - sourceSide) / 2);
-  const sourceY = Math.floor((sourceHeight - sourceSide) / 2);
-  const targetSide = 512;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = targetSide;
-  canvas.height = targetSide;
-  const context = canvas.getContext('2d');
-  if (!context) return rawDataUrl;
-
-  // Keep avatar framing consistent by auto-cropping to a centered square.
-  context.drawImage(image, sourceX, sourceY, sourceSide, sourceSide, 0, 0, targetSide, targetSide);
-
-  return canvas.toDataURL('image/jpeg', 0.78);
-};
 
 const buildDraft = avatar => ({
   name: String(avatar?.name || DEFAULT_ASSISTANT_AVATAR.name),
@@ -81,7 +44,6 @@ const AvatarSettingsWorkspace = () => {
   const { data, loading, saving, error, refresh, saveData } = useAvatarSettingsApi();
   const { changeTheme, themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
-  const avatarFileInputRef = useRef(null);
   const [draft, setDraft] = useState(buildDraft());
   const [message, setMessage] = useState('Change the assistant name and photo. The floating widget will update automatically.');
 
@@ -107,28 +69,17 @@ const AvatarSettingsWorkspace = () => {
   const handlePickFile = async event => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const isImageFile = String(file.type || '').startsWith('image/');
-    if (!isImageFile) {
-      setMessage('Please select a JPG, PNG, WEBP, or SVG image file.');
-      return;
-    }
-
-    try {
-      const compressedImage = await compressAvatarFile(file);
-      const result = String(compressedImage || '').trim();
-      if (!result) {
-        setMessage('Unable to process this image. Try another JPG or PNG.');
-        return;
-      }
-
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '').trim();
+      if (!result) return;
       setDraft(current => ({
         ...current,
         image: result
       }));
-      setMessage(`Image loaded, cropped, and optimized: ${file.name}. Save to apply it to the widget.`);
-    } catch {
-      setMessage('Unable to process this image. Try another JPG or PNG.');
-    }
+      setMessage(`Image loaded: ${file.name}. Save to apply it to the widget.`);
+    };
+    reader.readAsDataURL(file);
   };
 
   return <>
@@ -233,20 +184,7 @@ const AvatarSettingsWorkspace = () => {
                   </Col>
                   <Col md={12}>
                     <Form.Label className="small text-uppercase text-secondary fw-semibold">Upload a new photo</Form.Label>
-                    <input ref={avatarFileInputRef} type="file" accept={AVATAR_FILE_ACCEPT} style={{ display: 'none' }} onChange={handlePickFile} />
-                    <div className="d-flex flex-wrap gap-2 align-items-center">
-                      <Button type="button" style={surfaceStyles.button} className="rounded-pill" onClick={() => avatarFileInputRef.current?.click()}>
-                        Choose JPG/PNG
-                      </Button>
-                    </div>
-                    <input type="file" accept={AVATAR_FILE_ACCEPT} style={{
-                    ...surfaceStyles.input,
-                    width: '100%',
-                    minHeight: 38,
-                    borderRadius: 8,
-                    padding: '6px 10px'
-                  }} onChange={handlePickFile} />
-                    <div className="small text-secondary mt-2">Formatos permitidos: JPG, JPEG, PNG, WEBP.</div>
+                    <Form.Control type="file" accept="image/*" style={surfaceStyles.input} onChange={handlePickFile} />
                   </Col>
                   <Col md={12}>
                     <Form.Label className="small text-uppercase text-secondary fw-semibold">Quick presets</Form.Label>

@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { options } from '@/app/api/auth/[...nextauth]/options';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
-import { isAdminRole } from '@/helpers/system-users';
 import { readIntegrationsState, writeIntegrationsState } from '@/server/integrations-store';
-import { readUserPreferences, writeUserPreferences } from '@/server/user-preferences-store';
 
-const buildAvatarPayload = (aiState, personalAvatar = null) => ({
+const buildAvatarPayload = aiState => ({
   ok: true,
   avatar: {
-    name: String(personalAvatar?.name || aiState?.avatarName || DEFAULT_ASSISTANT_AVATAR.name),
-    image: String(personalAvatar?.image || aiState?.avatarImage || DEFAULT_ASSISTANT_AVATAR.image),
-    updatedAt: String(personalAvatar?.updatedAt || aiState?.avatarUpdatedAt || ''),
+    name: String(aiState?.avatarName || DEFAULT_ASSISTANT_AVATAR.name),
+    image: String(aiState?.avatarImage || DEFAULT_ASSISTANT_AVATAR.image),
+    updatedAt: String(aiState?.avatarUpdatedAt || ''),
     memoryNotes: String(aiState?.memoryNotes || ''),
     visible: aiState?.assistantVisible !== false,
     memorySections: {
@@ -19,33 +15,17 @@ const buildAvatarPayload = (aiState, personalAvatar = null) => ({
       drivers: String(aiState?.memorySections?.drivers || ''),
       rules: String(aiState?.memorySections?.rules || ''),
       phones: String(aiState?.memorySections?.phones || '')
-    },
-    scope: personalAvatar ? 'admin-personal' : 'global'
+    }
   }
 });
 
 export async function GET() {
   const state = await readIntegrationsState();
-  const session = await getServerSession(options);
-
-  if (session?.user?.id && isAdminRole(session?.user?.role)) {
-    const preferences = await readUserPreferences(session.user.id);
-    return NextResponse.json(buildAvatarPayload(state?.ai, preferences?.assistantAvatar));
-  }
-
   return NextResponse.json(buildAvatarPayload(state?.ai));
 }
 
 export async function PUT(request) {
   try {
-    const session = await getServerSession(options);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
-    }
-    if (!isAdminRole(session?.user?.role)) {
-      return NextResponse.json({ error: 'Only administrators can edit assistant avatar.' }, { status: 403 });
-    }
-
     const currentState = await readIntegrationsState();
     const body = await request.json();
     const avatarName = String(body?.name || DEFAULT_ASSISTANT_AVATAR.name).trim() || DEFAULT_ASSISTANT_AVATAR.name;
@@ -63,23 +43,15 @@ export async function PUT(request) {
       ai: {
         ...currentState.ai,
         assistantVisible,
+        avatarName,
+        avatarImage,
         memoryNotes,
         memorySections,
         avatarUpdatedAt: new Date().toISOString()
       }
     });
 
-    const currentPreferences = await readUserPreferences(session.user.id);
-    const savedPreferences = await writeUserPreferences(session.user.id, {
-      ...currentPreferences,
-      assistantAvatar: {
-        name: avatarName,
-        image: avatarImage,
-        updatedAt: new Date().toISOString()
-      }
-    });
-
-    return NextResponse.json(buildAvatarPayload(savedState?.ai, savedPreferences?.assistantAvatar));
+    return NextResponse.json(buildAvatarPayload(savedState?.ai));
   } catch (error) {
     return NextResponse.json({
       error: error.message || 'Unable to save avatar settings'
