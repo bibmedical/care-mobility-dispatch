@@ -1,16 +1,24 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { options } from '@/app/api/auth/[...nextauth]/options';
-import { isAdminRole } from '@/helpers/system-users';
 import { readBlacklistState, writeBlacklistState } from '@/server/blacklist-store';
 
 export async function GET() {
-  const state = await readBlacklistState();
-  return NextResponse.json(state);
+  try {
+    const state = await readBlacklistState();
+    return NextResponse.json(state);
+  } catch (error) {
+    return NextResponse.json({
+      error: error.message || 'Unable to load blacklist'
+    }, {
+      status: 500
+    });
+  }
 }
 
 export async function PUT(request) {
   try {
+    const { getServerSession } = await import('next-auth');
+    const { options } = await import('@/app/api/auth/[...nextauth]/options');
+    const { isAdminRole } = await import('@/helpers/system-users');
     const session = await getServerSession(options);
     if (!session?.user?.id) {
       return NextResponse.json({
