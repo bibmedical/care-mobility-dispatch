@@ -27,6 +27,38 @@ const buildSurfaceStyles = isLight => ({
 
 const AVATAR_PRESETS = [DEFAULT_ASSISTANT_AVATAR.image, '/ai-avatar/cartoon-owner.svg', '/care-mobility-logo.png'];
 
+const fileToDataUrl = file => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(new Error('Unable to read image file.'));
+  reader.readAsDataURL(file);
+});
+
+const loadImageFromDataUrl = dataUrl => new Promise((resolve, reject) => {
+  const image = new Image();
+  image.onload = () => resolve(image);
+  image.onerror = () => reject(new Error('Unable to decode image.'));
+  image.src = dataUrl;
+});
+
+const compressAvatarFile = async file => {
+  const rawDataUrl = await fileToDataUrl(file);
+  const image = await loadImageFromDataUrl(rawDataUrl);
+  const maxSide = 640;
+  const longestSide = Math.max(image.width, image.height) || 1;
+  const scale = Math.min(1, maxSide / longestSide);
+  const targetWidth = Math.max(1, Math.round(image.width * scale));
+  const targetHeight = Math.max(1, Math.round(image.height * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const context = canvas.getContext('2d');
+  if (!context) return rawDataUrl;
+  context.drawImage(image, 0, 0, targetWidth, targetHeight);
+  return canvas.toDataURL('image/jpeg', 0.78);
+};
+
 const buildDraft = avatar => ({
   name: String(avatar?.name || DEFAULT_ASSISTANT_AVATAR.name),
   image: String(avatar?.image || DEFAULT_ASSISTANT_AVATAR.image),
@@ -69,17 +101,28 @@ const AvatarSettingsWorkspace = () => {
   const handlePickFile = async event => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '').trim();
-      if (!result) return;
+    const isImageFile = String(file.type || '').startsWith('image/');
+    if (!isImageFile) {
+      setMessage('Please select a JPG, PNG, WEBP, or SVG image file.');
+      return;
+    }
+
+    try {
+      const compressedImage = await compressAvatarFile(file);
+      const result = String(compressedImage || '').trim();
+      if (!result) {
+        setMessage('Unable to process this image. Try another JPG or PNG.');
+        return;
+      }
+
       setDraft(current => ({
         ...current,
         image: result
       }));
-      setMessage(`Image loaded: ${file.name}. Save to apply it to the widget.`);
-    };
-    reader.readAsDataURL(file);
+      setMessage(`Image loaded and optimized: ${file.name}. Save to apply it to the widget.`);
+    } catch {
+      setMessage('Unable to process this image. Try another JPG or PNG.');
+    }
   };
 
   return <>
