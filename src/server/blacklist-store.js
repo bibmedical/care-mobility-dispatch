@@ -53,10 +53,26 @@ export const readBlacklistState = async () => {
   return normalizeBlacklistState({ entries });
 };
 
-export const writeBlacklistState = async nextState => {
+export const writeBlacklistState = async (nextState, options = {}) => {
   await ensureTable();
+  const allowDelete = options?.allowDelete === true;
   const currentState = await readBlacklistState();
   const normalized = normalizeBlacklistState(nextState);
+
+  if (allowDelete) {
+    await query(`DELETE FROM blacklist_entries`);
+    for (const entry of normalized.entries) {
+      await query(
+        `INSERT INTO blacklist_entries (id, name, phone, category, status, hold_until, notes, source, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (id) DO UPDATE SET
+           name=$2, phone=$3, category=$4, status=$5, hold_until=$6, notes=$7, source=$8, updated_at=$10`,
+        [entry.id, entry.name, entry.phone, entry.category, entry.status, entry.holdUntil, entry.notes, entry.source, entry.createdAt, entry.updatedAt]
+      );
+    }
+    return normalized;
+  }
+
   const mergedEntriesMap = new Map();
 
   currentState.entries.forEach(entry => {

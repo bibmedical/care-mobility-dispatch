@@ -53,13 +53,18 @@ const mergeTripsByLatestUpdate = (currentTrips, incomingTrips) => {
 };
 
 export const writeNemtDispatchState = async (nextState, _options = {}) => {
-  const allowTripShrink = false;
+  const allowTripShrink = _options?.allowTripShrink === true;
+  const actorName = String(_options?.actorName || '').trim();
+  const actorId = String(_options?.actorId || '').trim();
+  const actorRole = String(_options?.actorRole || '').trim();
+  const shrinkReason = String(_options?.shrinkReason || '').trim();
+  const isAuthorizedShrink = allowTripShrink && Boolean(actorName || actorId);
   await ensureTable();
   const currentState = await readNemtDispatchState();
   const incomingNormalized = normalizePersistentDispatchState(nextState);
   const currentTrips = Array.isArray(currentState?.trips) ? currentState.trips : [];
   const incomingTrips = Array.isArray(incomingNormalized?.trips) ? incomingNormalized.trips : [];
-  const shouldProtectTripCount = !allowTripShrink && incomingTrips.length < currentTrips.length;
+  const shouldProtectTripCount = !isAuthorizedShrink && incomingTrips.length < currentTrips.length;
   const nextTrips = shouldProtectTripCount ? mergeTripsByLatestUpdate(currentTrips, incomingTrips) : incomingTrips;
   const normalized = normalizePersistentDispatchState({
     ...incomingNormalized,
@@ -69,7 +74,7 @@ export const writeNemtDispatchState = async (nextState, _options = {}) => {
   await query(
     `INSERT INTO dispatch_state_history (snapshot, trip_count, reason)
      VALUES ($1, $2, $3)`,
-    [JSON.stringify(currentState), currentTrips.length, shouldProtectTripCount ? 'protected-shrink-blocked' : 'auto-backup']
+    [JSON.stringify(currentState), currentTrips.length, shouldProtectTripCount ? 'protected-shrink-blocked' : isAuthorizedShrink ? `admin-shrink:${shrinkReason || 'manual-delete'}:${actorName || actorId}${actorRole ? `:${actorRole}` : ''}` : 'auto-backup']
   );
 
   await query(

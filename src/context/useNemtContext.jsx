@@ -3,6 +3,7 @@
 import { getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import useLocalStorage from '@/hooks/useLocalStorage';
+import { useSession } from 'next-auth/react';
 import { createContext, startTransition, use, useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_VERSION = 5;
@@ -134,6 +135,7 @@ export const useNemtContext = () => {
 export const NemtProvider = ({
   children
 }) => {
+  const { data: session } = useSession();
   const [state, setState] = useLocalStorage('__CARE_MOBILITY_NEMT__', createInitialState());
   const [isDispatchLoaded, setIsDispatchLoaded] = useState(false);
   const lastPersistedSnapshotRef = useRef('');
@@ -142,23 +144,30 @@ export const NemtProvider = ({
   const pendingPersistSnapshotRef = useRef('');
   const allowTripShrinkNextPersistRef = useRef(false);
   const pendingAllowTripShrinkRef = useRef(false);
+  const allowTripShrinkReasonNextPersistRef = useRef('');
+  const pendingAllowTripShrinkReasonRef = useRef('');
 
   const flushPersistQueue = async () => {
     if (persistInFlightRef.current) return;
     const nextSnapshot = pendingPersistSnapshotRef.current;
     if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return;
     const allowTripShrink = pendingAllowTripShrinkRef.current;
+    const allowTripShrinkReason = pendingAllowTripShrinkReasonRef.current;
+    const actorName = String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim();
 
     persistInFlightRef.current = true;
     pendingPersistSnapshotRef.current = '';
     pendingAllowTripShrinkRef.current = false;
+    pendingAllowTripShrinkReasonRef.current = '';
 
     try {
       const response = await fetch('/api/nemt/dispatch', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'x-dispatch-allow-trip-shrink': allowTripShrink ? '1' : '0'
+          'x-dispatch-allow-trip-shrink': allowTripShrink ? '1' : '0',
+          'x-dispatch-shrink-reason': allowTripShrink ? allowTripShrinkReason || 'manual-admin-delete' : '',
+          'x-dispatch-actor-name': allowTripShrink ? actorName : ''
         },
         body: nextSnapshot
       });
@@ -280,7 +289,9 @@ export const NemtProvider = ({
 
     pendingPersistSnapshotRef.current = snapshot;
     pendingAllowTripShrinkRef.current = allowTripShrinkNextPersistRef.current;
+    pendingAllowTripShrinkReasonRef.current = allowTripShrinkReasonNextPersistRef.current;
     allowTripShrinkNextPersistRef.current = false;
+    allowTripShrinkReasonNextPersistRef.current = '';
 
     const timeoutId = window.setTimeout(async () => {
       await flushPersistQueue();
@@ -340,6 +351,7 @@ export const NemtProvider = ({
   const updateState = (updater, options = {}) => {
     const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;
     const shouldAllowTripShrink = options.allowTripShrink ?? false;
+    const allowTripShrinkReason = String(options.allowTripShrinkReason || '').trim();
     const buildAuditEntry = typeof options.buildAuditEntry === 'function' ? options.buildAuditEntry : null;
     setState(currentState => {
       const baseState = currentState ?? createInitialState();
@@ -347,6 +359,7 @@ export const NemtProvider = ({
         hasLocalDispatchChangesRef.current = true;
         if (shouldAllowTripShrink) {
           allowTripShrinkNextPersistRef.current = true;
+          allowTripShrinkReasonNextPersistRef.current = allowTripShrinkReason || 'manual-admin-delete';
         }
       }
       const nextState = updater(baseState);
@@ -813,7 +826,8 @@ export const NemtProvider = ({
     selectedDriverId: null
   }), {
     markDispatchDirty: true,
-    allowTripShrink: true
+    allowTripShrink: true,
+    allowTripShrinkReason: 'replace-trips'
   });
 
   const upsertImportedTrips = trips => updateState(currentState => {
@@ -867,7 +881,8 @@ export const NemtProvider = ({
     };
   }, {
     markDispatchDirty: true,
-    allowTripShrink: true
+    allowTripShrink: true,
+    allowTripShrinkReason: 'clear-trips-by-service-date'
   });
 
   const clearTrips = () => updateState(currentState => ({
@@ -879,7 +894,8 @@ export const NemtProvider = ({
     selectedDriverId: null
   }), {
     markDispatchDirty: true,
-    allowTripShrink: true
+    allowTripShrink: true,
+    allowTripShrinkReason: 'clear-all-trips'
   });
 
   const updateTripNotes = (tripId, notes) => updateState(currentState => {

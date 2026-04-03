@@ -208,10 +208,11 @@ export const readIntegrationsState = async () => {
   return normalizeState(row?.data || DEFAULT_STATE);
 };
 
-export const writeIntegrationsState = async nextState => {
+export const writeIntegrationsState = async (nextState, options = {}) => {
   await ensureTable();
   const currentState = await readIntegrationsState();
   const normalized = normalizeState(nextState);
+  const allowPatientDataShrink = options?.allowPatientDataShrink === true;
 
   const currentOptOutList = Array.isArray(currentState?.sms?.optOutList) ? currentState.sms.optOutList : [];
   const incomingOptOutList = Array.isArray(normalized?.sms?.optOutList) ? normalized.sms.optOutList : [];
@@ -232,6 +233,8 @@ export const writeIntegrationsState = async nextState => {
 
   const currentPatientsMemory = String(currentState?.ai?.memorySections?.patients || '').trim();
   const nextPatientsMemory = String(normalized?.ai?.memorySections?.patients || '').trim();
+  const protectedOptOutList = allowPatientDataShrink ? incomingOptOutList : Array.from(mergedOptOutMap.values()).filter(entry => entry.name || entry.phone);
+  const protectedPatientsMemory = allowPatientDataShrink ? nextPatientsMemory : nextPatientsMemory || currentPatientsMemory;
 
   const protectedState = {
     ...normalized,
@@ -239,12 +242,12 @@ export const writeIntegrationsState = async nextState => {
       ...normalized.ai,
       memorySections: {
         ...normalized.ai.memorySections,
-        patients: nextPatientsMemory || currentPatientsMemory
+        patients: protectedPatientsMemory
       }
     },
     sms: {
       ...normalized.sms,
-      optOutList: Array.from(mergedOptOutMap.values()).filter(entry => entry.name || entry.phone)
+      optOutList: protectedOptOutList
     }
   };
 
