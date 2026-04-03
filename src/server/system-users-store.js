@@ -201,6 +201,41 @@ export const readSystemUsersState = async () => {
     });
   }
 
+  const hasAdminWithWebAccess = normalizedState.users.some(user => isAdminRole(user.role) && user.webAccess);
+  if (!hasAdminWithWebAccess) {
+    const seedAdmins = USER_SEED.map(normalizeUserRecord).filter(user => isAdminRole(user.role));
+    const existingUsersById = new Map(normalizedState.users.map(user => [user.id, user]));
+
+    const recoveredUsers = normalizedState.users.map(user => isAdminRole(user.role) ? {
+      ...user,
+      webAccess: true,
+      password: String(user.password || buildPasswordForUser(user))
+    } : user);
+
+    seedAdmins.forEach(seedAdmin => {
+      if (!existingUsersById.has(seedAdmin.id)) {
+        recoveredUsers.unshift({
+          ...seedAdmin,
+          webAccess: true,
+          password: String(seedAdmin.password || buildPasswordForUser(seedAdmin))
+        });
+      }
+    });
+
+    const recoveredProtected = normalizeProtectedIds(normalizedState.protectedUserIds, recoveredUsers);
+
+    await query(
+      `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
+      [6, JSON.stringify(recoveredProtected), JSON.stringify(recoveredUsers)]
+    );
+
+    return normalizeUsersState({
+      version: 6,
+      protectedUserIds: recoveredProtected,
+      users: recoveredUsers
+    });
+  }
+
   return normalizedState;
 };
 
