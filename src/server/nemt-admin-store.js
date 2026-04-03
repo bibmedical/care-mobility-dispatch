@@ -1,6 +1,31 @@
 import { buildInitialAdminData, buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { query } from '@/server/db';
 
+const VEHICLE_IMAGE_FALLBACK_URL = 'https://loremflickr.com/640/360/fleet,vehicle?lock=9001';
+
+const buildVehicleImageUrl = (vehicle, index = 0) => {
+  const label = String(vehicle?.label || '').toLowerCase();
+  const type = String(vehicle?.type || '').toLowerCase();
+
+  if (label.includes('ford') && label.includes('transit')) return `https://loremflickr.com/640/360/ford,transit?lock=${1100 + index}`;
+  if (label.includes('toyota') && label.includes('sienna')) return `https://loremflickr.com/640/360/toyota,sienna?lock=${1200 + index}`;
+  if (label.includes('dodge') && (label.includes('caravan') || label.includes('gran'))) return `https://loremflickr.com/640/360/dodge,caravan?lock=${1300 + index}`;
+  if (label.includes('toyota') && label.includes('corolla')) return `https://loremflickr.com/640/360/toyota,corolla?lock=${1400 + index}`;
+  if (type.includes('ambulance')) return `https://loremflickr.com/640/360/ambulance,vehicle?lock=${1500 + index}`;
+  if (type.includes('van')) return `https://loremflickr.com/640/360/van,vehicle?lock=${1600 + index}`;
+  if (type.includes('sedan')) return `https://loremflickr.com/640/360/sedan,car?lock=${1700 + index}`;
+
+  return `${VEHICLE_IMAGE_FALLBACK_URL}&i=${index}`;
+};
+
+const normalizeVehiclesWithImages = vehicles => (Array.isArray(vehicles) ? vehicles : []).map((vehicle, index) => {
+  const imageUrl = String(vehicle?.imageUrl || vehicle?.image || '').trim() || buildVehicleImageUrl(vehicle, index);
+  return {
+    ...vehicle,
+    imageUrl
+  };
+});
+
 const parseJsonSafe = raw => {
   const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
   return JSON.parse(normalized);
@@ -112,6 +137,22 @@ export const readNemtAdminState = async () => {
   const result = await query(`SELECT data FROM admin_state WHERE id = 'singleton'`);
   const raw = result.rows[0]?.data ?? {};
   const normalized = normalizeState(raw);
+  const hasVehicles = Array.isArray(normalized.vehicles) && normalized.vehicles.length > 0;
+  const restoredVehicles = hasVehicles ? normalizeVehiclesWithImages(normalized.vehicles) : normalizeVehiclesWithImages(buildInitialAdminData().vehicles);
+  const needsPersist = !hasVehicles || restoredVehicles.some((vehicle, index) => String(normalized.vehicles?.[index]?.imageUrl || '').trim() !== String(vehicle?.imageUrl || '').trim());
+
+  if (needsPersist) {
+    const nextState = {
+      ...normalized,
+      vehicles: restoredVehicles
+    };
+    await query(
+      `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
+      [JSON.stringify(nextState)]
+    );
+    return nextState;
+  }
+
   return normalized;
 };
 

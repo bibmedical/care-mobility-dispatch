@@ -325,6 +325,7 @@ export const createBlankVehicle = () => ({
   ambulatoryCapacity: 0,
   wheelchairCapacity: 0,
   stretcherCapacity: 0,
+  imageUrl: '',
   notes: '',
   brokerId: ''
 });
