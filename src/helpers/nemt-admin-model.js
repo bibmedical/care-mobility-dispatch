@@ -533,6 +533,7 @@ export const validateVehicle = vehicle => {
   if (!vehicle.label.trim()) errors.push('Vehicle label is required.');
   if (!vehicle.vin.trim()) errors.push('VIN is required.');
   if (vehicle.ambulatoryCapacity < 0 || vehicle.wheelchairCapacity < 0 || vehicle.stretcherCapacity < 0) errors.push('Vehicle capacities cannot be negative.');
+  if (Number(vehicle.ambulatoryCapacity || 0) <= 0 && Number(vehicle.wheelchairCapacity || 0) <= 0 && Number(vehicle.stretcherCapacity || 0) <= 0) errors.push('Select at least one vehicle capability: Ambulatory, Wheelchair, or Stretcher.');
   return errors;
 };
 
@@ -587,7 +588,10 @@ export const buildVehiclesRows = state => state.vehicles.map((vehicle, index) =>
       type: vehicle.type,
       ambulatory: vehicle.ambulatoryCapacity,
       wheelchair: vehicle.wheelchairCapacity,
-      stretcher: vehicle.stretcherCapacity
+      stretcher: vehicle.stretcherCapacity,
+      supportsAmbulatory: Number(vehicle.ambulatoryCapacity || 0) > 0,
+      supportsWheelchair: Number(vehicle.wheelchairCapacity || 0) > 0,
+      supportsStretcher: Number(vehicle.stretcherCapacity || 0) > 0
     },
     assignment: assignedDrivers.length > 0 ? `${assignedDrivers.length} driver(s)` : 'Open vehicle',
     driverNames: assignedDrivers.join('; ') || 'No driver assigned',
