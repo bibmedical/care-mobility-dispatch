@@ -2624,7 +2624,6 @@ const TripDashboardWorkspace = () => {
                   Hide Map
                 </Button>
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
-                  <Button variant="dark" size="sm" onClick={() => setShowRoute(current => !current)}>Route</Button>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
                   <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
                     <option value="">City</option>
@@ -2634,13 +2633,11 @@ const TripDashboardWorkspace = () => {
                     <option value="">ZIP Code</option>
                     {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
                   </Form.Select>
-                  <Button variant="dark" size="sm" onClick={() => setShowInfo(current => !current)}>{showInfo ? 'Hide Info' : 'Show Info'}</Button>
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
-                  <Button variant="dark" size="sm" onClick={() => router.push('/drivers/grouping')}>Grouping</Button>
                   <Button variant="dark" size="sm" onClick={() => {
                   if (showBottomPanels) {
                     setShowBottomPanels(false);
@@ -2657,7 +2654,6 @@ const TripDashboardWorkspace = () => {
                   }
                   setStatusMessage('Paneles inferiores visibles.');
                 }}>{showBottomPanels ? 'Hide Panel' : 'Panel'}</Button>
-                  <Button variant="dark" size="sm" onClick={() => setMapLocked(current => !current)}>{mapLocked ? 'Unlock' : 'Lock'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button>
                 </div>
                 {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{

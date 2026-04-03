@@ -404,7 +404,14 @@ const stopInputEventPropagation = event => {
   event.stopPropagation();
 };
 
-const getTripTargetPosition = trip => trip?.status === 'In Progress' ? trip?.destinationPosition ?? trip?.position : trip?.position;
+const getTripTravelState = trip => String(trip?.driverTripStatus || trip?.status || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+
+const isTripEnRoute = trip => {
+  const travelState = getTripTravelState(trip);
+  return travelState === 'enroute' || travelState === 'inprogress';
+};
+
+const getTripTargetPosition = trip => isTripEnRoute(trip) ? trip?.destinationPosition ?? trip?.position : trip?.position;
 
 const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   className: 'driver-map-icon-shell',
@@ -413,6 +420,18 @@ const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   iconAnchor: [17, 17],
   popupAnchor: [0, -16]
 });
+
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false }) => {
+  const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
+  const bodyColor = isOnline ? '#16a34a' : '#475569';
+  return divIcon({
+    className: 'driver-live-vehicle-icon-shell',
+    html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 4px 12px rgba(15,23,42,0.35));"><svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.2 8.4L8.3 5.5C8.7 5 9.3 4.7 9.9 4.7H14.1C14.8 4.7 15.4 5 15.7 5.5L17.8 8.4H19C20.1 8.4 21 9.3 21 10.4V15.8C21 16.4 20.6 16.8 20 16.8H18.8C18.7 18 17.7 19 16.5 19C15.3 19 14.3 18 14.2 16.8H9.8C9.7 18 8.7 19 7.5 19C6.3 19 5.3 18 5.2 16.8H4C3.4 16.8 3 16.4 3 15.8V10.4C3 9.3 3.9 8.4 5 8.4H6.2Z" fill="${bodyColor}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.7 8.4H15.3L13.9 6.4C13.8 6.2 13.5 6 13.2 6H10.8C10.5 6 10.2 6.2 10.1 6.4L8.7 8.4Z" fill="#dbeafe" opacity="0.95"/><circle cx="7.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><circle cx="16.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><path d="M18.9 11.2H19.7" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/><path d="M4.3 11.2H5.1" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/></svg></div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14]
+  });
+};
 
 const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
   className: 'route-stop-icon-shell',
@@ -1074,12 +1093,20 @@ const DispatcherWorkspace = () => {
   const tripTableColumnCount = visibleTripColumns.length + 3;
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
+    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
+    if (preferredTrip) return preferredTrip;
+    const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
+    if (routeTrip) return routeTrip;
+    return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip)) ?? null;
+  }, [routeTrips, selectedDriver, selectedTripIds, trips]);
+  const selectedDriverPendingEtaTrip = useMemo(() => {
+    if (!selectedDriver || selectedDriverActiveTrip) return null;
     const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && isTripAssignedToDriver(trip, selectedDriver.id));
     if (preferredTrip) return preferredTrip;
     const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id));
     if (routeTrip) return routeTrip;
     return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
-  }, [routeTrips, selectedDriver, selectedTripIds, trips]);
+  }, [routeTrips, selectedDriver, selectedDriverActiveTrip, selectedTripIds, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
     const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip));
@@ -1806,7 +1833,6 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0">
               {showInlineMap ? <div className="position-relative h-100">
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
-                  <Button variant="dark" size="sm" onClick={() => setShowRoute(current => !current)} disabled={mapLocked}>Route</Button>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapLocked}>Clear</Button>
                   <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
                     <option value="">City</option>
@@ -1816,18 +1842,15 @@ const DispatcherWorkspace = () => {
                     <option value="">ZIP Code</option>
                     {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
                   </Form.Select>
-                  <Button variant="dark" size="sm" onClick={() => setShowInfo(current => !current)} disabled={mapLocked}>{showInfo ? 'Hide Info' : 'Show Info'}</Button>
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapLocked} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
-                  <Button variant="dark" size="sm" onClick={() => router.push('/drivers/grouping')} disabled={mapLocked}>Grouping</Button>
                   <Button variant="dark" size="sm" onClick={() => {
                   setShowBottomPanels(current => !current);
                   setStatusMessage(showBottomPanels ? 'Paneles inferiores ocultos.' : 'Paneles inferiores visibles.');
                 }} disabled={mapLocked}>{showBottomPanels ? 'Hide SMS' : 'SMS'}</Button>
-                  <Button variant={mapLocked ? 'danger' : 'dark'} size="sm" onClick={() => setMapLocked(current => !current)} style={{ fontWeight: 'bold' }}>{mapLocked ? '🔒 LOCKED' : 'Unlock'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
                 {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
@@ -1840,6 +1863,15 @@ const DispatcherWorkspace = () => {
                       <Badge bg="secondary">{selectedDriverEta?.miles != null ? `${selectedDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
                       <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
                     </div>
+                  </div> : selectedDriver?.hasRealLocation && selectedDriverPendingEtaTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
+                    <div className="small text-uppercase text-secondary">Driver ETA</div>
+                    <div className="fw-semibold d-flex align-items-center gap-2"><IconifyIcon icon="iconoir:map-pin" /> {selectedDriver.name}</div>
+                    <div className="small mt-1">Trip {selectedDriverPendingEtaTrip.id} • {selectedDriverPendingEtaTrip.rider}</div>
+                    <div className="small text-secondary">ETA will appear after the driver taps En Route in the mobile app.</div>
+                    <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                      <Badge bg="secondary">Waiting for En Route</Badge>
+                      <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
+                    </div>
                   </div> : null}
                 <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${showBottomPanels}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
@@ -1847,6 +1879,13 @@ const DispatcherWorkspace = () => {
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
                   {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+                  {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online' })}>
+                      <Popup>
+                        <div className="fw-semibold">{selectedDriver.name}</div>
+                        <div>{getDriverCheckpoint(selectedDriver)}</div>
+                        <div className="small text-muted">{selectedDriver.live}{selectedDriver.trackingLastSeen ? ` • ${new Date(selectedDriver.trackingLastSeen).toLocaleTimeString()}` : ''}</div>
+                      </Popup>
+                    </Marker> : null}
                   {mapQuickTrips.flatMap(trip => {
                   const points = [{
                     key: `${trip.id}-pickup-mapquick`,
