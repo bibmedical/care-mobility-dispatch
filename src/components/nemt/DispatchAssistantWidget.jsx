@@ -107,7 +107,7 @@ const widgetStyles = {
   launcherModeRow: {
     width: '100%',
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: '1fr 1fr 1fr',
     gap: 4
   },
   launcherModeButton: {
@@ -189,7 +189,7 @@ const widgetStyles = {
   },
   modeRow: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: '1fr 1fr 1fr',
     gap: 8
   },
   noteLine: {
@@ -253,7 +253,7 @@ const DispatchAssistantWidget = () => {
   });
   const [storedAssistantState, setStoredAssistantState] = useLocalStorage(STORAGE_KEY, buildInitialState(DEFAULT_ASSISTANT_AVATAR.name));
   const [clientId, setClientId] = useLocalStorage(CLIENT_KEY, `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
-  const [assistantMode, setAssistantMode] = useLocalStorage(MODE_KEY, 'local');
+  const [assistantMode, setAssistantMode] = useLocalStorage(MODE_KEY, 'hybrid');
   const [widgetHidden, setWidgetHidden] = useLocalStorage(WIDGET_HIDDEN_KEY, false);
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -855,7 +855,7 @@ const DispatchAssistantWidget = () => {
     }
   };
 
-  const providerLabel = assistantMode === 'openai' ? 'GPT' : 'LOCAL';
+  const providerLabel = assistantMode === 'openai' ? 'GPT' : assistantMode === 'hybrid' ? 'HYB' : 'LOCAL';
 
   return <div style={widgetStyles.shell}>
       {open ? <div style={widgetStyles.panel}>
@@ -870,7 +870,7 @@ const DispatchAssistantWidget = () => {
           </div>
 
           <div style={widgetStyles.body}>
-            <div style={widgetStyles.providerPill}>{lastProvider === 'openai-integrations' || lastProvider === 'openai' ? 'Respuesta: GPT' : 'Respuesta: IA local'}</div>
+            <div style={widgetStyles.providerPill}>{String(lastProvider || '').includes('openai') ? (String(lastProvider || '').includes('hybrid') ? 'Respuesta: Hibrido (GPT + local)' : 'Respuesta: GPT') : 'Respuesta: IA local'}</div>
 
             {/* Chat messages */}
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, minHeight: 80 }}>
@@ -953,6 +953,9 @@ const DispatchAssistantWidget = () => {
             </div>
 
             <div style={widgetStyles.modeRow}>
+              <Button type="button" variant={assistantMode === 'hybrid' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('hybrid')} style={widgetStyles.miniButton}>
+                Hibrido
+              </Button>
               <Button type="button" variant={assistantMode === 'openai' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('openai')} style={widgetStyles.miniButton}>
                 GPT
               </Button>
@@ -974,7 +977,7 @@ const DispatchAssistantWidget = () => {
                 Callar
               </Button>
             </div>
-            <div style={widgetStyles.noteLine}>{assistantMode === 'local' ? 'Modo sin OpenAI' : `Modelo ${voiceEnabled ? 'con voz' : 'sin voz'}`}</div>
+            <div style={widgetStyles.noteLine}>{assistantMode === 'local' ? 'Modo sin OpenAI' : assistantMode === 'hybrid' ? 'Modo hibrido: GPT + logica local' : `Modelo ${voiceEnabled ? 'con voz' : 'sin voz'}`}</div>
           </div>
         </div> : null}
 
@@ -984,6 +987,9 @@ const DispatchAssistantWidget = () => {
           <span style={widgetStyles.launcherStatus}>{providerLabel}</span>
         </button>
         <div style={widgetStyles.launcherModeRow}>
+          <Button type="button" variant={assistantMode === 'hybrid' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('hybrid')} style={widgetStyles.launcherModeButton}>
+            Hybrid
+          </Button>
           <Button type="button" variant={assistantMode === 'openai' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('openai')} style={widgetStyles.launcherModeButton}>
             GPT
           </Button>

@@ -75,7 +75,7 @@ const getSessionFirstName = session => String(session?.user?.firstName || sessio
 
 const buildPersonalizedLead = session => {
   const firstName = getSessionFirstName(session);
-  return `Si ${firstName}, `;
+  return `${firstName}, `;
 };
 
 const trySolveSimpleMathSafe = message => {
@@ -1137,6 +1137,20 @@ const getAssistantConfig = integrationsState => {
   };
 };
 
+const buildSnapshotSummary = snapshot => ({
+  totals: snapshot?.totals || {},
+  integrations: snapshot?.integrations || {},
+  knowledge: snapshot?.knowledge || {},
+  activePath: snapshot?.activePath || '',
+  modules: Array.isArray(snapshot?.modules) ? snapshot.modules.slice(0, 80).map(module => ({
+    label: module.label,
+    url: module.url
+  })) : [],
+  sampleDrivers: Array.isArray(snapshot?.sampleDrivers) ? snapshot.sampleDrivers.slice(0, 30) : [],
+  sampleTrips: Array.isArray(snapshot?.sampleTrips) ? snapshot.sampleTrips.slice(0, 40) : [],
+  routePlans: Array.isArray(snapshot?.routePlans) ? snapshot.routePlans.slice(0, 30) : []
+});
+
 const buildConversationKey = ({ session, clientId }) => {
   const userId = String(session?.user?.id || '').trim();
   if (userId) return `user:${userId}`;
@@ -1475,60 +1489,80 @@ const callOpenAI = async ({ message, history, snapshot, pathname, integrationsSt
     };
   }
 
+  const localFallbackReply = buildFallbackReply(message, snapshot, pathname, history, session, integrationsState);
+
   if (providerMode === 'local') {
     return {
-      reply: buildFallbackReply(message, snapshot, pathname, history, session, integrationsState),
+      reply: localFallbackReply,
       provider: 'local',
       action: directAction
     };
   }
+
   const assistantConfig = getAssistantConfig(integrationsState);
   if (!assistantConfig.apiKey) {
     return {
-      reply: buildFallbackReply(message, snapshot, pathname, history, session, integrationsState),
-      provider: 'fallback',
+      reply: localFallbackReply,
+      provider: providerMode === 'hybrid' ? 'hybrid-local' : 'fallback',
       action: directAction
     };
   }
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${assistantConfig.apiKey}`
-    },
-    body: JSON.stringify({
-      model: assistantConfig.model,
-      temperature: 0.3,
-      messages: [{
-        role: 'system',
-        content: 'You are a dispatch assistant for a NEMT operation and the Care Mobility web platform. Always respond in the SAME language the user writes in \u2014 if they write in Spanish respond in Spanish, if in English respond in English. You know modules, trips, drivers, routes, integrations, users and blacklist. You CAN execute operational actions: creating routes, assigning trips to drivers, confirming trips, and sending driver messages. When the user asks you to create a route or assign trips, execute it and confirm it was done. If you know the logged-in user\'s name, address them directly. Do not use markdown, asterisks, or bullet symbols unless the user requests them.'
-      }, {
-        role: 'system',
-        content: `Current page: ${pathname || 'unknown'}. App snapshot: ${JSON.stringify(snapshot)}`
-      }, ...(Array.isArray(snapshot?.knowledgeMatches) && snapshot.knowledgeMatches.length > 0 ? [{
-        role: 'system',
-        content: `Knowledge matches: ${JSON.stringify(snapshot.knowledgeMatches)}`
-      }] : []), ...history.slice(-10).map(item => ({
-        role: item.role === 'assistant' ? 'assistant' : 'user',
-        content: item.text
-      })), {
-        role: 'user',
-        content: message
-      }]
-    })
-  });
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${assistantConfig.apiKey}`
+      },
+      body: JSON.stringify({
+        model: assistantConfig.model,
+        temperature: 0.45,
+        messages: [{
+          role: 'system',
+          content: 'You are a natural, warm dispatch co-pilot for a NEMT operation. Reply in the same language as the user. Keep responses human, concise, and confident. No robotic phrasing. No markdown unless asked.'
+        }, {
+          role: 'system',
+          content: 'You must preserve operational facts exactly (names, counts, statuses, times, IDs, and route details). If the baseline answer already contains validated operational info, improve tone and clarity without changing facts.'
+        }, {
+          role: 'system',
+          content: `Current page: ${pathname || 'unknown'}. Snapshot summary: ${JSON.stringify(buildSnapshotSummary(snapshot))}`
+        }, ...(Array.isArray(snapshot?.knowledgeMatches) && snapshot.knowledgeMatches.length > 0 ? [{
+          role: 'system',
+          content: `Knowledge matches: ${JSON.stringify(snapshot.knowledgeMatches)}`
+        }] : []), {
+          role: 'system',
+          content: `Baseline validated answer: ${localFallbackReply}`
+        }, ...history.slice(-10).map(item => ({
+          role: item.role === 'assistant' ? 'assistant' : 'user',
+          content: item.text
+        })), {
+          role: 'user',
+          content: message
+        }]
+      })
+    });
 
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || 'OpenAI request failed.');
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload?.error?.message || 'OpenAI request failed.');
+    }
+
+    const rewrittenReply = stripRichText(payload?.choices?.[0]?.message?.content?.trim() || localFallbackReply);
+    return {
+      reply: rewrittenReply || localFallbackReply,
+      provider: providerMode === 'hybrid'
+        ? (assistantConfig.source === 'integrations' ? 'hybrid-openai-integrations' : 'hybrid-openai')
+        : (assistantConfig.source === 'integrations' ? 'openai-integrations' : 'openai'),
+      action: directAction
+    };
+  } catch {
+    return {
+      reply: localFallbackReply,
+      provider: providerMode === 'hybrid' ? 'hybrid-local-fallback' : 'fallback',
+      action: directAction
+    };
   }
-
-  return {
-    reply: stripRichText(payload?.choices?.[0]?.message?.content?.trim() || buildFallbackReply(message, snapshot, pathname, history, session, integrationsState)),
-    provider: assistantConfig.source === 'integrations' ? 'openai-integrations' : 'openai',
-    action: directAction
-  };
 };
 
 const buildAppliedRoutesFromPlan = (plan, currentRoutePlans = []) => {
@@ -1644,7 +1678,10 @@ export async function POST(request) {
   const history = Array.isArray(body?.history) ? body.history : [];
   const clientId = String(body?.clientId || '').trim();
   const pathname = String(body?.pathname || '').trim();
-  const providerMode = String(body?.providerMode || 'local').trim().toLowerCase() === 'openai' ? 'openai' : 'local';
+  const requestedProviderMode = String(body?.providerMode || 'hybrid').trim().toLowerCase();
+  const providerMode = requestedProviderMode === 'openai' || requestedProviderMode === 'local' || requestedProviderMode === 'hybrid'
+    ? requestedProviderMode
+    : 'hybrid';
   const actionRequest = body?.actionRequest && typeof body.actionRequest === 'object' ? body.actionRequest : null;
   const session = await getServerSession(authOptions);
   const conversationKey = buildConversationKey({ session, clientId });
