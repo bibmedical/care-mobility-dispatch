@@ -2034,7 +2034,7 @@ const DispatcherWorkspace = () => {
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }} onDragOver={event => {
+                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'visible' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
                 event.preventDefault();
               }} onDrop={() => {
@@ -2123,14 +2123,14 @@ const DispatcherWorkspace = () => {
                     setTripTableScrollLeft(nextLeft);
                   }} style={{ width: '100%', accentColor: '#22c55e' }} aria-label="Horizontal table scroll" />
                 </div> : null}
-              <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%', position: 'relative', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
+              <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, maxHeight: showBottomPanels ? expanded ? 520 : 390 : '100%', position: 'relative', overflowX: groupedFilteredTripRows.length > 0 ? 'auto' : 'hidden', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
                 {mapLocked && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 45, borderRadius: '4px', backdropFilter: 'blur(1px)' }}>
                   <div style={{ backgroundColor: 'rgba(15,23,42,0.95)', color: '#fff', padding: '16px 32px', borderRadius: '8px', textAlign: 'center', border: '2px solid #ef4444', boxShadow: '0 4px 15px rgba(0,0,0,0.5)' }}>
                     <div style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '8px' }}>🔒 PANEL LOCKED</div>
                     <div style={{ fontSize: '12px', color: '#d1d5db' }}>Click "Unlock" to make changes</div>
                   </div>
                 </div>}
-                <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', opacity: mapLocked ? 0.6 : 1 }}>
+                <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', width: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', opacity: mapLocked ? 0.6 : 1 }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ width: 48 }}>

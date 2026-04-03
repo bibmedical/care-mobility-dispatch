@@ -2,6 +2,7 @@
 
 import { SessionProvider } from 'next-auth/react';
 import dynamic from 'next/dynamic';
+import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 
 // import { NotificationProvider } from '@/context/useNotificationContext'
@@ -17,6 +18,9 @@ const LayoutProvider = dynamic(() => import('@/context/useLayoutContext').then(m
 const AppProvidersWrapper = ({
   children
 }) => {
+  const pathname = usePathname();
+  const showAssistantWidget = pathname !== '/dispatcher';
+
   useEffect(() => {
     if (document) {
       const e = document.querySelector('#__next_splash');
@@ -34,7 +38,7 @@ const AppProvidersWrapper = ({
           <InactivityLogoutWrapper>
             <NemtProvider>
               {children}
-              <DispatchAssistantWidget />
+              {showAssistantWidget ? <DispatchAssistantWidget /> : null}
               <Toaster richColors />
             </NemtProvider>
           </InactivityLogoutWrapper>
