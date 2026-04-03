@@ -18,7 +18,7 @@ export async function PUT(request) {
   try {
     const { getServerSession } = await import('next-auth');
     const { options } = await import('@/app/api/auth/[...nextauth]/options');
-    const { isAdminRole } = await import('@/helpers/system-users');
+    const { isAdminRole, isDriverRole } = await import('@/helpers/system-users');
     const session = await getServerSession(options);
     if (!session?.user?.id) {
       return NextResponse.json({
@@ -27,9 +27,11 @@ export async function PUT(request) {
         status: 401
       });
     }
-    if (!isAdminRole(session?.user?.role)) {
+    const userRole = String(session?.user?.role || '').trim();
+    const hasBlacklistWriteAccess = isAdminRole(userRole) || (Boolean(session?.user?.webAccess) && !isDriverRole(userRole));
+    if (!hasBlacklistWriteAccess) {
       return NextResponse.json({
-        error: 'Only administrators can modify blacklist'
+        error: 'You are not authorized to modify blacklist entries'
       }, {
         status: 403
       });
