@@ -572,6 +572,7 @@ const TripDashboardWorkspace = () => {
     updateTripNotes,
     updateTripRecord,
     cloneTripRecord,
+    deleteTripRecord,
     uiPreferences,
     setDispatcherVisibleTripColumns,
     setMapProvider
@@ -3370,6 +3371,14 @@ const TripDashboardWorkspace = () => {
                             <Button variant="outline-info" size="sm" onClick={() => handleCloneTrip(row.trip)} title="Clone trip" style={{ minWidth: 34, borderColor: '#38bdf8', color: '#38bdf8', backgroundColor: 'transparent' }}>
                               C
                             </Button>
+                            {row.trip.clonedFromTripId ? <Button variant="outline-danger" size="sm" onClick={() => {
+                          if (window.confirm(`DELETE COPY ${row.trip.id}\nOriginal: ${row.trip.clonedFromTripId}\nRider: ${row.trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
+                            deleteTripRecord(row.trip.id);
+                            setStatusMessage(`Cloned trip ${row.trip.id} deleted.`);
+                          }
+                        }} title={`Delete cloned copy ${row.trip.id}`} style={{ minWidth: 34, borderColor: '#ef4444', color: '#ef4444', backgroundColor: 'transparent', fontWeight: 700 }}>
+                                D
+                              </Button> : null}
                           </div>
                         </td>
                         {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
