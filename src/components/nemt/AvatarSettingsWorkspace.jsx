@@ -26,6 +26,7 @@ const buildSurfaceStyles = isLight => ({
 });
 
 const AVATAR_PRESETS = [DEFAULT_ASSISTANT_AVATAR.image, '/ai-avatar/cartoon-owner.svg', '/care-mobility-logo.png'];
+const AVATAR_FILE_ACCEPT = '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp';
 
 const fileToDataUrl = file => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -231,7 +232,14 @@ const AvatarSettingsWorkspace = () => {
                   </Col>
                   <Col md={12}>
                     <Form.Label className="small text-uppercase text-secondary fw-semibold">Upload a new photo</Form.Label>
-                    <Form.Control type="file" accept="image/*" style={surfaceStyles.input} onChange={handlePickFile} />
+                    <input type="file" accept={AVATAR_FILE_ACCEPT} style={{
+                    ...surfaceStyles.input,
+                    width: '100%',
+                    minHeight: 38,
+                    borderRadius: 8,
+                    padding: '6px 10px'
+                  }} onChange={handlePickFile} />
+                    <div className="small text-secondary mt-2">Formatos permitidos: JPG, JPEG, PNG, WEBP.</div>
                   </Col>
                   <Col md={12}>
                     <Form.Label className="small text-uppercase text-secondary fw-semibold">Quick presets</Form.Label>
