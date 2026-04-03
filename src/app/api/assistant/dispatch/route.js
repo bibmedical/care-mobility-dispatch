@@ -206,7 +206,7 @@ const findKnowledgeReply = (message, snapshot) => {
   const matches = Array.isArray(snapshot?.knowledgeMatches) ? snapshot.knowledgeMatches : [];
   if (matches.length === 0) return null;
 
-  const es = false;
+  const es = detectLanguage(message) === 'es';
   const [primaryMatch, ...otherMatches] = matches;
   const uniqueSources = Array.from(new Set([primaryMatch.documentTitle, ...otherMatches.map(match => match.documentTitle)].filter(Boolean))).slice(0, 3);
   const sourceText = uniqueSources.join(', ');
@@ -376,7 +376,7 @@ const findMatchingTrips = (message, snapshot) => {
 
 const findTripReply = (message, snapshot) => {
   const prompt = normalizeLookupValue(message);
-  const es = false;
+  const es = detectLanguage(message) === 'es';
   const matches = findMatchingTrips(message, snapshot);
   if (matches.length === 0) return null;
 
@@ -734,7 +734,7 @@ const buildPlannedRoutePayload = ({ bucket, driver, serviceDate, routeIndex, tot
 });
 
 const buildRoutePlanningReply = ({ message, serviceDate, routes, skippedTrips = [], applied = false }) => {
-  const es = false;
+  const es = detectLanguage(message) === 'es';
   const routeCount = routes.length;
   const tripCount = routes.reduce((total, route) => total + (Array.isArray(route?.tripIds) ? route.tripIds.length : 0), 0);
   const skippedCount = skippedTrips.length;
@@ -767,7 +767,7 @@ const buildFocusedRoutePlanReply = ({ message, serviceDate, driverName, routes, 
   const skippedCount = Array.isArray(skippedTrips) ? skippedTrips.length : 0;
   const anchorLabel = getTripPlanningLabel(anchorTrip);
   const stopsText = Array.isArray(route?.stops) ? route.stops.slice(0, 6).map(stop => stop.rider || stop.id).join(', ') : '';
-  const es = false;
+  const es = detectLanguage(message) === 'es';
 
   if (es) {
     const base = applied
@@ -1314,7 +1314,7 @@ const buildDispatchSnapshot = async session => {
 
 const buildFallbackReply = (message, snapshot, pathname = '', history = [], session = null, integrationsState = null) => {
   const prompt = String(message || '').toLowerCase();
-  const es = false;
+  const es = detectLanguage(message) === 'es';
   const myName = snapshot?.integrations?.assistantName || 'Balby';
   const personalizedLead = buildPersonalizedLead(session);
 
@@ -1518,6 +1518,9 @@ const callOpenAI = async ({ message, history, snapshot, pathname, integrationsSt
       body: JSON.stringify({
         model: assistantConfig.model,
         temperature: 0.45,
+        top_p: 0.9,
+        presence_penalty: 0.35,
+        frequency_penalty: 0.25,
         messages: [{
           role: 'system',
           content: 'You are a natural, warm dispatch co-pilot for a NEMT operation. Reply in the same language as the user. Keep responses human, concise, and confident. No robotic phrasing. No markdown unless asked.'
@@ -1538,7 +1541,7 @@ const callOpenAI = async ({ message, history, snapshot, pathname, integrationsSt
           content: item.text
         })), {
           role: 'user',
-          content: message
+          content: `Baseline validated facts to preserve: ${localFallbackReply}. Rewrite naturally and do not repeat lists unless directly requested.`
         }]
       })
     });
