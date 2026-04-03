@@ -44,18 +44,22 @@ const loadImageFromDataUrl = dataUrl => new Promise((resolve, reject) => {
 const compressAvatarFile = async file => {
   const rawDataUrl = await fileToDataUrl(file);
   const image = await loadImageFromDataUrl(rawDataUrl);
-  const maxSide = 640;
-  const longestSide = Math.max(image.width, image.height) || 1;
-  const scale = Math.min(1, maxSide / longestSide);
-  const targetWidth = Math.max(1, Math.round(image.width * scale));
-  const targetHeight = Math.max(1, Math.round(image.height * scale));
+  const sourceWidth = Math.max(1, Number(image.width) || 1);
+  const sourceHeight = Math.max(1, Number(image.height) || 1);
+  const sourceSide = Math.min(sourceWidth, sourceHeight);
+  const sourceX = Math.floor((sourceWidth - sourceSide) / 2);
+  const sourceY = Math.floor((sourceHeight - sourceSide) / 2);
+  const targetSide = 512;
 
   const canvas = document.createElement('canvas');
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
+  canvas.width = targetSide;
+  canvas.height = targetSide;
   const context = canvas.getContext('2d');
   if (!context) return rawDataUrl;
-  context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+  // Keep avatar framing consistent by auto-cropping to a centered square.
+  context.drawImage(image, sourceX, sourceY, sourceSide, sourceSide, 0, 0, targetSide, targetSide);
+
   return canvas.toDataURL('image/jpeg', 0.78);
 };
 
@@ -119,7 +123,7 @@ const AvatarSettingsWorkspace = () => {
         ...current,
         image: result
       }));
-      setMessage(`Image loaded and optimized: ${file.name}. Save to apply it to the widget.`);
+      setMessage(`Image loaded, cropped, and optimized: ${file.name}. Save to apply it to the widget.`);
     } catch {
       setMessage('Unable to process this image. Try another JPG or PNG.');
     }
