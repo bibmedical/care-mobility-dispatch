@@ -43,7 +43,10 @@ const buildTripActionPatch = (trip, action, timestamp) => {
   return null;
 };
 
+const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
 export async function POST(request) {
+  try {
   const body = await request.json();
   const tripId = String(body?.tripId || '').trim();
   const driverId = String(body?.driverId || '').trim();
@@ -82,4 +85,7 @@ export async function POST(request) {
   });
 
   return NextResponse.json({ ok: true, tripId, action, updatedAt: timestamp });
+  } catch (error) {
+    return internalError(error);
+  }
 }

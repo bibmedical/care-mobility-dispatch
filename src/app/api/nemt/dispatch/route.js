@@ -4,9 +4,15 @@ import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isAdminRole } from '@/helpers/system-users';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 
+const internalError = error => NextResponse.json({ error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
 export async function GET() {
-  const payload = await readNemtDispatchState();
-  return NextResponse.json(payload);
+  try {
+    const payload = await readNemtDispatchState();
+    return NextResponse.json(payload);
+  } catch (error) {
+    return internalError(error);
+  }
 }
 
 export async function PUT(request) {
@@ -33,15 +39,19 @@ export async function PUT(request) {
     }
   }
 
-  const nextState = await writeNemtDispatchState(body, {
-    allowTripShrink,
-    shrinkReason,
-    actorId: String(session?.user?.id || ''),
-    actorName: String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim(),
-    actorRole: String(session?.user?.role || '').trim()
-  });
-  return NextResponse.json({
-    ...nextState,
-    ok: true
-  });
+  try {
+    const nextState = await writeNemtDispatchState(body, {
+      allowTripShrink,
+      shrinkReason,
+      actorId: String(session?.user?.id || ''),
+      actorName: String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim(),
+      actorRole: String(session?.user?.role || '').trim()
+    });
+    return NextResponse.json({
+      ...nextState,
+      ok: true
+    });
+  } catch (error) {
+    return internalError(error);
+  }
 }

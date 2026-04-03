@@ -71,7 +71,10 @@ const getDocumentUrl = value => {
   return String(value.dataUrl || value.url || value.path || '').trim();
 };
 
+const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
 export async function GET() {
+  try {
   const session = await getServerSession(options);
   if (!session?.user?.id) {
     return NextResponse.json({ ok: false, error: 'Authentication required.' }, { status: 401 });
@@ -131,4 +134,7 @@ export async function GET() {
     messages: visibleMessages,
     updatedAt: Date.now()
   });
+  } catch (error) {
+    return internalError(error);
+  }
 }

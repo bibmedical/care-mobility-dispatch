@@ -40,7 +40,10 @@ const appendIncomingDriverThreadMessage = (dispatchThreads, driverId, message) =
   } : thread);
 };
 
+const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
 export async function POST(request) {
+  try {
   const session = await getServerSession(options);
   if (!session?.user?.id) {
     return NextResponse.json({ ok: false, error: 'Authentication required.' }, { status: 401 });
@@ -89,4 +92,7 @@ export async function POST(request) {
   });
 
   return NextResponse.json({ ok: true, message });
+  } catch (error) {
+    return internalError(error);
+  }
 }

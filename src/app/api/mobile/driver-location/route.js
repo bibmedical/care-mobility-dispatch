@@ -3,7 +3,10 @@ import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-sto
 
 const formatCheckpoint = (latitude, longitude) => `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`;
 
+const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
 export async function POST(request) {
+  try {
   const body = await request.json();
   const driverId = String(body?.driverId || '').trim();
   const latitude = Number(body?.latitude);
@@ -45,4 +48,7 @@ export async function POST(request) {
   });
 
   return NextResponse.json({ ok: true, driverId, trackingLastSeen });
+  } catch (error) {
+    return internalError(error);
+  }
 }

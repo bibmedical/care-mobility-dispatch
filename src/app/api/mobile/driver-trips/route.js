@@ -67,7 +67,10 @@ const mapTripForDriver = trip => {
   };
 };
 
+const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
 export async function GET(request) {
+  try {
   const { searchParams } = new URL(request.url);
   const driverId = searchParams.get('driverId');
   const driverCode = searchParams.get('driverCode');
@@ -110,4 +113,7 @@ export async function GET(request) {
     activeTrip: trips[0] ?? null,
     updatedAt: Date.now()
   });
+  } catch (error) {
+    return internalError(error);
+  }
 }

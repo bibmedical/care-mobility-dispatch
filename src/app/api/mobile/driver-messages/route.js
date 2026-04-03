@@ -48,7 +48,10 @@ const appendIncomingDriverThreadMessage = (dispatchThreads, driverId, message) =
   } : thread);
 };
 
+const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
 export async function GET(request) {
+  try {
   const { searchParams } = new URL(request.url);
   const driverLookup = searchParams.get('driverId') || searchParams.get('driverCode');
 
@@ -68,9 +71,13 @@ export async function GET(request) {
   }).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
 
   return NextResponse.json({ ok: true, messages: visibleMessages, driverId: driver.id });
+  } catch (error) {
+    return internalError(error);
+  }
 }
 
 export async function POST(request) {
+  try {
   const body = await request.json();
   const driverLookup = body?.driverId || body?.driverCode;
   const messageText = String(body?.body || '').trim();
@@ -112,4 +119,7 @@ export async function POST(request) {
     dispatchThreads: appendIncomingDriverThreadMessage(dispatchState?.dispatchThreads, driver.id, message)
   });
   return NextResponse.json({ ok: true, message });
+  } catch (error) {
+    return internalError(error);
+  }
 }

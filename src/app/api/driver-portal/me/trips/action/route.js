@@ -47,7 +47,10 @@ const buildTripActionPatch = (trip, action, timestamp) => {
   return null;
 };
 
+const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
 export async function POST(request) {
+  try {
   const session = await getServerSession(options);
   if (!session?.user?.id) {
     return NextResponse.json({ ok: false, error: 'Authentication required.' }, { status: 401 });
@@ -99,4 +102,7 @@ export async function POST(request) {
   });
 
   return NextResponse.json({ ok: true, tripId, action, updatedAt: timestamp });
+  } catch (error) {
+    return internalError(error);
+  }
 }

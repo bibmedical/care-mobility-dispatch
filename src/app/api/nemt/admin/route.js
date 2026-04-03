@@ -16,23 +16,33 @@ const buildForbiddenResponse = () => NextResponse.json({
   status: 403
 });
 
-export async function GET() {
-  const session = await getServerSession(options);
-  if (!session?.user?.id) return buildUnauthorizedResponse();
+const internalError = error => NextResponse.json({ error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
 
-  const payload = await readNemtAdminPayload();
-  return NextResponse.json(payload);
+export async function GET() {
+  try {
+    const session = await getServerSession(options);
+    if (!session?.user?.id) return buildUnauthorizedResponse();
+
+    const payload = await readNemtAdminPayload();
+    return NextResponse.json(payload);
+  } catch (error) {
+    return internalError(error);
+  }
 }
 
 export async function PUT(request) {
-  const session = await getServerSession(options);
-  if (!session?.user?.id) return buildUnauthorizedResponse();
-  if (!isAdminRole(session?.user?.role)) return buildForbiddenResponse();
+  try {
+    const session = await getServerSession(options);
+    if (!session?.user?.id) return buildUnauthorizedResponse();
+    if (!isAdminRole(session?.user?.role)) return buildForbiddenResponse();
 
-  const body = await request.json();
-  const nextState = await writeNemtAdminState(body);
-  return NextResponse.json({
-    ...nextState,
-    ok: true
-  });
+    const body = await request.json();
+    const nextState = await writeNemtAdminState(body);
+    return NextResponse.json({
+      ...nextState,
+      ok: true
+    });
+  } catch (error) {
+    return internalError(error);
+  }
 }
