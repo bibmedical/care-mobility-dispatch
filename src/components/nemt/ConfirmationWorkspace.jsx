@@ -1641,7 +1641,14 @@ const ConfirmationWorkspace = () => {
                 <tbody>
                   {trips.filter(trip => Boolean(trip?.hospitalStatus)).map(trip => (
                     <tr key={trip.id}>
-                      <td className="fw-semibold">{trip.id}</td>
+                      <td className="fw-semibold">
+                        <div>{trip.id}</div>
+                        {trip.clonedFromTripId ? (
+                          <div className="mt-1">
+                            <Badge bg="info" text="dark">CLONED from {trip.clonedFromTripId}</Badge>
+                          </div>
+                        ) : null}
+                      </td>
                       <td>{trip.rider || '-'}</td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
                       <td><span className="badge bg-warning text-dark">{trip.hospitalStatus?.type || 'Hospital'}</span></td>
@@ -2115,7 +2122,7 @@ const ConfirmationWorkspace = () => {
                             size="sm"
                             variant={trip.clonedFromTripId ? 'danger' : 'outline-danger'}
                             title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
-                            style={{ minWidth: 80, fontWeight: trip.clonedFromTripId ? 700 : undefined }}
+                            style={{ minWidth: 110, fontWeight: trip.clonedFromTripId ? 700 : undefined }}
                             onClick={() => {
                               const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
                               if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
@@ -2123,7 +2130,7 @@ const ConfirmationWorkspace = () => {
                               }
                             }}
                           >
-                            {trip.clonedFromTripId ? '🗑 Delete Copy' : 'Delete'}
+                            {trip.clonedFromTripId ? 'Delete Cloned' : 'Delete'}
                           </Button>
                         </div>
                       </td>
