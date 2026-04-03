@@ -124,6 +124,26 @@ const appendAuditEntry = (currentState, entry) => {
   return [...(Array.isArray(currentState?.auditLog) ? currentState.auditLog : []), nextEntry].slice(-MAX_AUDIT_LOG_ENTRIES);
 };
 
+const getActorIdentity = session => {
+  const displayName = String(session?.user?.name || session?.user?.username || session?.user?.email || 'Dispatcher').trim() || 'Dispatcher';
+  const initialsSource = displayName
+    .replace(/@.*/, '')
+    .split(/[^A-Za-z0-9]+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+  const initials = (initialsSource.length > 1
+    ? initialsSource.slice(0, 3).map(part => part.charAt(0))
+    : String(initialsSource[0] || '').slice(0, 3).split(''))
+    .join('')
+    .toUpperCase()
+    .trim();
+
+  return {
+    name: displayName,
+    initials: initials || 'DSP'
+  };
+};
+
 export const useNemtContext = () => {
   const context = use(NemtContext);
   if (!context) {
@@ -953,7 +973,7 @@ export const NemtProvider = ({
     const clonedAt = getMutationTimestamp();
     const cloneToken = String(clonedAt).slice(-6);
     const nextTripId = `${normalizedTripId}-copy-${clonedAt}`;
-    const actorName = String(session?.user?.name || session?.user?.username || session?.user?.email || 'Dispatcher').trim() || 'Dispatcher';
+    const actor = getActorIdentity(session);
 
     updateState(currentState => ({
       ...currentState,
@@ -983,7 +1003,13 @@ export const NemtProvider = ({
         },
         clonedFromTripId: normalizedTripId,
         clonedAt,
-        addedBy: actorName,
+        addedBy: actor.name,
+        addedByInitials: actor.initials,
+        createdBy: actor.name,
+        createdByInitials: actor.initials,
+        createdAt: clonedAt,
+        clonedBy: actor.name,
+        clonedByInitials: actor.initials,
         updatedAt: clonedAt
       }), ...currentState.trips])
     }), {
@@ -997,7 +1023,8 @@ export const NemtProvider = ({
         metadata: {
           sourceTripId: normalizedTripId,
           clonedTripId: nextTripId,
-          actorName
+          actorName: actor.name,
+          actorInitials: actor.initials
         }
       })
     });

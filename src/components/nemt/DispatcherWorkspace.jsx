@@ -34,6 +34,41 @@ const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'toolbar-edit', 'columns', 'map-screen', 'trip-order', 'actions', 'leg-buttons', 'type-buttons'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
 const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['zip-filter', 'route-filter', 'metric-miles', 'metric-duration'];
+const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
+const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+
+const normalizeDispatcherToolbarRows = (row1Value, row2Value, row3Value) => {
+  const normalizeRow = value => (Array.isArray(value) ? value : []).map(item => canonicalizeToolbarBlockId(item)).filter(Boolean);
+  const seen = new Set();
+  const row1 = [];
+  const row2 = [];
+  const row3 = [];
+
+  const appendUnique = (targetRow, blockId) => {
+    if (!ALL_DISPATCHER_TOOLBAR_BLOCKS.includes(blockId) || seen.has(blockId)) return;
+    seen.add(blockId);
+    targetRow.push(blockId);
+  };
+
+  normalizeRow(row1Value).forEach(blockId => appendUnique(row1, blockId));
+  normalizeRow(row2Value).forEach(blockId => appendUnique(row2, blockId));
+  normalizeRow(row3Value).forEach(blockId => appendUnique(row3, blockId));
+
+  for (const blockId of ALL_DISPATCHER_TOOLBAR_BLOCKS) {
+    if (seen.has(blockId)) continue;
+    if (DISPATCHER_ROW1_DEFAULT_BLOCKS.includes(blockId)) {
+      row1.push(blockId);
+      continue;
+    }
+    if (DISPATCHER_ROW2_DEFAULT_BLOCKS.includes(blockId)) {
+      row2.push(blockId);
+      continue;
+    }
+    row3.push(blockId);
+  }
+
+  return { row1, row2, row3 };
+};
 
 const greenToolbarButtonStyle = {
   color: '#08131a',
@@ -573,27 +608,29 @@ const DispatcherWorkspace = () => {
       const storedValue = window.localStorage.getItem(storageKey);
       if (!storedValue) return defaultOrder;
       const parsed = JSON.parse(storedValue);
-      if (!Array.isArray(parsed)) return defaultOrder;
-      const normalized = parsed.filter(blockId => defaultOrder.includes(blockId));
-      const missing = defaultOrder.filter(blockId => !normalized.includes(blockId));
-      const nextOrder = [...normalized, ...missing];
-      return nextOrder.length > 0 ? nextOrder : defaultOrder;
+      return Array.isArray(parsed) ? parsed : defaultOrder;
     };
 
     try {
-      setToolbarRow1Order(loadToolbarOrder(DISPATCHER_ROW1_BLOCKS_KEY, DISPATCHER_ROW1_DEFAULT_BLOCKS));
-      setToolbarRow2Order(loadToolbarOrder(DISPATCHER_ROW2_BLOCKS_KEY, DISPATCHER_ROW2_DEFAULT_BLOCKS));
-      setToolbarRow3Order(loadToolbarOrder(DISPATCHER_ROW3_BLOCKS_KEY, DISPATCHER_ROW3_DEFAULT_BLOCKS));
+      const loadedRow1 = loadToolbarOrder(DISPATCHER_ROW1_BLOCKS_KEY, DISPATCHER_ROW1_DEFAULT_BLOCKS);
+      const loadedRow2 = loadToolbarOrder(DISPATCHER_ROW2_BLOCKS_KEY, DISPATCHER_ROW2_DEFAULT_BLOCKS);
+      const loadedRow3 = loadToolbarOrder(DISPATCHER_ROW3_BLOCKS_KEY, DISPATCHER_ROW3_DEFAULT_BLOCKS);
+      const normalizedRows = normalizeDispatcherToolbarRows(loadedRow1, loadedRow2, loadedRow3);
+      setToolbarRow1Order(normalizedRows.row1);
+      setToolbarRow2Order(normalizedRows.row2);
+      setToolbarRow3Order(normalizedRows.row3);
     } catch {
       // Ignore corrupted local toolbar layout preferences.
     }
   }, []);
 
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
-    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
+    const normalizedToBlockId = canonicalizeToolbarBlockId(toBlockId);
+    if (!normalizedFromBlockId || !normalizedToBlockId || normalizedFromBlockId === normalizedToBlockId) return;
     setToolbarRow1Order(currentOrder => {
-      const fromIndex = currentOrder.indexOf(fromBlockId);
-      const toIndex = currentOrder.indexOf(toBlockId);
+      const fromIndex = currentOrder.findIndex(blockId => canonicalizeToolbarBlockId(blockId) === normalizedFromBlockId);
+      const toIndex = currentOrder.findIndex(blockId => canonicalizeToolbarBlockId(blockId) === normalizedToBlockId);
       if (fromIndex === -1 || toIndex === -1) return currentOrder;
       const nextOrder = [...currentOrder];
       const [moved] = nextOrder.splice(fromIndex, 1);
@@ -603,10 +640,12 @@ const DispatcherWorkspace = () => {
   };
 
   const moveToolbarRow2Block = (fromBlockId, toBlockId) => {
-    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
+    const normalizedToBlockId = canonicalizeToolbarBlockId(toBlockId);
+    if (!normalizedFromBlockId || !normalizedToBlockId || normalizedFromBlockId === normalizedToBlockId) return;
     setToolbarRow2Order(currentOrder => {
-      const fromIndex = currentOrder.indexOf(fromBlockId);
-      const toIndex = currentOrder.indexOf(toBlockId);
+      const fromIndex = currentOrder.findIndex(blockId => canonicalizeToolbarBlockId(blockId) === normalizedFromBlockId);
+      const toIndex = currentOrder.findIndex(blockId => canonicalizeToolbarBlockId(blockId) === normalizedToBlockId);
       if (fromIndex === -1 || toIndex === -1) return currentOrder;
       const nextOrder = [...currentOrder];
       const [moved] = nextOrder.splice(fromIndex, 1);
@@ -616,10 +655,12 @@ const DispatcherWorkspace = () => {
   };
 
   const moveToolbarRow3Block = (fromBlockId, toBlockId) => {
-    if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
+    const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
+    const normalizedToBlockId = canonicalizeToolbarBlockId(toBlockId);
+    if (!normalizedFromBlockId || !normalizedToBlockId || normalizedFromBlockId === normalizedToBlockId) return;
     setToolbarRow3Order(currentOrder => {
-      const fromIndex = currentOrder.indexOf(fromBlockId);
-      const toIndex = currentOrder.indexOf(toBlockId);
+      const fromIndex = currentOrder.findIndex(blockId => canonicalizeToolbarBlockId(blockId) === normalizedFromBlockId);
+      const toIndex = currentOrder.findIndex(blockId => canonicalizeToolbarBlockId(blockId) === normalizedToBlockId);
       if (fromIndex === -1 || toIndex === -1) return currentOrder;
       const nextOrder = [...currentOrder];
       const [moved] = nextOrder.splice(fromIndex, 1);
@@ -637,39 +678,46 @@ const DispatcherWorkspace = () => {
   };
 
   const moveToolbarBlockAcrossRows = (fromBlockId, targetRow, targetBlockId = null) => {
-    if (!fromBlockId || !targetRow) return;
+    const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
+    const normalizedTargetBlockId = canonicalizeToolbarBlockId(targetBlockId);
+    if (!normalizedFromBlockId || !targetRow) return;
 
-    const nextRow1 = toolbarRow1Order.filter(currentId => currentId !== fromBlockId);
-    const nextRow2 = toolbarRow2Order.filter(currentId => currentId !== fromBlockId);
-    const nextRow3 = toolbarRow3Order.filter(currentId => currentId !== fromBlockId);
+    const nextRow1 = toolbarRow1Order.filter(currentId => canonicalizeToolbarBlockId(currentId) !== normalizedFromBlockId);
+    const nextRow2 = toolbarRow2Order.filter(currentId => canonicalizeToolbarBlockId(currentId) !== normalizedFromBlockId);
+    const nextRow3 = toolbarRow3Order.filter(currentId => canonicalizeToolbarBlockId(currentId) !== normalizedFromBlockId);
 
     const insertInto = row => {
-      if (!targetBlockId) {
-        row.push(fromBlockId);
+      if (!normalizedTargetBlockId) {
+        row.push(normalizedFromBlockId);
         return;
       }
-      const targetIndex = row.indexOf(targetBlockId);
+      const targetIndex = row.findIndex(currentId => canonicalizeToolbarBlockId(currentId) === normalizedTargetBlockId);
       if (targetIndex === -1) {
-        row.push(fromBlockId);
+        row.push(normalizedFromBlockId);
         return;
       }
-      row.splice(targetIndex, 0, fromBlockId);
+      row.splice(targetIndex, 0, normalizedFromBlockId);
     };
 
     if (targetRow === 'row1') insertInto(nextRow1);
     if (targetRow === 'row2') insertInto(nextRow2);
     if (targetRow === 'row3') insertInto(nextRow3);
 
-    setToolbarRow1Order(nextRow1);
-    setToolbarRow2Order(nextRow2);
-    setToolbarRow3Order(nextRow3);
+    const normalizedRows = normalizeDispatcherToolbarRows(nextRow1, nextRow2, nextRow3);
+    setToolbarRow1Order(normalizedRows.row1);
+    setToolbarRow2Order(normalizedRows.row2);
+    setToolbarRow3Order(normalizedRows.row3);
   };
 
   const handleSaveToolbarLayout = () => {
+    const normalizedRows = normalizeDispatcherToolbarRows(toolbarRow1Order, toolbarRow2Order, toolbarRow3Order);
+    setToolbarRow1Order(normalizedRows.row1);
+    setToolbarRow2Order(normalizedRows.row2);
+    setToolbarRow3Order(normalizedRows.row3);
     try {
-      window.localStorage.setItem(DISPATCHER_ROW1_BLOCKS_KEY, JSON.stringify(toolbarRow1Order));
-      window.localStorage.setItem(DISPATCHER_ROW2_BLOCKS_KEY, JSON.stringify(toolbarRow2Order));
-      window.localStorage.setItem(DISPATCHER_ROW3_BLOCKS_KEY, JSON.stringify(toolbarRow3Order));
+      window.localStorage.setItem(DISPATCHER_ROW1_BLOCKS_KEY, JSON.stringify(normalizedRows.row1));
+      window.localStorage.setItem(DISPATCHER_ROW2_BLOCKS_KEY, JSON.stringify(normalizedRows.row2));
+      window.localStorage.setItem(DISPATCHER_ROW3_BLOCKS_KEY, JSON.stringify(normalizedRows.row3));
       setStatusMessage('Dispatcher toolbar layout guardado.');
     } catch {
       setStatusMessage('No se pudo guardar el dispatcher toolbar layout.');
@@ -699,7 +747,7 @@ const DispatcherWorkspace = () => {
   };
 
   const renderToolbarRow1Block = blockId => {
-    switch (blockId) {
+    switch (canonicalizeToolbarBlockId(blockId)) {
       case 'trip-summary':
         return <>
             <strong>Trips</strong>
@@ -743,7 +791,7 @@ const DispatcherWorkspace = () => {
   };
 
   const renderToolbarRow2Block = blockId => {
-    switch (blockId) {
+    switch (canonicalizeToolbarBlockId(blockId)) {
       case 'stats':
         return <>
             <Badge bg="primary">{trips.length} trips</Badge>
@@ -807,7 +855,7 @@ const DispatcherWorkspace = () => {
   };
 
   const renderToolbarRow3Block = blockId => {
-    switch (blockId) {
+    switch (canonicalizeToolbarBlockId(blockId)) {
       case 'zip-filter':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">ZIP</span>
@@ -844,6 +892,8 @@ const DispatcherWorkspace = () => {
         return null;
     }
   };
+
+  const renderToolbarBlock = blockId => renderToolbarRow1Block(blockId) || renderToolbarRow2Block(blockId) || renderToolbarRow3Block(blockId);
 
   const activeDateTripIdSet = useMemo(() => {
     if (tripDateFilter === 'all') return null;
@@ -1979,7 +2029,7 @@ const DispatcherWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {renderToolbarRow1Block(blockId) || isToolbarEditMode ? renderToolbarRow1Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                      {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
                 </div>
                 
@@ -2019,7 +2069,7 @@ const DispatcherWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {renderToolbarRow2Block(blockId) || isToolbarEditMode ? renderToolbarRow2Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                      {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
                 </div>
                 
@@ -2059,7 +2109,7 @@ const DispatcherWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {renderToolbarRow3Block(blockId) || isToolbarEditMode ? renderToolbarRow3Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
+                      {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
                 </div>
               </div>

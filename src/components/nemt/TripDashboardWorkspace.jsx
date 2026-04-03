@@ -1451,9 +1451,24 @@ const TripDashboardWorkspace = () => {
   };
 
   const getTripAddedByLabel = trip => {
-    if (!activeClosedRouteState) return '';
     const tripId = normalizeTripId(trip?.id);
     if (!tripId) return '';
+    const formatActorValue = (name, initials) => {
+      const normalizedName = String(name || '').trim();
+      const normalizedInitials = String(initials || '').trim().toUpperCase();
+      if (normalizedName && normalizedInitials && normalizedName.toUpperCase() !== normalizedInitials) {
+        return `${normalizedName} (${normalizedInitials})`;
+      }
+      return normalizedName || normalizedInitials;
+    };
+
+    const persistedCloneActor = formatActorValue(trip?.clonedBy, trip?.clonedByInitials);
+    if (persistedCloneActor) return `Cloned by ${persistedCloneActor}`;
+
+    const persistedCreateActor = formatActorValue(trip?.createdBy || trip?.addedBy, trip?.createdByInitials || trip?.addedByInitials);
+    if (persistedCreateActor) return `Created by ${persistedCreateActor}`;
+
+    if (!activeClosedRouteState) return '';
     const addedByTripId = activeClosedRouteState.addedByTripId && typeof activeClosedRouteState.addedByTripId === 'object' ? activeClosedRouteState.addedByTripId : {};
     const entry = addedByTripId[tripId];
     if (!entry) return '';
