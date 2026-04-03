@@ -198,6 +198,20 @@ const syncUserIntoDriverState = (drivers, user) => {
   return drivers.map((driver, index) => index === driverIndex ? nextDriver : driver);
 };
 
+const dedupeLinkedDrivers = drivers => {
+  const seenKeys = new Set();
+  return (Array.isArray(drivers) ? drivers : []).filter(driver => {
+    const authUserId = String(driver?.authUserId || '').trim();
+    const usernameKey = normalizeAuthValue(driver?.username);
+    const emailKey = normalizeAuthValue(driver?.email);
+    const key = authUserId ? `auth:${authUserId}` : usernameKey ? `user:${usernameKey}` : emailKey ? `email:${emailKey}` : `id:${String(driver?.id || '').trim()}`;
+    if (!key) return true;
+    if (seenKeys.has(key)) return false;
+    seenKeys.add(key);
+    return true;
+  });
+};
+
 const syncUsersToAdminState = async (users, previousUsers = []) => {
   const adminState = await readNemtAdminState();
   const nextUsersById = new Map(users.map(user => [user.id, user]));
@@ -215,6 +229,8 @@ const syncUsersToAdminState = async (users, previousUsers = []) => {
   users.forEach(user => {
     nextDrivers = syncUserIntoDriverState(nextDrivers, user);
   });
+
+  nextDrivers = dedupeLinkedDrivers(nextDrivers);
 
   await writeNemtAdminState({
     ...adminState,
@@ -309,6 +325,20 @@ export const readSystemUsersState = async () => {
       protectedUserIds: recoveredProtected,
       users: recoveredUsers
     });
+  }
+
+  // Self-heal: if Users exist but Drivers mirror is empty/desynced, rebuild linked drivers from Users.
+  const adminState = await readNemtAdminState();
+  const driverRoleUsers = effectiveState.users.map(user => enrichSystemUser(user, effectiveState.protectedUserIds)).filter(user => isDriverRole(user.role));
+  const linkedDriverCount = (Array.isArray(adminState?.drivers) ? adminState.drivers : []).filter(driver => {
+    const authUserId = String(driver?.authUserId || '').trim();
+    const username = normalizeAuthValue(driver?.username);
+    const email = normalizeAuthValue(driver?.email);
+    return driverRoleUsers.some(user => user.id === authUserId || normalizeAuthValue(user.username) === username || normalizeAuthValue(user.email) === email);
+  }).length;
+
+  if (driverRoleUsers.length > 0 && linkedDriverCount === 0) {
+    await syncUsersToAdminState(effectiveState.users.map(user => enrichSystemUser(user, effectiveState.protectedUserIds)), []);
   }
 
   return effectiveState;
