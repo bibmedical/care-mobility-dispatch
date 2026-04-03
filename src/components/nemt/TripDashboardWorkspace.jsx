@@ -649,7 +649,7 @@ const TripDashboardWorkspace = () => {
   const [aiPlannerLateToleranceMinutes, setAiPlannerLateToleranceMinutes] = useState('15');
   const [aiPlannerPreview, setAiPlannerPreview] = useState(null);
   const [aiPlannerLoading, setAiPlannerLoading] = useState(false);
-  const [aiPlannerCollapsed, setAiPlannerCollapsed] = useState(false);
+  const [aiPlannerCollapsed, setAiPlannerCollapsed] = useState(true);
   const workspaceRef = useRef(null);
   const tripTableTopScrollerRef = useRef(null);
   const tripTableBottomScrollerRef = useRef(null);
@@ -1982,9 +1982,23 @@ const TripDashboardWorkspace = () => {
     document.body.style.cursor = 'col-resize';
   };
 
+  const tripHeaderCellStyle = {
+    paddingTop: '0.4rem',
+    paddingBottom: '0.4rem',
+    lineHeight: 1,
+    fontSize: '0.82rem'
+  };
+
   const renderTripHeader = (columnKey, label, width) => {
     const resolvedWidth = columnWidths[columnKey] ?? width;
-    return <th style={resolvedWidth ? { width: resolvedWidth, minWidth: resolvedWidth, maxWidth: resolvedWidth, position: 'relative' } : {
+    return <th style={resolvedWidth ? {
+      ...tripHeaderCellStyle,
+      width: resolvedWidth,
+      minWidth: resolvedWidth,
+      maxWidth: resolvedWidth,
+      position: 'relative'
+    } : {
+      ...tripHeaderCellStyle,
       position: 'relative'
     }}>
       <button type="button" onClick={() => handleTripSortChange(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
@@ -3183,7 +3197,7 @@ const TripDashboardWorkspace = () => {
                 <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content' }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
-                      <th style={{ width: 48 }}>
+                      <th style={{ ...tripHeaderCellStyle, width: 48 }}>
                         <input
                           type="checkbox"
                           checked={allVisibleSelected}
@@ -3200,8 +3214,8 @@ const TripDashboardWorkspace = () => {
                         />
                         <div className="small fw-semibold mt-1" style={{ lineHeight: 1 }}>{selectedTripIds.length}</div>
                       </th>
-                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
-                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
+                      <th style={{ ...tripHeaderCellStyle, width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
+                      <th style={{ ...tripHeaderCellStyle, width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
                       {visibleTripColumns.includes('trip') ? renderTripHeader('trip', 'Trip / Ride') : null}
                       {visibleTripColumns.includes('status') ? renderTripHeader('status', 'Status') : null}
                       {visibleTripColumns.includes('driver') ? renderTripHeader('driver', 'Driver') : null}

@@ -87,6 +87,37 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => normalizeTri
   updatedAt: Number(currentTrip?.updatedAt) || Number(importedTrip?.updatedAt) || 0
 });
 
+const dedupeImportedTripBatch = trips => {
+  const dedupedTrips = [];
+  const lookupToTripIndex = new Map();
+
+  (Array.isArray(trips) ? trips : []).forEach(importedTrip => {
+    const lookupKeys = getTripLookupKeys(importedTrip);
+    const existingIndex = lookupKeys.map(key => lookupToTripIndex.get(key)).find(index => Number.isInteger(index));
+
+    if (!Number.isInteger(existingIndex)) {
+      const nextIndex = dedupedTrips.length;
+      dedupedTrips.push(importedTrip);
+      lookupKeys.forEach(key => {
+        if (key) lookupToTripIndex.set(key, nextIndex);
+      });
+      return;
+    }
+
+    const mergedDuplicate = normalizeTripRecord({
+      ...dedupedTrips[existingIndex],
+      ...importedTrip,
+      id: dedupedTrips[existingIndex]?.id || importedTrip?.id
+    });
+    dedupedTrips[existingIndex] = mergedDuplicate;
+    getTripLookupKeys(mergedDuplicate).forEach(key => {
+      if (key) lookupToTripIndex.set(key, existingIndex);
+    });
+  });
+
+  return dedupedTrips;
+};
+
 const appendAuditEntry = (currentState, entry) => {
   const nextEntry = normalizeDispatchAuditRecord(entry);
   return [...(Array.isArray(currentState?.auditLog) ? currentState.auditLog : []), nextEntry].slice(-MAX_AUDIT_LOG_ENTRIES);
@@ -773,7 +804,7 @@ export const NemtProvider = ({
 
   const upsertImportedTrips = trips => updateState(currentState => {
     const currentTrips = normalizeTripRecords(currentState.trips);
-    const importedTrips = normalizeTripRecords(trips);
+    const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
     const importedServiceDateKeys = new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean));
     const currentTripsForImportedDays = currentTrips.filter(trip => importedServiceDateKeys.has(getTripServiceDateKey(trip)));
     const currentTripLookup = new Map();

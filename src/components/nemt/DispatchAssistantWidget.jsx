@@ -1040,7 +1040,7 @@ const DispatchAssistantWidget = () => {
             onClick={() => setWidgetHidden(true)}
             style={{ ...widgetStyles.launcherModeButton, gridColumn: '1 / -1', opacity: 0.7 }}
           >
-            Esconder
+            Hide
           </Button>
         </div>
       </div>
