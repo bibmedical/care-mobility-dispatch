@@ -350,6 +350,7 @@ const ConfirmationWorkspace = () => {
   const [patientStatusSourceNote, setPatientStatusSourceNote] = useState('');
   const [showOutputColumnPicker, setShowOutputColumnPicker] = useState(false);
   const [outputColumns, setOutputColumns] = useState([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
+  const [showRehabBlacklistPanel, setShowRehabBlacklistPanel] = useState(false);
 
   const optOutList = useMemo(() => (Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : EMPTY_ARRAY), [smsData?.sms?.optOutList]);
   const blacklistEntries = useMemo(() => (Array.isArray(blacklistData?.entries) ? blacklistData.entries : EMPTY_ARRAY), [blacklistData?.entries]);
@@ -386,8 +387,11 @@ const ConfirmationWorkspace = () => {
     cancelled: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Cancelled').length,
     needsCall: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Needs Call').length,
     notSent: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Not Sent').length,
-    optedOut: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length
-  }), [tripBlockingMap, trips]);
+    optedOut: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length,
+    rehabHospital: trips.filter(trip => Boolean(trip?.hospitalStatus)).length,
+    blacklisted: blacklistEntries.filter(entry => entry.status === 'Active').length,
+    clones: trips.filter(trip => Boolean(trip?.clonedFromTripId)).length
+  }), [blacklistEntries, tripBlockingMap, trips]);
 
   const patientHistoryRows = useMemo(() => {
     const term = patientSearch.trim().toLowerCase();
@@ -1595,9 +1599,159 @@ const ConfirmationWorkspace = () => {
         <Col md={6} xl={2}>
           <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Opted Out</div><h4 className="mb-0">{summary.optedOut}</h4></CardBody></Card>
         </Col>
+        <Col md={6} xl={2}>
+          <Card
+            style={{ ...surfaceStyles.card, cursor: 'pointer', borderColor: summary.rehabHospital > 0 ? '#f59e0b' : undefined }}
+            className="h-100 border"
+            onClick={() => setShowRehabBlacklistPanel(true)}
+            title="Click to see Rehab/Hospital patients and Blacklist"
+          >
+            <CardBody>
+              <div className="text-warning small mb-1 fw-semibold">Rehab / Hospital</div>
+              <h4 className="mb-0 text-warning">{summary.rehabHospital}</h4>
+              <div className="small text-muted mt-1">Blacklist: {summary.blacklisted} · Copies: {summary.clones}</div>
+            </CardBody>
+          </Card>
+        </Col>
       </Row>
 
-      <Card style={surfaceStyles.card} className="border mb-3">
+      {/* ── Rehab / Blacklist / Clones panel ─────────────────────────────── */}
+      <Modal show={showRehabBlacklistPanel} onHide={() => setShowRehabBlacklistPanel(false)} size="xl" centered scrollable>
+        <Modal.Header closeButton>
+          <Modal.Title>Rehab / Hospital · Blacklist · Cloned Trips</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {/* Rehab / Hospital section */}
+          <h6 className="text-uppercase text-warning fw-bold mb-2">Rehab / Hospital <span className="badge bg-warning text-dark ms-1">{summary.rehabHospital}</span></h6>
+          {trips.filter(trip => Boolean(trip?.hospitalStatus)).length > 0 ? (
+            <div className="table-responsive mb-4">
+              <table className="table table-sm table-bordered mb-0" style={{ fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th>Trip ID</th>
+                    <th>Rider</th>
+                    <th>Phone</th>
+                    <th>Type</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Notes</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trips.filter(trip => Boolean(trip?.hospitalStatus)).map(trip => (
+                    <tr key={trip.id}>
+                      <td className="fw-semibold">{trip.id}</td>
+                      <td>{trip.rider || '-'}</td>
+                      <td>{trip.patientPhoneNumber || '-'}</td>
+                      <td><span className="badge bg-warning text-dark">{trip.hospitalStatus?.type || 'Hospital'}</span></td>
+                      <td>{trip.hospitalStatus?.startDate || '-'}</td>
+                      <td>{trip.hospitalStatus?.endDate || '-'}</td>
+                      <td style={{ maxWidth: 200, whiteSpace: 'normal' }}>{trip.hospitalStatus?.notes || '-'}</td>
+                      <td>
+                        <div className="d-flex flex-column gap-1">
+                          <Button size="sm" variant="outline-warning" onClick={() => { setShowRehabBlacklistPanel(false); handleRemoveHospitalRehab(trip); }}>Remove RH</Button>
+                          <Button size="sm" variant="outline-danger" onClick={() => { if (window.confirm(`DELETE trip ${trip.id}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}>Delete</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="text-muted small mb-4">No trips in Rehab/Hospital status right now.</p>}
+
+          {/* Blacklist section */}
+          <h6 className="text-uppercase text-danger fw-bold mb-2">Blacklist <span className="badge bg-danger ms-1">{summary.blacklisted}</span></h6>
+          {blacklistEntries.filter(entry => entry.status === 'Active').length > 0 ? (
+            <div className="table-responsive mb-4">
+              <table className="table table-sm table-bordered mb-0" style={{ fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Category</th>
+                    <th>Hold Until</th>
+                    <th>Notes</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blacklistEntries.filter(entry => entry.status === 'Active').map(entry => (
+                    <tr key={entry.id}>
+                      <td className="fw-semibold">{entry.name || '-'}</td>
+                      <td>{entry.phone || '-'}</td>
+                      <td><span className="badge bg-danger">{entry.category || 'Blacklist'}</span></td>
+                      <td>{entry.holdUntil || 'Indefinite'}</td>
+                      <td style={{ maxWidth: 200, whiteSpace: 'normal' }}>{entry.notes || '-'}</td>
+                      <td>
+                        <Button
+                          size="sm"
+                          variant="outline-secondary"
+                          onClick={async () => {
+                            if (!window.confirm(`Remove ${entry.name || 'this entry'} from blacklist?`)) return;
+                            const nextEntries = blacklistEntries.map(e => e.id === entry.id ? { ...e, status: 'Removed', updatedAt: new Date().toISOString() } : e);
+                            await saveBlacklistData({ version: blacklistData?.version ?? 1, entries: nextEntries });
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="text-muted small mb-4">No active blacklist entries.</p>}
+
+          {/* Cloned trips section */}
+          <h6 className="text-uppercase text-info fw-bold mb-2">Cloned Trips <span className="badge bg-info text-dark ms-1">{summary.clones}</span></h6>
+          {trips.filter(trip => Boolean(trip?.clonedFromTripId)).length > 0 ? (
+            <div className="table-responsive">
+              <table className="table table-sm table-bordered mb-0" style={{ fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th>Copy ID</th>
+                    <th>Original Trip</th>
+                    <th>Rider</th>
+                    <th>Phone</th>
+                    <th>Pickup</th>
+                    <th>Status</th>
+                    <th>Cloned By</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trips.filter(trip => Boolean(trip?.clonedFromTripId)).map(trip => (
+                    <tr key={trip.id} style={{ backgroundColor: 'rgba(6,182,212,0.05)' }}>
+                      <td className="fw-semibold text-info">{trip.id}</td>
+                      <td>{trip.clonedFromTripId}</td>
+                      <td>{trip.rider || '-'}</td>
+                      <td>{trip.patientPhoneNumber || '-'}</td>
+                      <td>{trip.scheduledPickup || trip.pickup || '-'}</td>
+                      <td>{trip.status || '-'}</td>
+                      <td>{trip.clonedBy || '-'}</td>
+                      <td>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => { if (window.confirm(`DELETE COPY ${trip.id}\nOriginal: ${trip.clonedFromTripId}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}
+                        >
+                          🗑 Delete Copy
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="text-muted small">No cloned trips found.</p>}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowRehabBlacklistPanel(false)}>Close</Button>
+        </Modal.Footer>
+      </Modal>
+
         <CardBody>
           <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 align-items-start align-items-xl-center">
             <div>
@@ -1956,6 +2110,20 @@ const ConfirmationWorkspace = () => {
                               Remove RH
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant={trip.clonedFromTripId ? 'danger' : 'outline-danger'}
+                            title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
+                            style={{ minWidth: 80, fontWeight: trip.clonedFromTripId ? 700 : undefined }}
+                            onClick={() => {
+                              const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
+                              if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
+                                deleteTripRecord(trip.id);
+                              }
+                            }}
+                          >
+                            {trip.clonedFromTripId ? '🗑 Delete Copy' : 'Delete'}
+                          </Button>
                         </div>
                       </td>
                     </tr>;
