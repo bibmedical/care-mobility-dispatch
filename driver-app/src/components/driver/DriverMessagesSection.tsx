@@ -1,7 +1,6 @@
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { formatShortClock } from './driverUtils';
 import { DriverMessage } from '../../types/driver';
@@ -52,36 +51,20 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (permission.status !== 'granted') return;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.6,
-      base64: true,
-      allowsEditing: true
-    });
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.35,
+        base64: true,
+        allowsEditing: true
+      });
 
-    if (result.canceled || !result.assets?.[0]?.uri) return;
+      if (result.canceled || !result.assets?.[0]?.base64) return;
 
-    const asset = result.assets[0];
-    const longestSide = Math.max(asset.width || 0, asset.height || 0);
-    const resizeTarget = longestSide > 1280 ? 1280 : longestSide || 1280;
-    const resizeAction = asset.width && asset.height
-      ? asset.width >= asset.height
-        ? { width: resizeTarget }
-        : { height: resizeTarget }
-      : { width: 1280 };
-
-    const manipulated = await manipulateAsync(
-      asset.uri,
-      [{ resize: resizeAction }],
-      {
-        compress: 0.45,
-        format: SaveFormat.JPEG,
-        base64: true
-      }
-    );
-
-    if (!manipulated.base64) return;
-    setSelectedPhotoDataUrl(`data:image/jpeg;base64,${manipulated.base64}`);
+      setSelectedPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    } catch {
+      setSelectedPhotoDataUrl('');
+    }
   };
 
   const sendCurrentMessage = async () => {
