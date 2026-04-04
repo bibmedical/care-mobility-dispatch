@@ -1,5 +1,6 @@
 import 'leaflet/dist/leaflet.css';
 import DispatcherWorkspace from '@/components/nemt/DispatcherWorkspace';
+import styles from './dispatcher-page.module.css';
 
 export const metadata = {
   title: 'Dispatcher'
@@ -7,16 +8,7 @@ export const metadata = {
 
 const DispatcherPage = () => {
   return <>
-      <style jsx global>{`
-        .page-wrapper .page-content {
-          padding-bottom: 8px !important;
-        }
-
-        .page-wrapper .page-content .container-fluid {
-          padding-bottom: 0 !important;
-        }
-      `}</style>
-      <div data-dispatcher-page-root="true" style={{ marginBottom: -8 }}>
+      <div className={styles.dispatcherPageRoot} data-dispatcher-page-root="true" style={{ marginBottom: -8 }}>
         <DispatcherWorkspace />
       </div>
     </>;
