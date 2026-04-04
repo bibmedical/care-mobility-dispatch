@@ -8,8 +8,34 @@ import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Card, CardBody, Col, ProgressBar, Row, Spinner, Table } from 'react-bootstrap';
+
+const OPERATIONAL_ALERT_TYPES = new Set(['no-departure-alert']);
+
+const getStartOfDay = reference => {
+  const nextDate = new Date(reference);
+  nextDate.setHours(0, 0, 0, 0);
+  return nextDate;
+};
+
+const getStartOfWeek = reference => {
+  const nextDate = getStartOfDay(reference);
+  const day = nextDate.getDay();
+  nextDate.setDate(nextDate.getDate() - day);
+  return nextDate;
+};
+
+const getStartOfMonth = reference => new Date(reference.getFullYear(), reference.getMonth(), 1);
+
+const toTimestamp = value => {
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const clampDisciplineScore = value => Math.max(0, Math.min(100, Math.round(value)));
+
+const computeDisciplineScore = ({ documentAlerts = 0, activeFaults = 0, faultsToday = 0, faultsMonth = 0 }) => clampDisciplineScore(100 - documentAlerts * 5 - activeFaults * 25 - faultsToday * 10 - faultsMonth * 3);
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -125,16 +151,104 @@ const PerformanceDashboardWorkspace = () => {
   };
   const { data, loading } = useNemtAdminApi();
   const { drivers: dispatchDrivers, trips, routePlans } = useNemtContext();
+  const [operationalAlerts, setOperationalAlerts] = useState([]);
+  const [operationalAlertsLoading, setOperationalAlertsLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOperationalAlerts = async () => {
+      try {
+        const response = await fetch('/api/system-messages', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Unable to load operational alerts (${response.status})`);
+        const payload = await response.json();
+        const nextAlerts = (Array.isArray(payload?.messages) ? payload.messages : [])
+          .filter(message => OPERATIONAL_ALERT_TYPES.has(String(message?.type || '').trim()))
+          .sort((left, right) => new Date(right?.createdAt || 0).getTime() - new Date(left?.createdAt || 0).getTime());
+
+        if (isMounted) {
+          setOperationalAlerts(nextAlerts);
+        }
+      } catch {
+        if (isMounted) {
+          setOperationalAlerts([]);
+        }
+      } finally {
+        if (isMounted) {
+          setOperationalAlertsLoading(false);
+        }
+      }
+    };
+
+    loadOperationalAlerts();
+    const intervalId = window.setInterval(loadOperationalAlerts, 30000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const analytics = useMemo(() => {
+    const now = new Date();
+    const startOfDay = getStartOfDay(now).getTime();
+    const startOfWeek = getStartOfWeek(now).getTime();
+    const startOfMonth = getStartOfMonth(now).getTime();
     const adminDrivers = data?.drivers ?? [];
     const vehicles = data?.vehicles ?? [];
     const groupings = data?.groupings ?? [];
-    const driverAlerts = adminDrivers.map(driver => ({
-      id: driver.id,
-      name: `${driver.firstName} ${driver.lastName}`.trim(),
-      alerts: getDocumentAlerts(driver)
-    })).filter(item => item.alerts.length > 0);
+    const activeOperationalAlerts = operationalAlerts.filter(alert => String(alert?.status || '').trim().toLowerCase() === 'active');
+    const operationalAlertsByDriver = operationalAlerts.reduce((accumulator, alert) => {
+      const key = String(alert?.driverId || '').trim();
+      if (!key) return accumulator;
+      accumulator[key] = accumulator[key] || [];
+      accumulator[key].push(alert);
+      return accumulator;
+    }, {});
+    const activeOperationalAlertsByDriver = activeOperationalAlerts.reduce((accumulator, alert) => {
+      const key = String(alert?.driverId || '').trim();
+      if (!key) return accumulator;
+      accumulator[key] = accumulator[key] || [];
+      accumulator[key].push(alert);
+      return accumulator;
+    }, {});
+    const operationalFaultTotals = operationalAlerts.reduce((totals, alert) => {
+      const createdAt = toTimestamp(alert?.createdAt);
+      if (createdAt >= startOfDay) totals.today += 1;
+      if (createdAt >= startOfWeek) totals.week += 1;
+      if (createdAt >= startOfMonth) totals.month += 1;
+      if (String(alert?.status || '').trim().toLowerCase() === 'active') totals.active += 1;
+      return totals;
+    }, {
+      active: 0,
+      today: 0,
+      week: 0,
+      month: 0
+    });
+    const driverAlerts = adminDrivers.map(driver => {
+      const documentAlerts = getDocumentAlerts(driver);
+      const allOperationalDriverAlerts = operationalAlertsByDriver[String(driver.id || '').trim()] || [];
+      const activeDriverOperationalAlerts = activeOperationalAlertsByDriver[String(driver.id || '').trim()] || [];
+      const faultsToday = allOperationalDriverAlerts.filter(alert => toTimestamp(alert?.createdAt) >= startOfDay).length;
+      const faultsMonth = allOperationalDriverAlerts.filter(alert => toTimestamp(alert?.createdAt) >= startOfMonth).length;
+      return {
+        id: driver.id,
+        name: `${driver.firstName} ${driver.lastName}`.trim(),
+        alerts: documentAlerts,
+        operationalAlerts: activeDriverOperationalAlerts,
+        operationalAlertHistory: allOperationalDriverAlerts,
+        activeOperationalFaults: activeDriverOperationalAlerts.length,
+        faultsToday,
+        faultsMonth,
+        disciplineScore: computeDisciplineScore({
+          documentAlerts: documentAlerts.length,
+          activeFaults: activeDriverOperationalAlerts.length,
+          faultsToday,
+          faultsMonth
+        }),
+        totalAlerts: documentAlerts.length + activeDriverOperationalAlerts.length
+      };
+    }).filter(item => item.totalAlerts > 0);
     const counts = buildStatusMetrics(trips);
     const onlineDrivers = adminDrivers.filter(isDriverOnline).length;
     const billableTrips = trips.filter(isTripBillable);
@@ -146,6 +260,7 @@ const PerformanceDashboardWorkspace = () => {
     const cancellationRate = trips.length > 0 ? counts.canceled / trips.length * 100 : 0;
     const avgTripsPerDriver = adminDrivers.length > 0 ? (counts.completed + counts.assigned + counts.inProgress) / adminDrivers.length : 0;
     const readyDrivers = adminDrivers.filter(driver => driver.groupingId === groupings.find(group => group.name === 'Dispatch Ready')?.id).length;
+    const driversWithOperationalAlerts = Object.keys(activeOperationalAlertsByDriver).length;
 
     const leaderboard = adminDrivers.map(driver => {
       const driverTrips = trips.filter(trip => trip.driverId === driver.id);
@@ -154,6 +269,16 @@ const PerformanceDashboardWorkspace = () => {
       const canceled = driverTrips.filter(trip => ['canceled', 'cancelled'].includes(String(trip.status).toLowerCase())).length;
       const revenue = driverTrips.reduce((sum, trip) => sum + getTripBillingAmount(trip), 0);
       const serviceMinutes = driverTrips.reduce((sum, trip) => sum + getTripServiceMinutes(trip), 0);
+      const documentAlerts = getDocumentAlerts(driver).length;
+      const operationalDriverAlerts = activeOperationalAlertsByDriver[String(driver.id || '').trim()] || [];
+      const monthlyOperationalFaults = (operationalAlertsByDriver[String(driver.id || '').trim()] || []).filter(alert => toTimestamp(alert?.createdAt) >= startOfMonth).length;
+      const dailyOperationalFaults = (operationalAlertsByDriver[String(driver.id || '').trim()] || []).filter(alert => toTimestamp(alert?.createdAt) >= startOfDay).length;
+      const disciplineScore = computeDisciplineScore({
+        documentAlerts,
+        activeFaults: operationalDriverAlerts.length,
+        faultsToday: dailyOperationalFaults,
+        faultsMonth: monthlyOperationalFaults
+      });
       return {
         id: driver.id,
         name: `${driver.firstName} ${driver.lastName}`.trim(),
@@ -163,8 +288,12 @@ const PerformanceDashboardWorkspace = () => {
         canceled,
         revenue,
         serviceMinutes,
-        alerts: getDocumentAlerts(driver).length,
-        score: completed * 12 + revenue / 10 - canceled * 8 - getDocumentAlerts(driver).length * 6
+        activeOperationalFaults: operationalDriverAlerts.length,
+        monthlyOperationalFaults,
+        dailyOperationalFaults,
+        disciplineScore,
+        alerts: documentAlerts + operationalDriverAlerts.length,
+        score: completed * 12 + revenue / 10 - canceled * 8 + disciplineScore - documentAlerts * 6 - operationalDriverAlerts.length * 10
       };
     }).sort((left, right) => right.score - left.score).slice(0, 6);
 
@@ -173,7 +302,7 @@ const PerformanceDashboardWorkspace = () => {
     const activity = [{
       label: 'Open Dispatcher',
       href: '/dispatcher',
-      detail: `${dispatchDrivers.length} drivers synced`
+      detail: `${operationalFaultTotals.active} active driver faults`
     }, {
       label: 'Open Drivers',
       href: '/drivers',
@@ -202,9 +331,13 @@ const PerformanceDashboardWorkspace = () => {
       activity,
       onlineDrivers,
       readyDrivers,
-      billableTripCount: billableTrips.length
+      billableTripCount: billableTrips.length,
+      operationalAlerts: activeOperationalAlerts,
+      operationalFaultTotals,
+      driversWithOperationalAlerts,
+      cancellationRate
     };
-  }, [data, dispatchDrivers, routePlans, trips]);
+  }, [data, dispatchDrivers, operationalAlerts, routePlans, trips]);
 
   const donutCompleted = analytics.counts.completed;
   const donutCanceled = analytics.counts.canceled;
@@ -234,11 +367,11 @@ const PerformanceDashboardWorkspace = () => {
           accent: '#1fd19b',
           icon: 'iconoir:check-circle'
         }, {
-          label: 'Canceled Trips',
-          value: analytics.counts.canceled,
-          detail: `${percentFormatter(analytics.cancellationRate)} cancellation rate`,
+          label: 'Driver Faults',
+          value: analytics.operationalAlerts.length,
+          detail: `${analytics.driversWithOperationalAlerts} drivers need action`,
           accent: '#ff7b72',
-          icon: 'iconoir:cancel'
+          icon: 'iconoir:warning-circle'
         }, {
           label: 'Projected Revenue',
           value: currencyFormatter.format(analytics.projectedRevenue),
@@ -270,7 +403,7 @@ const PerformanceDashboardWorkspace = () => {
                     <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Fleet Utilization</div><div className={`h4 mb-1 ${primaryTextClass}`}>{percentFormatter(analytics.utilization)}</div><ProgressBar now={analytics.utilization} variant="success" style={{ height: 8, backgroundColor: '#0d1421' }} /></div></Col>
                     <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Compliance Rate</div><div className={`h4 mb-1 ${primaryTextClass}`}>{percentFormatter(analytics.complianceRate)}</div><ProgressBar now={analytics.complianceRate} variant="info" style={{ height: 8, backgroundColor: '#0d1421' }} /></div></Col>
                     <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Avg Trips / Driver</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.avgTripsPerDriver.toFixed(1)}</div><div className="small" style={mutedTextStyle}>Completed + active workload</div></div></Col>
-                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Routes Saved</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.routePlans.length}</div><div className="small" style={mutedTextStyle}>Dispatch plans created</div></div></Col>
+                    <Col md={3}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Routes Saved</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.routePlans.length}</div><div className="small" style={mutedTextStyle}>{analytics.counts.canceled} canceled trips tracked</div></div></Col>
                   </Row>
                 </>}
             </CardBody>
@@ -316,11 +449,14 @@ const PerformanceDashboardWorkspace = () => {
                       <th>Completed</th>
                       <th>Hours</th>
                       <th>Active Trips</th>
+                      <th>Discipline</th>
+                      <th>Faults Today</th>
+                      <th>Faults 30d</th>
                       <th>Alerts</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {analytics.leaderboard.length > 0 ? analytics.leaderboard.map(item => <tr key={item.id}><td><div className="fw-semibold">{item.name}</div></td><td>{item.vehicle}</td><td>{item.completed}</td><td>{formatMinutesAsHours(item.serviceMinutes)}</td><td>{item.activeTrips}</td><td>{item.alerts > 0 ? <Badge bg="warning" text="dark">{item.alerts}</Badge> : <Badge bg="success">0</Badge>}</td></tr>) : <tr><td colSpan={6} className="text-center py-4" style={mutedTextStyle}>No driver performance yet. Load trips to start hours and trip counts.</td></tr>}
+                    {analytics.leaderboard.length > 0 ? analytics.leaderboard.map(item => <tr key={item.id}><td><div className="fw-semibold">{item.name}</div></td><td>{item.vehicle}</td><td>{item.completed}</td><td>{formatMinutesAsHours(item.serviceMinutes)}</td><td>{item.activeTrips}</td><td>{item.disciplineScore >= 90 ? <Badge bg="success">{item.disciplineScore}</Badge> : item.disciplineScore >= 70 ? <Badge bg="warning" text="dark">{item.disciplineScore}</Badge> : <Badge bg="danger">{item.disciplineScore}</Badge>}</td><td>{item.dailyOperationalFaults > 0 ? <Badge bg="danger">{item.dailyOperationalFaults}</Badge> : <span style={mutedTextStyle}>0</span>}</td><td>{item.monthlyOperationalFaults > 0 ? <Badge bg="warning" text="dark">{item.monthlyOperationalFaults}</Badge> : <span style={mutedTextStyle}>0</span>}</td><td>{item.alerts > 0 ? <Badge bg="warning" text="dark">{item.alerts}</Badge> : <Badge bg="success">0</Badge>}</td></tr>) : <tr><td colSpan={9} className="text-center py-4" style={mutedTextStyle}>No driver performance yet. Load trips to start hours and trip counts.</td></tr>}
                   </tbody>
                 </Table>
               </div>
@@ -350,11 +486,23 @@ const PerformanceDashboardWorkspace = () => {
           <Card style={panelStyles.panel}>
             <CardBody>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <h5 className={`mb-0 ${primaryTextClass}`}>Compliance Alerts</h5>
+                <h5 className={`mb-0 ${primaryTextClass}`}>Compliance & Driver Faults</h5>
                 <Link href="/drivers" className="small text-decoration-none">Resolve</Link>
               </div>
+              <Row className="g-3 mb-3">
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Active faults</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.operationalFaultTotals.active}</div><div className="small" style={mutedTextStyle}>Drivers needing attention now</div></div></Col>
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Faults today</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.operationalFaultTotals.today}</div><div className="small" style={mutedTextStyle}>Operational misses logged today</div></div></Col>
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Faults this week</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.operationalFaultTotals.week}</div><div className="small" style={mutedTextStyle}>Weekly escalation volume</div></div></Col>
+                <Col sm={6}><div style={panelStyles.miniMetric}><div className="small" style={mutedTextStyle}>Faults this month</div><div className={`h4 mb-1 ${primaryTextClass}`}>{analytics.operationalFaultTotals.month}</div><div className="small" style={mutedTextStyle}>30-day discipline trend</div></div></Col>
+              </Row>
               <div className="d-flex flex-column gap-3">
-                {analytics.driverAlerts.length > 0 ? analytics.driverAlerts.slice(0, 6).map(item => <div key={item.id} className="d-flex justify-content-between align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#232c40'}` }}><div><div className={`fw-semibold ${primaryTextClass}`}>{item.name}</div><div className="small" style={mutedTextStyle}>{item.alerts[0]?.text}</div></div><Badge bg={item.alerts[0]?.severity === 'danger' ? 'danger' : 'warning'}>{item.alerts.length} alert{item.alerts.length === 1 ? '' : 's'}</Badge></div>) : <div className="small" style={mutedTextStyle}>No compliance alerts right now.</div>}
+                {loading || operationalAlertsLoading ? <div className="small" style={mutedTextStyle}><Spinner animation="border" size="sm" className="me-2" />Loading alerts...</div> : analytics.driverAlerts.length > 0 ? analytics.driverAlerts.slice(0, 6).map(item => {
+                  const leadOperationalAlert = item.operationalAlerts[0] || null;
+                  const leadDocumentAlert = item.alerts[0] || null;
+                  const badgeVariant = leadOperationalAlert ? 'danger' : leadDocumentAlert?.severity === 'danger' ? 'danger' : 'warning';
+                  const summaryText = leadOperationalAlert?.body || leadDocumentAlert?.text || 'Driver needs review.';
+                  return <div key={item.id} className="d-flex justify-content-between align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#232c40'}` }}><div><div className={`fw-semibold ${primaryTextClass}`}>{item.name}</div><div className="small" style={mutedTextStyle}>{summaryText}</div><div className="small mt-2" style={mutedTextStyle}>Score {item.disciplineScore} | Today {item.faultsToday} | Month {item.faultsMonth} | Active faults {item.activeOperationalFaults}</div></div><Badge bg={badgeVariant}>{item.totalAlerts} alert{item.totalAlerts === 1 ? '' : 's'}</Badge></div>;
+                }) : <div className="small" style={mutedTextStyle}>No compliance or driver-fault alerts right now.</div>}
               </div>
             </CardBody>
           </Card>

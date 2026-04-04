@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, normalizeTripRecord } from '@/helpers/nemt-dispatch-state';
-import { readNemtAdminPayload } from '@/server/nemt-admin-store';
+import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, normalizeTripRecord, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
+import { readNemtAdminPayload, readNemtAdminState } from '@/server/nemt-admin-store';
 import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
+import { getActiveMessageForDriver, resolveSystemMessageById, upsertSystemMessage } from '@/server/system-messages-store';
+
+const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
+const AUTO_NO_DEPARTURE_THRESHOLD_MINUTES = 5;
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
@@ -12,6 +16,73 @@ const sortTripsByPickupTime = (leftTrip, rightTrip) => {
   const rightTime = Number.isFinite(rightTrip?.pickupSortValue) ? rightTrip.pickupSortValue : Number.MAX_SAFE_INTEGER;
   if (leftTime !== rightTime) return leftTime - rightTime;
   return String(leftTrip?.id || '').localeCompare(String(rightTrip?.id || ''));
+};
+
+const getCurrentClockMinutes = timestamp => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_DISPATCH_TIME_ZONE,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  }).formatToParts(new Date(timestamp));
+  const hour = Number(parts.find(part => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find(part => part.type === 'minute')?.value || 0);
+  const dayPeriod = String(parts.find(part => part.type === 'dayPeriod')?.value || '').toLowerCase();
+  const normalizedHour = dayPeriod === 'pm' && hour < 12 ? hour + 12 : dayPeriod === 'am' && hour === 12 ? 0 : hour;
+  return normalizedHour * 60 + minute;
+};
+
+const buildAutoNoDepartureAlertId = (driverId, tripId) => `auto-no-departure-${driverId}-${tripId}`;
+
+const getTrackingAgeMinutes = trackingLastSeen => {
+  const timestamp = new Date(trackingLastSeen || 0).getTime();
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+  return Math.max(0, Math.round((Date.now() - timestamp) / 60000));
+};
+
+const buildAutoNoDepartureAlert = ({ driver, driverState, trip, now }) => {
+  if (!driver || !trip) return null;
+  if (trip.enRouteAt || trip.arrivedAt || trip.completedAt || trip.isWillCall) return null;
+
+  const serviceDateKey = getTripServiceDateKey(trip);
+  const currentDateKey = getLocalDateKey(now, DEFAULT_DISPATCH_TIME_ZONE);
+  if (!serviceDateKey || serviceDateKey !== currentDateKey) return null;
+
+  const scheduledMinutes = parseTripClockMinutes(trip.scheduledPickup || trip.pickup);
+  if (scheduledMinutes == null) return null;
+
+  const lateByMinutes = getCurrentClockMinutes(now) - scheduledMinutes;
+  if (lateByMinutes < AUTO_NO_DEPARTURE_THRESHOLD_MINUTES) return null;
+
+  const trackingAgeMinutes = getTrackingAgeMinutes(driverState?.trackingLastSeen);
+  const trackingLine = trackingAgeMinutes == null
+    ? 'No recent GPS check-in recorded from the driver app.'
+    : trackingAgeMinutes <= 10
+      ? `Latest GPS check-in was ${trackingAgeMinutes} minute${trackingAgeMinutes === 1 ? '' : 's'} ago.`
+      : `GPS feed is stale by ${trackingAgeMinutes} minutes.`;
+
+  return {
+    id: buildAutoNoDepartureAlertId(driver.id, trip.id),
+    type: AUTO_NO_DEPARTURE_ALERT_TYPE,
+    priority: lateByMinutes >= 15 ? 'high' : 'normal',
+    audience: 'Dispatch Leadership',
+    subject: `${driver.name || 'Driver'} has not gone en route for ${trip.rider || 'the next rider'}`,
+    body: `${driver.name || 'Driver'} is ${lateByMinutes} minute${lateByMinutes === 1 ? '' : 's'} late to leave for ${trip.rider || 'the assigned rider'} (${trip.scheduledPickup || trip.pickup || 'pickup time pending'}). ${trackingLine} Escalate to Carlos, Lexy, Rober, and Balby.`,
+    driverId: driver.id,
+    driverName: driver.name || '',
+    status: 'active',
+    createdAt: new Date(now).toISOString(),
+    source: 'auto-driver-ops',
+    deliveryMethod: 'system',
+    tripId: trip.id,
+    tripStatus: trip.status,
+    rider: trip.rider || '',
+    serviceDate: serviceDateKey,
+    scheduledPickup: trip.scheduledPickup || trip.pickup || '',
+    lateByMinutes,
+    trackingLastSeen: driverState?.trackingLastSeen || null,
+    trackingAgeMinutes
+  };
 };
 
 const hasWillCallPickupMarker = trip => {
@@ -77,49 +148,72 @@ const internalError = error => NextResponse.json({ ok: false, error: 'Internal s
 
 export async function GET(request) {
   try {
-  const { searchParams } = new URL(request.url);
-  const driverId = searchParams.get('driverId');
-  const driverCode = searchParams.get('driverCode');
-  const lookupValue = normalizeLookupValue(driverId || driverCode);
+    const { searchParams } = new URL(request.url);
+    const driverId = searchParams.get('driverId');
+    const driverCode = searchParams.get('driverCode');
+    const lookupValue = normalizeLookupValue(driverId || driverCode);
 
-  if (!lookupValue) {
+    if (!lookupValue) {
+      return NextResponse.json({
+        ok: false,
+        error: 'driverId or driverCode is required.'
+      }, { status: 400 });
+    }
+
+    const [adminPayload, adminState, dispatchState] = await Promise.all([
+      readNemtAdminPayload(),
+      readNemtAdminState(),
+      readNemtDispatchState()
+    ]);
+
+    const driver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => {
+      const idMatches = normalizeLookupValue(item?.id) === lookupValue;
+      const codeMatches = normalizeLookupValue(item?.code) === lookupValue;
+      return idMatches || codeMatches;
+    });
+
+    if (!driver) {
+      return NextResponse.json({
+        ok: false,
+        error: 'Driver not found.'
+      }, { status: 404 });
+    }
+
+    const trips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => trip?.driverId === driver.id && !isCancelledTrip(trip)).sort(sortTripsByPickupTime).map(mapTripForDriver);
+    const activeTrip = trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed') || trips[0] || null;
+    const driverState = (Array.isArray(adminState?.drivers) ? adminState.drivers : []).find(item => String(item?.id || '').trim() === String(driver.id).trim()) || null;
+
+    const now = Date.now();
+    const autoAlert = buildAutoNoDepartureAlert({
+      driver,
+      driverState,
+      trip: activeTrip,
+      now
+    });
+    const existingActiveAlert = await getActiveMessageForDriver(driver.id, AUTO_NO_DEPARTURE_ALERT_TYPE);
+
+    if (autoAlert) {
+      await upsertSystemMessage(autoAlert);
+      if (existingActiveAlert?.id && existingActiveAlert.id !== autoAlert.id) {
+        await resolveSystemMessageById(existingActiveAlert.id);
+      }
+    } else if (existingActiveAlert?.id) {
+      await resolveSystemMessageById(existingActiveAlert.id);
+    }
+
     return NextResponse.json({
-      ok: false,
-      error: 'driverId or driverCode is required.'
-    }, { status: 400 });
-  }
-
-  const adminPayload = await readNemtAdminPayload();
-  const driver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => {
-    const idMatches = normalizeLookupValue(item?.id) === lookupValue;
-    const codeMatches = normalizeLookupValue(item?.code) === lookupValue;
-    return idMatches || codeMatches;
-  });
-
-  if (!driver) {
-    return NextResponse.json({
-      ok: false,
-      error: 'Driver not found.'
-    }, { status: 404 });
-  }
-
-  const dispatchState = await readNemtDispatchState();
-  const trips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => trip?.driverId === driver.id && !isCancelledTrip(trip)).sort(sortTripsByPickupTime).map(mapTripForDriver);
-  const activeTrip = trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed') || trips[0] || null;
-
-  return NextResponse.json({
-    ok: true,
-    driver: {
-      id: driver.id,
-      code: driver.code,
-      name: driver.name,
-      vehicle: driver.vehicle,
-      live: driver.live
-    },
-    trips,
-    activeTrip,
-    updatedAt: Date.now()
-  });
+      ok: true,
+      driver: {
+        id: driver.id,
+        code: driver.code,
+        name: driver.name,
+        vehicle: driver.vehicle,
+        live: driver.live
+      },
+      trips,
+      activeTrip,
+      updatedAt: now
+    });
   } catch (error) {
     return internalError(error);
   }

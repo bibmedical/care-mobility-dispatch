@@ -42,6 +42,13 @@ const DEFAULT_STATE = {
     activeProvider: 'disabled',
     defaultCountryCode: '1',
     confirmationTemplate: 'Hello {{rider}}, this is Care Mobility about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
+    arrivalNotifications: {
+      patientEnabled: true,
+      officeEnabled: true,
+      patientTemplate: 'Hello {{rider}}, this is Care Mobility. Your driver {{driver}} has arrived for pickup at {{pickupAddress}}. If you need help, call the office.',
+      officeTemplate: 'Arrival notice: driver {{driver}} has arrived for {{rider}} at {{pickupAddress}} for trip {{tripId}}.',
+      officeRecipients: []
+    },
     groupTemplates: {
       AL: '',
       BL: '',
@@ -159,10 +166,28 @@ const normalizeSmsOptOutEntry = value => ({
   createdAt: String(value?.createdAt ?? '')
 });
 
+const normalizeSmsOfficeRecipientEntry = value => ({
+  id: String(value?.id ?? `${String(value?.phone ?? '').replace(/\D/g, '') || String(value?.name ?? '').trim().toLowerCase().replace(/\s+/g, '-')}`),
+  name: String(value?.name ?? ''),
+  phone: String(value?.phone ?? ''),
+  notes: String(value?.notes ?? ''),
+  enabled: value?.enabled !== false,
+  createdAt: String(value?.createdAt ?? '')
+});
+
+const normalizeArrivalNotificationsState = value => ({
+  patientEnabled: value?.patientEnabled !== false,
+  officeEnabled: value?.officeEnabled !== false,
+  patientTemplate: String(value?.patientTemplate ?? DEFAULT_STATE.sms.arrivalNotifications.patientTemplate),
+  officeTemplate: String(value?.officeTemplate ?? DEFAULT_STATE.sms.arrivalNotifications.officeTemplate),
+  officeRecipients: Array.isArray(value?.officeRecipients) ? value.officeRecipients.map(normalizeSmsOfficeRecipientEntry).filter(entry => entry.name || entry.phone) : []
+});
+
 const normalizeSmsState = value => ({
   activeProvider: String(value?.activeProvider ?? 'disabled'),
   defaultCountryCode: String(value?.defaultCountryCode ?? '1'),
   confirmationTemplate: String(value?.confirmationTemplate ?? DEFAULT_STATE.sms.confirmationTemplate),
+  arrivalNotifications: normalizeArrivalNotificationsState(value?.arrivalNotifications),
   groupTemplates: {
     AL: String(value?.groupTemplates?.AL ?? ''),
     BL: String(value?.groupTemplates?.BL ?? ''),

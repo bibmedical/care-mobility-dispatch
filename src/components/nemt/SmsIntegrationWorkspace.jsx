@@ -43,6 +43,13 @@ const buildBlankDraft = () => ({
   activeProvider: 'disabled',
   defaultCountryCode: '1',
   confirmationTemplate: 'Hello {{rider}}, this is Care Mobility about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
+  arrivalNotifications: {
+    patientEnabled: true,
+    officeEnabled: true,
+    patientTemplate: 'Hello {{rider}}, this is Care Mobility. Your driver {{driver}} has arrived for pickup at {{pickupAddress}}. If you need help, call the office.',
+    officeTemplate: 'Arrival notice: driver {{driver}} has arrived for {{rider}} at {{pickupAddress}} for trip {{tripId}}.',
+    officeRecipients: []
+  },
   groupTemplates: {
     AL: '',
     BL: '',
@@ -126,12 +133,20 @@ const SmsIntegrationWorkspace = () => {
   const [testPhone, setTestPhone] = useState('');
   const [testMessage, setTestMessage] = useState('Prueba de SMS desde Care Mobility. Si recibes este mensaje, la integracion esta funcionando.');
   const [testSending, setTestSending] = useState(false);
+  const [officeRecipientName, setOfficeRecipientName] = useState('');
+  const [officeRecipientPhone, setOfficeRecipientPhone] = useState('');
+  const [officeRecipientNotes, setOfficeRecipientNotes] = useState('Dispatch');
 
   useEffect(() => {
     if (!data?.sms) return;
     setDraft({
       ...buildBlankDraft(),
       ...data.sms,
+      arrivalNotifications: {
+        ...buildBlankDraft().arrivalNotifications,
+        ...data.sms.arrivalNotifications,
+        officeRecipients: Array.isArray(data.sms.arrivalNotifications?.officeRecipients) ? data.sms.arrivalNotifications.officeRecipients : []
+      },
       groupTemplates: {
         ...buildBlankDraft().groupTemplates,
         ...data.sms.groupTemplates
@@ -304,6 +319,45 @@ const SmsIntegrationWorkspace = () => {
     }));
   };
 
+  const handleAddOfficeRecipient = () => {
+    if (!officeRecipientName.trim() && !officeRecipientPhone.trim()) {
+      setMessage('Escribe nombre o telefono para agregar un numero de oficina.');
+      return;
+    }
+
+    const nextEntry = {
+      id: `${officeRecipientPhone.replace(/\D/g, '') || officeRecipientName.trim().toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+      name: officeRecipientName.trim(),
+      phone: officeRecipientPhone.trim(),
+      notes: officeRecipientNotes.trim(),
+      enabled: true,
+      createdAt: new Date().toISOString()
+    };
+
+    setDraft(current => ({
+      ...current,
+      arrivalNotifications: {
+        ...current.arrivalNotifications,
+        officeRecipients: [nextEntry, ...(Array.isArray(current.arrivalNotifications?.officeRecipients) ? current.arrivalNotifications.officeRecipients : [])]
+      }
+    }));
+    setOfficeRecipientName('');
+    setOfficeRecipientPhone('');
+    setOfficeRecipientNotes('Dispatch');
+    setMessage('Numero de oficina agregado. Guarda para activar este recipient.');
+  };
+
+  const handleRemoveOfficeRecipient = entryId => {
+    setDraft(current => ({
+      ...current,
+      arrivalNotifications: {
+        ...current.arrivalNotifications,
+        officeRecipients: (Array.isArray(current.arrivalNotifications?.officeRecipients) ? current.arrivalNotifications.officeRecipients : []).filter(entry => entry.id !== entryId)
+      }
+    }));
+    setMessage('Numero de oficina removido. Guarda para aplicar el cambio.');
+  };
+
   return <>
       <PageTitle title="SMS Integration" subName="Integrations" />
       <Row className="g-3 mb-3">
@@ -365,7 +419,8 @@ const SmsIntegrationWorkspace = () => {
               <Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">Default Country Code</Form.Label><Form.Control value={draft.defaultCountryCode} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, defaultCountryCode: event.target.value.replace(/\D/g, '') }))} /></Col>
               <Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">Webhook Base URL</Form.Label><Form.Control value={draft.webhookBaseUrl} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, webhookBaseUrl: event.target.value }))} /></Col>
               <Col md={12}><Form.Label className="small text-uppercase text-secondary fw-semibold">Confirmation Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.confirmationTemplate} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, confirmationTemplate: event.target.value }))} /></Col>
-              <Col md={12}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="small text-secondary mb-2">Template tokens</div><div>{'{{rider}}, {{tripId}}, {{pickup}}, {{dropoff}}, {{pickupAddress}}, {{dropoffAddress}}, {{miles}}, {{code}}'}</div><div className="small text-secondary mt-2">Paciente responde con 1 code, 2 code o 3 code. El webhook actualiza la confirmacion a Confirmed, Cancelled o Needs Call.</div></div></Col>
+              <Col md={12}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="small text-secondary mb-2">Template tokens</div><div>{'{{rider}}, {{tripId}}, {{driver}}, {{pickup}}, {{dropoff}}, {{pickupAddress}}, {{dropoffAddress}}, {{patientPhone}}, {{actualPickup}}, {{miles}}, {{code}}'}</div><div className="small text-secondary mt-2">Paciente responde con 1 code, 2 code o 3 code. El webhook actualiza la confirmacion a Confirmed, Cancelled o Needs Call.</div></div></Col>
+              <Col md={12}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"><div><div className="small text-secondary">Arrival Notifications</div><div className="small text-secondary">Cuando el chofer marca Arrived, se puede mandar un SMS al paciente y otro a la oficina.</div></div><Badge bg="primary">Arrival SMS</Badge></div><Row className="g-3"><Col md={3}><Form.Check type="switch" id="arrival-patient-enabled" label="Send patient SMS" checked={draft.arrivalNotifications?.patientEnabled !== false} onChange={event => setDraft(current => ({ ...current, arrivalNotifications: { ...current.arrivalNotifications, patientEnabled: event.target.checked } }))} /></Col><Col md={3}><Form.Check type="switch" id="arrival-office-enabled" label="Send office SMS" checked={draft.arrivalNotifications?.officeEnabled !== false} onChange={event => setDraft(current => ({ ...current, arrivalNotifications: { ...current.arrivalNotifications, officeEnabled: event.target.checked } }))} /></Col><Col md={6}><div className="small text-secondary pt-1">Desactiva Send office SMS si la oficina no quiere recibir este aviso.</div></Col><Col md={6}><Form.Label className="small text-uppercase text-secondary fw-semibold">Patient Arrival Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.arrivalNotifications?.patientTemplate || ''} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, arrivalNotifications: { ...current.arrivalNotifications, patientTemplate: event.target.value } }))} /></Col><Col md={6}><Form.Label className="small text-uppercase text-secondary fw-semibold">Office Arrival Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.arrivalNotifications?.officeTemplate || ''} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, arrivalNotifications: { ...current.arrivalNotifications, officeTemplate: event.target.value } }))} /></Col><Col md={12}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"><div><div className="small text-secondary">Office recipients</div><div className="small text-secondary">Estos numeros reciben copia del arrival SMS cuando la opcion de oficina esta activada.</div></div><Badge bg="warning" text="dark">{Array.isArray(draft.arrivalNotifications?.officeRecipients) ? draft.arrivalNotifications.officeRecipients.length : 0} office numbers</Badge></div><Row className="g-2 mb-3"><Col md={3}><Form.Control placeholder="Office name" value={officeRecipientName} style={surfaceStyles.input} onChange={event => setOfficeRecipientName(event.target.value)} /></Col><Col md={3}><Form.Control placeholder="Phone" value={officeRecipientPhone} style={surfaceStyles.input} onChange={event => setOfficeRecipientPhone(event.target.value)} /></Col><Col md={4}><Form.Control placeholder="Notes" value={officeRecipientNotes} style={surfaceStyles.input} onChange={event => setOfficeRecipientNotes(event.target.value)} /></Col><Col md={2}><Button style={surfaceStyles.button} className="w-100" onClick={handleAddOfficeRecipient}>Add</Button></Col></Row><div className="table-responsive"><table className="table table-dark table-striped align-middle mb-0"><thead><tr><th>Name</th><th>Phone</th><th>Notes</th><th>Added</th><th style={{ width: 90 }}>Action</th></tr></thead><tbody>{Array.isArray(draft.arrivalNotifications?.officeRecipients) && draft.arrivalNotifications.officeRecipients.length > 0 ? draft.arrivalNotifications.officeRecipients.map(entry => <tr key={entry.id}><td>{entry.name || '-'}</td><td>{entry.phone || '-'}</td><td>{entry.notes || '-'}</td><td>{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : '-'}</td><td><Button variant="outline-light" size="sm" onClick={() => handleRemoveOfficeRecipient(entry.id)}>Remove</Button></td></tr>) : <tr><td colSpan={5} className="text-center text-secondary py-3">No office numbers configured yet.</td></tr>}</tbody></table></div></div></Col></Row></div></Col>
               <Col md={12}><Form.Label className="small text-uppercase text-secondary fw-semibold">Notes</Form.Label><Form.Control as="textarea" rows={3} value={draft.notes} style={surfaceStyles.input} onChange={event => setDraft(current => ({ ...current, notes: event.target.value }))} /></Col>
 
               <Col md={12}><div className="border rounded-3 p-3 h-100" style={surfaceStyles.input}><div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2"><div><div className="small text-secondary">Saved Group Templates</div><div className="small text-secondary">Guarda mensajes predeterminados por grupo para cargarlos rapido en Confirmation.</div></div><Badge bg="info">AL / BL / CL / A / W / STR</Badge></div><Row className="g-3"><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">AL Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.AL || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('AL', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">BL Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.BL || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('BL', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">CL Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.CL || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('CL', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">A Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.A || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('A', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">W Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.W || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('W', event.target.value)} /></Col><Col md={4}><Form.Label className="small text-uppercase text-secondary fw-semibold">STR Template</Form.Label><Form.Control as="textarea" rows={3} value={draft.groupTemplates?.STR || ''} style={surfaceStyles.input} onChange={event => handleGroupTemplateChange('STR', event.target.value)} /></Col></Row></div></Col>

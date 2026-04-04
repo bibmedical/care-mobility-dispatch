@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
+import { getActiveMessageForDriver, resolveSystemMessageById } from '@/server/system-messages-store';
+import { readNemtAdminPayload } from '@/server/nemt-admin-store';
+import { sendTripArrivalNotifications } from '@/server/sms-confirmation-service';
+
+const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
+
+const buildAutoNoDepartureAlertId = (driverId, tripId) => `auto-no-departure-${driverId}-${tripId}`;
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
@@ -224,7 +231,37 @@ export async function POST(request) {
     trips: nextTrips
   });
 
-  return NextResponse.json({ ok: true, tripId, action, updatedAt: timestamp });
+  let arrivalNotifications = null;
+  if (action === 'arrived' && !currentTrip?.arrivedAt) {
+    try {
+      const adminPayload = await readNemtAdminPayload();
+      const driver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
+      arrivalNotifications = await sendTripArrivalNotifications({
+        trip: {
+          ...currentTrip,
+          ...patch
+        },
+        driverName: String(driver?.name || currentTrip?.driverName || '').trim()
+      });
+    } catch (error) {
+      arrivalNotifications = {
+        ok: false,
+        skipped: true,
+        reason: error.message || 'Unable to process arrival SMS notifications.',
+        results: []
+      };
+    }
+  }
+
+  if (['en-route', 'arrived', 'complete'].includes(action)) {
+    await resolveSystemMessageById(buildAutoNoDepartureAlertId(driverId, tripId));
+    const activeNoDepartureAlert = await getActiveMessageForDriver(driverId, AUTO_NO_DEPARTURE_ALERT_TYPE);
+    if (activeNoDepartureAlert?.id) {
+      await resolveSystemMessageById(activeNoDepartureAlert.id);
+    }
+  }
+
+  return NextResponse.json({ ok: true, tripId, action, updatedAt: timestamp, arrivalNotifications });
   } catch (error) {
     return internalError(error);
   }

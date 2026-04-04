@@ -11,6 +11,25 @@ import { usePathname } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 
+const OPERATIONAL_ALERT_TYPES = new Set(['no-departure-alert']);
+
+const getStartOfDay = reference => {
+  const nextDate = new Date(reference);
+  nextDate.setHours(0, 0, 0, 0);
+  return nextDate;
+};
+
+const getStartOfMonth = reference => new Date(reference.getFullYear(), reference.getMonth(), 1);
+
+const toTimestamp = value => {
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const clampDisciplineScore = value => Math.max(0, Math.min(100, Math.round(value)));
+
+const computeDisciplineScore = ({ documentAlerts = 0, activeFaults = 0, faultsToday = 0, faultsMonth = 0 }) => clampDisciplineScore(100 - documentAlerts * 5 - activeFaults * 25 - faultsToday * 10 - faultsMonth * 3);
+
 const buildShellStyles = isLight => ({
   windowHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a' },
   body: { backgroundColor: isLight ? '#ffffff' : '#171b27' },
@@ -105,6 +124,8 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const [draftEntity, setDraftEntity] = useState(null);
   const [message, setMessage] = useState('Manage drivers, vehicles, attendants and groupings from the persistent system API.');
   const [validationErrors, setValidationErrors] = useState([]);
+  const [operationalAlerts, setOperationalAlerts] = useState([]);
+  const [operationalAlertsLoading, setOperationalAlertsLoading] = useState(true);
 
   const state = useMemo(() => ({
     drivers: data?.drivers ?? defaultState.drivers,
@@ -113,12 +134,72 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
     groupings: data?.groupings ?? defaultState.groupings
   }), [data]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOperationalAlerts = async () => {
+      try {
+        const response = await fetch('/api/system-messages', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Unable to load operational alerts');
+        const payload = await response.json();
+        const nextAlerts = (Array.isArray(payload?.messages) ? payload.messages : []).filter(message => OPERATIONAL_ALERT_TYPES.has(String(message?.type || '').trim()));
+        if (isMounted) setOperationalAlerts(nextAlerts);
+      } catch {
+        if (isMounted) setOperationalAlerts([]);
+      } finally {
+        if (isMounted) setOperationalAlertsLoading(false);
+      }
+    };
+
+    loadOperationalAlerts();
+    const intervalId = window.setInterval(loadOperationalAlerts, 30000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   const config = useMemo(() => {
-    if (activeTab === 'drivers') return { rows: buildDriversRows(state), pageSize: 14, columns: ['№', 'Ctrl', 'Info', 'Vehicle Assignment', 'Hours', 'Trips', 'Notes'], title: 'Users' };
+    if (activeTab === 'drivers') return { rows: buildDriversRows(state), pageSize: 14, columns: ['№', 'Ctrl', 'Info', 'Vehicle Assignment', 'Hours', 'Trips', 'Discipline', 'Notes'], title: 'Users' };
     if (activeTab === 'attendants') return { rows: buildAttendantsRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Attendant', 'Phone', 'Certification', 'Assigned Drivers', 'Notes'], title: 'VDR Change' };
     if (activeTab === 'vehicles') return { rows: buildVehiclesRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Info', 'Capacity', 'Driver Assignment', 'Driver Name', 'Notes'], title: 'VDR Change' };
     return { rows: buildGroupingRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Group', 'Drivers', 'Vehicles', 'Notes'], title: 'VDR Change' };
   }, [activeTab, state]);
+
+  const driverOperationsMetrics = useMemo(() => {
+    const now = new Date();
+    const startOfDay = getStartOfDay(now).getTime();
+    const startOfMonth = getStartOfMonth(now).getTime();
+    const groupedAlerts = operationalAlerts.reduce((accumulator, alert) => {
+      const key = String(alert?.driverId || '').trim();
+      if (!key) return accumulator;
+      accumulator[key] = accumulator[key] || [];
+      accumulator[key].push(alert);
+      return accumulator;
+    }, {});
+
+    return new Map(state.drivers.map(driver => {
+      const alerts = groupedAlerts[String(driver.id || '').trim()] || [];
+      const activeFaults = alerts.filter(alert => String(alert?.status || '').trim().toLowerCase() === 'active').length;
+      const faultsToday = alerts.filter(alert => toTimestamp(alert?.createdAt) >= startOfDay).length;
+      const faultsMonth = alerts.filter(alert => toTimestamp(alert?.createdAt) >= startOfMonth).length;
+      const documentAlerts = getDocumentAlerts(driver).length;
+
+      return [driver.id, {
+        activeFaults,
+        faultsToday,
+        faultsMonth,
+        documentAlerts,
+        disciplineScore: computeDisciplineScore({
+          documentAlerts,
+          activeFaults,
+          faultsToday,
+          faultsMonth
+        })
+      }];
+    }));
+  }, [operationalAlerts, state.drivers]);
 
   const driverTripMetrics = useMemo(() => new Map(state.drivers.map(driver => {
     const driverTrips = trips.filter(trip => trip.driverId === driver.id);
@@ -156,6 +237,13 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const collectionKey = getCollectionKey(activeTab);
   const selectedEntity = state[collectionKey].find(entity => entity.id === selectedRowId) ?? null;
   const driverAlerts = activeTab === 'drivers' && draftEntity ? getDocumentAlerts(draftEntity) : [];
+  const selectedDriverOperationalMetrics = activeTab === 'drivers' && draftEntity ? driverOperationsMetrics.get(draftEntity.id) ?? {
+    activeFaults: 0,
+    faultsToday: 0,
+    faultsMonth: 0,
+    documentAlerts: driverAlerts.length,
+    disciplineScore: computeDisciplineScore({ documentAlerts: driverAlerts.length })
+  } : null;
   const profilePhotoAsset = resolveDocumentAsset(draftEntity?.documents?.profilePhoto);
   const licenseFrontAsset = resolveDocumentAsset(draftEntity?.documents?.licenseFront);
   const primaryPhotoAsset = profilePhotoAsset || licenseFrontAsset;
@@ -302,6 +390,12 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
         totalTrips: 0,
         activeTrips: 0
       };
+      const operations = driverOperationsMetrics.get(row.raw.id) ?? {
+        activeFaults: 0,
+        faultsToday: 0,
+        faultsMonth: 0,
+        disciplineScore: 100
+      };
       return [<td key="number">{row.order}</td>, <td key="ctrl">
             <button type="button" className="btn btn-link p-0 text-info" onClick={event => {
               event.stopPropagation();
@@ -312,7 +406,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
           </td>, <td key="info">
             <div>{row.info}</div>
             <div className="small text-secondary">Username: {row.raw.username}</div>
-          </td>, <td key="assignment">{row.assignment}</td>, <td key="hours">{formatMinutesAsHours(metrics.serviceMinutes)}</td>, <td key="trips"><div>{metrics.totalTrips} total</div><div className="small text-secondary">{metrics.activeTrips} active</div></td>, <td key="notes"><div className="d-flex align-items-center gap-2 flex-wrap"><span>{row.notes}</span>{row.alertCount > 0 ? <Badge bg="warning" text="dark">{row.alertCount} alerts</Badge> : null}</div></td>];
+          </td>, <td key="assignment">{row.assignment}</td>, <td key="hours">{formatMinutesAsHours(metrics.serviceMinutes)}</td>, <td key="trips"><div>{metrics.totalTrips} total</div><div className="small text-secondary">{metrics.activeTrips} active</div></td>, <td key="discipline"><div className="d-flex align-items-center gap-2 flex-wrap"><Badge bg={operations.disciplineScore >= 90 ? 'success' : operations.disciplineScore >= 70 ? 'warning' : 'danger'} text={operations.disciplineScore >= 70 ? 'dark' : undefined}>{operations.disciplineScore}</Badge><span className="small text-secondary">Today {operations.faultsToday} | Month {operations.faultsMonth} | Active {operations.activeFaults}</span></div></td>, <td key="notes"><div className="d-flex align-items-center gap-2 flex-wrap"><span>{row.notes}</span>{row.alertCount > 0 ? <Badge bg="warning" text="dark">{row.alertCount} alerts</Badge> : null}</div></td>];
     }
 
     if (activeTab === 'attendants') {
@@ -414,7 +508,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
     }
 
     if (editorTab === 'compliance') {
-      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Insurance Carrier</Form.Label><Form.Control value={draftEntity.insuranceCarrier} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceCarrier', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Number</Form.Label><Form.Control value={draftEntity.insurancePolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('insurancePolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Expiration</Form.Label><Form.Control type="date" value={draftEntity.insuranceExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Policy</Form.Label><Form.Control value={draftEntity.workersCompPolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompPolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Exp.</Form.Label><Form.Control type="date" value={draftEntity.workersCompExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Company Tax ID</Form.Label><Form.Control value={draftEntity.taxId} style={shellStyles.modalInput} onChange={event => updateDraftField('taxId', event.target.value)} /></Col><Col md={3}><Form.Check label="Insurance Accredited" checked={draftEntity.insuranceAccredited} onChange={event => updateDraftField('insuranceAccredited', event.target.checked)} /></Col><Col md={3}><Form.Check label="Tax ID Verified" checked={draftEntity.taxIdVerified} onChange={event => updateDraftField('taxIdVerified', event.target.checked)} /></Col><Col md={3}><Form.Check label="W9 On File" checked={draftEntity.w9OnFile} onChange={event => updateDraftField('w9OnFile', event.target.checked)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Tracking</Form.Label><div className="small text-secondary pt-2">Android only. Web admin cannot mark drivers online manually.</div></Col></Row></div>;
+      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Discipline Score</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.disciplineScore ?? 100}</div><div className="small text-secondary">Weighted from compliance plus driver faults.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Active Faults</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.activeFaults ?? 0}</div><div className="small text-secondary">Open operational escalations.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Faults Today</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.faultsToday ?? 0}</div><div className="small text-secondary">Misses logged since midnight.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Faults This Month</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.faultsMonth ?? 0}</div><div className="small text-secondary">Rolling monthly discipline trend.</div></div></Col><Col md={4}><Form.Label className={formLabelClassName}>Insurance Carrier</Form.Label><Form.Control value={draftEntity.insuranceCarrier} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceCarrier', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Number</Form.Label><Form.Control value={draftEntity.insurancePolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('insurancePolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Expiration</Form.Label><Form.Control type="date" value={draftEntity.insuranceExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Policy</Form.Label><Form.Control value={draftEntity.workersCompPolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompPolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Exp.</Form.Label><Form.Control type="date" value={draftEntity.workersCompExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Company Tax ID</Form.Label><Form.Control value={draftEntity.taxId} style={shellStyles.modalInput} onChange={event => updateDraftField('taxId', event.target.value)} /></Col><Col md={3}><Form.Check label="Insurance Accredited" checked={draftEntity.insuranceAccredited} onChange={event => updateDraftField('insuranceAccredited', event.target.checked)} /></Col><Col md={3}><Form.Check label="Tax ID Verified" checked={draftEntity.taxIdVerified} onChange={event => updateDraftField('taxIdVerified', event.target.checked)} /></Col><Col md={3}><Form.Check label="W9 On File" checked={draftEntity.w9OnFile} onChange={event => updateDraftField('w9OnFile', event.target.checked)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Tracking</Form.Label><div className="small text-secondary pt-2">Android only. Web admin cannot mark drivers online manually.</div></Col></Row></div>;
     }
 
     if (editorTab === 'extensions') {
@@ -517,6 +611,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
           {validationErrors.length > 0 ? <Alert variant="danger"><ul className="mb-0">{validationErrors.map(item => <li key={item}>{item}</li>)}</ul></Alert> : null}
           {activeTab === 'drivers' ? <>
               {driverAlerts.length > 0 ? <Alert variant="warning">{driverAlerts.map(alert => <div key={alert.text}>{alert.text}</div>)}</Alert> : null}
+              {operationalAlertsLoading ? <Alert variant="secondary" className="py-2">Loading driver fault history...</Alert> : null}
               <div className="d-flex flex-wrap gap-2 mb-3">{DRIVER_EDITOR_TABS.map(tab => <Button key={tab.key} className="rounded-pill" style={editorTab === tab.key ? shellStyles.activeTab : shellStyles.toolbarButton} onClick={() => setEditorTab(tab.key)}>{tab.label}</Button>)}</div>
               {renderDriverEditor()}
             </> : renderGenericEditor()}

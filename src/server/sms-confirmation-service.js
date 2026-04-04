@@ -59,10 +59,13 @@ const renderConfirmationTemplate = (template, trip, code) => {
   const tokens = {
     rider: trip?.rider || 'patient',
     tripId: trip?.id || '',
+    driver: trip?.driverName || trip?.driver || 'your driver',
     pickup: trip?.pickup || '',
     dropoff: trip?.dropoff || '',
     pickupAddress: trip?.address || '',
     dropoffAddress: trip?.destination || '',
+    patientPhone: trip?.patientPhoneNumber || '',
+    actualPickup: trip?.actualPickup || '',
     miles: trip?.miles || '',
     code
   };
@@ -220,6 +223,88 @@ const removeTripFromRoutes = (routePlans, tripId) => (Array.isArray(routePlans) 
   ...routePlan,
   tripIds: Array.isArray(routePlan.tripIds) ? routePlan.tripIds.filter(id => id !== tripId) : []
 })).filter(routePlan => routePlan.tripIds.length > 0);
+
+export const sendTripArrivalNotifications = async ({ trip, driverName = '' }) => {
+  const integrationsState = await readIntegrationsState();
+  const smsState = integrationsState.sms;
+  const arrivalNotifications = smsState?.arrivalNotifications || {};
+
+  let providerState;
+  try {
+    providerState = getProviderSettings(smsState);
+  } catch (error) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: error.message || 'SMS provider is disabled.',
+      results: []
+    };
+  }
+
+  if (!providerState.valid) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: `The active SMS provider (${providerState.provider}) is missing required credentials.`,
+      results: []
+    };
+  }
+
+  const normalizedTrip = {
+    ...trip,
+    driverName: String(driverName || trip?.driverName || trip?.driver || '').trim() || 'your driver'
+  };
+  const results = [];
+
+  if (arrivalNotifications.patientEnabled !== false) {
+    const normalizedPhone = normalizePhoneNumber(normalizedTrip.patientPhoneNumber, smsState.defaultCountryCode);
+    if (normalizedPhone) {
+      try {
+        const providerResult = await sendThroughProvider({
+          provider: providerState.provider,
+          settings: providerState.settings,
+          to: normalizedPhone,
+          body: renderConfirmationTemplate(arrivalNotifications.patientTemplate, normalizedTrip, '')
+        });
+        results.push({ audience: 'patient', phone: normalizedPhone, ok: true, messageId: providerResult.messageId, status: providerResult.providerStatus });
+      } catch (error) {
+        results.push({ audience: 'patient', phone: normalizedPhone, ok: false, error: error.message || 'Unable to send patient arrival SMS.' });
+      }
+    } else {
+      results.push({ audience: 'patient', phone: '', ok: false, error: 'Missing patient phone number.' });
+    }
+  }
+
+  if (arrivalNotifications.officeEnabled !== false) {
+    const officeRecipients = (Array.isArray(arrivalNotifications.officeRecipients) ? arrivalNotifications.officeRecipients : []).filter(entry => entry?.enabled !== false && String(entry?.phone || '').trim());
+    for (const officeRecipient of officeRecipients) {
+      const normalizedOfficePhone = normalizePhoneNumber(officeRecipient.phone, smsState.defaultCountryCode);
+      if (!normalizedOfficePhone) {
+        results.push({ audience: 'office', recipientId: officeRecipient.id, phone: '', ok: false, error: 'Invalid office phone number.' });
+        continue;
+      }
+
+      try {
+        const providerResult = await sendThroughProvider({
+          provider: providerState.provider,
+          settings: providerState.settings,
+          to: normalizedOfficePhone,
+          body: renderConfirmationTemplate(arrivalNotifications.officeTemplate, normalizedTrip, '')
+        });
+        results.push({ audience: 'office', recipientId: officeRecipient.id, phone: normalizedOfficePhone, ok: true, messageId: providerResult.messageId, status: providerResult.providerStatus });
+      } catch (error) {
+        results.push({ audience: 'office', recipientId: officeRecipient.id, phone: normalizedOfficePhone, ok: false, error: error.message || 'Unable to send office arrival SMS.' });
+      }
+    }
+  }
+
+  return {
+    ok: results.some(result => result.ok),
+    skipped: results.length === 0,
+    provider: providerState.provider,
+    results
+  };
+};
 
 export const sendTripConfirmationRequests = async ({ tripIds }) => {
   const uniqueTripIds = Array.from(new Set((Array.isArray(tripIds) ? tripIds : []).filter(Boolean)));
