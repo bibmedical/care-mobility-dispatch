@@ -13,6 +13,7 @@ import { readNemtAdminState } from '@/server/nemt-admin-store';
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 const badRequest = message => NextResponse.json({ error: message }, { status: 400 });
 const internalError = error => NextResponse.json({ error: error?.message || 'Unable to process system messages' }, { status: 500 });
+const EXPO_PUSH_TIMEOUT_MS = 2500;
 
 const removeMessageMediaFromDispatchThreads = dispatchState => {
   let removed = false;
@@ -62,13 +63,21 @@ const sendExpoPush = async (pushTokens, message) => {
   }));
 
   try {
-    await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), EXPO_PUSH_TIMEOUT_MS);
+
+    try {
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch {
     // Push delivery failures should not block dispatch message creation.
   }

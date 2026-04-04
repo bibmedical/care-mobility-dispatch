@@ -181,6 +181,7 @@ const DispatcherMessagingPanel = ({
   const [driverAlerts, setDriverAlerts] = useState([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [alertsError, setAlertsError] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isSendingSms, setIsSendingSms] = useState(false);
   const [smsStatus, setSmsStatus] = useState('');
   const [resolvingAlertId, setResolvingAlertId] = useState('');
@@ -426,12 +427,24 @@ const DispatcherMessagingPanel = ({
   const handleSendMessage = async (text, options = {}) => {
     const messageText = text.trim();
     const attachments = Array.isArray(options.attachments) ? options.attachments : [];
-    if (!activeDriverId || (!messageText && attachments.length === 0)) return false;
+    if (!activeDriverId || (!messageText && attachments.length === 0) || isSendingMessage) return false;
     const firstAttachment = attachments[0] || null;
     const messageId = `${activeDriverId}-${Date.now()}`;
     const persistedBody = messageText || (firstAttachment?.kind === 'photo' ? '[Photo]' : firstAttachment?.name ? `[Attachment] ${firstAttachment.name}` : '[Attachment]');
+    const optimisticMessage = {
+      id: messageId,
+      direction: 'outgoing',
+      text: messageText || (attachments.length > 0 ? 'Attachment sent.' : ''),
+      timestamp: new Date().toISOString(),
+      status: 'sending',
+      attachments
+    };
 
     try {
+      setIsSendingMessage(true);
+      setSmsStatus('Sending message...');
+      upsertDispatchThreadMessage({ driverId: activeDriverId, message: optimisticMessage });
+
       const response = await fetch('/api/system-messages', {
         method: 'POST',
         headers: {
@@ -455,21 +468,25 @@ const DispatcherMessagingPanel = ({
       const payload = await readJsonResponse(response);
       if (!response.ok) throw new Error(payload?.error || 'Unable to send dispatch message.');
 
-    const outgoingMessage = {
-      id: payload?.message?.id || messageId,
-      direction: 'outgoing',
-      text: messageText || (attachments.length > 0 ? 'Attachment sent.' : ''),
-      timestamp: payload?.message?.createdAt || new Date().toISOString(),
-      status: 'sent',
-      attachments
-    };
-    upsertDispatchThreadMessage({ driverId: activeDriverId, message: outgoingMessage });
-    setDraftMessage('');
+      const outgoingMessage = {
+        ...optimisticMessage,
+        id: payload?.message?.id || messageId,
+        timestamp: payload?.message?.createdAt || optimisticMessage.timestamp,
+        status: 'sent'
+      };
+      upsertDispatchThreadMessage({ driverId: activeDriverId, message: outgoingMessage });
+      setDraftMessage('');
       setSmsStatus('');
       return true;
     } catch (error) {
+      upsertDispatchThreadMessage({ driverId: activeDriverId, message: {
+        ...optimisticMessage,
+        status: 'failed'
+      } });
       setSmsStatus(error?.message || 'Unable to send dispatch message.');
       return false;
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -858,7 +875,7 @@ const DispatcherMessagingPanel = ({
         <div className="d-flex flex-column flex-grow-1 bg-white" style={{ minWidth: 0 }}>
           <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', minHeight: 0 }}>
             {isLoadingAlerts && activeDriverAlerts.length === 0 ? <div className="small text-muted mb-3">Loading driver alerts...</div> : null}
-            {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') ? 'alert-warning' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}
+            {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') || smsStatus.toLowerCase().includes('failed') ? 'alert-warning' : smsStatus.toLowerCase().includes('sending') ? 'alert-info' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}
             {activeDriverAlerts.length > 0 ? <div className="d-flex flex-column gap-2 mb-3">
                 {activeDriverAlerts.map(alert => <div key={alert.id} className="border rounded p-3 shadow-sm" style={getAlertSurfaceStyle(alert)}>
                     <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
@@ -936,7 +953,7 @@ const DispatcherMessagingPanel = ({
                       ))}
                     </div>
                   ) : null}
-                  <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status}` : ''}</div>
+                  <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status === 'sending' ? 'sending...' : message.status}` : ''}</div>
                 </div>
               </div>
             )) : <div className="text-center text-muted py-5">No messages yet for this driver.</div>}
@@ -952,7 +969,7 @@ const DispatcherMessagingPanel = ({
               <button
                 type="button"
                 onClick={() => photoInputRef.current?.click()}
-                disabled={!activeDriver}
+                disabled={!activeDriver || isSendingMessage}
                 className="border-0 bg-transparent d-inline-flex align-items-center justify-content-center rounded-circle"
                 style={{ width: 32, height: 32, color: activeDriver ? selectedChatTheme.accent : '#94a3b8' }}
                 title="Add photo"
@@ -962,20 +979,20 @@ const DispatcherMessagingPanel = ({
               <button
                 type="button"
                 onClick={() => documentInputRef.current?.click()}
-                disabled={!activeDriver}
+                disabled={!activeDriver || isSendingMessage}
                 className="border-0 bg-transparent d-inline-flex align-items-center justify-content-center rounded-circle"
                 style={{ width: 32, height: 32, color: activeDriver ? selectedChatTheme.accent : '#94a3b8' }}
                 title="Add document"
               >
                 <IconifyIcon icon="iconoir:page" />
               </button>
-              <Form.Control value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder={activeDriver ? `Message ${activeDriver.name}` : 'Select a driver first'} disabled={!activeDriver} className="border-0 shadow-none" style={{ backgroundColor: 'transparent' }} onKeyDown={event => {
+              <Form.Control value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder={activeDriver ? `Message ${activeDriver.name}` : 'Select a driver first'} disabled={!activeDriver || isSendingMessage} className="border-0 shadow-none" style={{ backgroundColor: 'transparent' }} onKeyDown={event => {
                 if (event.key === 'Enter') {
                   event.preventDefault();
-                  handleSendMessage(draftMessage);
+                  void handleSendMessage(draftMessage);
                 }
               }} />
-              <Button variant="dark" onClick={() => handleSendMessage(draftMessage)} disabled={!activeDriver || !draftMessage.trim()} className="rounded-3 px-3">Send</Button>
+              <Button variant="dark" onClick={() => void handleSendMessage(draftMessage)} disabled={!activeDriver || !draftMessage.trim() || isSendingMessage} className="rounded-3 px-3">{isSendingMessage ? 'Sending...' : 'Send'}</Button>
             </div>
           </div>
         </div>
