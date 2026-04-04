@@ -459,10 +459,15 @@ export const NemtProvider = ({
     const nextThreads = existingThreads.some(thread => thread.driverId === normalizedDriverId)
       ? existingThreads.map(thread => thread.driverId === normalizedDriverId ? {
         ...thread,
-        messages: [...thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
-          ...currentMessage,
-          status: 'read'
-        } : currentMessage), normalizedMessage]
+        messages: thread.messages.some(currentMessage => String(currentMessage?.id || '').trim() === normalizedMessage.id)
+          ? thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
+            ...currentMessage,
+            status: 'read'
+          } : currentMessage)
+          : [...thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
+            ...currentMessage,
+            status: 'read'
+          } : currentMessage), normalizedMessage]
       } : thread)
       : [...existingThreads, normalizeDispatchThreadRecord({ driverId: normalizedDriverId, messages: [normalizedMessage] })];
     return {

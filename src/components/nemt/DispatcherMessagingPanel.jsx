@@ -5,6 +5,7 @@ import { useNemtContext } from '@/context/useNemtContext';
 import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
 import { normalizePhoneDigits } from '@/helpers/system-users';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
+import { useSession } from 'next-auth/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Form } from 'react-bootstrap';
 
@@ -88,6 +89,7 @@ const DispatcherMessagingPanel = ({
   setSelectedDriverId,
   openFullChat
 }) => {
+  const { data: session } = useSession();
   const {
     dispatchThreads,
     dailyDrivers,
@@ -158,6 +160,7 @@ const DispatcherMessagingPanel = ({
   }, {}), [driverAlerts]);
   const unreadCount = visibleThreads.reduce((total, thread) => total + thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length, 0);
   const activeDriverAlerts = useMemo(() => driverAlerts.filter(alert => alert.driverId === activeDriverId && alert.status !== 'resolved'), [activeDriverId, driverAlerts]);
+  const dispatcherSenderName = String(session?.user?.name || session?.user?.email || 'Dispatch').trim() || 'Dispatch';
 
   const handleSelectDriver = driverId => {
     setSelectedDriverId(driverId);
@@ -181,6 +184,27 @@ const DispatcherMessagingPanel = ({
         }).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
 
         setDriverAlerts(nextAlerts);
+        nextAlerts.forEach(message => {
+          const attachment = message?.mediaUrl ? [{
+            id: `${message.id}-media`,
+            kind: String(message?.mediaType || '').toLowerCase().includes('image') ? 'photo' : 'document',
+            name: String(message?.mediaType || '').toLowerCase().includes('image') ? 'Driver photo' : 'Driver attachment',
+            mimeType: String(message?.mediaType || '').trim(),
+            dataUrl: String(message?.mediaUrl || '').trim()
+          }] : [];
+          upsertDispatchThreadMessage({
+            driverId: message.driverId,
+            markIncomingRead: activeDriverId === message.driverId,
+            message: {
+              id: message.id,
+              direction: 'incoming',
+              text: String(message?.body || '').trim(),
+              timestamp: message.createdAt,
+              status: activeDriverId === message.driverId ? 'read' : 'sent',
+              attachments: attachment
+            }
+          });
+        });
         setAlertsError('');
       } catch (error) {
         if (!active) return;
@@ -199,22 +223,56 @@ const DispatcherMessagingPanel = ({
       active = false;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [activeDriverId, upsertDispatchThreadMessage]);
 
-  const handleSendMessage = (text, options = {}) => {
+  const handleSendMessage = async (text, options = {}) => {
     const messageText = text.trim();
     const attachments = Array.isArray(options.attachments) ? options.attachments : [];
-    if (!activeDriverId || (!messageText && attachments.length === 0)) return;
+    if (!activeDriverId || (!messageText && attachments.length === 0)) return false;
+    const firstAttachment = attachments[0] || null;
+    const messageId = `${activeDriverId}-${Date.now()}`;
+    const persistedBody = messageText || (firstAttachment?.kind === 'photo' ? '[Photo]' : firstAttachment?.name ? `[Attachment] ${firstAttachment.name}` : '[Attachment]');
+
+    try {
+      const response = await fetch('/api/system-messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          id: messageId,
+          type: 'dispatch-message',
+          priority: 'normal',
+          audience: 'Driver',
+          subject: `[From: ${dispatcherSenderName}] Dispatch message for ${activeDriver?.name || 'driver'}`,
+          body: persistedBody,
+          driverId: activeDriverId,
+          driverName: activeDriver?.name || null,
+          source: 'dispatcher-web',
+          deliveryMethod: 'in-app',
+          mediaUrl: firstAttachment?.dataUrl || null,
+          mediaType: firstAttachment?.mimeType || firstAttachment?.kind || null
+        })
+      });
+      const payload = await readJsonResponse(response);
+      if (!response.ok) throw new Error(payload?.error || 'Unable to send dispatch message.');
+
     const outgoingMessage = {
-      id: `${activeDriverId}-${Date.now()}`,
+      id: payload?.message?.id || messageId,
       direction: 'outgoing',
       text: messageText || (attachments.length > 0 ? 'Attachment sent.' : ''),
-      timestamp: new Date().toISOString(),
+      timestamp: payload?.message?.createdAt || new Date().toISOString(),
       status: 'sent',
       attachments
     };
     upsertDispatchThreadMessage({ driverId: activeDriverId, message: outgoingMessage });
     setDraftMessage('');
+      setSmsStatus('');
+      return true;
+    } catch (error) {
+      setSmsStatus(error?.message || 'Unable to send dispatch message.');
+      return false;
+    }
   };
 
   const handleResolveAlert = async alertId => {
@@ -271,7 +329,7 @@ const DispatcherMessagingPanel = ({
       const payload = await response.json();
       if (!response.ok || payload?.success === false) throw new Error(payload?.error || 'Unable to escalate via SMS.');
 
-      handleSendMessage(`SMS escalation sent: ${smsMessage}`);
+      void handleSendMessage(`SMS escalation sent: ${smsMessage}`);
       await logSystemActivity('Sent dispatcher SMS escalation', activeDriverId || '', {
         alertId: alert?.id || '',
         driverId: activeDriverId || '',
@@ -306,12 +364,12 @@ const DispatcherMessagingPanel = ({
     event.target.value = '';
     if (!file || !activeDriverId) return;
     if (file.size > 5 * 1024 * 1024) {
-      handleSendMessage('Attachment blocked: file exceeds 5MB limit.');
+      setSmsStatus('Attachment blocked: file exceeds 5MB limit.');
       return;
     }
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      handleSendMessage('', {
+      await handleSendMessage('', {
         attachments: [{
           id: `${kind}-${Date.now()}`,
           kind,
@@ -321,7 +379,7 @@ const DispatcherMessagingPanel = ({
         }]
       });
     } catch {
-      handleSendMessage('Attachment failed: unable to read selected file.');
+      setSmsStatus('Attachment failed: unable to read selected file.');
     }
   };
 
