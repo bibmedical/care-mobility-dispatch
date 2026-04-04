@@ -572,18 +572,30 @@ const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   popupAnchor: [0, -16]
 });
 
-const createLiveVehicleIcon = ({ heading = 0, isOnline = false }) => {
+const DRIVER_VEHICLE_COLORS = ['#2563eb', '#0f766e', '#dc2626', '#7c3aed', '#ea580c', '#0891b2', '#65a30d', '#be185d'];
+
+const getDriverVehicleColor = driverKey => {
+  const normalizedKey = String(driverKey || '').trim().toLowerCase();
+  if (!normalizedKey) return DRIVER_VEHICLE_COLORS[0];
+  let hash = 0;
+  for (let index = 0; index < normalizedKey.length; index += 1) {
+    hash = (hash * 31 + normalizedKey.charCodeAt(index)) >>> 0;
+  }
+  return DRIVER_VEHICLE_COLORS[hash % DRIVER_VEHICLE_COLORS.length];
+};
+
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '' }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
-  const bodyColor = isOnline ? '#3b82f6' : '#94a3b8';
-  const bodyShadow = isOnline ? '#1d4ed8' : '#64748b';
-  const glassColor = '#1f5b74';
+  const bodyColor = isOnline ? getDriverVehicleColor(driverKey) : '#94a3b8';
+  const bodyShadow = isOnline ? '#0f172a' : '#64748b';
+  const glassColor = '#dbeafe';
   const trimColor = '#0f172a';
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 3px 8px rgba(15,23,42,0.22));"><svg width="26" height="26" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><path d="M20 3h24c7 0 12.7 5.2 13.6 12.1l3.9 29.7c0.9 7.4-4.8 14.2-12.3 14.2H14.8c-7.5 0-13.2-6.8-12.3-14.2L6.4 15.1C7.3 8.2 13 3 20 3Z" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="2.5"/><path d="M23 8h18c5.8 0 10.6 4.3 11.3 10l1.1 8H9.6l1.1-8C11.4 12.3 17.2 8 23 8Z" fill="${glassColor}" opacity="0.96"/><path d="M14 29h36l-1.7 19.2c-0.3 2.9-2.7 5-5.6 5H21.3c-2.9 0-5.3-2.1-5.6-5L14 29Z" fill="${trimColor}" opacity="0.18"/><path d="M23.5 33.5h17c2 0 3.5 1.6 3.5 3.5v7.5c0 2-1.6 3.5-3.5 3.5h-17c-2 0-3.5-1.6-3.5-3.5V37c0-2 1.6-3.5 3.5-3.5Z" fill="${glassColor}" opacity="0.94"/><path d="M16.3 19.2c0-1.1 0.9-2 2-2h3.3c1.1 0 2 0.9 2 2v2.7c0 1.1-0.9 2-2 2h-3.3c-1.1 0-2-0.9-2-2v-2.7Zm24.1 0c0-1.1 0.9-2 2-2h3.3c1.1 0 2 0.9 2 2v2.7c0 1.1-0.9 2-2 2h-3.3c-1.1 0-2-0.9-2-2v-2.7Z" fill="${trimColor}" opacity="0.28"/><path d="M11.4 22.8 7.6 26c-1 0.8-1.1 2.2-0.3 3.1 0.4 0.5 1.1 0.8 1.7 0.8 0.5 0 1-0.2 1.4-0.5l3-2.4-2-4.2Zm41.2 0 3.8 3.2c1 0.8 1.1 2.2 0.3 3.1-0.4 0.5-1.1 0.8-1.7 0.8-0.5 0-1-0.2-1.4-0.5l-3-2.4 2-4.2Z" fill="${bodyShadow}" opacity="0.95"/><circle cx="18.8" cy="53.8" r="3.3" fill="#1f2937"/><circle cx="45.2" cy="53.8" r="3.3" fill="#1f2937"/></g></svg></div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -14]
+    html: `<div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 2px 6px rgba(15,23,42,0.2));opacity:${isOnline ? '1' : '0.78'};"><svg width="22" height="22" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><path d="M23 10h18c4.9 0 9.1 3.2 10.4 8l4.4 16.8c1.1 4.1-2 8.2-6.2 8.2H14.1c-4.2 0-7.3-4.1-6.2-8.2L12.3 18c1.3-4.8 5.5-8 10.7-8Z" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="2"/><path d="M18 24h28c2.2 0 4 1.8 4 4v4H14v-4c0-2.2 1.8-4 4-4Z" fill="${glassColor}" opacity="0.95"/><path d="M20 16h24" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/><path d="M13 34h38" stroke="${trimColor}" stroke-width="1.6" opacity="0.25"/><circle cx="20" cy="44" r="4.2" fill="#111827" stroke="#ffffff" stroke-width="1.2"/><circle cx="44" cy="44" r="4.2" fill="#111827" stroke="#ffffff" stroke-width="1.2"/><path d="M10 29h4" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/><path d="M50 29h4" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/></g></svg></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12]
   });
 };
 
@@ -2282,7 +2294,7 @@ const DispatcherWorkspace = () => {
                         </Popup>
                       </Marker>
                     </> : null}
-                  {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online' })}>
+                  {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online', driverKey: selectedDriver.id || selectedDriver.name })}>
                       <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                         <div className="fw-semibold">{selectedDriver.name}</div>
                         <div>{getDriverMapLocationLabel(selectedDriver)}</div>
@@ -2290,7 +2302,7 @@ const DispatcherWorkspace = () => {
                         {!selectedDriverActiveTrip && selectedDriverPendingEtaTrip ? <div className="small text-muted">Waiting for En Route</div> : null}
                       </Tooltip>
                     </Marker> : null}
-                  {!selectedDriverId ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online' })}>
+                  {!selectedDriverId ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online', driverKey: driver.id || driver.name })}>
                       <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                         <div className="fw-semibold">{driver.name}</div>
                         <div>{getDriverMapLocationLabel(driver)}</div>
