@@ -14,7 +14,7 @@ import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whats
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleMarker, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
@@ -176,6 +176,15 @@ const getDriverCheckpoint = driver => {
   if (driver.checkpoint) return driver.checkpoint;
   if (!driver.position) return 'No GPS';
   return `${driver.position[0].toFixed(4)}, ${driver.position[1].toFixed(4)}`;
+};
+
+const COORDINATE_LIKE_TEXT = /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/;
+
+const getDriverMapLocationLabel = driver => {
+  const checkpoint = String(driver?.checkpoint || '').trim();
+  if (checkpoint && !COORDINATE_LIKE_TEXT.test(checkpoint)) return checkpoint;
+  if (String(driver?.live || '').trim().toLowerCase() === 'online') return 'Live location';
+  return 'Location unavailable';
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -500,13 +509,16 @@ const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
 
 const createLiveVehicleIcon = ({ heading = 0, isOnline = false }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
-  const bodyColor = isOnline ? '#16a34a' : '#475569';
+  const bodyColor = isOnline ? '#3b82f6' : '#94a3b8';
+  const bodyShadow = isOnline ? '#1d4ed8' : '#64748b';
+  const glassColor = '#1f5b74';
+  const trimColor = '#0f172a';
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 3px 8px rgba(15,23,42,0.28));"><svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.2 8.4L8.3 5.5C8.7 5 9.3 4.7 9.9 4.7H14.1C14.8 4.7 15.4 5 15.7 5.5L17.8 8.4H19C20.1 8.4 21 9.3 21 10.4V15.8C21 16.4 20.6 16.8 20 16.8H18.8C18.7 18 17.7 19 16.5 19C15.3 19 14.3 18 14.2 16.8H9.8C9.7 18 8.7 19 7.5 19C6.3 19 5.3 18 5.2 16.8H4C3.4 16.8 3 16.4 3 15.8V10.4C3 9.3 3.9 8.4 5 8.4H6.2Z" fill="${bodyColor}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.7 8.4H15.3L13.9 6.4C13.8 6.2 13.5 6 13.2 6H10.8C10.5 6 10.2 6.2 10.1 6.4L8.7 8.4Z" fill="#dbeafe" opacity="0.95"/><circle cx="7.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><circle cx="16.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><path d="M18.9 11.2H19.7" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/><path d="M4.3 11.2H5.1" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/></svg></div>`,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-    popupAnchor: [0, -11]
+    html: `<div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 3px 8px rgba(15,23,42,0.22));"><svg width="26" height="26" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><path d="M20 3h24c7 0 12.7 5.2 13.6 12.1l3.9 29.7c0.9 7.4-4.8 14.2-12.3 14.2H14.8c-7.5 0-13.2-6.8-12.3-14.2L6.4 15.1C7.3 8.2 13 3 20 3Z" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="2.5"/><path d="M23 8h18c5.8 0 10.6 4.3 11.3 10l1.1 8H9.6l1.1-8C11.4 12.3 17.2 8 23 8Z" fill="${glassColor}" opacity="0.96"/><path d="M14 29h36l-1.7 19.2c-0.3 2.9-2.7 5-5.6 5H21.3c-2.9 0-5.3-2.1-5.6-5L14 29Z" fill="${trimColor}" opacity="0.18"/><path d="M23.5 33.5h17c2 0 3.5 1.6 3.5 3.5v7.5c0 2-1.6 3.5-3.5 3.5h-17c-2 0-3.5-1.6-3.5-3.5V37c0-2 1.6-3.5 3.5-3.5Z" fill="${glassColor}" opacity="0.94"/><path d="M16.3 19.2c0-1.1 0.9-2 2-2h3.3c1.1 0 2 0.9 2 2v2.7c0 1.1-0.9 2-2 2h-3.3c-1.1 0-2-0.9-2-2v-2.7Zm24.1 0c0-1.1 0.9-2 2-2h3.3c1.1 0 2 0.9 2 2v2.7c0 1.1-0.9 2-2 2h-3.3c-1.1 0-2-0.9-2-2v-2.7Z" fill="${trimColor}" opacity="0.28"/><path d="M11.4 22.8 7.6 26c-1 0.8-1.1 2.2-0.3 3.1 0.4 0.5 1.1 0.8 1.7 0.8 0.5 0 1-0.2 1.4-0.5l3-2.4-2-4.2Zm41.2 0 3.8 3.2c1 0.8 1.1 2.2 0.3 3.1-0.4 0.5-1.1 0.8-1.7 0.8-0.5 0-1-0.2-1.4-0.5l-3-2.4 2-4.2Z" fill="${bodyShadow}" opacity="0.95"/><circle cx="18.8" cy="53.8" r="3.3" fill="#1f2937"/><circle cx="45.2" cy="53.8" r="3.3" fill="#1f2937"/></g></svg></div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14]
   });
 };
 
@@ -578,6 +590,9 @@ const DispatcherWorkspace = () => {
   const [dragMode, setDragMode] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [routeMetrics, setRouteMetrics] = useState(null);
+  const [selectedDriverRouteGeometry, setSelectedDriverRouteGeometry] = useState([]);
+  const [selectedDriverRouteMetrics, setSelectedDriverRouteMetrics] = useState(null);
+  const [showSelectedDriverEtaCard, setShowSelectedDriverEtaCard] = useState(false);
   const [tripOrderMode, setTripOrderMode] = useState('original');
   const [quickReassignDriverId, setQuickReassignDriverId] = useState('');
   const [noteModalTripId, setNoteModalTripId] = useState(null);
@@ -1249,13 +1264,13 @@ const DispatcherWorkspace = () => {
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
     const target = getSelectedDriverEtaTarget(selectedDriverActiveTrip);
-    const miles = getDistanceMiles(selectedDriver.position, target?.position);
+    const miles = selectedDriverRouteMetrics?.distanceMiles ?? getDistanceMiles(selectedDriver.position, target?.position);
     return {
       target,
       miles,
-      label: formatEta(miles)
+      label: selectedDriverRouteMetrics?.durationMinutes != null ? formatDriveMinutes(selectedDriverRouteMetrics.durationMinutes) : formatEta(miles)
     };
-  }, [selectedDriver, selectedDriverActiveTrip]);
+  }, [selectedDriver, selectedDriverActiveTrip, selectedDriverRouteMetrics]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
   const activeDrivers = useMemo(() => {
     const onlineDrivers = drivers.filter(driver => driver.live === 'Online');
@@ -1864,6 +1879,70 @@ const DispatcherWorkspace = () => {
   }, [routeStops, showRoute]);
 
   useEffect(() => {
+    if (!selectedDriver?.hasRealLocation || !selectedDriverActiveTrip) {
+      setSelectedDriverRouteGeometry([]);
+      setSelectedDriverRouteMetrics(null);
+      return;
+    }
+
+    const target = getSelectedDriverEtaTarget(selectedDriverActiveTrip);
+    const targetPosition = Array.isArray(target?.position) ? target.position : null;
+    if (!Array.isArray(selectedDriver.position) || !targetPosition || targetPosition.length !== 2) {
+      setSelectedDriverRouteGeometry([]);
+      setSelectedDriverRouteMetrics(null);
+      return;
+    }
+
+    const abortController = new AbortController();
+    const coordinates = `${selectedDriver.position[0]},${selectedDriver.position[1]};${targetPosition[0]},${targetPosition[1]}`;
+
+    const loadSelectedDriverRoute = async () => {
+      try {
+        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
+          signal: abortController.signal,
+          cache: 'no-store'
+        });
+        if (!response.ok) throw new Error('Routing service unavailable');
+        const payload = await response.json();
+        const geometry = Array.isArray(payload?.geometry) ? payload.geometry : [];
+        if (geometry.length < 2) throw new Error('No drivable route found');
+        setSelectedDriverRouteGeometry(geometry);
+        setSelectedDriverRouteMetrics({
+          distanceMiles: Number.isFinite(payload?.distanceMiles) ? payload.distanceMiles : null,
+          durationMinutes: Number.isFinite(payload?.durationMinutes) ? payload.durationMinutes : null,
+          isFallback: Boolean(payload?.isFallback)
+        });
+      } catch {
+        if (abortController.signal.aborted) return;
+        setSelectedDriverRouteGeometry([selectedDriver.position, targetPosition]);
+        setSelectedDriverRouteMetrics(null);
+      }
+    };
+
+    loadSelectedDriverRoute();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [selectedDriver, selectedDriverActiveTrip]);
+
+  useEffect(() => {
+    if (!selectedDriver?.id || (!selectedDriverActiveTrip && !selectedDriverPendingEtaTrip)) {
+      setShowSelectedDriverEtaCard(false);
+      return;
+    }
+
+    setShowSelectedDriverEtaCard(true);
+    const timeoutId = window.setTimeout(() => {
+      setShowSelectedDriverEtaCard(false);
+    }, 5500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [selectedDriver?.id, selectedDriverActiveTrip, selectedDriverPendingEtaTrip]);
+
+  useEffect(() => {
     if (!dragMode) return;
 
     const handlePointerMove = event => {
@@ -1995,26 +2074,26 @@ const DispatcherWorkspace = () => {
                 }} disabled={mapLocked}>{showBottomPanels ? 'Hide SMS' : 'SMS'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
-                {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
+                {showSelectedDriverEtaCard && selectedDriver?.hasRealLocation && (selectedDriverActiveTrip || selectedDriverPendingEtaTrip) ? <div className="position-absolute top-0 end-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144', pointerEvents: 'none', opacity: 0.96 }}>
                     <div className="small text-uppercase text-secondary">Driver ETA</div>
                     <div className="fw-semibold d-flex align-items-center gap-2"><IconifyIcon icon="iconoir:map-pin" /> {selectedDriver.name}</div>
-                    <div className="small mt-1">{selectedDriverEta?.target?.label || 'Heading to trip'} • {selectedDriverActiveTrip.id} • {selectedDriverActiveTrip.rider}</div>
-                    <div className="small text-secondary">{selectedDriverEta?.target?.detail || selectedDriverActiveTrip.address}</div>
-                    <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                      <Badge bg="info">{selectedDriverEta?.label || 'ETA unavailable'}</Badge>
-                      <Badge bg="secondary">{selectedDriverEta?.miles != null ? `${selectedDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
-                      <Badge style={{ backgroundColor: selectedDriverEta?.target?.color || '#475569' }}>{selectedDriverEta?.target?.shortLabel || 'ETA'}</Badge>
-                      <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
-                    </div>
-                  </div> : selectedDriver?.hasRealLocation && selectedDriverPendingEtaTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
-                    <div className="small text-uppercase text-secondary">Driver ETA</div>
-                    <div className="fw-semibold d-flex align-items-center gap-2"><IconifyIcon icon="iconoir:map-pin" /> {selectedDriver.name}</div>
-                    <div className="small mt-1">Trip {selectedDriverPendingEtaTrip.id} • {selectedDriverPendingEtaTrip.rider}</div>
-                    <div className="small text-secondary">ETA will appear after the driver taps En Route in the mobile app.</div>
-                    <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                      <Badge bg="secondary">Waiting for En Route</Badge>
-                      <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
-                    </div>
+                    {selectedDriverActiveTrip ? <>
+                        <div className="small mt-1">{selectedDriverEta?.target?.label || 'Heading to trip'} • {selectedDriverActiveTrip.id} • {selectedDriverActiveTrip.rider}</div>
+                        <div className="small text-secondary">{selectedDriverEta?.target?.detail || selectedDriverActiveTrip.address}</div>
+                        <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                          <Badge bg="info">{selectedDriverEta?.label || 'ETA unavailable'}</Badge>
+                          <Badge bg="secondary">{selectedDriverEta?.miles != null ? `${selectedDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
+                          <Badge style={{ backgroundColor: selectedDriverEta?.target?.color || '#475569' }}>{selectedDriverEta?.target?.shortLabel || 'ETA'}</Badge>
+                          <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
+                        </div>
+                      </> : <>
+                        <div className="small mt-1">Trip {selectedDriverPendingEtaTrip.id} • {selectedDriverPendingEtaTrip.rider}</div>
+                        <div className="small text-secondary">ETA will appear after the driver taps En Route in the mobile app.</div>
+                        <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                          <Badge bg="secondary">Waiting for En Route</Badge>
+                          <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
+                        </div>
+                      </>}
                   </div> : null}
                 <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${showBottomPanels}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
@@ -2023,7 +2102,7 @@ const DispatcherWorkspace = () => {
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
                   {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <>
-                      <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: selectedDriverEta?.target?.color || '#f59e0b', weight: 4, dashArray: '10 8', opacity: 0.95 }} />
+                      <Polyline positions={selectedDriverRouteGeometry.length > 1 ? selectedDriverRouteGeometry : [selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: selectedDriverEta?.target?.color || '#f59e0b', weight: 4, dashArray: selectedDriverRouteGeometry.length > 1 && selectedDriverRouteMetrics?.isFallback !== true ? undefined : '10 8', opacity: 0.95 }} />
                       <Marker position={getTripTargetPosition(selectedDriverActiveTrip)} icon={createRouteStopIcon(selectedDriverEta?.target?.stage === 'dropoff' ? 'DO' : 'PU', selectedDriverEta?.target?.stage === 'dropoff' ? 'dropoff' : 'pickup')}>
                         <Popup>
                           <div className="fw-semibold">{selectedDriverEta?.target?.label || 'Trip target'}</div>
@@ -2033,11 +2112,12 @@ const DispatcherWorkspace = () => {
                       </Marker>
                     </> : null}
                   {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online' })}>
-                      <Popup>
+                      <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                         <div className="fw-semibold">{selectedDriver.name}</div>
-                        <div>{getDriverCheckpoint(selectedDriver)}</div>
-                        <div className="small text-muted">{selectedDriver.live}{selectedDriver.trackingLastSeen ? ` • ${new Date(selectedDriver.trackingLastSeen).toLocaleTimeString()}` : ''}</div>
-                      </Popup>
+                        <div>{getDriverMapLocationLabel(selectedDriver)}</div>
+                        {selectedDriverActiveTrip ? <div className="small text-muted">{selectedDriverEta?.target?.shortLabel || 'ETA'} • {selectedDriverEta?.label || 'ETA unavailable'}</div> : null}
+                        {!selectedDriverActiveTrip && selectedDriverPendingEtaTrip ? <div className="small text-muted">Waiting for En Route</div> : null}
+                      </Tooltip>
                     </Marker> : null}
                   {mapQuickTrips.flatMap(trip => {
                   const points = [{

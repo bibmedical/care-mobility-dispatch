@@ -810,7 +810,6 @@ const DispatcherMessagingPanel = ({
                                 {driver?.name ?? 'Driver'}
                                 {driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
                               </div>
-                              <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : '#64748b' }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                               <button
                                 type="button"
                                 onClick={event => {
@@ -831,6 +830,7 @@ const DispatcherMessagingPanel = ({
                                 <IconifyIcon icon="iconoir:map-pin" className="me-1" />
                                 {getDriverLocationLabel(driver)}
                               </button>
+                              <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : '#64748b' }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                             </div>
                           </div>
                           <div className="text-end">
@@ -942,24 +942,40 @@ const DispatcherMessagingPanel = ({
             )) : <div className="text-center text-muted py-5">No messages yet for this driver.</div>}
           </div>
           <div className="p-3 border-top" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef' }}>
-            <div className="d-flex gap-2 mb-2">
-              <Button variant="outline-secondary" size="sm" disabled={!activeDriver} onClick={() => photoInputRef.current?.click()}>Foto</Button>
-              <Button variant="outline-secondary" size="sm" disabled={!activeDriver} onClick={() => documentInputRef.current?.click()}>Documento</Button>
-              <input ref={photoInputRef} type="file" accept="image/*" className="d-none" onChange={event => {
-                void handleAttachmentPick(event, 'photo');
-              }} />
-              <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" className="d-none" onChange={event => {
-                void handleAttachmentPick(event, 'document');
-              }} />
-            </div>
-            <div className="d-flex gap-2">
-              <Form.Control value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder={activeDriver ? `Message ${activeDriver.name}` : 'Select a driver first'} disabled={!activeDriver} onKeyDown={event => {
+            <input ref={photoInputRef} type="file" accept="image/*" className="d-none" onChange={event => {
+              void handleAttachmentPick(event, 'photo');
+            }} />
+            <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" className="d-none" onChange={event => {
+              void handleAttachmentPick(event, 'document');
+            }} />
+            <div className="d-flex align-items-center gap-2 border rounded-3 px-2 py-2 bg-white" style={{ borderColor: '#dbe3ef' }}>
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={!activeDriver}
+                className="border-0 bg-transparent d-inline-flex align-items-center justify-content-center rounded-circle"
+                style={{ width: 32, height: 32, color: activeDriver ? selectedChatTheme.accent : '#94a3b8' }}
+                title="Add photo"
+              >
+                <IconifyIcon icon="iconoir:media-image" />
+              </button>
+              <button
+                type="button"
+                onClick={() => documentInputRef.current?.click()}
+                disabled={!activeDriver}
+                className="border-0 bg-transparent d-inline-flex align-items-center justify-content-center rounded-circle"
+                style={{ width: 32, height: 32, color: activeDriver ? selectedChatTheme.accent : '#94a3b8' }}
+                title="Add document"
+              >
+                <IconifyIcon icon="iconoir:page" />
+              </button>
+              <Form.Control value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder={activeDriver ? `Message ${activeDriver.name}` : 'Select a driver first'} disabled={!activeDriver} className="border-0 shadow-none" style={{ backgroundColor: 'transparent' }} onKeyDown={event => {
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   handleSendMessage(draftMessage);
                 }
               }} />
-              <Button variant="dark" onClick={() => handleSendMessage(draftMessage)} disabled={!activeDriver || !draftMessage.trim()}>Send</Button>
+              <Button variant="dark" onClick={() => handleSendMessage(draftMessage)} disabled={!activeDriver || !draftMessage.trim()} className="rounded-3 px-3">Send</Button>
             </div>
           </div>
         </div>
