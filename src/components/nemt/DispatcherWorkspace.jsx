@@ -72,8 +72,8 @@ const normalizeDispatcherToolbarRows = (row1Value, row2Value, row3Value) => {
 };
 
 const greenToolbarButtonStyle = {
-  color: '#e5e7eb',
-  borderColor: '#334155',
+  color: '#08131a',
+  borderColor: 'rgba(8, 19, 26, 0.35)',
   backgroundColor: 'transparent'
 };
 
@@ -2041,7 +2041,7 @@ const DispatcherWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0 }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex flex-column align-items-stretch p-3 border-bottom gap-2 flex-shrink-0" style={{ backgroundColor: '#0f172a', borderColor: '#1f2937', color: '#e5e7eb' }}>
+              <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                 {/* Row 1: Trip filters and selection */}
                 <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
