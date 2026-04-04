@@ -157,9 +157,18 @@ const DispatcherHistoryWorkspace = () => {
       if (nextDriverId) params.set('driverId', nextDriverId);
       const query = `?${params.toString()}`;
       const response = await fetch(`/api/nemt/dispatch-history${query}`, { cache: 'no-store' });
-      const payload = await response.json();
+      const rawResponse = await response.text();
+      let payload = null;
+      try {
+        payload = rawResponse ? JSON.parse(rawResponse) : null;
+      } catch {
+        payload = null;
+      }
       if (!response.ok) {
-        throw new Error(payload?.error || 'Unable to load dispatcher history');
+        throw new Error(payload?.error || `Unable to load dispatcher history (${response.status})`);
+      }
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Dispatcher history returned an invalid response');
       }
       setAvailableDates(Array.isArray(payload?.availableDates) ? payload.availableDates : []);
       setAvailableDrivers(Array.isArray(payload?.availableDrivers) ? payload.availableDrivers : []);
