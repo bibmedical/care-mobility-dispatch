@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
+import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 
 const normalizeDriverId = value => String(value || '').trim();
 const normalizePushToken = value => String(value || '').trim();
@@ -18,6 +19,9 @@ export async function POST(request) {
   if (!driverId || !pushToken) {
     return NextResponse.json({ ok: false, error: 'driverId and pushToken are required.' }, { status: 400 });
   }
+
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  if (authResult.response) return authResult.response;
 
   if (!pushToken.startsWith('ExponentPushToken[') && !pushToken.startsWith('ExpoPushToken[')) {
     return NextResponse.json({ ok: false, error: 'Invalid Expo push token.' }, { status: 400 });

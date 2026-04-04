@@ -724,9 +724,14 @@ const DispatcherWorkspace = () => {
   useEffect(() => {
     setTripDateFilter(todayDateKey);
     setSelectedTripIds([]);
-    setSelectedDriverId(null);
     setSelectedRouteId(null);
   }, [todayDateKey]);
+
+  useEffect(() => {
+    if (!selectedDriverId) return;
+    if (drivers.some(driver => driver.id === selectedDriverId)) return;
+    setSelectedDriverId(null);
+  }, [drivers, selectedDriverId]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
@@ -970,10 +975,13 @@ const DispatcherWorkspace = () => {
       case 'trip-search':
         return <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, rider, phone, address..." disabled={mapLocked} style={{ width: 220 }} />;
       case 'driver-select':
-        return <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
-            <option value="">Select driver</option>
-            {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
-          </Form.Select>;
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
+              <option value="">Select driver</option>
+              {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+            </Form.Select>
+            <Button variant={selectedDriverId ? 'outline-dark' : 'dark'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked} style={selectedDriverId ? greenToolbarButtonStyle : undefined}>All drivers</Button>
+          </div>;
       case 'secondary-driver':
         return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
             <option value="">Second driver</option>
@@ -2215,6 +2223,7 @@ const DispatcherWorkspace = () => {
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
+                  <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked}>All drivers</Button>
                   <Button variant="dark" size="sm" onClick={() => toggleDispatcherLayoutPanel('messagingVisible')} disabled={mapLocked}>{dispatcherLayout.messagingVisible ? 'Hide SMS' : 'Show SMS'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
@@ -2262,6 +2271,13 @@ const DispatcherWorkspace = () => {
                         {!selectedDriverActiveTrip && selectedDriverPendingEtaTrip ? <div className="small text-muted">Waiting for En Route</div> : null}
                       </Tooltip>
                     </Marker> : null}
+                  {!selectedDriverId ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online' })}>
+                      <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
+                        <div className="fw-semibold">{driver.name}</div>
+                        <div>{getDriverMapLocationLabel(driver)}</div>
+                        <div className="small text-muted">{driver.live}</div>
+                      </Tooltip>
+                    </Marker>) : null}
                   {mapQuickTrips.flatMap(trip => {
                   const points = [{
                     key: `${trip.id}-pickup-mapquick`,

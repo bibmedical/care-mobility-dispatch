@@ -2,6 +2,39 @@
 
 import { useEffect, useState } from 'react';
 
+const parseApiPayload = async response => {
+  const rawText = await response.text();
+  if (!rawText) {
+    return {
+      payload: null,
+      rawText: ''
+    };
+  }
+
+  try {
+    return {
+      payload: JSON.parse(rawText),
+      rawText
+    };
+  } catch {
+    return {
+      payload: null,
+      rawText
+    };
+  }
+};
+
+const getApiErrorMessage = (response, payload, fallbackMessage, rawText = '') => {
+  if (payload?.error) return payload.error;
+  if (response.status === 401 || response.status === 403) {
+    return 'Your admin session expired or no longer has access to User Management. Sign in again and retry.';
+  }
+  if (rawText.trim().startsWith('<!DOCTYPE') || rawText.trim().startsWith('<html')) {
+    return 'User Management received an HTML page instead of JSON. Refresh the page and sign in again.';
+  }
+  return fallbackMessage;
+};
+
 const useSystemUsersApi = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,8 +46,10 @@ const useSystemUsersApi = () => {
     setError('');
     try {
       const response = await fetch('/api/system-users', { cache: 'no-store' });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Unable to load users');
+      const { payload, rawText } = await parseApiPayload(response);
+      if (!response.ok || !payload) {
+        throw new Error(getApiErrorMessage(response, payload, 'Unable to load users', rawText));
+      }
       setData(payload);
     } catch (fetchError) {
       setError(fetchError.message || 'Unable to load users');
@@ -34,8 +69,10 @@ const useSystemUsersApi = () => {
         },
         body: JSON.stringify(nextState)
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Unable to save users');
+      const { payload, rawText } = await parseApiPayload(response);
+      if (!response.ok || !payload) {
+        throw new Error(getApiErrorMessage(response, payload, 'Unable to save users', rawText));
+      }
       setData(payload);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('nemt-admin-updated'));

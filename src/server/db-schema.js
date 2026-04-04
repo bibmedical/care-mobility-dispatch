@@ -139,6 +139,20 @@ export const runMigrations = async () => {
   await query(`CREATE INDEX IF NOT EXISTS idx_login_failures_identifier ON login_failures(identifier)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_login_failures_timestamp ON login_failures(timestamp DESC)`);
 
+  // ─── MOBILE DRIVER SESSIONS ─────────────────────────────────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS driver_mobile_sessions (
+      driver_id      TEXT PRIMARY KEY,
+      driver_name    TEXT,
+      device_id      TEXT NOT NULL,
+      session_token  TEXT NOT NULL,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`CREATE INDEX IF NOT EXISTS idx_driver_mobile_sessions_last_seen_at ON driver_mobile_sessions(last_seen_at DESC)`);
+
   // ─── 2FA SECRETS ─────────────────────────────────────────────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS two_fa_secrets (

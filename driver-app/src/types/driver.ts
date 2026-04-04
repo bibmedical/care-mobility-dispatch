@@ -85,6 +85,8 @@ export type DriverSession = {
   phone: string;
   vehicleId: string;
   passwordResetRequired: boolean;
+  deviceId: string;
+  sessionToken: string;
   profilePhotoUrl?: string;
 };
 

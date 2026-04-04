@@ -4,6 +4,7 @@ import { normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readSystemMessages, upsertSystemMessage } from '@/server/system-messages-store';
+import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
 
@@ -72,6 +73,9 @@ export async function GET(request) {
     return NextResponse.json({ ok: false, error: 'driverId or driverCode is required.' }, { status: 400 });
   }
 
+  const authResult = await authorizeMobileDriverRequest(request, driverLookup);
+  if (authResult.response) return authResult.response;
+
   const driver = await resolveDriverByLookup(driverLookup);
   if (!driver) {
     return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
@@ -101,6 +105,9 @@ export async function POST(request) {
   if (!driverLookup || (!messageText && !mediaUrl)) {
     return NextResponse.json({ ok: false, error: 'driverId or driverCode and at least one of body/mediaUrl are required.' }, { status: 400 });
   }
+
+  const authResult = await authorizeMobileDriverRequest(request, driverLookup);
+  if (authResult.response) return authResult.response;
 
   const driver = await resolveDriverByLookup(driverLookup);
   if (!driver) {

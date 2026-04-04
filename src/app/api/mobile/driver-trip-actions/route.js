@@ -6,6 +6,7 @@ import { readNemtAdminPayload } from '@/server/nemt-admin-store';
 import { sendTripArrivalNotifications } from '@/server/sms-confirmation-service';
 import { upsertDriverDisciplineEvent, resolveDriverDisciplineEventById } from '@/server/driver-discipline-store';
 import { appendTripWorkflowEvent, logTripArrivalEvent } from '@/server/trip-workflow-store';
+import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
 
@@ -235,6 +236,9 @@ export async function POST(request) {
   if (!tripId || !driverId || !action) {
     return NextResponse.json({ ok: false, error: 'tripId, driverId, and action are required.' }, { status: 400 });
   }
+
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  if (authResult.response) return authResult.response;
 
   const dispatchState = await readNemtDispatchState();
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];

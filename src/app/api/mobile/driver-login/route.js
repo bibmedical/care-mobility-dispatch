@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { authorizePersistedSystemUser } from '@/server/system-users-store';
+import { buildDriverSessionError, claimDriverMobileSession } from '@/server/driver-mobile-session-store';
 import { isDriverRole, normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
 import { getFullName, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
@@ -50,6 +51,20 @@ const findDriverFromAuthUser = (drivers, authUser) => {
   });
 };
 
+const buildDriverSessionPayload = async (driver, baseSession, deviceId) => {
+  const claimedSession = await claimDriverMobileSession({
+    driverId: driver.id,
+    driverName: getFullName(driver),
+    deviceId
+  });
+
+  return {
+    ...baseSession,
+    deviceId: claimedSession.deviceId,
+    sessionToken: claimedSession.sessionToken
+  };
+};
+
 export async function POST(request) {
   let payload;
 
@@ -62,6 +77,11 @@ export async function POST(request) {
   const identifier = String(payload?.identifier || payload?.email || '').trim();
   const password = String(payload?.password || '').trim();
   const pin = String(payload?.pin || '').trim();
+  const deviceId = String(payload?.deviceId || '').trim();
+
+  if (!deviceId) {
+    return NextResponse.json({ ok: false, error: 'Device ID is required.', code: 'driver-session-device-required' }, { status: 400 });
+  }
 
   const state = await readNemtAdminState();
   const normalizedDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(normalizeDriverTracking);
@@ -92,7 +112,7 @@ export async function POST(request) {
 
       return NextResponse.json({
         ok: true,
-        session: {
+        session: await buildDriverSessionPayload(driver, {
           driverId: driver.id,
           driverCode,
           name: getFullName(driver),
@@ -101,9 +121,12 @@ export async function POST(request) {
           phone: normalizePhoneDigits(driver.phone),
           vehicleId: driver.vehicleId || '',
           passwordResetRequired: Boolean(driver.passwordResetRequired)
-        }
+        }, deviceId)
       });
     } catch (error) {
+      if (error?.code === 'driver-session-conflict' || error?.code === 'driver-session-bad-request') {
+        return NextResponse.json({ ok: false, error: error.message, code: error.code }, { status: Number(error.status) || 409 });
+      }
       return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Invalid credentials.' }, { status: 401 });
     }
   }
@@ -134,17 +157,22 @@ export async function POST(request) {
 
   const driverCode = buildDriverCode(driver, state);
 
-  return NextResponse.json({
-    ok: true,
-    session: {
-      driverId: driver.id,
-      driverCode,
-      name: getFullName(driver),
-      username: driver.portalUsername || driver.username || '',
-      email: driver.portalEmail || driver.email || '',
-      phone: normalizePhoneDigits(driver.phone),
-      vehicleId: driver.vehicleId || '',
-      passwordResetRequired: Boolean(driver.passwordResetRequired)
-    }
-  });
+  try {
+    return NextResponse.json({
+      ok: true,
+      session: await buildDriverSessionPayload(driver, {
+        driverId: driver.id,
+        driverCode,
+        name: getFullName(driver),
+        username: driver.portalUsername || driver.username || '',
+        email: driver.portalEmail || driver.email || '',
+        phone: normalizePhoneDigits(driver.phone),
+        vehicleId: driver.vehicleId || '',
+        passwordResetRequired: Boolean(driver.passwordResetRequired)
+      }, deviceId)
+    });
+  } catch (error) {
+    const sessionError = error?.code ? error : buildDriverSessionError('Unable to create driver session.', 500, 'driver-session-create-failed');
+    return NextResponse.json({ ok: false, error: sessionError.message, code: sessionError.code }, { status: Number(sessionError.status) || 500 });
+  }
 }

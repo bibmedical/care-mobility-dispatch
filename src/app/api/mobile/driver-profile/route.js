@@ -3,6 +3,7 @@ import { normalizePhoneDigits } from '@/helpers/system-users';
 import { readSystemUsersState, writeSystemUsersState } from '@/server/system-users-store';
 import { getFullName } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
+import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 
 const splitFullName = value => {
   const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
@@ -33,6 +34,9 @@ export async function GET(request) {
     return NextResponse.json({ ok: false, error: 'driverId is required.' }, { status: 400 });
   }
 
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  if (authResult.response) return authResult.response;
+
   const adminState = await readNemtAdminState();
   const driver = findDriver(adminState.drivers, driverId);
   if (!driver) {
@@ -58,6 +62,9 @@ export async function POST(request) {
   if (!driverId) {
     return NextResponse.json({ ok: false, error: 'driverId is required.' }, { status: 400 });
   }
+
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  if (authResult.response) return authResult.response;
 
   const adminState = await readNemtAdminState();
   const driver = findDriver(adminState.drivers, driverId);
@@ -106,5 +113,9 @@ export async function POST(request) {
     });
   }
 
-  return NextResponse.json({ ok: true, session: buildSessionPayload(updatedDriver) });
+  return NextResponse.json({ ok: true, session: {
+    ...buildSessionPayload(updatedDriver),
+    deviceId: request.headers.get('x-driver-device-id') || '',
+    sessionToken: request.headers.get('x-driver-session-token') || ''
+  } });
 }

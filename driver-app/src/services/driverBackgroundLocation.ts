@@ -6,10 +6,15 @@ import { readStoredDriverSession } from './driverSessionStorage';
 export const BACKGROUND_LOCATION_TASK = 'care-mobility-driver-background-location';
 
 const postLocationUpdate = async (driverId: string, location: Location.LocationObject) => {
+  const session = await readStoredDriverSession();
+  if (!session?.sessionToken || !session?.deviceId) return;
+
   await fetch(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-location`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'x-driver-device-id': session.deviceId,
+      'x-driver-session-token': session.sessionToken
     },
     body: JSON.stringify({
       driverId,

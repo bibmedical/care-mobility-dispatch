@@ -5,6 +5,7 @@ import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { getActiveMessageForDriver, resolveSystemMessageById, upsertSystemMessage } from '@/server/system-messages-store';
 import { readTripWorkflowEventsByTripIds } from '@/server/trip-workflow-store';
 import { resolveDriverDisciplineEventById, upsertDriverDisciplineEvent } from '@/server/driver-discipline-store';
+import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
 const AUTO_NO_DEPARTURE_THRESHOLD_MINUTES = 5;
@@ -179,6 +180,9 @@ export async function GET(request) {
         error: 'driverId or driverCode is required.'
       }, { status: 400 });
     }
+
+    const authResult = await authorizeMobileDriverRequest(request, lookupValue);
+    if (authResult.response) return authResult.response;
 
     const [adminPayload, adminState, dispatchState] = await Promise.all([
       readNemtAdminPayload(),

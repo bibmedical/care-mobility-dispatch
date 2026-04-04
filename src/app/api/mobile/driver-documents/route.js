@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
+import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 
 const getDocumentUrl = value => {
   if (!value) return '';
@@ -31,6 +32,9 @@ export async function GET(request) {
     return NextResponse.json({ ok: false, error: 'driverId is required.' }, { status: 400 });
   }
 
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  if (authResult.response) return authResult.response;
+
   const adminState = await readNemtAdminState();
   const driver = findDriver(adminState.drivers, driverId);
   if (!driver) {
@@ -56,6 +60,9 @@ export async function POST(request) {
   if (!driverId || !documentKey || !fileDataUrl) {
     return NextResponse.json({ ok: false, error: 'driverId, documentKey, and fileDataUrl are required.' }, { status: 400 });
   }
+
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  if (authResult.response) return authResult.response;
 
   const allowedKeys = new Set(['profilePhoto', 'licenseFront', 'licenseBack', 'insuranceCertificate', 'w9Document', 'trainingCertificate']);
   if (!allowedKeys.has(documentKey)) {

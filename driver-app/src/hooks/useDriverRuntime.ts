@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { DRIVER_APP_CONFIG } from '../config/driverAppConfig';
-import { DriverNotificationMode, clearStoredDriverSession, readStoredDriverSession, readStoredNotificationMode, readStoredTrackingPreference, writeStoredDriverSession, writeStoredNotificationMode, writeStoredTrackingPreference } from '../services/driverSessionStorage';
+import { DriverNotificationMode, clearStoredDriverSession, readOrCreateDriverDeviceId, readStoredDriverSession, readStoredNotificationMode, readStoredTrackingPreference, writeStoredDriverSession, writeStoredNotificationMode, writeStoredTrackingPreference } from '../services/driverSessionStorage';
 import { isBackgroundLocationTrackingActive, startBackgroundLocationTracking, stopBackgroundLocationTracking } from '../services/driverBackgroundLocation';
 import { DriverAppTab, DriverDocuments, DriverMessage, DriverSession, DriverShiftState, DriverTrip, LocationSnapshot } from '../types/driver';
 
@@ -71,6 +71,21 @@ const getMobileApiErrorMessage = (response: Response, fallbackMessage: string) =
   return fallbackMessage;
 };
 
+const getDriverAuthHeaders = (session: DriverSession | null, baseHeaders: HeadersInit = {}) => {
+  const headers = {
+    ...baseHeaders
+  } as Record<string, string>;
+
+  if (session?.deviceId) {
+    headers['x-driver-device-id'] = session.deviceId;
+  }
+  if (session?.sessionToken) {
+    headers['x-driver-session-token'] = session.sessionToken;
+  }
+
+  return headers;
+};
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -133,6 +148,38 @@ export const useDriverRuntime = () => {
   const [isRegisteringPushToken, setIsRegisteringPushToken] = useState(false);
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
 
+  const clearDriverRuntimeState = async (message = '') => {
+    setLoggedIn(false);
+    setDriverSession(null);
+    setTrackingEnabled(false);
+    setActiveTab('home');
+    setShiftState('available');
+    setLocationSnapshot(null);
+    setWatchError('');
+    setTripSyncError('');
+    setMessages([]);
+    setMessageDraft('');
+    seenMessageIdsRef.current.clear();
+    setDriverDocuments(EMPTY_DRIVER_DOCUMENTS);
+    setDocumentsError('');
+    setPassword('');
+    setBackgroundTrackingError('');
+    setIsBackgroundTrackingEnabled(false);
+    setAuthError(message);
+    await stopBackgroundLocationTracking();
+    await clearStoredDriverSession();
+  };
+
+  const handleDriverSessionFailure = async (response: Response, payload: any, fallbackMessage: string) => {
+    const code = String(payload?.code || '').trim().toLowerCase();
+    if (![401, 409].includes(response.status) || !code.startsWith('driver-session')) {
+      return false;
+    }
+
+    await clearDriverRuntimeState(payload?.error || fallbackMessage);
+    return true;
+  };
+
   const setTrackingEnabled = (nextValue: boolean) => {
     setTrackingEnabledState(nextValue);
     void writeStoredTrackingPreference(nextValue);
@@ -143,7 +190,10 @@ export const useDriverRuntime = () => {
 
     try {
       const lookupQuery = driverSession?.driverId ? `driverId=${encodeURIComponent(driverSession.driverId)}` : `driverCode=${encodeURIComponent(driverCode.trim())}`;
-      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-trips?${lookupQuery}`);
+      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-trips?${lookupQuery}`, {
+        headers: getDriverAuthHeaders(driverSession)
+      });
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to load trips.'));
 
       const nextTrips: DriverTrip[] = Array.isArray(payload?.trips) ? payload.trips : [];
@@ -170,8 +220,10 @@ export const useDriverRuntime = () => {
     try {
       const requestUrl = `${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages?driverId=${encodeURIComponent(driverSession.driverId)}&t=${Date.now()}`;
       const { response, payload } = await fetchJsonWithTimeout(requestUrl, {
-        cache: 'no-store'
+        cache: 'no-store',
+        headers: getDriverAuthHeaders(driverSession)
       });
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to load messages.'));
       if (!signalActive) return;
       setMessages(Array.isArray(payload?.messages) ? payload.messages : []);
@@ -189,7 +241,10 @@ export const useDriverRuntime = () => {
     if (!loggedIn || !driverSession?.driverId) return;
     setIsLoadingDocuments(true);
     try {
-      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-documents?driverId=${encodeURIComponent(driverSession.driverId)}`);
+      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-documents?driverId=${encodeURIComponent(driverSession.driverId)}`, {
+        headers: getDriverAuthHeaders(driverSession)
+      });
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to load documents.'));
       if (!signalActive) return;
       setDriverDocuments(payload?.documents || EMPTY_DRIVER_DOCUMENTS);
@@ -214,6 +269,11 @@ export const useDriverRuntime = () => {
         if (active) setIsRestoringSession(true);
         const [storedSession, storedTrackingEnabled, storedNotificationMode] = await withTimeout(Promise.all([readStoredDriverSession(), readStoredTrackingPreference(), readStoredNotificationMode()]), SESSION_RESTORE_TIMEOUT_MS, [null, false, 'sound'] as const);
         if (!active || !storedSession) return;
+        if (!storedSession.sessionToken || !storedSession.deviceId) {
+          await clearStoredDriverSession();
+          if (active) setAuthError('Your saved driver session is outdated. Sign in again.');
+          return;
+        }
         setDriverSession(storedSession);
         setDriverCode(storedSession.driverCode || storedSession.username || storedSession.driverId);
         setTrackingEnabledState(storedTrackingEnabled);
@@ -254,7 +314,9 @@ export const useDriverRuntime = () => {
         const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-notifications`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            ...getDriverAuthHeaders(driverSession, {
+              'Content-Type': 'application/json'
+            })
           },
           body: JSON.stringify({
             driverId: driverSession.driverId,
@@ -263,6 +325,7 @@ export const useDriverRuntime = () => {
         });
 
         if (!response.ok) {
+          if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
           throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to register device notifications.'));
         }
 
@@ -536,7 +599,9 @@ export const useDriverRuntime = () => {
         await fetch(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-location`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            ...getDriverAuthHeaders(driverSession, {
+              'Content-Type': 'application/json'
+            })
           },
           body: JSON.stringify({
             driverId: driverSession.driverId,
@@ -647,6 +712,7 @@ export const useDriverRuntime = () => {
     setIsSigningIn(true);
 
     try {
+      const deviceId = await readOrCreateDriverDeviceId();
       const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-login`, {
         method: 'POST',
         headers: {
@@ -655,7 +721,8 @@ export const useDriverRuntime = () => {
         body: JSON.stringify({
           identifier: driverCode.trim(),
           password: password.trim(),
-          pin: password.trim()
+          pin: password.trim(),
+          deviceId
         })
       });
 
@@ -679,24 +746,25 @@ export const useDriverRuntime = () => {
   };
 
   const signOut = async () => {
-    setLoggedIn(false);
-    setDriverSession(null);
-    setTrackingEnabled(false);
-    setActiveTab('home');
-    setShiftState('available');
-    setLocationSnapshot(null);
-    setWatchError('');
-    setTripSyncError('');
-    setMessages([]);
-    setMessageDraft('');
-    seenMessageIdsRef.current.clear();
-    setDriverDocuments(EMPTY_DRIVER_DOCUMENTS);
-    setDocumentsError('');
-    setPassword('');
-    setBackgroundTrackingError('');
-    setIsBackgroundTrackingEnabled(false);
-    await stopBackgroundLocationTracking();
-    await clearStoredDriverSession();
+    try {
+      if (driverSession?.driverId && driverSession?.deviceId && driverSession?.sessionToken) {
+        await fetch(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            driverId: driverSession.driverId,
+            deviceId: driverSession.deviceId,
+            sessionToken: driverSession.sessionToken
+          })
+        });
+      }
+    } catch {
+      // Local sign-out should still complete even if the logout request fails.
+    }
+
+    await clearDriverRuntimeState('');
   };
 
   const requestLocationPermission = async () => {
@@ -763,7 +831,9 @@ export const useDriverRuntime = () => {
       const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-trip-actions`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          ...getDriverAuthHeaders(driverSession, {
+            'Content-Type': 'application/json'
+          })
         },
         body: JSON.stringify({
           driverId: driverSession.driverId,
@@ -773,6 +843,7 @@ export const useDriverRuntime = () => {
           locationSnapshot: locationSnapshot || undefined
         })
       });
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to update trip.'));
 
       if (action === 'en-route') setShiftState('en-route');
@@ -801,7 +872,9 @@ export const useDriverRuntime = () => {
       const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          ...getDriverAuthHeaders(driverSession, {
+            'Content-Type': 'application/json'
+          })
         },
         body: JSON.stringify({
           driverId: driverSession.driverId,
@@ -812,6 +885,7 @@ export const useDriverRuntime = () => {
           mediaType: mediaType || undefined
         })
       });
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to send message.'));
 
       setMessages(current => [payload.message, ...current]);
@@ -857,7 +931,9 @@ export const useDriverRuntime = () => {
       const response = await fetch(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          ...getDriverAuthHeaders(driverSession, {
+            'Content-Type': 'application/json'
+          })
         },
         body: JSON.stringify({
           driverId: driverSession.driverId,
@@ -869,6 +945,7 @@ export const useDriverRuntime = () => {
         })
       });
       const payload = await response.json();
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || 'Unable to send driver alert.');
 
       setMessages(current => [payload.message, ...current]);
@@ -891,13 +968,17 @@ export const useDriverRuntime = () => {
       const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-profile`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          ...getDriverAuthHeaders(driverSession, {
+            'Content-Type': 'application/json'
+          })
         },
         body: JSON.stringify({
           driverId: driverSession.driverId,
           ...nextProfile
         })
       });
+
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
 
       if (!response.ok || !payload?.session) {
         throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to save profile.'));
@@ -925,7 +1006,9 @@ export const useDriverRuntime = () => {
       const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-documents`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          ...getDriverAuthHeaders(driverSession, {
+            'Content-Type': 'application/json'
+          })
         },
         body: JSON.stringify({
           driverId: driverSession.driverId,
@@ -934,6 +1017,8 @@ export const useDriverRuntime = () => {
           fileName
         })
       });
+
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
 
       if (!response.ok) {
         throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to upload document.'));

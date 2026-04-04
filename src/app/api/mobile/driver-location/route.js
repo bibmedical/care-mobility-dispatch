@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
+import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 
 const formatCheckpoint = (latitude, longitude) => `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`;
 
@@ -20,6 +21,9 @@ export async function POST(request) {
   if (!driverId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return NextResponse.json({ ok: false, error: 'driverId, latitude, and longitude are required.' }, { status: 400 });
   }
+
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  if (authResult.response) return authResult.response;
 
   const adminState = await readNemtAdminState();
   const drivers = Array.isArray(adminState?.drivers) ? adminState.drivers : [];

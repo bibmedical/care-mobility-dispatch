@@ -4,6 +4,7 @@ import { DriverSession } from '../types/driver';
 const DRIVER_SESSION_STORAGE_KEY = 'care-mobility-driver-session';
 const DRIVER_TRACKING_STORAGE_KEY = 'care-mobility-driver-tracking-enabled';
 const DRIVER_NOTIFICATION_MODE_KEY = 'care-mobility-driver-notification-mode';
+const DRIVER_DEVICE_ID_STORAGE_KEY = 'care-mobility-driver-device-id';
 
 export type DriverNotificationMode = 'sound' | 'vibrate' | 'silent';
 
@@ -26,6 +27,15 @@ export const writeStoredDriverSession = async (session: DriverSession) => {
 export const clearStoredDriverSession = async () => {
   await AsyncStorage.removeItem(DRIVER_SESSION_STORAGE_KEY);
   await AsyncStorage.removeItem(DRIVER_TRACKING_STORAGE_KEY);
+};
+
+export const readOrCreateDriverDeviceId = async (): Promise<string> => {
+  const existingValue = String(await AsyncStorage.getItem(DRIVER_DEVICE_ID_STORAGE_KEY) || '').trim();
+  if (existingValue) return existingValue;
+
+  const nextDeviceId = `driver-device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  await AsyncStorage.setItem(DRIVER_DEVICE_ID_STORAGE_KEY, nextDeviceId);
+  return nextDeviceId;
 };
 
 export const readStoredTrackingPreference = async (): Promise<boolean> => {
