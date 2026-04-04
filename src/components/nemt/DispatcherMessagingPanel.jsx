@@ -2,6 +2,7 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useNemtContext } from '@/context/useNemtContext';
+import { useNotificationContext } from '@/context/useNotificationContext';
 import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
 import { normalizePhoneDigits } from '@/helpers/system-users';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
@@ -92,6 +93,7 @@ const DispatcherMessagingPanel = ({
   openFullChat
 }) => {
   const { data: session } = useSession();
+  const { showNotification } = useNotificationContext();
   const {
     dispatchThreads,
     dailyDrivers,
@@ -116,6 +118,8 @@ const DispatcherMessagingPanel = ({
   const [previewImage, setPreviewImage] = useState(null);
   const photoInputRef = useRef(null);
   const documentInputRef = useRef(null);
+  const seenIncomingMessageIdsRef = useRef(new Set());
+  const seenAlertIdsRef = useRef(new Set());
 
   const allDrivers = useMemo(() => [
     ...drivers,
@@ -165,11 +169,99 @@ const DispatcherMessagingPanel = ({
   const activeDriverAlerts = useMemo(() => driverAlerts.filter(alert => alert.driverId === activeDriverId && alert.status !== 'resolved'), [activeDriverId, driverAlerts]);
   const dispatcherSenderName = String(session?.user?.name || session?.user?.email || 'Dispatch').trim() || 'Dispatch';
 
+  const playIncomingTone = () => {
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    try {
+      const audioContext = new AudioContextClass();
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.08, audioContext.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.35);
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.36);
+      oscillator.onended = () => {
+        void audioContext.close();
+      };
+    } catch {
+      // Ignore browser audio failures.
+    }
+  };
+
+  const showBrowserNotification = (title, body) => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') return;
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body });
+      return;
+    }
+    if (Notification.permission === 'default') {
+      void Notification.requestPermission().then(permission => {
+        if (permission === 'granted') {
+          new Notification(title, { body });
+        }
+      });
+    }
+  };
+
   const handleSelectDriver = driverId => {
     setSelectedDriverId(driverId);
     markDispatchThreadRead(driverId);
     setSmsStatus('');
   };
+
+  useEffect(() => {
+    const incomingMessages = normalizedThreads.flatMap(thread => thread.messages.filter(message => message.direction === 'incoming').map(message => ({
+      ...message,
+      driverId: thread.driverId,
+      driverName: allDrivers.find(driver => driver.id === thread.driverId)?.name || 'Driver'
+    })));
+
+    if (seenIncomingMessageIdsRef.current.size === 0) {
+      incomingMessages.forEach(message => seenIncomingMessageIdsRef.current.add(message.id));
+      return;
+    }
+
+    const nextMessages = incomingMessages.filter(message => !seenIncomingMessageIdsRef.current.has(message.id));
+    if (nextMessages.length === 0) return;
+
+    nextMessages.forEach(message => seenIncomingMessageIdsRef.current.add(message.id));
+    const latest = nextMessages[0];
+    showNotification({
+      title: `Message from ${latest.driverName}`,
+      message: latest.text || '[Photo]',
+      variant: 'primary',
+      delay: 5000
+    });
+    showBrowserNotification(`Message from ${latest.driverName}`, latest.text || '[Photo]');
+    playIncomingTone();
+  }, [allDrivers, normalizedThreads, showNotification]);
+
+  useEffect(() => {
+    if (seenAlertIdsRef.current.size === 0) {
+      driverAlerts.forEach(alert => seenAlertIdsRef.current.add(alert.id));
+      return;
+    }
+
+    const nextAlerts = driverAlerts.filter(alert => !seenAlertIdsRef.current.has(alert.id));
+    if (nextAlerts.length === 0) return;
+
+    nextAlerts.forEach(alert => seenAlertIdsRef.current.add(alert.id));
+    const latest = nextAlerts[0];
+    showNotification({
+      title: `Driver alert: ${latest.driverName || 'Driver'}`,
+      message: latest.subject || latest.body || 'New driver alert',
+      variant: 'warning',
+      delay: 6000
+    });
+    showBrowserNotification(`Driver alert: ${latest.driverName || 'Driver'}`, latest.subject || latest.body || 'New driver alert');
+    playIncomingTone();
+  }, [driverAlerts, showNotification]);
 
   useEffect(() => {
     let active = true;
