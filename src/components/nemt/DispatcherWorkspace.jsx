@@ -533,7 +533,7 @@ const DispatcherWorkspace = () => {
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('Dispatcher listo.');
   const [columnSplit, setColumnSplit] = useState(50);
-  const [rowSplit, setRowSplit] = useState(74);
+  const [rowSplit, setRowSplit] = useState(66);
   const [dragMode, setDragMode] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [routeMetrics, setRouteMetrics] = useState(null);
@@ -1827,7 +1827,7 @@ const DispatcherWorkspace = () => {
       if (!workspaceRef.current) return;
       const bounds = workspaceRef.current.getBoundingClientRect();
       const nextColumnSplit = clamp((event.clientX - bounds.left) / bounds.width * 100, 28, 72);
-      const nextRowSplit = clamp((event.clientY - bounds.top) / bounds.height * 100, 32, 74);
+      const nextRowSplit = clamp((event.clientY - bounds.top) / bounds.height * 100, 24, 82);
 
       if (dragMode === 'column' || dragMode === 'both') {
         setColumnSplit(nextColumnSplit);
@@ -1891,8 +1891,8 @@ const DispatcherWorkspace = () => {
     return () => window.removeEventListener('nemt-assistant-action', handleAssistantAction);
   }, [refreshDispatchState]);
 
-  const workspaceHeight = expanded ? 'clamp(760px, calc(100vh - 96px), 1100px)' : 'clamp(700px, calc(100vh - 132px), 980px)';
-  const workspaceHeightNoBottomPanels = 'calc(100vh - 18px)';
+  const workspaceHeight = 'calc(100dvh - 12px)';
+  const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
   const workspaceGridStyle = {
     display: 'grid',
