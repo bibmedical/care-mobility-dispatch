@@ -24,6 +24,8 @@ const DRIVER_ALERT_SMS_TEMPLATES = {
   fallback: driverName => `Dispatch update for ${driverName}: your alert was received. Keep dispatch updated and wait for coverage instructions.`
 };
 
+const MOBILE_DRIVER_ALERT_TYPES = new Set(['delay-alert', 'backup-driver-request', 'uber-request']);
+
 const getAlertVariant = priority => {
   if (priority === 'high' || priority === 'urgent') return 'danger';
   if (priority === 'normal') return 'warning';
@@ -181,7 +183,7 @@ const DispatcherMessagingPanel = ({
         if (!active) return;
 
         const nextAlerts = (Array.isArray(payload?.messages) ? payload.messages : []).filter(message => {
-          return message?.driverId && message?.source === 'mobile-driver-app';
+          return message?.driverId && message?.source === 'mobile-driver-app' && MOBILE_DRIVER_ALERT_TYPES.has(String(message?.type || '').trim());
         }).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
 
         setDriverAlerts(nextAlerts);
