@@ -12,6 +12,13 @@ export const DEFAULT_USER_PREFERENCES = {
     row2: [],
     row3: []
   },
+  dispatcherLayout: {
+    preset: 'full',
+    mapVisible: true,
+    tripsVisible: true,
+    messagingVisible: true,
+    actionsVisible: true
+  },
   tripDashboard: {
     row1: [],
     row2: [],
@@ -50,6 +57,14 @@ const normalizeDispatcherToolbarPreferences = value => ({
   row3: normalizeStringArray(value?.row3)
 });
 
+const normalizeDispatcherLayoutPreferences = value => ({
+  preset: String(value?.preset || DEFAULT_USER_PREFERENCES.dispatcherLayout.preset).trim() || DEFAULT_USER_PREFERENCES.dispatcherLayout.preset,
+  mapVisible: value?.mapVisible !== false,
+  tripsVisible: value?.tripsVisible !== false,
+  messagingVisible: value?.messagingVisible !== false,
+  actionsVisible: value?.actionsVisible !== false
+});
+
 const normalizeTripDashboardPreferences = value => ({
   row1: normalizeStringArray(value?.row1),
   row2: normalizeStringArray(value?.row2),
@@ -81,6 +96,7 @@ export const normalizeUserPreferences = value => ({
   },
   assistantAvatar: normalizeAssistantAvatarPreferences(value?.assistantAvatar),
   dispatcherToolbar: normalizeDispatcherToolbarPreferences(value?.dispatcherToolbar),
+  dispatcherLayout: normalizeDispatcherLayoutPreferences(value?.dispatcherLayout),
   tripDashboard: normalizeTripDashboardPreferences(value?.tripDashboard),
   confirmation: normalizeConfirmationPreferences(value?.confirmation),
   dispatcherMessaging: normalizeDispatcherMessagingPreferences(value?.dispatcherMessaging)
@@ -108,6 +124,10 @@ export const mergeUserPreferences = (currentValue, patchValue) => {
       ...current.dispatcherToolbar,
       ...patch.dispatcherToolbar
     } : current.dispatcherToolbar,
+    dispatcherLayout: patch.dispatcherLayout ? {
+      ...current.dispatcherLayout,
+      ...patch.dispatcherLayout
+    } : current.dispatcherLayout,
     tripDashboard: patch.tripDashboard ? {
       ...current.tripDashboard,
       ...patch.tripDashboard,

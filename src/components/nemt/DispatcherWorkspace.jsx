@@ -71,6 +71,87 @@ const normalizeDispatcherToolbarRows = (row1Value, row2Value, row3Value) => {
   return { row1, row2, row3 };
 };
 
+const DISPATCHER_LAYOUT_PRESETS = [
+  {
+    id: 'full',
+    label: 'Full workspace',
+    description: 'Map, trips, messages, and actions visible.',
+    panels: {
+      mapVisible: true,
+      tripsVisible: true,
+      messagingVisible: true,
+      actionsVisible: true
+    }
+  },
+  {
+    id: 'dispatch-focus',
+    label: 'Dispatch focus',
+    description: 'Trips and messages only.',
+    panels: {
+      mapVisible: false,
+      tripsVisible: true,
+      messagingVisible: true,
+      actionsVisible: false
+    }
+  },
+  {
+    id: 'map-trips',
+    label: 'Map and trips',
+    description: 'Keep the map and trip board only.',
+    panels: {
+      mapVisible: true,
+      tripsVisible: true,
+      messagingVisible: false,
+      actionsVisible: false
+    }
+  },
+  {
+    id: 'map-messages',
+    label: 'Map and messages',
+    description: 'Follow drivers while keeping chat open.',
+    panels: {
+      mapVisible: true,
+      tripsVisible: false,
+      messagingVisible: true,
+      actionsVisible: false
+    }
+  }
+];
+
+const DEFAULT_DISPATCHER_LAYOUT = {
+  preset: 'full',
+  mapVisible: true,
+  tripsVisible: true,
+  messagingVisible: true,
+  actionsVisible: true
+};
+
+const getDispatcherPresetPanels = presetId => DISPATCHER_LAYOUT_PRESETS.find(preset => preset.id === presetId)?.panels || null;
+
+const resolveDispatcherLayoutPreset = layout => {
+  const matchedPreset = DISPATCHER_LAYOUT_PRESETS.find(preset => ['mapVisible', 'tripsVisible', 'messagingVisible', 'actionsVisible'].every(key => Boolean(layout?.[key]) === Boolean(preset.panels[key])));
+  return matchedPreset?.id || 'custom';
+};
+
+const normalizeDispatcherLayout = value => {
+  const nextLayout = {
+    preset: String(value?.preset || DEFAULT_DISPATCHER_LAYOUT.preset).trim() || DEFAULT_DISPATCHER_LAYOUT.preset,
+    mapVisible: value?.mapVisible !== false,
+    tripsVisible: value?.tripsVisible !== false,
+    messagingVisible: value?.messagingVisible !== false,
+    actionsVisible: value?.actionsVisible !== false
+  };
+
+  if (!nextLayout.mapVisible && !nextLayout.tripsVisible && !nextLayout.messagingVisible && !nextLayout.actionsVisible) {
+    return { ...DEFAULT_DISPATCHER_LAYOUT };
+  }
+
+  return {
+    ...nextLayout,
+    preset: resolveDispatcherLayoutPreset(nextLayout)
+  };
+};
+
 const greenToolbarButtonStyle = {
   color: '#08131a',
   borderColor: 'rgba(8, 19, 26, 0.35)',
@@ -572,15 +653,16 @@ const DispatcherWorkspace = () => {
   const [routeSearch, setRouteSearch] = useState('');
   const [showInfo, setShowInfo] = useState(true);
   const [showRoute, setShowRoute] = useState(true);
-  const [showBottomPanels, setShowBottomPanels] = useState(false);
   const [showInlineMap, setShowInlineMap] = useState(true);
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [showLayoutModal, setShowLayoutModal] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
   const [toolbarRow1Order, setToolbarRow1Order] = useState(DISPATCHER_ROW1_DEFAULT_BLOCKS);
   const [toolbarRow2Order, setToolbarRow2Order] = useState(DISPATCHER_ROW2_DEFAULT_BLOCKS);
   const [toolbarRow3Order, setToolbarRow3Order] = useState(DISPATCHER_ROW3_DEFAULT_BLOCKS);
+  const [dispatcherLayout, setDispatcherLayout] = useState(DEFAULT_DISPATCHER_LAYOUT);
   const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
   const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
@@ -684,6 +766,62 @@ const DispatcherWorkspace = () => {
       // Ignore corrupted local toolbar layout preferences.
     }
   }, [userPreferences?.dispatcherToolbar?.row1, userPreferences?.dispatcherToolbar?.row2, userPreferences?.dispatcherToolbar?.row3, userPreferencesLoading]);
+
+  useEffect(() => {
+    if (userPreferencesLoading) return;
+    setDispatcherLayout(normalizeDispatcherLayout(userPreferences?.dispatcherLayout));
+  }, [userPreferences?.dispatcherLayout, userPreferencesLoading]);
+
+  const persistDispatcherLayout = nextValue => {
+    const normalizedLayout = normalizeDispatcherLayout(nextValue);
+    setDispatcherLayout(normalizedLayout);
+    void saveUserPreferences({
+      ...userPreferences,
+      dispatcherLayout: normalizedLayout
+    });
+    return normalizedLayout;
+  };
+
+  const applyDispatcherLayoutPreset = presetId => {
+    const presetPanels = getDispatcherPresetPanels(presetId);
+    if (!presetPanels) return;
+    persistDispatcherLayout({
+      preset: presetId,
+      ...presetPanels
+    });
+    setStatusMessage(`Layout cambiado a ${DISPATCHER_LAYOUT_PRESETS.find(preset => preset.id === presetId)?.label || 'custom'}.`);
+  };
+
+  const toggleDispatcherLayoutPanel = panelKey => {
+    const currentPanels = {
+      mapVisible: dispatcherLayout.mapVisible,
+      tripsVisible: dispatcherLayout.tripsVisible,
+      messagingVisible: dispatcherLayout.messagingVisible,
+      actionsVisible: dispatcherLayout.actionsVisible
+    };
+    const nextPanels = {
+      ...currentPanels,
+      [panelKey]: !currentPanels[panelKey]
+    };
+
+    if (!Object.values(nextPanels).some(Boolean)) {
+      setStatusMessage('Debe quedar al menos un bloque visible.');
+      return;
+    }
+
+    const nextLayout = persistDispatcherLayout({
+      ...dispatcherLayout,
+      ...nextPanels,
+      preset: 'custom'
+    });
+    const panelLabels = {
+      mapVisible: 'mapa',
+      tripsVisible: 'trips',
+      messagingVisible: 'mensajes',
+      actionsVisible: 'acciones'
+    };
+    setStatusMessage(`Bloque de ${panelLabels[panelKey]} ${nextLayout[panelKey] ? 'visible' : 'oculto'}.`);
+  };
 
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
     const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
@@ -1440,8 +1578,12 @@ const DispatcherWorkspace = () => {
 
     if (isSelecting && trip?.driverId) {
       setSelectedDriverId(trip.driverId);
-      if (!showBottomPanels) {
-        setShowBottomPanels(true);
+      if (!dispatcherLayout.messagingVisible) {
+        persistDispatcherLayout({
+          ...dispatcherLayout,
+          messagingVisible: true,
+          preset: 'custom'
+        });
       }
       setStatusMessage(`SMS listo con ${getDriverName(trip.driverId)} para el trip ${trip.id}.`);
     }
@@ -1519,8 +1661,12 @@ const DispatcherWorkspace = () => {
     setSelectedDriverId(quickReassignDriverId);
     setSelectedRouteId('');
     setQuickReassignDriverId('');
-    if (!showBottomPanels) {
-      setShowBottomPanels(true);
+    if (!dispatcherLayout.actionsVisible) {
+      persistDispatcherLayout({
+        ...dispatcherLayout,
+        actionsVisible: true,
+        preset: 'custom'
+      });
     }
     setStatusMessage(`${selectedCount} trip(s) reasignados a ${driver.name}.`);
   };
@@ -2005,7 +2151,7 @@ const DispatcherWorkspace = () => {
       window.removeEventListener('resize', updateTripTableScrollWidth);
       if (resizeObserver) resizeObserver.disconnect();
     };
-  }, [columnWidths, groupedFilteredTripRows, visibleTripColumns, showBottomPanels, expanded]);
+  }, [columnWidths, groupedFilteredTripRows, visibleTripColumns, dispatcherLayout.actionsVisible, dispatcherLayout.mapVisible, dispatcherLayout.messagingVisible, dispatcherLayout.tripsVisible, expanded]);
 
   useEffect(() => {
     const handleAssistantAction = () => refreshDispatchState({ forceServer: true });
@@ -2016,14 +2162,26 @@ const DispatcherWorkspace = () => {
   const workspaceHeight = 'calc(100dvh - 12px)';
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
+  const hasLeftColumn = dispatcherLayout.mapVisible || dispatcherLayout.messagingVisible;
+  const hasRightColumn = dispatcherLayout.tripsVisible || dispatcherLayout.actionsVisible;
+  const hasTopRow = dispatcherLayout.mapVisible || dispatcherLayout.tripsVisible;
+  const hasBottomRow = dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible;
+  const hasColumnSplit = hasLeftColumn && hasRightColumn;
+  const hasRowSplit = dispatcherLayout.mapVisible && dispatcherLayout.messagingVisible || dispatcherLayout.tripsVisible && dispatcherLayout.actionsVisible;
+  const gridTemplateColumns = hasColumnSplit ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : hasLeftColumn ? '1fr 0px 0px' : '0px 0px 1fr';
+  const gridTemplateRows = hasRowSplit ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : hasTopRow ? '1fr 0px 0px' : hasBottomRow ? '0px 0px 1fr' : '1fr 0px 0px';
   const workspaceGridStyle = {
     display: 'grid',
-    gridTemplateColumns: `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)`,
-    gridTemplateRows: showBottomPanels ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
-    height: showBottomPanels ? workspaceHeight : workspaceHeightNoBottomPanels,
-    minHeight: showBottomPanels ? workspaceHeight : workspaceHeightNoBottomPanels,
+    gridTemplateColumns,
+    gridTemplateRows,
+    height: hasRowSplit ? workspaceHeight : workspaceHeightNoBottomPanels,
+    minHeight: hasRowSplit ? workspaceHeight : workspaceHeightNoBottomPanels,
     position: 'relative'
   };
+  const mapPanelGridRow = dispatcherLayout.messagingVisible ? 1 : '1 / span 3';
+  const messagingPanelGridRow = dispatcherLayout.mapVisible ? 3 : '1 / span 3';
+  const tripsPanelGridRow = dispatcherLayout.actionsVisible ? 1 : '1 / span 3';
+  const actionsPanelGridRow = dispatcherLayout.tripsVisible ? 3 : '1 / span 3';
   const dividerBaseStyle = {
     backgroundColor: '#2d3448',
     borderRadius: 999,
@@ -2049,7 +2207,13 @@ const DispatcherWorkspace = () => {
 
   return <>
       <div ref={workspaceRef} style={workspaceGridStyle}>
-        <div style={{ minWidth: 0, minHeight: 0 }}>
+        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 720 }}>
+          <Button variant="dark" size="sm" onClick={() => setShowLayoutModal(true)}>
+            Layout
+          </Button>
+        </div>
+
+        <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.mapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
           <Card className="h-100">
             <CardBody className="p-0">
               {showInlineMap ? <div className="position-relative h-100">
@@ -2068,10 +2232,7 @@ const DispatcherWorkspace = () => {
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
-                  <Button variant="dark" size="sm" onClick={() => {
-                  setShowBottomPanels(current => !current);
-                  setStatusMessage(showBottomPanels ? 'Paneles inferiores ocultos.' : 'Paneles inferiores visibles.');
-                }} disabled={mapLocked}>{showBottomPanels ? 'Hide SMS' : 'SMS'}</Button>
+                  <Button variant="dark" size="sm" onClick={() => toggleDispatcherLayoutPanel('messagingVisible')} disabled={mapLocked}>{dispatcherLayout.messagingVisible ? 'Hide SMS' : 'Show SMS'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
                 {showSelectedDriverEtaCard && selectedDriver?.hasRealLocation && (selectedDriverActiveTrip || selectedDriverPendingEtaTrip) ? <div className="position-absolute top-0 end-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144', pointerEvents: 'none', opacity: 0.96 }}>
@@ -2096,7 +2257,7 @@ const DispatcherWorkspace = () => {
                       </>}
                   </div> : null}
                 <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
-                  <DispatcherMapResizer resizeKey={`${showBottomPanels}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
+                  <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
                   <DispatcherSelectedDriverFollower driverId={selectedDriver?.id || ''} position={selectedDriver?.hasRealLocation ? selectedDriver.position : null} />
                   <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
                   <ZoomControl position="bottomleft" />
@@ -2163,16 +2324,17 @@ const DispatcherWorkspace = () => {
           </Card>
         </div>
 
-        <div onMouseDown={() => setDragMode('column')} style={{
+        <div onMouseDown={() => hasColumnSplit ? setDragMode('column') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'col-resize',
         gridColumn: 2,
-        gridRow: '1 / span 3'
+        gridRow: '1 / span 3',
+        display: hasColumnSplit ? 'block' : 'none'
       }}>
           <div className="position-absolute start-50 translate-middle-x rounded-pill" style={{ top: 10, bottom: 10, width: 6, backgroundColor: '#6b7280' }} />
         </div>
 
-        <div style={{ minWidth: 0, minHeight: 0 }}>
+        <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.tripsVisible ? 'block' : 'none', gridColumn: 3, gridRow: tripsPanelGridRow }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
@@ -2382,8 +2544,12 @@ const DispatcherWorkspace = () => {
                           setSelectedTripIds([row.trip.id]);
                           setSelectedDriverId(row.trip.driverId ?? selectedDriverId);
                           setSelectedRouteId(row.trip.routeId);
-                          if (row.trip.driverId && !showBottomPanels) {
-                            setShowBottomPanels(true);
+                          if (row.trip.driverId && !dispatcherLayout.messagingVisible) {
+                            persistDispatcherLayout({
+                              ...dispatcherLayout,
+                              messagingVisible: true,
+                              preset: 'custom'
+                            });
                           }
                           setStatusMessage(`Trip ${row.trip.id} activo.`);
                         }}>ACT</Button>
@@ -2513,17 +2679,17 @@ const DispatcherWorkspace = () => {
           </Card>
         </div>
 
-        <div onMouseDown={() => showBottomPanels ? setDragMode('row') : undefined} style={{
+        <div onMouseDown={() => hasRowSplit ? setDragMode('row') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'row-resize',
         gridColumn: '1 / span 3',
         gridRow: 2,
-        display: showBottomPanels ? 'block' : 'none'
+        display: hasRowSplit ? 'block' : 'none'
       }}>
           <div className="position-absolute top-50 start-50 translate-middle rounded-pill" style={{ width: 56, height: 6, backgroundColor: '#6b7280' }} />
         </div>
 
-        <div onMouseDown={() => showBottomPanels ? setDragMode('both') : undefined} style={{
+        <div onMouseDown={() => hasRowSplit && hasColumnSplit ? setDragMode('both') : undefined} style={{
         width: 18,
         height: 18,
         borderRadius: '50%',
@@ -2536,15 +2702,21 @@ const DispatcherWorkspace = () => {
         cursor: 'move',
         zIndex: 50,
         boxShadow: '0 0 0 2px rgba(88, 96, 122, 0.25)',
-        display: showBottomPanels ? 'block' : 'none'
+        display: hasRowSplit && hasColumnSplit ? 'block' : 'none'
       }} />
 
-        <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: showBottomPanels ? 'block' : 'none' }}>
+        <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: dispatcherLayout.messagingVisible ? 'block' : 'none', gridColumn: 1, gridRow: messagingPanelGridRow }}>
           <Card className="h-100">
             <CardBody className="p-0 h-100">
               <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} onLocateDriver={driverId => {
               setSelectedDriverId(driverId);
-              setShowBottomPanels(true);
+              if (!dispatcherLayout.mapVisible) {
+                persistDispatcherLayout({
+                  ...dispatcherLayout,
+                  mapVisible: true,
+                  preset: 'custom'
+                });
+              }
               setStatusMessage(`Following driver ${driverId} on the map.`);
             }} openFullChat={() => {
               refreshDrivers();
@@ -2555,7 +2727,7 @@ const DispatcherWorkspace = () => {
           </Card>
         </div>
 
-        <div style={{ minWidth: 0, minHeight: 0, display: showBottomPanels ? 'block' : 'none' }}>
+        <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.actionsVisible ? 'block' : 'none', gridColumn: 3, gridRow: actionsPanelGridRow }}>
           <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center p-2 border-bottom gap-2 flex-wrap" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef', color: '#0f172a' }}>
@@ -2606,6 +2778,66 @@ const DispatcherWorkspace = () => {
             </CardBody>
           </Card>
         </div>
+
+        <Modal show={showLayoutModal} onHide={() => setShowLayoutModal(false)} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Dispatcher Layout</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="small text-muted mb-3">Hide or restore any block. Your layout is saved to your user preferences.</div>
+            <div className="d-flex flex-column gap-2">
+              {DISPATCHER_LAYOUT_PRESETS.map(preset => <button
+                type="button"
+                key={preset.id}
+                onClick={() => applyDispatcherLayoutPreset(preset.id)}
+                className="btn btn-sm text-start"
+                style={{
+                  border: preset.id === dispatcherLayout.preset ? '1px solid #0f766e' : '1px solid #d1d5db',
+                  backgroundColor: preset.id === dispatcherLayout.preset ? '#ecfeff' : '#ffffff',
+                  color: '#0f172a'
+                }}
+              >
+                <div className="fw-semibold">{preset.label}</div>
+                <div className="small text-muted">{preset.description}</div>
+              </button>)}
+            </div>
+            <div className="mt-4 border-top pt-3">
+              <div className="small text-uppercase text-muted fw-semibold mb-2">Custom visibility</div>
+              <div className="d-flex flex-column gap-2">
+                {[{
+                key: 'mapVisible',
+                label: 'Map'
+              }, {
+                key: 'tripsVisible',
+                label: 'Trips'
+              }, {
+                key: 'messagingVisible',
+                label: 'Messaging'
+              }, {
+                key: 'actionsVisible',
+                label: 'Actions'
+              }].map(item => <button
+                key={item.key}
+                type="button"
+                onClick={() => toggleDispatcherLayoutPanel(item.key)}
+                className="btn btn-sm d-flex justify-content-between align-items-center"
+                style={{
+                  border: '1px solid #d1d5db',
+                  backgroundColor: dispatcherLayout[item.key] ? '#f0fdf4' : '#f8fafc',
+                  color: '#0f172a'
+                }}
+              >
+                <span>{item.label}</span>
+                <Badge bg={dispatcherLayout[item.key] ? 'success' : 'secondary'}>{dispatcherLayout[item.key] ? 'Visible' : 'Hidden'}</Badge>
+              </button>)}
+              </div>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="outline-secondary" onClick={() => applyDispatcherLayoutPreset('full')}>Restore full workspace</Button>
+            <Button variant="dark" onClick={() => setShowLayoutModal(false)}>Close</Button>
+          </Modal.Footer>
+        </Modal>
 
         <Modal show={Boolean(noteModalTrip)} onHide={handleCloseTripNote} centered>
           <Modal.Header closeButton>
