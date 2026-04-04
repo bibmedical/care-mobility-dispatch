@@ -27,6 +27,51 @@ const DRIVER_ALERT_SMS_TEMPLATES = {
 
 const MOBILE_DRIVER_ALERT_TYPES = new Set(['delay-alert', 'backup-driver-request', 'uber-request']);
 
+const CHAT_THEME_OPTIONS = {
+  ocean: {
+    label: 'Ocean',
+    activeThread: '#3157c7',
+    activeThreadText: '#ffffff',
+    activeThreadSubtle: 'rgba(255,255,255,0.72)',
+    outgoingBubble: '#3157c7',
+    outgoingText: '#ffffff',
+    outgoingMeta: 'rgba(255,255,255,0.72)',
+    incomingBubble: '#eff6ff',
+    incomingBorder: '#bfdbfe',
+    incomingText: '#0f172a',
+    incomingMeta: '#64748b',
+    accent: '#3157c7'
+  },
+  emerald: {
+    label: 'Emerald',
+    activeThread: '#0f766e',
+    activeThreadText: '#ffffff',
+    activeThreadSubtle: 'rgba(255,255,255,0.72)',
+    outgoingBubble: '#0f766e',
+    outgoingText: '#ffffff',
+    outgoingMeta: 'rgba(255,255,255,0.72)',
+    incomingBubble: '#ecfdf5',
+    incomingBorder: '#a7f3d0',
+    incomingText: '#052e2b',
+    incomingMeta: '#4b5563',
+    accent: '#10b981'
+  },
+  sunset: {
+    label: 'Sunset',
+    activeThread: '#c2410c',
+    activeThreadText: '#ffffff',
+    activeThreadSubtle: 'rgba(255,255,255,0.72)',
+    outgoingBubble: '#c2410c',
+    outgoingText: '#ffffff',
+    outgoingMeta: 'rgba(255,255,255,0.72)',
+    incomingBubble: '#fff7ed',
+    incomingBorder: '#fdba74',
+    incomingText: '#431407',
+    incomingMeta: '#7c2d12',
+    accent: '#f97316'
+  }
+};
+
 const getAlertVariant = priority => {
   if (priority === 'high' || priority === 'urgent') return 'danger';
   if (priority === 'normal') return 'warning';
@@ -86,10 +131,19 @@ const mergeThreads = (threads, drivers) => {
   });
 };
 
+const getDriverLocationLabel = driver => {
+  if (String(driver?.checkpoint || '').trim()) return String(driver.checkpoint).trim();
+  if (Array.isArray(driver?.position) && driver.position.length === 2) {
+    return `${Number(driver.position[0]).toFixed(4)}, ${Number(driver.position[1]).toFixed(4)}`;
+  }
+  return 'No GPS location';
+};
+
 const DispatcherMessagingPanel = ({
   drivers,
   selectedDriverId,
   setSelectedDriverId,
+  onLocateDriver,
   openFullChat
 }) => {
   const { data: session } = useSession();
@@ -100,11 +154,14 @@ const DispatcherMessagingPanel = ({
     uiPreferences,
     upsertDispatchThreadMessage,
     markDispatchThreadRead,
+    removeDispatchThreadMessageMedia,
     addDailyDriver,
-    removeDailyDriver
+    removeDailyDriver,
+    refreshDispatchState
   } = useNemtContext();
   const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const [hiddenDriverIds, setHiddenDriverIds] = useState([]);
+  const [chatTheme, setChatTheme] = useState('ocean');
   const [dailyForm, setDailyForm] = useState({ firstName: '', lastNameOrOrg: '' });
   const [draftMessage, setDraftMessage] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
@@ -115,7 +172,9 @@ const DispatcherMessagingPanel = ({
   const [isSendingSms, setIsSendingSms] = useState(false);
   const [smsStatus, setSmsStatus] = useState('');
   const [resolvingAlertId, setResolvingAlertId] = useState('');
+  const [deletingMessageId, setDeletingMessageId] = useState('');
   const [previewImage, setPreviewImage] = useState(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null);
   const photoInputRef = useRef(null);
   const documentInputRef = useRef(null);
   const seenIncomingMessageIdsRef = useRef(new Set());
@@ -139,7 +198,8 @@ const DispatcherMessagingPanel = ({
   useEffect(() => {
     if (userPreferencesLoading) return;
     setHiddenDriverIds(Array.isArray(userPreferences?.dispatcherMessaging?.hiddenDriverIds) ? userPreferences.dispatcherMessaging.hiddenDriverIds : []);
-  }, [userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferencesLoading]);
+    setChatTheme(String(userPreferences?.dispatcherMessaging?.chatTheme || 'ocean').trim() || 'ocean');
+  }, [userPreferences?.dispatcherMessaging?.chatTheme, userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferencesLoading]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
@@ -147,10 +207,11 @@ const DispatcherMessagingPanel = ({
       ...userPreferences,
       dispatcherMessaging: {
         ...userPreferences?.dispatcherMessaging,
-        hiddenDriverIds
+        hiddenDriverIds,
+        chatTheme
       }
     });
-  }, [hiddenDriverIds, saveUserPreferences, userPreferences, userPreferencesLoading]);
+  }, [chatTheme, hiddenDriverIds, saveUserPreferences, userPreferences, userPreferencesLoading]);
   const normalizedSearch = driverSearch.trim().toLowerCase();
   const filteredThreads = useMemo(() => visibleThreads.filter(thread => {
     if (!normalizedSearch) return true;
@@ -168,6 +229,12 @@ const DispatcherMessagingPanel = ({
   const unreadCount = visibleThreads.reduce((total, thread) => total + thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length, 0);
   const activeDriverAlerts = useMemo(() => driverAlerts.filter(alert => alert.driverId === activeDriverId && alert.status !== 'resolved'), [activeDriverId, driverAlerts]);
   const dispatcherSenderName = String(session?.user?.name || session?.user?.email || 'Dispatch').trim() || 'Dispatch';
+  const selectedChatTheme = CHAT_THEME_OPTIONS[chatTheme] || CHAT_THEME_OPTIONS.ocean;
+  const gpsOnlineCount = useMemo(() => allDrivers.filter(driver => {
+    const isOnline = String(driver?.live || '').trim().toLowerCase() === 'online';
+    const hasGps = driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2 && driver.position.every(value => Number.isFinite(Number(value))));
+    return isOnline && hasGps;
+  }).length, [allDrivers]);
 
   const playIncomingTone = () => {
     if (typeof window === 'undefined') return;
@@ -400,6 +467,45 @@ const DispatcherMessagingPanel = ({
     await handleSendSmsTemplate(alert, `Dispatch follow-up: ${alert.body}`);
   };
 
+  const handleDeleteAttachment = async messageId => {
+    if (!messageId) return;
+    setDeletingMessageId(messageId);
+    setSmsStatus('');
+    try {
+      const response = await fetch('/api/system-messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: messageId, action: 'remove-media' })
+      });
+      const payload = await readJsonResponse(response);
+      if (!response.ok) throw new Error(payload?.error || 'Unable to delete photo.');
+      removeDispatchThreadMessageMedia(messageId);
+      await refreshDispatchState({ forceServer: true });
+      setPreviewImage(null);
+      setSmsStatus('Photo deleted from chat.');
+    } catch (error) {
+      setSmsStatus(error?.message || 'Unable to delete photo.');
+    } finally {
+      setDeletingMessageId('');
+    }
+  };
+
+  const openDeleteConfirmation = message => {
+    const photoAttachment = Array.isArray(message?.attachments) ? message.attachments.find(attachment => attachment.kind === 'photo') : null;
+    if (!message?.id || !photoAttachment) return;
+    setDeleteConfirmation({
+      messageId: message.id,
+      name: photoAttachment.name || 'Driver photo',
+      dataUrl: photoAttachment.dataUrl || ''
+    });
+  };
+
+  const confirmDeleteAttachment = async () => {
+    if (!deleteConfirmation?.messageId) return;
+    await handleDeleteAttachment(deleteConfirmation.messageId);
+    setDeleteConfirmation(null);
+  };
+
   const handleSendSmsTemplate = async (alert, smsMessage) => {
     const phoneNumber = normalizePhoneDigits(activeDriver?.phone);
     if (!activeDriverId || !phoneNumber || !smsMessage) {
@@ -547,6 +653,7 @@ const DispatcherMessagingPanel = ({
           <strong>Messaging</strong>
           <Badge bg="light" text="dark">{visibleThreads.length} threads</Badge>
           <Badge bg="warning" text="dark">{unreadCount} unread</Badge>
+          <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
         </div>
         <div className="d-flex gap-2 flex-wrap">
           <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
@@ -556,7 +663,40 @@ const DispatcherMessagingPanel = ({
       <div className="d-flex flex-grow-1" style={{ minHeight: 0, overflow: 'hidden' }}>
         <div className="border-end d-flex flex-column bg-white" style={{ width: '40%', minWidth: 220, minHeight: 0, borderColor: '#dbe3ef' }}>
           <div className="p-3 border-bottom" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef' }}>
-            <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" />
+            <div className="d-flex flex-column gap-2">
+              <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." />
+              <div className="d-flex flex-wrap align-items-center gap-2 small" style={{ color: '#64748b' }}>
+                <span className="d-inline-flex align-items-center gap-1" title="Flag = driver alert or urgent issue">
+                  <IconifyIcon icon="iconoir:triangle-flag" style={{ color: '#dc2626' }} /> Alert
+                </span>
+                <span className="d-inline-flex align-items-center gap-1" title="Pin = driver with live GPS available for the map">
+                  <IconifyIcon icon="iconoir:map-pin" style={{ color: '#16a34a' }} /> GPS
+                </span>
+                <span className="d-inline-flex align-items-center gap-1" title="Message = this thread has unread chat activity">
+                  <IconifyIcon icon="iconoir:message-text" style={{ color: selectedChatTheme.accent }} /> Chat
+                </span>
+              </div>
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                <span className="small fw-semibold text-muted">Chat color</span>
+                {Object.entries(CHAT_THEME_OPTIONS).map(([themeKey, theme]) => (
+                  <button
+                    key={themeKey}
+                    type="button"
+                    onClick={() => setChatTheme(themeKey)}
+                    className="border-0 rounded-pill px-2 py-1 small"
+                    style={{
+                      backgroundColor: theme.activeThread,
+                      color: '#ffffff',
+                      opacity: chatTheme === themeKey ? 1 : 0.68,
+                      boxShadow: chatTheme === themeKey ? `0 0 0 2px ${theme.accent}33` : 'none'
+                    }}
+                    title={`Switch chat colors to ${theme.label}`}
+                  >
+                    {theme.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {showAddDriver ? (
               <div className="mt-3 border rounded p-2 bg-white">
                 <div className="fw-semibold small mb-2">Daily Driver de emergencia</div>
@@ -586,6 +726,7 @@ const DispatcherMessagingPanel = ({
             {filteredThreads.length > 0 ? filteredThreads.map(thread => {
               const driver = allDrivers.find(item => item.id === thread.driverId);
               const isDaily = driver?._isDaily === true;
+              const hasGps = Boolean(driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2));
               const lastMessage = thread.messages[thread.messages.length - 1];
               const threadUnreadCount = thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length;
               const threadAlertCount = activeAlertCounts[thread.driverId] || 0;
@@ -595,7 +736,7 @@ const DispatcherMessagingPanel = ({
                   key={thread.driverId}
                   className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
                   style={{
-                    backgroundColor: thread.driverId === activeDriverId ? '#3157c7' : hasUrgentAlert ? '#fff1f2' : '#ffffff',
+                    backgroundColor: thread.driverId === activeDriverId ? selectedChatTheme.activeThread : hasUrgentAlert ? '#fff1f2' : '#ffffff',
                     borderBottomColor: '#e2e8f0',
                     borderLeft: hasUrgentAlert ? '4px solid #ea580c' : '4px solid transparent'
                   }}
@@ -611,9 +752,9 @@ const DispatcherMessagingPanel = ({
                         <div className="d-flex justify-content-between align-items-center gap-2">
                           <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
                             <div className="d-flex align-items-center gap-1">
-                              <IconifyIcon icon="iconoir:triangle-flag" className="text-danger" />
-                              <IconifyIcon icon="iconoir:map-pin" className={driver?.live === 'Online' ? 'text-success' : 'text-secondary'} />
-                              <IconifyIcon icon="iconoir:message-text" className={threadAlertCount > 0 ? 'text-danger' : 'text-secondary'} />
+                              <IconifyIcon icon="iconoir:triangle-flag" className={threadAlertCount > 0 || hasUrgentAlert ? 'text-danger' : thread.driverId === activeDriverId ? 'text-white-50' : 'text-secondary'} title={threadAlertCount > 0 || hasUrgentAlert ? 'This driver has alert activity' : 'No active alerts'} />
+                              <IconifyIcon icon="iconoir:map-pin" className={driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2) ? 'text-success' : thread.driverId === activeDriverId ? 'text-white-50' : 'text-secondary'} title={driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2) ? 'Driver GPS is available on the map' : 'No live GPS available'} />
+                              <IconifyIcon icon="iconoir:message-text" className={threadUnreadCount > 0 ? 'text-warning' : thread.messages.length > 0 ? '' : thread.driverId === activeDriverId ? 'text-white-50' : 'text-secondary'} style={threadUnreadCount > 0 ? undefined : thread.messages.length > 0 ? { color: selectedChatTheme.accent } : undefined} title={threadUnreadCount > 0 ? `${threadUnreadCount} unread messages` : thread.messages.length > 0 ? 'Chat history available' : 'No chat messages yet'} />
                               {threadAlertCount > 0 ? <span className="rounded-circle bg-danger d-inline-block" style={{ width: 7, height: 7 }} /> : null}
                             </div>
                             <div style={{ minWidth: 0 }}>
@@ -621,7 +762,27 @@ const DispatcherMessagingPanel = ({
                                 {driver?.name ?? 'Driver'}
                                 {driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
                               </div>
-                              <div className={`small text-truncate ${thread.driverId === activeDriverId ? 'text-white-50' : 'text-muted'}`} style={{ maxWidth: 220 }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
+                              <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : '#64748b' }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
+                              <button
+                                type="button"
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  handleSelectDriver(thread.driverId);
+                                  if (hasGps) onLocateDriver?.(thread.driverId);
+                                }}
+                                disabled={!hasGps}
+                                className="border-0 p-0 mt-1 bg-transparent text-start small"
+                                style={{
+                                  maxWidth: 220,
+                                  color: hasGps ? (thread.driverId === activeDriverId ? '#dbeafe' : selectedChatTheme.accent) : (thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : '#94a3b8'),
+                                  textDecoration: hasGps ? 'underline' : 'none',
+                                  cursor: hasGps ? 'pointer' : 'default'
+                                }}
+                                title={hasGps ? 'Center this driver on the map and follow live ETA' : 'This driver has no live GPS yet'}
+                              >
+                                <IconifyIcon icon="iconoir:map-pin" className="me-1" />
+                                {getDriverLocationLabel(driver)}
+                              </button>
                             </div>
                           </div>
                           <div className="text-end">
@@ -687,17 +848,39 @@ const DispatcherMessagingPanel = ({
               </div> : null}
             {activeThread?.messages?.length ? activeThread.messages.map(message => (
               <div key={message.id} className={`d-flex mb-3 ${message.direction === 'outgoing' ? 'justify-content-end' : 'justify-content-start'}`}>
-                <div className={`rounded-3 px-3 py-2 ${message.direction === 'outgoing' ? 'bg-primary text-white' : 'bg-light border'}`} style={{ maxWidth: '80%' }}>
+                <div
+                  className="rounded-3 px-3 py-2"
+                  style={{
+                    maxWidth: '80%',
+                    backgroundColor: message.direction === 'outgoing' ? selectedChatTheme.outgoingBubble : selectedChatTheme.incomingBubble,
+                    color: message.direction === 'outgoing' ? selectedChatTheme.outgoingText : selectedChatTheme.incomingText,
+                    border: message.direction === 'outgoing' ? '1px solid transparent' : `1px solid ${selectedChatTheme.incomingBorder}`,
+                    boxShadow: message.direction === 'outgoing' ? '0 10px 22px rgba(15,23,42,0.12)' : 'none'
+                  }}
+                >
                   <div>{message.text}</div>
                   {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
                     <div className="mt-2 d-flex flex-column gap-2">
                       {message.attachments.map(attachment => (
                         <div key={attachment.id} className="small">
                           {attachment.kind === 'photo' ? (
-                            <button type="button" onClick={() => setPreviewImage({ name: attachment.name, dataUrl: attachment.dataUrl })} className="d-inline-flex flex-column text-reset text-decoration-none border-0 p-0 bg-transparent text-start">
-                              <img src={attachment.dataUrl} alt={attachment.name} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
-                              <span className="mt-1">{attachment.name}</span>
-                            </button>
+                            <div className="d-inline-flex flex-column gap-1">
+                              <button type="button" onClick={() => setPreviewImage({ name: attachment.name, dataUrl: attachment.dataUrl, messageId: message.id })} className="d-inline-flex flex-column text-reset text-decoration-none border-0 p-0 bg-transparent text-start">
+                                <img src={attachment.dataUrl} alt={attachment.name} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
+                                <span className="mt-1">{attachment.name}</span>
+                              </button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => openDeleteConfirmation(message)}
+                                disabled={deletingMessageId === message.id}
+                                className="align-self-start rounded-pill px-3 d-inline-flex align-items-center gap-2"
+                                style={{ backgroundColor: '#b91c1c', borderColor: '#b91c1c', fontWeight: 600 }}
+                              >
+                                <IconifyIcon icon="iconoir:trash" />
+                                {deletingMessageId === message.id ? 'Deleting...' : 'Delete photo'}
+                              </Button>
+                            </div>
                           ) : (
                             <a href={attachment.dataUrl} download={attachment.name} className="text-reset">Document: {attachment.name}</a>
                           )}
@@ -705,7 +888,7 @@ const DispatcherMessagingPanel = ({
                       ))}
                     </div>
                   ) : null}
-                  <div className={`small mt-1 ${message.direction === 'outgoing' ? 'text-white-50' : 'text-muted'}`}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status}` : ''}</div>
+                  <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status}` : ''}</div>
                 </div>
               </div>
             )) : <div className="text-center text-muted py-5">No messages yet for this driver.</div>}
@@ -740,6 +923,58 @@ const DispatcherMessagingPanel = ({
         <Modal.Body className="text-center">
           {previewImage?.dataUrl ? <img src={previewImage.dataUrl} alt={previewImage.name || 'Photo preview'} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 12 }} /> : null}
         </Modal.Body>
+        <Modal.Footer className="justify-content-between">
+          <div className="small text-muted">You can preview first and delete from here.</div>
+          <Button
+            variant="danger"
+            className="rounded-pill px-3"
+            style={{ backgroundColor: '#b91c1c', borderColor: '#b91c1c', fontWeight: 600 }}
+            onClick={() => setDeleteConfirmation(previewImage ? {
+              messageId: previewImage.messageId,
+              name: previewImage.name || 'Driver photo',
+              dataUrl: previewImage.dataUrl || ''
+            } : null)}
+            disabled={!previewImage?.messageId || deletingMessageId === previewImage?.messageId}
+          >
+            {deletingMessageId === previewImage?.messageId ? 'Deleting...' : 'Delete photo'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+      <Modal show={Boolean(deleteConfirmation)} onHide={() => setDeleteConfirmation(null)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Delete this photo?</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="small text-muted mb-3">This will remove the photo from the dispatcher chat and any synced view that still has this message.</div>
+          {deleteConfirmation?.dataUrl ? (
+            <div className="border rounded-4 p-2" style={{ backgroundColor: '#fff7ed', borderColor: '#fdba74' }}>
+              <img
+                src={deleteConfirmation.dataUrl}
+                alt={deleteConfirmation.name || 'Photo to delete'}
+                style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 14 }}
+              />
+              <div className="mt-2 d-flex align-items-center justify-content-between gap-2">
+                <span className="fw-semibold small text-dark">{deleteConfirmation.name || 'Driver photo'}</span>
+                <Badge bg="danger">Will be deleted</Badge>
+              </div>
+            </div>
+          ) : null}
+        </Modal.Body>
+        <Modal.Footer className="justify-content-between">
+          <Button variant="outline-secondary" onClick={() => setDeleteConfirmation(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            className="rounded-pill px-3 d-inline-flex align-items-center gap-2"
+            style={{ backgroundColor: '#b91c1c', borderColor: '#b91c1c', fontWeight: 600 }}
+            onClick={() => void confirmDeleteAttachment()}
+            disabled={!deleteConfirmation?.messageId || deletingMessageId === deleteConfirmation?.messageId}
+          >
+            <IconifyIcon icon="iconoir:trash" />
+            {deletingMessageId === deleteConfirmation?.messageId ? 'Deleting...' : 'Yes, delete photo'}
+          </Button>
+        </Modal.Footer>
       </Modal>
     </div>
   );

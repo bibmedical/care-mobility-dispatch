@@ -504,6 +504,44 @@ export const NemtProvider = ({
     };
   }, { markDispatchDirty: true });
 
+  const removeDispatchThreadMessageMedia = messageId => updateState(currentState => {
+    const normalizedMessageId = String(messageId || '').trim();
+    if (!normalizedMessageId) return currentState;
+
+    return {
+      ...currentState,
+      dispatchThreads: (Array.isArray(currentState.dispatchThreads) ? currentState.dispatchThreads : []).map(thread => normalizeDispatchThreadRecord({
+        ...thread,
+        messages: (Array.isArray(thread?.messages) ? thread.messages : []).map(message => {
+          if (String(message?.id || '').trim() !== normalizedMessageId) return message;
+          return {
+            ...message,
+            attachments: []
+          };
+        })
+      }))
+    };
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: currentState => {
+      const targetThread = (Array.isArray(currentState.dispatchThreads) ? currentState.dispatchThreads : []).find(thread => {
+        return (Array.isArray(thread?.messages) ? thread.messages : []).some(message => String(message?.id || '').trim() === String(messageId || '').trim());
+      });
+
+      return {
+        action: 'message-media-remove',
+        entityType: 'dispatch-thread',
+        entityId: String(targetThread?.driverId || '').trim(),
+        source: 'dispatcher-messaging',
+        summary: `Removed media from dispatch message ${String(messageId || '').trim()}`,
+        metadata: {
+          messageId: String(messageId || '').trim(),
+          driverId: String(targetThread?.driverId || '').trim()
+        }
+      };
+    }
+  });
+
   const addDailyDriver = payload => updateState(currentState => {
     const nextDriver = normalizeDailyDriverRecord(payload);
     if (!nextDriver.id || !nextDriver.firstName) return currentState;
@@ -1191,6 +1229,7 @@ export const NemtProvider = ({
     deleteTripRecord,
     upsertDispatchThreadMessage,
     markDispatchThreadRead,
+    removeDispatchThreadMessageMedia,
     addDailyDriver,
     removeDailyDriver,
     setDispatcherVisibleTripColumns,

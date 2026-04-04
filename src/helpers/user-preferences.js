@@ -25,7 +25,8 @@ export const DEFAULT_USER_PREFERENCES = {
     outputColumns: []
   },
   dispatcherMessaging: {
-    hiddenDriverIds: []
+    hiddenDriverIds: [],
+    chatTheme: 'ocean'
   }
 };
 
@@ -57,7 +58,8 @@ const normalizeTripDashboardPreferences = value => ({
 });
 
 const normalizeDispatcherMessagingPreferences = value => ({
-  hiddenDriverIds: normalizeStringArray(value?.hiddenDriverIds)
+  hiddenDriverIds: normalizeStringArray(value?.hiddenDriverIds),
+  chatTheme: String(value?.chatTheme || DEFAULT_USER_PREFERENCES.dispatcherMessaging.chatTheme).trim() || DEFAULT_USER_PREFERENCES.dispatcherMessaging.chatTheme
 });
 
 const normalizeAssistantAvatarPreferences = value => ({

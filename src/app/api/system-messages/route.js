@@ -2,15 +2,40 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import {
+  clearSystemMessageMediaById,
   readSystemMessages,
   resolveSystemMessageById,
   upsertSystemMessage
 } from '@/server/system-messages-store';
+import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
 
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 const badRequest = message => NextResponse.json({ error: message }, { status: 400 });
 const internalError = error => NextResponse.json({ error: error?.message || 'Unable to process system messages' }, { status: 500 });
+
+const removeMessageMediaFromDispatchThreads = dispatchState => {
+  let removed = false;
+  const nextThreads = (Array.isArray(dispatchState?.dispatchThreads) ? dispatchState.dispatchThreads : []).map(thread => ({
+    ...thread,
+    messages: Array.isArray(thread?.messages)
+      ? thread.messages.map(message => {
+        if (String(message?.id || '').trim() !== String(dispatchState?.targetMessageId || '').trim()) return message;
+        if (!Array.isArray(message?.attachments) || message.attachments.length === 0) return message;
+        removed = true;
+        return {
+          ...message,
+          attachments: []
+        };
+      })
+      : []
+  }));
+
+  return {
+    removed,
+    nextThreads
+  };
+};
 
 const readDriverPushTokens = async driverId => {
   if (!driverId) return [];
@@ -111,6 +136,36 @@ export async function PATCH(request) {
       const updated = await resolveSystemMessageById(id);
       if (!updated) return NextResponse.json({ error: 'Message not found' }, { status: 404 });
       return NextResponse.json({ message: updated });
+    }
+
+    if (action === 'remove-media') {
+      const dispatchState = await readNemtDispatchState();
+      const { removed, nextThreads } = removeMessageMediaFromDispatchThreads({
+        ...dispatchState,
+        targetMessageId: id
+      });
+      const updated = await clearSystemMessageMediaById(id);
+
+      if (!updated && !removed) {
+        return NextResponse.json({ error: 'Message not found' }, { status: 404 });
+      }
+
+      if (removed) {
+        await writeNemtDispatchState({
+          ...dispatchState,
+          dispatchThreads: nextThreads
+        });
+      }
+
+      return NextResponse.json({
+        message: updated || {
+          id,
+          mediaUrl: null,
+          mediaType: null,
+          mediaDeletedAt: new Date().toISOString()
+        },
+        removedFromDispatchThread: removed
+      });
     }
 
     return badRequest('Unknown action');

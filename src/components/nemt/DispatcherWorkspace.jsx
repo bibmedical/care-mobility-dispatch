@@ -139,6 +139,23 @@ const DispatcherMapResizer = ({ resizeKey }) => {
   return null;
 };
 
+const DispatcherSelectedDriverFollower = ({ driverId, position }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!driverId || !Array.isArray(position) || position.length !== 2) return;
+    const [latitude, longitude] = position.map(Number);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    const nextZoom = Math.max(map.getZoom(), 13);
+    map.flyTo([latitude, longitude], nextZoom, {
+      animate: true,
+      duration: 0.75
+    });
+  }, [driverId, map, position]);
+
+  return null;
+};
+
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
   if (status === 'In Progress') return 'success';
@@ -533,7 +550,7 @@ const DispatcherWorkspace = () => {
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('Dispatcher listo.');
   const [columnSplit, setColumnSplit] = useState(50);
-  const [rowSplit, setRowSplit] = useState(66);
+  const [rowSplit, setRowSplit] = useState(50);
   const [dragMode, setDragMode] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [routeMetrics, setRouteMetrics] = useState(null);
@@ -1974,6 +1991,7 @@ const DispatcherWorkspace = () => {
                   </div> : null}
                 <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${showBottomPanels}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
+                  <DispatcherSelectedDriverFollower driverId={selectedDriver?.id || ''} position={selectedDriver?.hasRealLocation ? selectedDriver.position : null} />
                   <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
@@ -2408,7 +2426,11 @@ const DispatcherWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: showBottomPanels ? 'block' : 'none' }}>
           <Card className="h-100">
             <CardBody className="p-0 h-100">
-              <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} openFullChat={() => {
+              <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} onLocateDriver={driverId => {
+              setSelectedDriverId(driverId);
+              setShowBottomPanels(true);
+              setStatusMessage(`Following driver ${driverId} on the map.`);
+            }} openFullChat={() => {
               refreshDrivers();
               router.push('/driver-chat');
               setStatusMessage('Opening full driver messaging panel.');
