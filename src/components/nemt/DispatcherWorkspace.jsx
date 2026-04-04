@@ -2276,7 +2276,7 @@ const DispatcherWorkspace = () => {
                   <Button variant="dark" size="sm" onClick={() => toggleDispatcherLayoutPanel('messagingVisible')} disabled={mapLocked}>{dispatcherLayout.messagingVisible ? 'Hide SMS' : 'Show SMS'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
-                {showSelectedDriverEtaCard && selectedDriver?.hasRealLocation && (selectedDriverActiveTrip || selectedDriverPendingEtaTrip) ? <div className="position-absolute top-0 end-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144', pointerEvents: 'none', opacity: 0.96 }}>
+                {showSelectedDriverEtaCard && selectedDriver?.hasRealLocation && (selectedDriverActiveTrip || selectedDriverPendingEtaTrip) ? <div className="position-absolute top-0 end-0 m-3 text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: selectedDriverColor, background: `linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, ${selectedDriverColor} 160%)`, pointerEvents: 'none', opacity: 0.98 }}>
                     <div className="small text-uppercase text-secondary">Driver ETA</div>
                     <div className="fw-semibold d-flex align-items-center gap-2"><IconifyIcon icon="iconoir:map-pin" /> {selectedDriver.name}</div>
                     {selectedDriverActiveTrip ? <>

@@ -536,23 +536,23 @@ const DispatcherHistoryWorkspace = () => {
             </Card> : null}
 
           <div className={styles.statsGrid}>
-            <div className={styles.statCard}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
               <div className={styles.statLabel}>Routes</div>
               <div className={styles.statValue}>{stats.routeCount}</div>
             </div>
-            <div className={styles.statCard}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
               <div className={styles.statLabel}>Trips</div>
               <div className={styles.statValue}>{stats.tripCount}</div>
             </div>
-            <div className={styles.statCard}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
               <div className={styles.statLabel}>Threads</div>
               <div className={styles.statValue}>{stats.threadCount}</div>
             </div>
-            <div className={styles.statCard}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
               <div className={styles.statLabel}>Messages</div>
               <div className={styles.statValue}>{stats.messageCount}</div>
             </div>
-            <div className={styles.statCard}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
               <div className={styles.statLabel}>Late Trips</div>
               <div className={styles.statValue}>{tripRows.filter(trip => getTripLateMinutes(trip) > 0).length}</div>
             </div>
@@ -597,14 +597,14 @@ const DispatcherHistoryWorkspace = () => {
                   <tbody>
                     {routeRows.length > 0 ? routeRows.map(route => <tr key={route.id || route.label}>
                         <td>
-                          <div className="fw-semibold">{route.label}</div>
+                          <div className="fw-semibold d-flex align-items-center gap-2"><span className={styles.driverDot} style={{ backgroundColor: selectedDriverColor }} />{route.label}</div>
                           <div className="small text-secondary">{route.driverName || '--'}</div>
                         </td>
                         <td>{route.tripCount}</td>
                         <td>{route.firstPickup} to {route.lastDropoff}</td>
                         <td className={styles.locationCell}>{route.startAddress}</td>
                         <td className={styles.locationCell}>{route.endAddress}</td>
-                        <td><Badge bg={route.lateTripCount > 0 ? 'warning' : 'success'} text={route.lateTripCount > 0 ? 'dark' : undefined}>{route.lateTripCount > 0 ? `${route.lateTripCount} late` : 'On time'}</Badge></td>
+                        <td>{route.lateTripCount > 0 ? <Badge bg="warning" text="dark">{`${route.lateTripCount} late`}</Badge> : <Badge style={{ backgroundColor: selectedDriverColor }}>On time</Badge>}</td>
                       </tr>) : <tr>
                         <td colSpan={6}><div className={styles.emptyState}>No routes were archived for this day.</div></td>
                       </tr>}
@@ -678,16 +678,16 @@ const DispatcherHistoryWorkspace = () => {
                 <Badge bg="dark">{photoGroups.reduce((sum, group) => sum + group.photos.length, 0)} photos</Badge>
               </div>
               <div className="d-flex flex-column gap-3">
-                {photoGroups.length > 0 ? photoGroups.map(group => <div key={group.key} className={styles.patientGroup}>
+                {photoGroups.length > 0 ? photoGroups.map(group => <div key={group.key} className={styles.patientGroup} style={group.trip ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.06)} 0%, #fcfdff 100%)` } : undefined}>
                     <div className="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
                       <div>
                         <div className="fw-semibold">{group.title}</div>
                         <div className="small text-secondary">{group.trip ? `${group.trip.scheduledPickup || '--'} to ${group.trip.scheduledDropoff || '--'} · Trip ${group.trip.rideId || group.trip.id}` : 'Could not match to a patient trip exactly'}</div>
                       </div>
-                      <Badge bg={group.trip ? 'primary' : 'secondary'}>{group.photos.length} photo(s)</Badge>
+                      {group.trip ? <Badge style={{ backgroundColor: selectedDriverColor }}>{group.photos.length} photo(s)</Badge> : <Badge bg="secondary">{group.photos.length} photo(s)</Badge>}
                     </div>
                     <div className={styles.photoGrid}>
-                      {group.photos.map(photo => <div key={photo.id} className={styles.photoCard}>
+                      {group.photos.map(photo => <div key={photo.id} className={styles.photoCard} style={group.trip ? { borderColor: withDriverAlpha(selectedDriverColor, 0.22) } : undefined}>
                           <button type="button" className={styles.photoButton} onClick={() => setPreviewPhoto(photo)}>
                             <img src={photo.dataUrl} alt={photo.name || group.title} className={styles.photoImage} />
                           </button>
@@ -714,13 +714,13 @@ const DispatcherHistoryWorkspace = () => {
                     <Badge bg="dark">{stats.messageCount} messages</Badge>
                   </div>
                   {threadRows.length > 0 ? <div className={styles.threadGrid}>
-                      {threadRows.map(thread => <div key={thread.driverId} className={styles.threadCard}>
+                      {threadRows.map(thread => <div key={thread.driverId} className={styles.threadCard} style={{ borderColor: withDriverAlpha(getDriverColor(thread.driverId), 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(getDriverColor(thread.driverId), 0.07)} 0%, #fcfdff 100%)` }}>
                           <div className={styles.threadHeader}>
                             <div>
-                              <div className="fw-semibold">{thread.driverLabel}</div>
+                              <div className="fw-semibold d-flex align-items-center gap-2"><span className={styles.driverDot} style={{ backgroundColor: getDriverColor(thread.driverId) }} />{thread.driverLabel}</div>
                               <div className="small text-secondary">{thread.driverId}</div>
                             </div>
-                            <Badge bg="secondary">{thread.messages.length}</Badge>
+                            <Badge style={{ backgroundColor: getDriverColor(thread.driverId) }}>{thread.messages.length}</Badge>
                           </div>
                           <div className={styles.messageList}>
                             {thread.messages.map(message => <div key={message.id} className={`${styles.messageBubble} ${message.direction === 'outgoing' ? styles.messageOutgoing : styles.messageIncoming}`}>
@@ -756,7 +756,7 @@ const DispatcherHistoryWorkspace = () => {
                     <Badge bg="dark">{auditRows.length}</Badge>
                   </div>
                   <div className="d-flex flex-column gap-2">
-                    {auditRows.length > 0 ? auditRows.map(item => <div key={item.id} className={styles.threadCard}>
+                    {auditRows.length > 0 ? auditRows.map(item => <div key={item.id} className={styles.threadCard} style={{ borderColor: withDriverAlpha(selectedDriverColor, 0.2), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.05)} 0%, #fcfdff 100%)` }}>
                         <div className="d-flex justify-content-between gap-2 align-items-start">
                           <div>
                             <div className="fw-semibold">{item.summary || item.action}</div>
