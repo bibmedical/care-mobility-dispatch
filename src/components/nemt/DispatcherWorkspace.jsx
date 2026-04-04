@@ -735,23 +735,6 @@ const DispatcherWorkspace = () => {
   }, [drivers, selectedDriverId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const activeDateTripIds = activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [];
-    const routeTripIds = selectedRoute && Array.isArray(selectedRoute.tripIds) ? selectedRoute.tripIds.map(value => String(value || '').trim()).filter(Boolean) : [];
-    const payload = {
-      tripDateFilter,
-      selectedTripIds,
-      selectedDriverId: selectedDriverId || '',
-      selectedRouteId: selectedRouteId || '',
-      activeDateTripIds,
-      routeTripIds
-    };
-
-    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify(payload));
-  }, [activeDateTripIdSet, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds, tripDateFilter]);
-
-  useEffect(() => {
     if (userPreferencesLoading) return;
     const loadToolbarOrder = (storageKey, defaultOrder) => {
       const storedValue = window.localStorage.getItem(storageKey);
@@ -1123,6 +1106,24 @@ const DispatcherWorkspace = () => {
     if (tripDateFilter === 'all') return null;
     return new Set(trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter).map(trip => String(trip?.id || '').trim()).filter(Boolean));
   }, [tripDateFilter, routePlans, trips]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const activeDateTripIds = activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [];
+    const routeTripIds = selectedRoute && Array.isArray(selectedRoute.tripIds) ? selectedRoute.tripIds.map(value => String(value || '').trim()).filter(Boolean) : [];
+    const payload = {
+      tripDateFilter,
+      selectedTripIds,
+      selectedDriverId: selectedDriverId || '',
+      selectedRouteId: selectedRouteId || '',
+      activeDateTripIds,
+      routeTripIds
+    };
+
+    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify(payload));
+  }, [activeDateTripIdSet, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds, tripDateFilter]);
+
   const hasSelectedTrips = selectedTripIds.length > 0;
   const isTripAssignedToSelectedDriver = trip => isTripAssignedToDriver(trip, selectedDriverId);
   const getTripDriverDisplay = trip => {
