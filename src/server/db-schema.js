@@ -19,6 +19,22 @@ export const runMigrations = async () => {
     ON CONFLICT (id) DO NOTHING
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS dispatch_daily_archives (
+      archive_date   TEXT PRIMARY KEY,
+      data           JSONB NOT NULL DEFAULT '{}'::jsonb,
+      trip_count     INTEGER NOT NULL DEFAULT 0,
+      route_count    INTEGER NOT NULL DEFAULT 0,
+      thread_count   INTEGER NOT NULL DEFAULT 0,
+      message_count  INTEGER NOT NULL DEFAULT 0,
+      audit_count    INTEGER NOT NULL DEFAULT 0,
+      archived_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_daily_archives_archived_at ON dispatch_daily_archives(archived_at DESC)`);
+
   // ─── ADMIN (drivers, vehicles, attendants, groupings) ────────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS admin_state (

@@ -1,4 +1,5 @@
 import { normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
+import { archiveDispatchState } from '@/server/dispatch-history-store';
 import { query } from '@/server/db';
 
 const ensureTable = async () => {
@@ -30,7 +31,50 @@ export const readNemtDispatchState = async () => {
   await ensureTable();
   const result = await query(`SELECT data FROM dispatch_state WHERE id = 'singleton'`);
   const raw = result.rows[0]?.data ?? {};
-  return normalizePersistentDispatchState(raw);
+  const currentState = normalizePersistentDispatchState(raw);
+  const archiveResult = await archiveDispatchState(currentState);
+
+  if (archiveResult.archivedDates.length > 0) {
+    await query(
+      `INSERT INTO dispatch_state_history (snapshot, trip_count, reason)
+       VALUES ($1, $2, $3)`,
+      [JSON.stringify(currentState), (Array.isArray(currentState?.trips) ? currentState.trips.length : 0), `auto-archive:${archiveResult.archivedDates.join(',')}`]
+    );
+
+    await query(
+      `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
+      [JSON.stringify(archiveResult.nextState)]
+    );
+  }
+
+  return archiveResult.nextState;
+};
+
+export const runDispatchArchiveMaintenance = async () => {
+  await ensureTable();
+  const result = await query(`SELECT data FROM dispatch_state WHERE id = 'singleton'`);
+  const raw = result.rows[0]?.data ?? {};
+  const currentState = normalizePersistentDispatchState(raw);
+  const archiveResult = await archiveDispatchState(currentState);
+
+  if (archiveResult.archivedDates.length > 0) {
+    await query(
+      `INSERT INTO dispatch_state_history (snapshot, trip_count, reason)
+       VALUES ($1, $2, $3)`,
+      [JSON.stringify(currentState), (Array.isArray(currentState?.trips) ? currentState.trips.length : 0), `cron-archive:${archiveResult.archivedDates.join(',')}`]
+    );
+
+    await query(
+      `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
+      [JSON.stringify(archiveResult.nextState)]
+    );
+  }
+
+  return {
+    archivedDates: archiveResult.archivedDates,
+    archiveSummaries: archiveResult.archiveSummaries,
+    state: archiveResult.nextState
+  };
 };
 
 const getTripUpdatedAt = trip => {
@@ -70,16 +114,18 @@ export const writeNemtDispatchState = async (nextState, _options = {}) => {
     ...incomingNormalized,
     trips: nextTrips
   });
+  const archiveResult = await archiveDispatchState(normalized);
+  const finalState = archiveResult.nextState;
 
   await query(
     `INSERT INTO dispatch_state_history (snapshot, trip_count, reason)
      VALUES ($1, $2, $3)`,
-    [JSON.stringify(currentState), currentTrips.length, shouldProtectTripCount ? 'protected-shrink-blocked' : isAuthorizedShrink ? `admin-shrink:${shrinkReason || 'manual-delete'}:${actorName || actorId}${actorRole ? `:${actorRole}` : ''}` : 'auto-backup']
+    [JSON.stringify(currentState), currentTrips.length, `${shouldProtectTripCount ? 'protected-shrink-blocked' : isAuthorizedShrink ? `admin-shrink:${shrinkReason || 'manual-delete'}:${actorName || actorId}${actorRole ? `:${actorRole}` : ''}` : 'auto-backup'}${archiveResult.archivedDates.length > 0 ? `|auto-archive:${archiveResult.archivedDates.join(',')}` : ''}`]
   );
 
   await query(
     `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
-    [JSON.stringify(normalized)]
+    [JSON.stringify(finalState)]
   );
-  return normalized;
+  return finalState;
 };

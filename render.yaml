@@ -61,6 +61,8 @@ services:
     envVars:
       - key: CRON_SECRET
         sync: false
+      - key: NEXTAUTH_URL
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
@@ -73,5 +75,25 @@ services:
         sync: false
       - key: LICENSE_WARNING_DAYS
         value: "30"
+      - key: DATABASE_URL
+        sync: false
+
+  - type: cron
+    name: care-mobility-dispatch-history-archive
+    runtime: node
+    schedule: "0 4,5 * * *"
+    buildCommand: npm install ; npm run build
+    startCommand: >
+      node -e "
+        fetch(process.env.NEXTAUTH_URL + '/api/cron/dispatch-history-archive', {
+          headers: { 'x-cron-secret': process.env.CRON_SECRET || '' }
+        }).then(r => r.json()).then(d => { console.log(JSON.stringify(d)); process.exit(0); })
+          .catch(e => { console.error(e.message); process.exit(1); })
+      "
+    envVars:
+      - key: CRON_SECRET
+        sync: false
+      - key: NEXTAUTH_URL
+        sync: false
       - key: DATABASE_URL
         sync: false

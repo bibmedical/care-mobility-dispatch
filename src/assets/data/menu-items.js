@@ -3,10 +3,18 @@ export const MENU_ITEMS = [{
   label: 'Operations',
   isTitle: true
 }, {
-  key: 'dispatcher',
+  key: 'dispatcher-menu',
   icon: 'iconoir:report-columns',
   label: 'Dispatcher',
-  url: '/dispatcher'
+  children: [{
+    key: 'dispatcher-live',
+    label: 'Live Board',
+    url: '/dispatcher'
+  }, {
+    key: 'dispatcher-history',
+    label: 'History',
+    url: '/dispatcher/history'
+  }]
 }, {
   key: 'route-control',
   icon: 'iconoir:view-grid',
