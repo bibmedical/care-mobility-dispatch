@@ -1,4 +1,4 @@
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
@@ -12,6 +12,7 @@ type Props = {
 export const DriverMessagesSection = ({ runtime }: Props) => {
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [selectedPhotoDataUrl, setSelectedPhotoDataUrl] = useState('');
+  const [previewImageUrl, setPreviewImageUrl] = useState('');
   const pinnedDispatchers = ['Lexy', 'Balbino', 'Robert', 'Carlos'];
 
   const getThreadName = (message: DriverMessage) => {
@@ -119,9 +120,11 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
       <Text style={styles.dayLabel}>Today</Text>
 
       <ScrollView style={styles.chatScroll} contentContainerStyle={styles.chatBody}>
-        {selectedMessages.length === 0 ? <Text style={styles.emptyText}>No messages yet. Send the first message.</Text> : selectedMessages.map(message => <View key={message.id} style={[styles.bubble, isOutgoing(message) ? styles.bubbleOutgoing : styles.bubbleIncoming]}>
+          {selectedMessages.length === 0 ? <Text style={styles.emptyText}>No messages yet. Send the first message.</Text> : selectedMessages.map(message => <View key={message.id} style={[styles.bubble, isOutgoing(message) ? styles.bubbleOutgoing : styles.bubbleIncoming]}>
               <Text style={[styles.bubbleText, isOutgoing(message) ? styles.bubbleTextOutgoing : null]}>{message.body}</Text>
-              {(String(message.mediaType || '').toLowerCase() === 'image' || String(message.mediaType || '').toLowerCase().startsWith('image/')) && message.mediaUrl ? <Image source={{ uri: message.mediaUrl }} style={styles.bubbleImage} resizeMode="cover" /> : null}
+            {(String(message.mediaType || '').toLowerCase() === 'image' || String(message.mediaType || '').toLowerCase().startsWith('image/')) && message.mediaUrl ? <Pressable onPress={() => setPreviewImageUrl(message.mediaUrl || '')}>
+            <Image source={{ uri: message.mediaUrl }} style={styles.bubbleImage} resizeMode="cover" />
+              </Pressable> : null}
               <Text style={[styles.bubbleTime, isOutgoing(message) ? styles.bubbleTimeOutgoing : null]}>{formatShortClock(message.createdAt)}</Text>
             </View>)}
       </ScrollView>
@@ -142,6 +145,18 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
           {runtime.isSendingMessage ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.sendButtonText}>➤</Text>}
         </Pressable>
       </View>
+
+      <Modal visible={Boolean(previewImageUrl)} transparent animationType="fade" onRequestClose={() => setPreviewImageUrl('')}>
+        <View style={styles.previewOverlay}>
+          <Pressable style={styles.previewBackdrop} onPress={() => setPreviewImageUrl('')} />
+          <View style={styles.previewCard}>
+            {previewImageUrl ? <Image source={{ uri: previewImageUrl }} style={styles.previewImage} resizeMode="contain" /> : null}
+            <Pressable onPress={() => setPreviewImageUrl('')} style={styles.previewCloseButton}>
+              <Text style={styles.previewCloseText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {runtime.messagesError ? <Text style={styles.errorText}>{runtime.messagesError}</Text> : null}
     </View>;
@@ -386,5 +401,44 @@ const styles = StyleSheet.create({
   removeAttachmentText: {
     color: '#4d6077',
     fontWeight: '700'
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18
+  },
+  previewBackdrop: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0
+  },
+  previewCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#ffffff',
+    borderRadius: 18,
+    padding: 12,
+    gap: 10
+  },
+  previewImage: {
+    width: '100%',
+    height: 420,
+    borderRadius: 12,
+    backgroundColor: '#eef2f8'
+  },
+  previewCloseButton: {
+    alignSelf: 'center',
+    backgroundColor: '#3263ff',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10
+  },
+  previewCloseText: {
+    color: '#ffffff',
+    fontWeight: '800'
   }
 });

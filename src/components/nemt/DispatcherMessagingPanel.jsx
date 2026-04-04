@@ -7,7 +7,7 @@ import { normalizePhoneDigits } from '@/helpers/system-users';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useSession } from 'next-auth/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Badge, Button, Form } from 'react-bootstrap';
+import { Badge, Button, Form, Modal } from 'react-bootstrap';
 
 const greenToolbarButtonStyle = {
   color: '#08131a',
@@ -111,6 +111,7 @@ const DispatcherMessagingPanel = ({
   const [isSendingSms, setIsSendingSms] = useState(false);
   const [smsStatus, setSmsStatus] = useState('');
   const [resolvingAlertId, setResolvingAlertId] = useState('');
+  const [previewImage, setPreviewImage] = useState(null);
   const photoInputRef = useRef(null);
   const documentInputRef = useRef(null);
 
@@ -599,10 +600,10 @@ const DispatcherMessagingPanel = ({
                       {message.attachments.map(attachment => (
                         <div key={attachment.id} className="small">
                           {attachment.kind === 'photo' ? (
-                            <a href={attachment.dataUrl} target="_blank" rel="noreferrer" className="d-inline-flex flex-column text-reset text-decoration-none">
+                            <button type="button" onClick={() => setPreviewImage({ name: attachment.name, dataUrl: attachment.dataUrl })} className="d-inline-flex flex-column text-reset text-decoration-none border-0 p-0 bg-transparent text-start">
                               <img src={attachment.dataUrl} alt={attachment.name} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
                               <span className="mt-1">{attachment.name}</span>
-                            </a>
+                            </button>
                           ) : (
                             <a href={attachment.dataUrl} download={attachment.name} className="text-reset">Document: {attachment.name}</a>
                           )}
@@ -638,6 +639,14 @@ const DispatcherMessagingPanel = ({
           </div>
         </div>
       </div>
+      <Modal show={Boolean(previewImage)} onHide={() => setPreviewImage(null)} centered size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>{previewImage?.name || 'Photo preview'}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="text-center">
+          {previewImage?.dataUrl ? <img src={previewImage.dataUrl} alt={previewImage.name || 'Photo preview'} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 12 }} /> : null}
+        </Modal.Body>
+      </Modal>
     </div>
   );
 };
