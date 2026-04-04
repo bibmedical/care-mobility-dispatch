@@ -10,8 +10,14 @@ const normalizeLookupValue = value => normalizeAuthValue(value);
 const resolveDriverByLookup = async lookup => {
   const adminPayload = await readNemtAdminPayload();
   const lookupValue = normalizeLookupValue(lookup);
-  return (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(driver => {
+  const dispatchDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(driver => {
     return [driver?.id, driver?.code, driver?.name, driver?.nickname].map(normalizeLookupValue).filter(Boolean).includes(lookupValue);
+  }) || null;
+
+  if (dispatchDriver) return dispatchDriver;
+
+  return (Array.isArray(adminPayload?.drivers) ? adminPayload.drivers : []).find(driver => {
+    return [driver?.id, driver?.portalUsername, driver?.username, driver?.email, driver?.name, `${driver?.firstName || ''} ${driver?.lastName || ''}`].map(normalizeLookupValue).filter(Boolean).includes(lookupValue);
   }) || null;
 };
 
@@ -65,12 +71,13 @@ export async function GET(request) {
   }
 
   const messages = await readSystemMessages();
+  const normalizedDriverId = String(driver?.id || '').trim();
   const visibleMessages = messages.filter(message => {
     const messageDriverId = String(message?.driverId || '').trim();
-    return !messageDriverId || messageDriverId === driver.id;
+    return !messageDriverId || messageDriverId === normalizedDriverId;
   }).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
 
-  return NextResponse.json({ ok: true, messages: visibleMessages, driverId: driver.id });
+  return NextResponse.json({ ok: true, messages: visibleMessages, driverId: normalizedDriverId });
   } catch (error) {
     return internalError(error);
   }
@@ -102,7 +109,7 @@ export async function POST(request) {
     body: messageText,
     mediaUrl: mediaUrl || null,
     mediaType: mediaType || null,
-    driverId: driver.id,
+    driverId: String(driver?.id || '').trim(),
     driverName: driver.name,
     driverEmail: null,
     status: 'active',
@@ -116,7 +123,7 @@ export async function POST(request) {
   const dispatchState = await readNemtDispatchState();
   await writeNemtDispatchState({
     ...dispatchState,
-    dispatchThreads: appendIncomingDriverThreadMessage(dispatchState?.dispatchThreads, driver.id, message)
+    dispatchThreads: appendIncomingDriverThreadMessage(dispatchState?.dispatchThreads, String(driver?.id || '').trim(), message)
   });
   return NextResponse.json({ ok: true, message });
   } catch (error) {

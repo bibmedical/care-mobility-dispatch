@@ -168,7 +168,10 @@ export const useDriverRuntime = () => {
     if (!loggedIn || !driverSession?.driverId) return;
     setIsLoadingMessages(true);
     try {
-      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages?driverId=${encodeURIComponent(driverSession.driverId)}`);
+      const requestUrl = `${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages?driverId=${encodeURIComponent(driverSession.driverId)}&t=${Date.now()}`;
+      const { response, payload } = await fetchJsonWithTimeout(requestUrl, {
+        cache: 'no-store'
+      });
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to load messages.'));
       if (!signalActive) return;
       setMessages(Array.isArray(payload?.messages) ? payload.messages : []);
