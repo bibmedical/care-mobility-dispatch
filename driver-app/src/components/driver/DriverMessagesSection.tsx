@@ -1,6 +1,7 @@
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { formatShortClock } from './driverUtils';
 import { DriverMessage } from '../../types/driver';
@@ -58,9 +59,29 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
       allowsEditing: true
     });
 
-    if (result.canceled || !result.assets?.[0]?.base64) return;
-    const mimeType = result.assets[0].mimeType || 'image/jpeg';
-    setSelectedPhotoDataUrl(`data:${mimeType};base64,${result.assets[0].base64}`);
+    if (result.canceled || !result.assets?.[0]?.uri) return;
+
+    const asset = result.assets[0];
+    const longestSide = Math.max(asset.width || 0, asset.height || 0);
+    const resizeTarget = longestSide > 1280 ? 1280 : longestSide || 1280;
+    const resizeAction = asset.width && asset.height
+      ? asset.width >= asset.height
+        ? { width: resizeTarget }
+        : { height: resizeTarget }
+      : { width: 1280 };
+
+    const manipulated = await manipulateAsync(
+      asset.uri,
+      [{ resize: resizeAction }],
+      {
+        compress: 0.45,
+        format: SaveFormat.JPEG,
+        base64: true
+      }
+    );
+
+    if (!manipulated.base64) return;
+    setSelectedPhotoDataUrl(`data:image/jpeg;base64,${manipulated.base64}`);
   };
 
   const sendCurrentMessage = async () => {
