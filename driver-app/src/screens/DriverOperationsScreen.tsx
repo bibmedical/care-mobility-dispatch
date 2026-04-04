@@ -69,24 +69,27 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1
+    flex: 1,
+    backgroundColor: driverTheme.colors.appBg
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 4,
-    backgroundColor: driverTheme.colors.headerBg
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    backgroundColor: driverTheme.colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: driverTheme.colors.border
   },
   menuButton: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderRadius: 16,
+    backgroundColor: driverTheme.colors.headerBg,
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderWidth: 1,
-    borderColor: driverTheme.colors.border
+    borderColor: '#1e293b'
   },
   menuButtonText: {
     color: '#ffffff',
@@ -96,14 +99,15 @@ const styles = StyleSheet.create({
     flex: 1
   },
   titleEyebrow: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 12,
+    color: driverTheme.colors.primaryText,
+    fontSize: 11,
     fontWeight: '700',
-    textTransform: 'uppercase'
+    textTransform: 'uppercase',
+    letterSpacing: 1
   },
   titleText: {
-    color: '#ffffff',
-    fontSize: 24,
+    color: driverTheme.colors.text,
+    fontSize: 23,
     fontWeight: '800'
   }
 });

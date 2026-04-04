@@ -1,4 +1,4 @@
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMemo, useState } from 'react';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { driverSharedStyles, driverTheme } from './driverTheme';
@@ -14,6 +14,7 @@ type QueueMode = 'scheduled' | 'in-progress';
 export const DriverTripsSection = ({ runtime }: Props) => {
   const [listMode, setListMode] = useState<ListMode>('routes');
   const [queueMode, setQueueMode] = useState<QueueMode>('scheduled');
+  const [riderSignatureName, setRiderSignatureName] = useState('');
   const focusTrip = runtime.activeTrip || runtime.assignedTrips[0] || null;
 
   const openDirections = async () => {
@@ -40,6 +41,10 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
     return runtime.assignedTrips.filter(trip => !isInProgressTrip(trip.status));
   }, [queueMode, runtime.assignedTrips]);
+
+  const workflow = focusTrip?.driverWorkflow || null;
+  const canMarkArrived = Boolean(focusTrip?.enRouteAt);
+  const canCompleteTrip = Boolean(focusTrip?.arrivedAt) && riderSignatureName.trim().length > 1;
 
   return <View style={styles.screen}>
       <View style={styles.routeShell}>
@@ -114,14 +119,33 @@ export const DriverTripsSection = ({ runtime }: Props) => {
           <Text style={styles.routeText}>PU {focusTrip.address}</Text>
           <Text style={styles.routeText}>DO {focusTrip.destination}</Text>
 
+          <View style={styles.workflowCard}>
+            <Text style={styles.workflowTitle}>Trip workflow</Text>
+            <Text style={styles.workflowLine}>Departure: {workflow?.departureTimeLabel || 'Pending'}</Text>
+            <Text style={styles.workflowLine}>Arrival: {workflow?.arrivalTimeLabel || 'Pending'}</Text>
+            <Text style={styles.workflowLine}>Passenger signature: {focusTrip.riderSignatureName || 'Required before complete'}</Text>
+            <Text style={styles.workflowLine}>Completion: {workflow?.completedTimeLabel || 'Pending'}</Text>
+          </View>
+
+          <TextInput
+            value={riderSignatureName}
+            onChangeText={setRiderSignatureName}
+            placeholder="Passenger signature name"
+            placeholderTextColor={driverTheme.colors.textSoft}
+            style={styles.signatureInput}
+          />
+
           <View style={styles.actionRow}>
             <Pressable style={[driverSharedStyles.secondaryButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('en-route')} disabled={runtime.activeTripAction.length > 0}>
               <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'en-route' ? 'Sending...' : 'En Route'}</Text>
             </Pressable>
+            <Pressable style={[driverSharedStyles.secondaryButton, !canMarkArrived || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived')} disabled={!canMarkArrived || runtime.activeTripAction.length > 0}>
+              <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'arrived' ? 'Sending...' : 'Arrived'}</Text>
+            </Pressable>
             <Pressable style={[driverSharedStyles.secondaryButton, styles.mapButton]} onPress={() => void openDirections()}>
               <Text style={driverSharedStyles.secondaryButtonText}>Directions</Text>
             </Pressable>
-            <Pressable style={[driverSharedStyles.primaryButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('complete')} disabled={runtime.activeTripAction.length > 0}>
+            <Pressable style={[driverSharedStyles.primaryButton, !canCompleteTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('complete', { riderSignatureName })} disabled={!canCompleteTrip || runtime.activeTripAction.length > 0}>
               <Text style={driverSharedStyles.primaryButtonText}>{runtime.activeTripAction === 'complete' ? 'Sending...' : 'Complete'}</Text>
             </Pressable>
           </View>
@@ -135,11 +159,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
 const styles = StyleSheet.create({
   screen: {
-    gap: 14
+    gap: 12
   },
   routeShell: {
     backgroundColor: driverTheme.colors.surface,
-    borderRadius: 14,
+    borderRadius: driverTheme.radius.lg,
     borderWidth: 1,
     borderColor: driverTheme.colors.border,
     padding: 10,
@@ -150,7 +174,7 @@ const styles = StyleSheet.create({
     gap: 8
   },
   queueChip: {
-    borderRadius: 6,
+    borderRadius: driverTheme.radius.sm,
     borderWidth: 1,
     borderColor: '#d2dbe2',
     paddingHorizontal: 12,
@@ -158,8 +182,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f6f8fa'
   },
   queueChipDate: {
-    backgroundColor: '#ef3340',
-    borderColor: '#ef3340'
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a'
   },
   queueChipDateText: {
     color: '#ffffff',
@@ -167,8 +191,8 @@ const styles = StyleSheet.create({
     fontWeight: '800'
   },
   queueChipActive: {
-    backgroundColor: '#1f66c2',
-    borderColor: '#1f66c2'
+    backgroundColor: driverTheme.colors.primary,
+    borderColor: driverTheme.colors.primary
   },
   queueChipText: {
     color: '#2f4453',
@@ -188,7 +212,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderWidth: 1,
     borderColor: '#b7c7d5',
-    borderRadius: 3,
+    borderRadius: driverTheme.radius.sm,
     overflow: 'hidden'
   },
   modeTab: {
@@ -197,7 +221,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f6f8fa'
   },
   modeTabActive: {
-    backgroundColor: '#1f66c2'
+    backgroundColor: driverTheme.colors.primary
   },
   modeTabText: {
     color: '#2c4151',
@@ -208,23 +232,23 @@ const styles = StyleSheet.create({
     color: '#ffffff'
   },
   selectedRouteText: {
-    color: '#1f66c2',
+    color: driverTheme.colors.primaryText,
     fontWeight: '700',
     fontSize: 12
   },
   routeCard: {
     borderWidth: 1,
-    borderColor: '#e5e8ee',
+    borderColor: driverTheme.colors.border,
     backgroundColor: '#ffffff',
-    borderRadius: 4,
+    borderRadius: driverTheme.radius.sm,
     overflow: 'hidden'
   },
   routeCardActive: {
-    borderColor: '#3263ff',
+    borderColor: driverTheme.colors.primary,
     borderWidth: 2
   },
   routeCardTop: {
-    backgroundColor: '#3263ff',
+    backgroundColor: '#0f172a',
     paddingHorizontal: 10,
     paddingVertical: 9,
     flexDirection: 'row',
@@ -234,8 +258,8 @@ const styles = StyleSheet.create({
   callBadge: {
     width: 34,
     height: 34,
-    borderRadius: 6,
-    backgroundColor: '#1a45cc',
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: driverTheme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -248,7 +272,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   routeIdText: {
-    color: '#d4e0ff',
+    color: '#cbd5e1',
     fontWeight: '700',
     fontSize: 11
   },
@@ -258,7 +282,7 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
   routeAddressSubText: {
-    color: '#ebffee',
+    color: '#dbeafe',
     fontSize: 12
   },
   routeTopMeta: {
@@ -327,12 +351,39 @@ const styles = StyleSheet.create({
   mapButton: {
     backgroundColor: driverTheme.colors.primarySoft
   },
+  workflowCard: {
+    backgroundColor: driverTheme.colors.surfaceMuted,
+    borderRadius: driverTheme.radius.md,
+    padding: 12,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
+  },
+  workflowTitle: {
+    color: driverTheme.colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    textTransform: 'uppercase'
+  },
+  workflowLine: {
+    color: driverTheme.colors.textMuted,
+    lineHeight: 18
+  },
+  signatureInput: {
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border,
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: '#ffffff',
+    color: driverTheme.colors.text,
+    paddingHorizontal: 12,
+    paddingVertical: 12
+  },
   actionDisabled: {
     opacity: 0.65
   },
   tripCard: {
     backgroundColor: driverTheme.colors.surfaceMuted,
-    borderRadius: 18,
+    borderRadius: driverTheme.radius.md,
     padding: 14,
     gap: 8,
     borderWidth: 1,

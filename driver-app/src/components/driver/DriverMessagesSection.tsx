@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { formatShortClock } from './driverUtils';
 import { DriverMessage } from '../../types/driver';
+import { driverTheme } from './driverTheme';
 
 type Props = {
   runtime: DriverRuntime;
@@ -164,11 +165,13 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#f3f4f7',
-    borderRadius: 22,
+    backgroundColor: driverTheme.colors.surface,
+    borderRadius: driverTheme.radius.xl,
     padding: 14,
     minHeight: 620,
-    gap: 10
+    gap: 10,
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
   },
   chatScroll: {
     flex: 1,
@@ -180,15 +183,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between'
   },
   pageTitle: {
-    color: '#1f2b36',
+    color: driverTheme.colors.text,
     fontSize: 28,
     fontWeight: '800'
   },
   newMessageButton: {
-    backgroundColor: '#3263ff',
+    backgroundColor: driverTheme.colors.primary,
     paddingHorizontal: 14,
     paddingVertical: 9,
-    borderRadius: 999
+    borderRadius: driverTheme.radius.sm
   },
   newMessageText: {
     color: '#ffffff',
@@ -204,21 +207,21 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 11,
     paddingHorizontal: 10,
-    borderRadius: 10,
+    borderRadius: driverTheme.radius.sm,
     borderWidth: 1,
-    borderColor: '#e4e8ef',
-    backgroundColor: '#ffffff'
+    borderColor: driverTheme.colors.border,
+    backgroundColor: driverTheme.colors.surfaceMuted
   },
   avatarCircle: {
     width: 42,
     height: 42,
-    borderRadius: 21,
-    backgroundColor: '#dce4f8',
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: driverTheme.colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center'
   },
   avatarLabel: {
-    color: '#30425f',
+    color: driverTheme.colors.primaryText,
     fontWeight: '800'
   },
   threadCopy: {
@@ -226,27 +229,27 @@ const styles = StyleSheet.create({
     gap: 3
   },
   threadName: {
-    color: '#23313f',
+    color: driverTheme.colors.text,
     fontSize: 17,
     fontWeight: '700'
   },
   threadPreview: {
-    color: '#8a97a8'
+    color: driverTheme.colors.textSoft
   },
   threadMeta: {
     alignItems: 'flex-end',
     gap: 6
   },
   threadTime: {
-    color: '#97a2b2',
+    color: driverTheme.colors.textSoft,
     fontSize: 12
   },
   unreadBadge: {
     minWidth: 20,
     height: 20,
-    borderRadius: 10,
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 6,
-    backgroundColor: '#3263ff',
+    backgroundColor: driverTheme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -261,15 +264,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#e4e8ef'
+    borderBottomColor: driverTheme.colors.border
   },
   backText: {
-    color: '#1f2b36',
+    color: driverTheme.colors.text,
     fontWeight: '900',
     fontSize: 18
   },
   chatTitle: {
-    color: '#1f2b36',
+    color: driverTheme.colors.text,
     fontSize: 18,
     fontWeight: '800'
   },
@@ -277,7 +280,7 @@ const styles = StyleSheet.create({
     width: 34
   },
   dayLabel: {
-    color: '#a5adb9',
+    color: driverTheme.colors.textSoft,
     textAlign: 'center',
     fontSize: 11,
     marginTop: 6
@@ -289,20 +292,22 @@ const styles = StyleSheet.create({
   },
   bubble: {
     maxWidth: '84%',
-    borderRadius: 16,
+    borderRadius: driverTheme.radius.md,
     padding: 14,
     gap: 6
   },
   bubbleIncoming: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f4c326'
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
   },
   bubbleOutgoing: {
     alignSelf: 'flex-end',
-    backgroundColor: '#3263ff'
+    backgroundColor: driverTheme.colors.headerBg
   },
   bubbleText: {
-    color: '#ffffff',
+    color: driverTheme.colors.text,
     lineHeight: 20
   },
   bubbleTextOutgoing: {
@@ -311,11 +316,11 @@ const styles = StyleSheet.create({
   bubbleImage: {
     width: 210,
     height: 210,
-    borderRadius: 12,
+    borderRadius: driverTheme.radius.sm,
     marginTop: 2
   },
   bubbleTime: {
-    color: 'rgba(255,255,255,0.8)',
+    color: driverTheme.colors.textSoft,
     fontSize: 11,
     alignSelf: 'flex-end'
   },
@@ -326,40 +331,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
+    backgroundColor: driverTheme.colors.surfaceMuted,
+    borderRadius: driverTheme.radius.md,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#e1e6ee'
+    borderColor: driverTheme.colors.border
   },
   attachButton: {
-    backgroundColor: '#eef2f8',
-    borderRadius: 999,
+    backgroundColor: driverTheme.colors.surface,
+    borderRadius: driverTheme.radius.sm,
     width: 34,
     height: 34,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
   },
   attachButtonText: {
-    color: '#5c6f86',
+    color: driverTheme.colors.textMuted,
     fontWeight: '900',
     fontSize: 17
   },
   composerInput: {
     flex: 1,
-    color: '#263646',
+    color: driverTheme.colors.text,
     minHeight: 44,
     maxHeight: 120,
     paddingHorizontal: 10,
     paddingVertical: 10,
     backgroundColor: '#ffffff',
-    borderRadius: 12,
+    borderRadius: driverTheme.radius.sm,
     borderWidth: 1,
-    borderColor: '#e4e8ef'
+    borderColor: driverTheme.colors.border
   },
   sendButton: {
-    backgroundColor: '#3263ff',
-    borderRadius: 999,
+    backgroundColor: driverTheme.colors.primary,
+    borderRadius: driverTheme.radius.sm,
     width: 34,
     height: 34,
     alignItems: 'center',
@@ -375,31 +382,33 @@ const styles = StyleSheet.create({
     lineHeight: 18
   },
   emptyText: {
-    color: '#95a3b5'
+    color: driverTheme.colors.textSoft
   },
   attachmentPreviewCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
+    backgroundColor: driverTheme.colors.surfaceMuted,
+    borderRadius: driverTheme.radius.md,
     padding: 8,
     borderWidth: 1,
-    borderColor: '#e1e6ee'
+    borderColor: driverTheme.colors.border
   },
   attachmentPreviewImage: {
     width: 56,
     height: 56,
-    borderRadius: 10
+    borderRadius: driverTheme.radius.sm
   },
   removeAttachmentButton: {
-    backgroundColor: '#eef2f8',
-    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 10,
-    paddingVertical: 8
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
   },
   removeAttachmentText: {
-    color: '#4d6077',
+    color: driverTheme.colors.textMuted,
     fontWeight: '700'
   },
   previewOverlay: {
@@ -420,20 +429,20 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     backgroundColor: '#ffffff',
-    borderRadius: 18,
+    borderRadius: driverTheme.radius.lg,
     padding: 12,
     gap: 10
   },
   previewImage: {
     width: '100%',
     height: 420,
-    borderRadius: 12,
-    backgroundColor: '#eef2f8'
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: driverTheme.colors.surfaceMuted
   },
   previewCloseButton: {
     alignSelf: 'center',
-    backgroundColor: '#3263ff',
-    borderRadius: 999,
+    backgroundColor: driverTheme.colors.primary,
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 16,
     paddingVertical: 10
   },

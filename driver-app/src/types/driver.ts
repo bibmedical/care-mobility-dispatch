@@ -37,6 +37,43 @@ export type DriverTrip = {
   punctualityVariant?: 'success' | 'danger' | 'secondary';
   lateMinutes?: string;
   isWillCall?: boolean;
+  enRouteAt?: number | null;
+  arrivedAt?: number | null;
+  completedAt?: number | null;
+  riderSignatureName?: string;
+  riderSignedAt?: number | null;
+  driverWorkflow?: {
+    status?: string;
+    departureAt?: number | null;
+    departureTimeLabel?: string;
+    departureLocationSnapshot?: LocationSnapshot | null;
+    arrivalAt?: number | null;
+    arrivalTimeLabel?: string;
+    arrivalLocationSnapshot?: LocationSnapshot | null;
+    completedAt?: number | null;
+    completedTimeLabel?: string;
+    completionLocationSnapshot?: LocationSnapshot | null;
+    startedLate?: boolean;
+    startLateMinutes?: number | null;
+    pickupLate?: boolean;
+    pickupLateMinutes?: number | null;
+    dropoffLate?: boolean;
+    dropoffLateMinutes?: number | null;
+    riderSignatureName?: string;
+    riderSignedAt?: number | null;
+    auditTrail?: Array<{
+      id: string;
+      action: string;
+      timestamp: number;
+      timeLabel?: string;
+      riderSignatureName?: string;
+      compliance?: {
+        measured?: boolean;
+        isLate?: boolean;
+        lateByMinutes?: number | null;
+      } | null;
+    }>;
+  } | null;
 };
 
 export type DriverSession = {

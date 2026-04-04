@@ -743,7 +743,7 @@ export const useDriverRuntime = () => {
     void writeStoredNotificationMode(mode);
   };
 
-  const submitTripAction = async (action: 'en-route' | 'arrived' | 'complete') => {
+  const submitTripAction = async (action: 'en-route' | 'arrived' | 'complete', options: { riderSignatureName?: string } = {}) => {
     if (!driverSession?.driverId || !activeTrip?.id) return false;
 
     setActiveTripAction(action);
@@ -768,7 +768,9 @@ export const useDriverRuntime = () => {
         body: JSON.stringify({
           driverId: driverSession.driverId,
           tripId: activeTrip.id,
-          action
+          action,
+          riderSignatureName: String(options.riderSignatureName || '').trim() || undefined,
+          locationSnapshot: locationSnapshot || undefined
         })
       });
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to update trip.'));

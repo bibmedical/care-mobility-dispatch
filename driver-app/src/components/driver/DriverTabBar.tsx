@@ -29,9 +29,11 @@ const styles = StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
     gap: 8,
-    backgroundColor: '#111821',
-    borderRadius: 22,
-    padding: 8
+    backgroundColor: driverTheme.colors.surface,
+    borderRadius: driverTheme.radius.lg,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
   },
   tabButton: {
     flex: 1,
@@ -39,15 +41,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     backgroundColor: 'transparent',
-    borderRadius: 16,
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 10,
-    paddingVertical: 11
+    paddingVertical: 10
   },
   tabButtonActive: {
     backgroundColor: driverTheme.colors.headerBg
   },
   tabText: {
-    color: '#d5dde5',
+    color: driverTheme.colors.textMuted,
     fontWeight: '700'
   },
   tabTextActive: {
@@ -57,8 +59,8 @@ const styles = StyleSheet.create({
     minWidth: 20,
     height: 20,
     paddingHorizontal: 6,
-    borderRadius: driverTheme.radius.pill,
-    backgroundColor: '#2a3642',
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: '#e2e8f0',
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -66,7 +68,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)'
   },
   badgeText: {
-    color: '#ffffff',
+    color: driverTheme.colors.text,
     fontSize: 11,
     fontWeight: '800'
   },

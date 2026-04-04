@@ -2,33 +2,33 @@ import { StyleSheet } from 'react-native';
 
 export const driverTheme = {
   colors: {
-    appBg: '#f4f5f7',
+    appBg: '#eef2f5',
     surface: '#ffffff',
-    surfaceMuted: '#f0f2f5',
-    surfaceElevated: '#dbe4f4',
-    border: '#e5e8ee',
-    borderStrong: '#c8d0db',
-    primary: '#3263ff',
-    headerBg: '#3263ff',
+    surfaceMuted: '#f8fafc',
+    surfaceElevated: '#ecfdf3',
+    border: '#d5dde5',
+    borderStrong: '#94a3b8',
+    primary: '#198754',
+    headerBg: '#0f172a',
     headerText: '#ffffff',
-    primarySoft: '#dbe4f4',
-    primaryText: '#4f6df2',
-    accent: '#3263ff',
-    accentSoft: '#e2eaff',
-    text: '#1f2c39',
-    textMuted: '#4a5a6a',
-    textSoft: '#8390a0',
-    success: '#e0f5ea',
-    warning: '#fff4dd',
-    danger: '#ffe7eb',
-    info: '#e8f3ff',
+    primarySoft: '#dcfce7',
+    primaryText: '#166534',
+    accent: '#198754',
+    accentSoft: '#ecfdf5',
+    text: '#0f172a',
+    textMuted: '#334155',
+    textSoft: '#64748b',
+    success: '#dcfce7',
+    warning: '#fef3c7',
+    danger: '#fee2e2',
+    info: '#dbeafe',
     white: '#ffffff'
   },
   radius: {
-    xl: 24,
-    lg: 20,
-    md: 18,
-    sm: 16,
+    xl: 12,
+    lg: 10,
+    md: 8,
+    sm: 6,
     pill: 999
   },
   spacing: {
@@ -42,24 +42,24 @@ export const driverTheme = {
 
 export const driverSharedStyles = StyleSheet.create({
   screen: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     paddingBottom: 28,
-    gap: 14,
+    gap: 12,
     backgroundColor: driverTheme.colors.appBg
   },
   card: {
     backgroundColor: driverTheme.colors.surface,
     borderRadius: driverTheme.radius.xl,
-    padding: 18,
-    gap: 12,
+    padding: 16,
+    gap: 10,
     borderWidth: 1,
     borderColor: driverTheme.colors.border
   },
   softCard: {
     backgroundColor: driverTheme.colors.surfaceMuted,
     borderRadius: driverTheme.radius.md,
-    padding: 14,
+    padding: 12,
     gap: 8,
     borderWidth: 1,
     borderColor: driverTheme.colors.border
@@ -79,7 +79,7 @@ export const driverSharedStyles = StyleSheet.create({
   },
   title: {
     color: driverTheme.colors.text,
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
     marginTop: 4
   },
@@ -93,9 +93,9 @@ export const driverSharedStyles = StyleSheet.create({
     fontWeight: '700'
   },
   pill: {
-    borderRadius: driverTheme.radius.pill,
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 12,
-    paddingVertical: 8
+    paddingVertical: 7
   },
   pillText: {
     color: driverTheme.colors.primaryText,
@@ -106,7 +106,7 @@ export const driverSharedStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: driverTheme.colors.primary,
     borderRadius: driverTheme.radius.sm,
-    paddingVertical: 14,
+    paddingVertical: 13,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -118,7 +118,7 @@ export const driverSharedStyles = StyleSheet.create({
     flex: 1,
     backgroundColor: driverTheme.colors.primarySoft,
     borderRadius: driverTheme.radius.sm,
-    paddingVertical: 14,
+    paddingVertical: 13,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -127,8 +127,8 @@ export const driverSharedStyles = StyleSheet.create({
     fontWeight: '800'
   },
   input: {
-    minHeight: 110,
-    borderRadius: 18,
+    minHeight: 108,
+    borderRadius: driverTheme.radius.md,
     backgroundColor: driverTheme.colors.surfaceMuted,
     borderWidth: 1,
     borderColor: driverTheme.colors.border,

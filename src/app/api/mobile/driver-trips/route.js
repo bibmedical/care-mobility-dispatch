@@ -63,7 +63,13 @@ const mapTripForDriver = trip => {
     punctualityLabel: getTripPunctualityLabel(normalizedTrip),
     punctualityVariant: getTripPunctualityVariant(normalizedTrip),
     lateMinutes: getTripLateMinutesDisplay(normalizedTrip),
-    isWillCall: effectiveStatus === 'WillCall'
+    isWillCall: effectiveStatus === 'WillCall',
+    enRouteAt: normalizedTrip.enRouteAt || null,
+    arrivedAt: normalizedTrip.arrivedAt || null,
+    completedAt: normalizedTrip.completedAt || null,
+    riderSignatureName: String(normalizedTrip.riderSignatureName || '').trim(),
+    riderSignedAt: normalizedTrip.riderSignedAt || null,
+    driverWorkflow: normalizedTrip.driverWorkflow || null
   };
 };
 
@@ -99,6 +105,7 @@ export async function GET(request) {
 
   const dispatchState = await readNemtDispatchState();
   const trips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => trip?.driverId === driver.id && !isCancelledTrip(trip)).sort(sortTripsByPickupTime).map(mapTripForDriver);
+  const activeTrip = trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed') || trips[0] || null;
 
   return NextResponse.json({
     ok: true,
@@ -110,7 +117,7 @@ export async function GET(request) {
       live: driver.live
     },
     trips,
-    activeTrip: trips[0] ?? null,
+    activeTrip,
     updatedAt: Date.now()
   });
   } catch (error) {

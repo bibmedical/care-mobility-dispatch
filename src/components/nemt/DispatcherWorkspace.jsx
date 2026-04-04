@@ -220,23 +220,6 @@ const DispatcherMapResizer = ({ resizeKey }) => {
   return null;
 };
 
-const DispatcherSelectedDriverFollower = ({ driverId, position }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!driverId || !Array.isArray(position) || position.length !== 2) return;
-    const [latitude, longitude] = position.map(Number);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-    const nextZoom = Math.max(map.getZoom(), 13);
-    map.flyTo([latitude, longitude], nextZoom, {
-      animate: true,
-      duration: 0.75
-    });
-  }, [driverId, map, position]);
-
-  return null;
-};
-
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
   if (status === 'In Progress') return 'success';
@@ -1400,7 +1383,7 @@ const DispatcherWorkspace = () => {
     return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
   }, [routeTrips, selectedDriver, selectedDriverActiveTrip, selectedTripIds, trips]);
   const selectedDriverEta = useMemo(() => {
-    if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
+    if (!dispatcherLayout.mapVisible || !selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
     const target = getSelectedDriverEtaTarget(selectedDriverActiveTrip);
     const miles = selectedDriverRouteMetrics?.distanceMiles ?? getDistanceMiles(selectedDriver.position, target?.position);
     return {
@@ -1408,7 +1391,7 @@ const DispatcherWorkspace = () => {
       miles,
       label: selectedDriverRouteMetrics?.durationMinutes != null ? formatDriveMinutes(selectedDriverRouteMetrics.durationMinutes) : formatEta(miles)
     };
-  }, [selectedDriver, selectedDriverActiveTrip, selectedDriverRouteMetrics]);
+  }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverActiveTrip, selectedDriverRouteMetrics]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
   const activeDrivers = useMemo(() => {
     const onlineDrivers = drivers.filter(driver => driver.live === 'Online');
@@ -2025,7 +2008,7 @@ const DispatcherWorkspace = () => {
   }, [routeStops, showRoute]);
 
   useEffect(() => {
-    if (!selectedDriver?.hasRealLocation || !selectedDriverActiveTrip) {
+    if (!dispatcherLayout.mapVisible || !selectedDriver?.hasRealLocation || !selectedDriverActiveTrip) {
       setSelectedDriverRouteGeometry([]);
       setSelectedDriverRouteMetrics(null);
       return;
@@ -2070,10 +2053,10 @@ const DispatcherWorkspace = () => {
     return () => {
       abortController.abort();
     };
-  }, [selectedDriver, selectedDriverActiveTrip]);
+  }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverActiveTrip]);
 
   useEffect(() => {
-    if (!selectedDriver?.id || (!selectedDriverActiveTrip && !selectedDriverPendingEtaTrip)) {
+    if (!dispatcherLayout.mapVisible || !selectedDriver?.id || (!selectedDriverActiveTrip && !selectedDriverPendingEtaTrip)) {
       setShowSelectedDriverEtaCard(false);
       return;
     }
@@ -2086,7 +2069,7 @@ const DispatcherWorkspace = () => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [selectedDriver?.id, selectedDriverActiveTrip, selectedDriverPendingEtaTrip]);
+  }, [dispatcherLayout.mapVisible, selectedDriver?.id, selectedDriverActiveTrip, selectedDriverPendingEtaTrip]);
 
   useEffect(() => {
     if (!dragMode) return;
@@ -2256,9 +2239,8 @@ const DispatcherWorkspace = () => {
                         </div>
                       </>}
                   </div> : null}
-                <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
+                <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
-                  <DispatcherSelectedDriverFollower driverId={selectedDriver?.id || ''} position={selectedDriver?.hasRealLocation ? selectedDriver.position : null} />
                   <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
@@ -2710,14 +2692,7 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0 h-100">
               <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} onLocateDriver={driverId => {
               setSelectedDriverId(driverId);
-              if (!dispatcherLayout.mapVisible) {
-                persistDispatcherLayout({
-                  ...dispatcherLayout,
-                  mapVisible: true,
-                  preset: 'custom'
-                });
-              }
-              setStatusMessage(`Following driver ${driverId} on the map.`);
+              setStatusMessage(dispatcherLayout.mapVisible ? `Driver ${driverId} selected for the map.` : `Driver ${driverId} selected. Open the map manually when you want to view it.`);
             }} openFullChat={() => {
               refreshDrivers();
               router.push('/driver-chat');

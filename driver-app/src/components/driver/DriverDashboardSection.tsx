@@ -127,10 +127,12 @@ const styles = StyleSheet.create({
   avatarBubble: {
     width: 50,
     height: 50,
-    borderRadius: 25,
+    borderRadius: driverTheme.radius.md,
     backgroundColor: driverTheme.colors.surfaceElevated,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
   },
   avatarText: {
     color: '#2d3b4c',
@@ -152,7 +154,7 @@ const styles = StyleSheet.create({
   },
   profileChip: {
     backgroundColor: driverTheme.colors.surface,
-    borderRadius: 16,
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
@@ -164,11 +166,13 @@ const styles = StyleSheet.create({
   },
   primaryCard: {
     backgroundColor: driverTheme.colors.headerBg,
-    borderRadius: 28,
+    borderRadius: driverTheme.radius.xl,
     padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#1e293b'
   },
   primaryCardCopy: {
     flex: 1,
@@ -192,8 +196,8 @@ const styles = StyleSheet.create({
   primaryBadge: {
     width: 72,
     height: 72,
-    borderRadius: 36,
-    backgroundColor: driverTheme.colors.accentSoft,
+    borderRadius: driverTheme.radius.md,
+    backgroundColor: driverTheme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -214,7 +218,7 @@ const styles = StyleSheet.create({
   moodCard: {
     flex: 1,
     backgroundColor: driverTheme.colors.surfaceElevated,
-    borderRadius: 18,
+    borderRadius: driverTheme.radius.md,
     paddingVertical: 14,
     paddingHorizontal: 10,
     alignItems: 'center',
@@ -238,7 +242,7 @@ const styles = StyleSheet.create({
   featureCard: {
     width: '48%',
     backgroundColor: driverTheme.colors.surfaceElevated,
-    borderRadius: 22,
+    borderRadius: driverTheme.radius.lg,
     padding: 18,
     minHeight: 150,
     justifyContent: 'space-between',

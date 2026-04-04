@@ -38,7 +38,9 @@ const styles = StyleSheet.create({
     backgroundColor: driverTheme.colors.headerBg,
     borderRadius: driverTheme.radius.xl,
     padding: 20,
-    gap: 12
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#1e293b'
   },
   topRow: {
     flexDirection: 'row',
@@ -62,15 +64,17 @@ const styles = StyleSheet.create({
     marginTop: 6
   },
   subline: {
-    color: 'rgba(20,54,69,0.9)',
+    color: 'rgba(226,232,240,0.82)',
     fontSize: 14,
     marginTop: 4
   },
   signOutButton: {
-    backgroundColor: driverTheme.colors.white,
-    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 14,
-    paddingVertical: 10
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1'
   },
   signOutText: {
     color: driverTheme.colors.headerBg,
@@ -82,7 +86,7 @@ const styles = StyleSheet.create({
     gap: 8
   },
   signalBadge: {
-    borderRadius: driverTheme.radius.pill,
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 12,
     paddingVertical: 7
   },
@@ -93,7 +97,7 @@ const styles = StyleSheet.create({
   },
   signalMuted: {
     backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: driverTheme.radius.pill,
+    borderRadius: driverTheme.radius.sm,
     paddingHorizontal: 12,
     paddingVertical: 7
   },
