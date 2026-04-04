@@ -777,14 +777,15 @@ export const useDriverRuntime = () => {
         return;
       }
 
-      const backgroundPermission = await Location.getBackgroundPermissionsAsync();
+      const backgroundPermission = await Location.requestBackgroundPermissionsAsync();
       if (backgroundPermission.status !== 'granted') {
-        setBackgroundTrackingError('Foreground GPS is allowed. The app will open Android settings so you can set Location to "Allow all the time".');
+        setBackgroundTrackingError('Foreground GPS is allowed, but background GPS is still off. The app will open Android settings so you can set Location to "Allow all the time".');
         await Linking.openSettings();
         return;
       }
 
       setBackgroundTrackingError('');
+      setWatchError('');
     } finally {
       setIsRequestingPermission(false);
     }

@@ -49,6 +49,17 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "This driver app needs your live location to show real GPS in dispatcher and calculate ETA.",
+          "locationAlwaysAndWhenInUsePermission": "This driver app needs background GPS so dispatcher can keep seeing the vehicle even when the phone screen is off.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ]
+    ],
     "owner": "caremobility",
     "runtimeVersion": {
       "policy": "appVersion"

@@ -50,11 +50,22 @@ export const isBackgroundLocationTrackingActive = async () => {
   return await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
 };
 
-export const startBackgroundLocationTracking = async () => {
-  const backgroundPermission = await Location.getBackgroundPermissionsAsync();
-  if (backgroundPermission.status !== 'granted') {
-    throw new Error('Background location permission is missing. Tap Refresh GPS permissions and allow "All the time".');
+const ensureBackgroundLocationPermission = async () => {
+  let backgroundPermission = await Location.getBackgroundPermissionsAsync();
+  if (backgroundPermission.status === 'granted') {
+    return true;
   }
+
+  backgroundPermission = await Location.requestBackgroundPermissionsAsync();
+  if (backgroundPermission.status !== 'granted') {
+    throw new Error('Background location permission is missing. Allow "All the time" so dispatcher keeps seeing the vehicle with the screen off.');
+  }
+
+  return true;
+};
+
+export const startBackgroundLocationTracking = async () => {
+  await ensureBackgroundLocationPermission();
 
   const alreadyRunning = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
   if (alreadyRunning) return true;
