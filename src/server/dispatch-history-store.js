@@ -163,6 +163,43 @@ const buildArchiveSummary = archive => ({
   auditCount: Array.isArray(archive?.auditLog) ? archive.auditLog.length : 0
 });
 
+const normalizeDriverId = value => String(value || '').trim();
+
+const getArchiveDriverLabel = (driverId, archive) => {
+  const normalizedDriverId = normalizeDriverId(driverId);
+  if (!normalizedDriverId) return 'No driver';
+
+  const tripDriver = (Array.isArray(archive?.trips) ? archive.trips : []).find(trip => normalizeDriverId(trip?.driverId) === normalizedDriverId || normalizeDriverId(trip?.secondaryDriverId) === normalizedDriverId);
+  if (tripDriver?.driverName) return String(tripDriver.driverName).trim();
+
+  const routeDriver = (Array.isArray(archive?.routePlans) ? archive.routePlans : []).find(routePlan => normalizeDriverId(routePlan?.driverId) === normalizedDriverId || normalizeDriverId(routePlan?.secondaryDriverId) === normalizedDriverId);
+  if (routeDriver?.driverName) return String(routeDriver.driverName).trim();
+
+  const dailyDriver = (Array.isArray(archive?.dailyDrivers) ? archive.dailyDrivers : []).find(driver => normalizeDriverId(driver?.id) === normalizedDriverId);
+  if (dailyDriver) {
+    return [dailyDriver.firstName, dailyDriver.lastNameOrOrg].filter(Boolean).join(' ').trim() || normalizedDriverId;
+  }
+
+  return normalizedDriverId;
+};
+
+const buildArchiveDriverDaySummary = (archive, dateKey, driverId, fallbackSummary = null) => {
+  const normalizedDriverId = normalizeDriverId(driverId);
+  const trips = (Array.isArray(archive?.trips) ? archive.trips : []).filter(trip => normalizeDriverId(trip?.driverId) === normalizedDriverId || normalizeDriverId(trip?.secondaryDriverId) === normalizedDriverId);
+  const routeCount = (Array.isArray(archive?.routePlans) ? archive.routePlans : []).filter(routePlan => normalizeDriverId(routePlan?.driverId) === normalizedDriverId || normalizeDriverId(routePlan?.secondaryDriverId) === normalizedDriverId || (Array.isArray(routePlan?.tripIds) ? routePlan.tripIds : []).some(tripId => trips.some(trip => String(trip?.id || '').trim() === String(tripId || '').trim()))).length;
+  const thread = (Array.isArray(archive?.dispatchThreads) ? archive.dispatchThreads : []).find(item => normalizeDriverId(item?.driverId) === normalizedDriverId);
+  const messages = Array.isArray(thread?.messages) ? thread.messages.length : 0;
+  return {
+    dateKey,
+    label: getArchiveDriverLabel(normalizedDriverId, archive),
+    tripCount: trips.length,
+    routeCount,
+    messageCount: messages,
+    archivedAt: fallbackSummary?.archivedAt || archive?.archivedAt || null,
+    updatedAt: fallbackSummary?.updatedAt || archive?.updatedAt || null
+  };
+};
+
 const mergeArchivePayload = (existingArchive, incomingArchive) => {
   const existingState = normalizePersistentDispatchState(existingArchive || {});
   const incomingState = normalizePersistentDispatchState(incomingArchive || {});
@@ -382,6 +419,84 @@ export const readDispatchHistoryArchiveIndex = async (limit = 60) => {
     archivedAt: row.archived_at,
     updatedAt: row.updated_at
   }));
+};
+
+export const readDispatchHistoryDriverIndex = async (limit = 365) => {
+  await ensureTable();
+  const safeLimit = Math.min(Math.max(Number(limit) || 365, 1), 365);
+  const result = await query(
+    `SELECT archive_date, data, trip_count, route_count, thread_count, message_count, audit_count, archived_at, updated_at
+     FROM dispatch_daily_archives
+     ORDER BY archive_date DESC
+     LIMIT $1`,
+    [safeLimit]
+  );
+
+  const driverMap = new Map();
+
+  result.rows.forEach(row => {
+    const archive = normalizePersistentDispatchState(row.data || {});
+    const dateKey = String(row.archive_date || '').trim();
+    if (!dateKey) return;
+
+    const archiveSummary = {
+      archivedAt: row.archived_at,
+      updatedAt: row.updated_at,
+      tripCount: Number(row.trip_count) || 0,
+      routeCount: Number(row.route_count) || 0,
+      threadCount: Number(row.thread_count) || 0,
+      messageCount: Number(row.message_count) || 0,
+      auditCount: Number(row.audit_count) || 0
+    };
+
+    const archiveDriverIds = new Set();
+    (Array.isArray(archive?.trips) ? archive.trips : []).forEach(trip => {
+      if (normalizeDriverId(trip?.driverId)) archiveDriverIds.add(normalizeDriverId(trip.driverId));
+      if (normalizeDriverId(trip?.secondaryDriverId)) archiveDriverIds.add(normalizeDriverId(trip.secondaryDriverId));
+    });
+    (Array.isArray(archive?.dispatchThreads) ? archive.dispatchThreads : []).forEach(thread => {
+      if (normalizeDriverId(thread?.driverId)) archiveDriverIds.add(normalizeDriverId(thread.driverId));
+    });
+    (Array.isArray(archive?.routePlans) ? archive.routePlans : []).forEach(routePlan => {
+      if (normalizeDriverId(routePlan?.driverId)) archiveDriverIds.add(normalizeDriverId(routePlan.driverId));
+      if (normalizeDriverId(routePlan?.secondaryDriverId)) archiveDriverIds.add(normalizeDriverId(routePlan.secondaryDriverId));
+    });
+    (Array.isArray(archive?.dailyDrivers) ? archive.dailyDrivers : []).forEach(driver => {
+      if (normalizeDriverId(driver?.id)) archiveDriverIds.add(normalizeDriverId(driver.id));
+    });
+
+    archiveDriverIds.forEach(driverId => {
+      const daySummary = buildArchiveDriverDaySummary({
+        ...archive,
+        archivedAt: row.archived_at,
+        updatedAt: row.updated_at
+      }, dateKey, driverId, archiveSummary);
+      if (daySummary.tripCount === 0 && daySummary.routeCount === 0 && daySummary.messageCount === 0) return;
+
+      const existingEntry = driverMap.get(driverId) || {
+        driverId,
+        label: getArchiveDriverLabel(driverId, archive),
+        archivedDayCount: 0,
+        tripCount: 0,
+        routeCount: 0,
+        messageCount: 0,
+        days: []
+      };
+
+      existingEntry.label = existingEntry.label || getArchiveDriverLabel(driverId, archive);
+      existingEntry.archivedDayCount += 1;
+      existingEntry.tripCount += daySummary.tripCount;
+      existingEntry.routeCount += daySummary.routeCount;
+      existingEntry.messageCount += daySummary.messageCount;
+      existingEntry.days.push(daySummary);
+      driverMap.set(driverId, existingEntry);
+    });
+  });
+
+  return Array.from(driverMap.values()).map(entry => ({
+    ...entry,
+    days: [...entry.days].sort((left, right) => String(right.dateKey || '').localeCompare(String(left.dateKey || '')))
+  })).sort((left, right) => String(left.label || left.driverId).localeCompare(String(right.label || right.driverId)));
 };
 
 const readDispatchHistorySnapshots = async (limit = 2000) => {

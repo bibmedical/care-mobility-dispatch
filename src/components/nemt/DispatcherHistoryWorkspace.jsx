@@ -24,6 +24,26 @@ const getDriverLabel = (driverId, archive) => {
 
 const getRouteLabel = routePlan => String(routePlan?.name || routePlan?.routeName || routePlan?.driverName || routePlan?.id || 'Route').trim() || 'Route';
 
+const getTripPickupAddress = trip => String(trip?.address || trip?.fromAddress || trip?.pickupAddress || '').trim() || '--';
+
+const getTripDropoffAddress = trip => String(trip?.destination || trip?.toAddress || trip?.dropoffAddress || '').trim() || '--';
+
+const getTripLateMinutes = trip => {
+  const candidates = [trip?.lateMinutes, trip?.delayMinutes, trip?.delay, trip?.driverWorkflow?.lateMinutes];
+  for (const candidate of candidates) {
+    const numericValue = Number(candidate);
+    if (Number.isFinite(numericValue) && numericValue > 0) return numericValue;
+  }
+  return 0;
+};
+
+const getTripPunctualityLabel = trip => {
+  const lateMinutes = getTripLateMinutes(trip);
+  if (lateMinutes > 0) return `Late ${lateMinutes} min`;
+  const statusLabel = String(trip?.onTimeStatus || '').trim();
+  return statusLabel || 'On time';
+};
+
 const getStatusBadge = status => {
   const normalizedStatus = String(status || '').trim().toLowerCase();
   if (normalizedStatus === 'completed') return 'success';
@@ -95,14 +115,21 @@ const buildRouteTripMap = (routePlans, trips) => {
   const tripMap = new Map((Array.isArray(trips) ? trips : []).map(trip => [String(trip?.id || '').trim(), trip]));
   return (Array.isArray(routePlans) ? routePlans : []).map(routePlan => {
     const routeTripList = (Array.isArray(routePlan?.tripIds) ? routePlan.tripIds : []).map(tripId => tripMap.get(String(tripId || '').trim())).filter(Boolean);
+    const sortedRouteTrips = [...routeTripList].sort((left, right) => String(left?.scheduledPickup || left?.actualPickup || '').localeCompare(String(right?.scheduledPickup || right?.actualPickup || '')));
+    const firstTrip = sortedRouteTrips[0] || null;
+    const lastTrip = sortedRouteTrips[sortedRouteTrips.length - 1] || firstTrip;
     const distinctDrivers = Array.from(new Set(routeTripList.map(trip => String(trip?.driverName || trip?.driverId || '').trim()).filter(Boolean)));
     return {
       id: routePlan?.id,
       label: getRouteLabel(routePlan),
+      driverId: String(routePlan?.driverId || routePlan?.secondaryDriverId || '').trim(),
       driverName: String(routePlan?.driverName || distinctDrivers.join(' + ') || 'Unassigned').trim(),
       tripCount: routeTripList.length,
-      firstPickup: routeTripList.map(trip => String(trip?.scheduledPickup || '').trim()).find(Boolean) || '--',
-      lastDropoff: [...routeTripList].reverse().map(trip => String(trip?.scheduledDropoff || '').trim()).find(Boolean) || '--',
+      firstPickup: sortedRouteTrips.map(trip => String(trip?.scheduledPickup || trip?.actualPickup || '').trim()).find(Boolean) || '--',
+      lastDropoff: [...sortedRouteTrips].reverse().map(trip => String(trip?.scheduledDropoff || trip?.actualDropoff || '').trim()).find(Boolean) || '--',
+      startAddress: firstTrip ? getTripPickupAddress(firstTrip) : '--',
+      endAddress: lastTrip ? getTripDropoffAddress(lastTrip) : '--',
+      lateTripCount: sortedRouteTrips.filter(trip => getTripLateMinutes(trip) > 0).length,
       trips: routeTripList
     };
   }).sort((left, right) => left.label.localeCompare(right.label));
@@ -114,22 +141,32 @@ const DispatcherHistoryWorkspace = () => {
   const [backfillRunning, setBackfillRunning] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [availableDates, setAvailableDates] = useState([]);
+  const [availableDrivers, setAvailableDrivers] = useState([]);
   const [archive, setArchive] = useState(null);
   const [backfillStatus, setBackfillStatus] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [driverSearch, setDriverSearch] = useState('');
   const [previewPhoto, setPreviewPhoto] = useState(null);
 
-  const fetchHistory = async nextDate => {
+  const fetchHistory = async (nextDate, nextDriverId = selectedDriverId) => {
     setLoading(true);
     try {
-      const query = nextDate ? `?date=${encodeURIComponent(nextDate)}&limit=180` : '?limit=180';
+      const params = new URLSearchParams();
+      params.set('limit', '180');
+      if (nextDate) params.set('date', nextDate);
+      if (nextDriverId) params.set('driverId', nextDriverId);
+      const query = `?${params.toString()}`;
       const response = await fetch(`/api/nemt/dispatch-history${query}`, { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.error || 'Unable to load dispatcher history');
       }
       setAvailableDates(Array.isArray(payload?.availableDates) ? payload.availableDates : []);
+      setAvailableDrivers(Array.isArray(payload?.availableDrivers) ? payload.availableDrivers : []);
       setSelectedDate(String(payload?.selectedDateKey || nextDate || ''));
+      if (typeof payload?.selectedDriverId === 'string') {
+        setSelectedDriverId(payload.selectedDriverId);
+      }
       setArchive(payload?.archive || null);
     } catch (error) {
       setArchive(null);
@@ -148,9 +185,9 @@ const DispatcherHistoryWorkspace = () => {
 
   useEffect(() => {
     if (!archive) {
-      setSelectedDriverId('');
       return;
     }
+    if (selectedDriverId) return;
     const candidateDriverIds = new Set();
     (Array.isArray(archive?.trips) ? archive.trips : []).forEach(trip => {
       if (normalizeDriverId(trip?.driverId)) candidateDriverIds.add(normalizeDriverId(trip.driverId));
@@ -160,8 +197,8 @@ const DispatcherHistoryWorkspace = () => {
       if (normalizeDriverId(thread?.driverId)) candidateDriverIds.add(normalizeDriverId(thread.driverId));
     });
     const firstDriverId = Array.from(candidateDriverIds.values())[0] || '';
-    setSelectedDriverId(current => current && candidateDriverIds.has(current) ? current : firstDriverId);
-  }, [archive]);
+    if (firstDriverId) setSelectedDriverId(firstDriverId);
+  }, [archive, selectedDriverId]);
 
   const handleBackfill = async () => {
     setBackfillRunning(true);
@@ -184,7 +221,7 @@ const DispatcherHistoryWorkspace = () => {
         message,
         variant: 'success'
       });
-      await fetchHistory(selectedDate || '');
+      await fetchHistory(selectedDate || '', selectedDriverId);
     } catch (error) {
       const message = error?.message || 'Unable to backfill dispatcher history';
       setBackfillStatus('');
@@ -197,28 +234,69 @@ const DispatcherHistoryWorkspace = () => {
     }
   };
 
-  const driverOptions = useMemo(() => {
+  const archiveDriverOptions = useMemo(() => {
     const optionMap = new Map();
+    const routeList = buildRouteTripMap(archive?.routePlans, archive?.trips);
     (Array.isArray(archive?.dispatchThreads) ? archive.dispatchThreads : []).forEach(thread => {
       const driverId = normalizeDriverId(thread?.driverId);
       if (!driverId) return;
-      optionMap.set(driverId, {
+      const previousEntry = optionMap.get(driverId) || {
         driverId,
-        label: getDriverLabel(driverId, archive)
+        label: getDriverLabel(driverId, archive),
+        routeCount: 0,
+        tripCount: 0,
+        messageCount: 0
+      };
+      optionMap.set(driverId, {
+        ...previousEntry,
+        messageCount: previousEntry.messageCount + (Array.isArray(thread?.messages) ? thread.messages.length : 0)
       });
     });
     (Array.isArray(archive?.trips) ? archive.trips : []).forEach(trip => {
       [trip?.driverId, trip?.secondaryDriverId].forEach(driverIdValue => {
         const driverId = normalizeDriverId(driverIdValue);
         if (!driverId) return;
-        optionMap.set(driverId, {
+        const previousEntry = optionMap.get(driverId) || {
           driverId,
-          label: getDriverLabel(driverId, archive)
+          label: getDriverLabel(driverId, archive),
+          routeCount: 0,
+          tripCount: 0,
+          messageCount: 0
+        };
+        optionMap.set(driverId, {
+          ...previousEntry,
+          tripCount: previousEntry.tripCount + 1
         });
+      });
+    });
+    routeList.forEach(route => {
+      const driverId = normalizeDriverId(route?.driverId) || normalizeDriverId((Array.isArray(route?.trips) ? route.trips[0]?.driverId : ''));
+      if (!driverId) return;
+      const previousEntry = optionMap.get(driverId) || {
+        driverId,
+        label: getDriverLabel(driverId, archive),
+        routeCount: 0,
+        tripCount: 0,
+        messageCount: 0
+      };
+      optionMap.set(driverId, {
+        ...previousEntry,
+        routeCount: previousEntry.routeCount + 1
       });
     });
     return Array.from(optionMap.values()).sort((left, right) => left.label.localeCompare(right.label));
   }, [archive]);
+
+  const filteredDriverOptions = useMemo(() => {
+    const term = driverSearch.trim().toLowerCase();
+    if (!term) return availableDrivers;
+    return availableDrivers.filter(option => [option?.label, option?.driverId].some(value => String(value || '').toLowerCase().includes(term)));
+  }, [availableDrivers, driverSearch]);
+
+  const selectedDriverArchiveDays = useMemo(() => {
+    const matchingDriver = availableDrivers.find(option => option.driverId === selectedDriverId);
+    return Array.isArray(matchingDriver?.days) ? matchingDriver.days : [];
+  }, [availableDrivers, selectedDriverId]);
 
   const filteredTrips = useMemo(() => {
     if (!selectedDriverId) return [];
@@ -298,7 +376,9 @@ const DispatcherHistoryWorkspace = () => {
     auditCount: auditRows.length
   };
 
-  const selectedDriverLabel = selectedDriverId ? getDriverLabel(selectedDriverId, archive) : '';
+  const selectedDriverSummary = availableDrivers.find(option => option.driverId === selectedDriverId) || archiveDriverOptions.find(option => option.driverId === selectedDriverId) || null;
+  const selectedDriverLabel = selectedDriverSummary?.label || (selectedDriverId ? getDriverLabel(selectedDriverId, archive) : '');
+  const selectedDaySummary = availableDates.find(item => item.dateKey === selectedDate) || null;
 
   const archiveStats = archive?.summary || {
     tripCount: 0,
@@ -317,83 +397,155 @@ const DispatcherHistoryWorkspace = () => {
               <h1 className={styles.heroTitle}>History</h1>
               <p className={styles.heroText}>Cada día archivado queda guardado aquí con sus rutas, viajes, mensajes y actividad. A medianoche se mueve fuera del tablero activo para que Dispatcher no se siga llenando.</p>
             </div>
-            <div className={styles.toolbarActions}>
-              <Form.Group>
-                <Form.Label className="small text-secondary">Select day</Form.Label>
-                <Form.Control type="date" value={selectedDate} onChange={event => setSelectedDate(event.target.value)} />
-              </Form.Group>
-              <Button variant="dark" onClick={() => fetchHistory(selectedDate)} disabled={loading || !selectedDate}>Load</Button>
-              <Button variant="outline-secondary" onClick={() => fetchHistory('')} disabled={loading}>Latest</Button>
-              <Button variant="outline-success" onClick={handleBackfill} disabled={loading || backfillRunning}>{backfillRunning ? 'Backfilling...' : 'Backfill old days'}</Button>
+            <div className={styles.heroSummaryGrid}>
+              <div className={styles.heroSummaryCard}>
+                <span className={styles.heroSummaryLabel}>Active day</span>
+                <strong>{archive?.dateKey ? formatTripDateLabel(archive.dateKey) : 'No day selected'}</strong>
+              </div>
+              <div className={styles.heroSummaryCard}>
+                <span className={styles.heroSummaryLabel}>Driver</span>
+                <strong>{selectedDriverLabel || 'Pick a driver'}</strong>
+              </div>
+              <div className={styles.heroSummaryCard}>
+                <span className={styles.heroSummaryLabel}>Archive totals</span>
+                <strong>{archiveStats.tripCount} trips</strong>
+              </div>
             </div>
           </div>
           {backfillStatus ? <div className="mt-3">
               <span className={styles.statusPill}>{backfillStatus}</span>
             </div> : null}
-          <div className="mt-3 d-flex flex-wrap gap-2 align-items-center">
-            <span className="small text-secondary">Archived days:</span>
-            <div className={styles.dateList}>
-              {availableDates.slice(0, 14).map(item => <Button key={item.dateKey} size="sm" variant={item.dateKey === selectedDate ? 'dark' : 'outline-dark'} className={styles.dateChip} onClick={() => fetchHistory(item.dateKey)}>
-                  {formatTripDateLabel(item.dateKey)}
-                </Button>)}
-            </div>
-          </div>
         </CardBody>
       </Card>
 
-      <Card className={styles.driverPickerCard}>
-        <CardBody className="p-3 p-lg-4">
-          <div className="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-end">
-            <div>
-              <div className={styles.sectionTitle}>Driver Filter</div>
-              <div className={styles.sectionMeta}>Primero elige el chofer para no enseñar todos los mensajes del día mezclados.</div>
+      <div className={styles.historyShell}>
+        <aside className={styles.sidebarColumn}>
+          <Card className={styles.sidebarCard}>
+            <CardBody className="p-3">
+              <div className={styles.sectionTitle}>Browse history</div>
+              <div className={styles.sectionMeta}>Elige día y chofer desde el panel izquierdo como en Trip Dashboard.</div>
+              <div className={styles.sidebarFormStack}>
+                <Form.Group>
+                  <Form.Label className="small text-secondary mb-1">Select day</Form.Label>
+                  <Form.Control size="sm" type="date" value={selectedDate} onChange={event => setSelectedDate(event.target.value)} />
+                </Form.Group>
+                <div className={styles.sidebarButtonRow}>
+                  <Button size="sm" variant="dark" onClick={() => fetchHistory(selectedDate, selectedDriverId)} disabled={loading || !selectedDate}>Load day</Button>
+                  <Button size="sm" variant="outline-secondary" onClick={() => fetchHistory('', selectedDriverId)} disabled={loading}>Latest</Button>
+                </div>
+                <Button size="sm" variant="outline-success" onClick={handleBackfill} disabled={loading || backfillRunning}>{backfillRunning ? 'Backfilling...' : 'Backfill old days'}</Button>
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className={styles.sidebarCard}>
+            <CardBody className="p-3">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                  <div className={styles.sectionTitle}>Archived days</div>
+                  <div className={styles.sectionMeta}>Selecciona el día y la derecha cambia a esa jornada.</div>
+                </div>
+                <Badge bg="dark">{availableDates.length}</Badge>
+              </div>
+              <div className={styles.sidebarList}>
+                {availableDates.map(item => <button key={item.dateKey} type="button" className={`${styles.sidebarItem} ${item.dateKey === selectedDate ? styles.sidebarItemActive : ''}`} onClick={() => fetchHistory(item.dateKey, selectedDriverId)}>
+                    <div>
+                      <div className={styles.sidebarItemTitle}>{formatTripDateLabel(item.dateKey)}</div>
+                      <div className={styles.sidebarItemMeta}>{item.routeCount} routes · {item.tripCount} trips · {item.messageCount} messages</div>
+                    </div>
+                    <span className={styles.sidebarItemPill}>{item.auditCount}</span>
+                  </button>)}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className={styles.sidebarCard}>
+            <CardBody className="p-3">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                  <div className={styles.sectionTitle}>Drivers</div>
+                  <div className={styles.sectionMeta}>Selecciona a Harold u otro chofer para ver sólo su día.</div>
+                </div>
+                <Badge bg="dark">{availableDrivers.length}</Badge>
+              </div>
+              <Form.Control size="sm" className="mb-3" placeholder="Search driver" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} />
+              <div className={styles.sidebarList}>
+                {filteredDriverOptions.length > 0 ? filteredDriverOptions.map(option => <button key={option.driverId} type="button" className={`${styles.sidebarItem} ${option.driverId === selectedDriverId ? styles.sidebarItemActive : ''}`} onClick={() => fetchHistory('', option.driverId)}>
+                    <div>
+                      <div className={styles.sidebarItemTitle}>{option.label}</div>
+                      <div className={styles.sidebarItemMeta}>{option.archivedDayCount} days · {option.routeCount} routes · {option.tripCount} trips</div>
+                    </div>
+                    <span className={styles.sidebarItemPill}>{option.archivedDayCount}</span>
+                  </button>) : <div className={styles.emptyState}>No drivers match that search.</div>}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className={styles.sidebarCard}>
+            <CardBody className="p-3">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                  <div className={styles.sectionTitle}>Driver days</div>
+                  <div className={styles.sectionMeta}>Aquí están los días archivados del chofer seleccionado.</div>
+                </div>
+                <Badge bg="dark">{selectedDriverArchiveDays.length}</Badge>
+              </div>
+              <div className={styles.sidebarList}>
+                {selectedDriverArchiveDays.length > 0 ? selectedDriverArchiveDays.map(day => <button key={`${selectedDriverId}-${day.dateKey}`} type="button" className={`${styles.sidebarItem} ${day.dateKey === selectedDate ? styles.sidebarItemActive : ''}`} onClick={() => fetchHistory(day.dateKey, selectedDriverId)}>
+                    <div>
+                      <div className={styles.sidebarItemTitle}>{formatTripDateLabel(day.dateKey)}</div>
+                      <div className={styles.sidebarItemMeta}>{day.routeCount} routes · {day.tripCount} trips · {day.messageCount} messages</div>
+                    </div>
+                    <span className={styles.sidebarItemPill}>{day.tripCount}</span>
+                  </button>) : <div className={styles.emptyState}>Select a driver to list archived work days.</div>}
+              </div>
+            </CardBody>
+          </Card>
+        </aside>
+
+        <div className={styles.contentColumn}>
+          {archive ? <Card className={styles.sectionCard}>
+              <CardBody className="p-3 p-lg-4">
+                <div className={styles.detailHeader}>
+                  <div>
+                    <div className={styles.sectionTitle}>{selectedDriverLabel || 'Select a driver'} · {archive?.dateKey ? formatTripDateLabel(archive.dateKey) : 'No archived day'}</div>
+                    <div className={styles.sectionMeta}>Aquí ves la ruta completa del día, las personas tarde, los mensajes y la actividad grabada en history.</div>
+                  </div>
+                  <div className={styles.detailBadgeRow}>
+                    {selectedDaySummary ? <span className={styles.detailBadge}>Day total: {selectedDaySummary.tripCount} trips</span> : null}
+                    {selectedDriverSummary ? <span className={styles.detailBadge}>Driver total: {selectedDriverSummary.tripCount} trips</span> : null}
+                    <span className={styles.detailBadge}>Messages: {stats.messageCount}</span>
+                  </div>
+                </div>
+              </CardBody>
+            </Card> : null}
+
+          <div className={styles.statsGrid}>
+            <div className={styles.statCard}>
+              <div className={styles.statLabel}>Routes</div>
+              <div className={styles.statValue}>{stats.routeCount}</div>
             </div>
-            <div className={styles.toolbarActions}>
-              <Form.Group>
-                <Form.Label className="small text-secondary">Driver name</Form.Label>
-                <Form.Select value={selectedDriverId} onChange={event => setSelectedDriverId(event.target.value)}>
-                  {driverOptions.length > 0 ? driverOptions.map(option => <option key={option.driverId} value={option.driverId}>{option.label}</option>) : <option value="">No drivers found</option>}
-                </Form.Select>
-              </Form.Group>
+            <div className={styles.statCard}>
+              <div className={styles.statLabel}>Trips</div>
+              <div className={styles.statValue}>{stats.tripCount}</div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statLabel}>Threads</div>
+              <div className={styles.statValue}>{stats.threadCount}</div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statLabel}>Messages</div>
+              <div className={styles.statValue}>{stats.messageCount}</div>
+            </div>
+            <div className={styles.statCard}>
+              <div className={styles.statLabel}>Late Trips</div>
+              <div className={styles.statValue}>{tripRows.filter(trip => getTripLateMinutes(trip) > 0).length}</div>
             </div>
           </div>
-          <div className="mt-3 d-flex flex-wrap gap-2 align-items-center">
-            <span className="small text-secondary">Drivers in archive:</span>
-            <div className={styles.driverChipList}>
-              {driverOptions.map(option => <Button key={option.driverId} size="sm" variant={option.driverId === selectedDriverId ? 'dark' : 'outline-dark'} className={styles.dateChip} onClick={() => setSelectedDriverId(option.driverId)}>
-                  {option.label}
-                </Button>)}
-            </div>
-          </div>
-        </CardBody>
-      </Card>
 
-      <div className={styles.statsGrid}>
-        <div className={styles.statCard}>
-          <div className={styles.statLabel}>Routes</div>
-          <div className={styles.statValue}>{stats.routeCount}</div>
-        </div>
-        <div className={styles.statCard}>
-          <div className={styles.statLabel}>Trips</div>
-          <div className={styles.statValue}>{stats.tripCount}</div>
-        </div>
-        <div className={styles.statCard}>
-          <div className={styles.statLabel}>Threads</div>
-          <div className={styles.statValue}>{stats.threadCount}</div>
-        </div>
-        <div className={styles.statCard}>
-          <div className={styles.statLabel}>Messages</div>
-          <div className={styles.statValue}>{stats.messageCount}</div>
-        </div>
-        <div className={styles.statCard}>
-          <div className={styles.statLabel}>Recorded Events</div>
-          <div className={styles.statValue}>{stats.auditCount}</div>
-        </div>
-      </div>
+          {archive ? <div className="small text-secondary">Archive total for {formatTripDateLabel(archive.dateKey)}: {archiveStats.routeCount} routes, {archiveStats.tripCount} trips, {archiveStats.messageCount} messages. Showing only {selectedDriverLabel || 'selected driver'}.</div> : null}
 
-      {archive ? <div className="small text-secondary">Archive total for {formatTripDateLabel(archive.dateKey)}: {archiveStats.routeCount} routes, {archiveStats.tripCount} trips, {archiveStats.messageCount} messages. Showing only {selectedDriverLabel || 'selected driver'}.</div> : null}
-
-      {loading ? <Card className={styles.sectionCard}>
+          {loading ? <Card className={styles.sectionCard}>
           <CardBody className="p-4 d-flex align-items-center gap-3">
             <Spinner animation="border" size="sm" />
             <span>Loading archived dispatcher day...</span>
@@ -420,21 +572,26 @@ const DispatcherHistoryWorkspace = () => {
                   <thead>
                     <tr>
                       <th>Route</th>
-                      <th>Driver</th>
                       <th>Trips</th>
-                      <th>First PU</th>
-                      <th>Last DO</th>
+                      <th>Window</th>
+                      <th>From</th>
+                      <th>To</th>
+                      <th>Late</th>
                     </tr>
                   </thead>
                   <tbody>
                     {routeRows.length > 0 ? routeRows.map(route => <tr key={route.id || route.label}>
-                        <td className="fw-semibold">{route.label}</td>
-                        <td>{route.driverName || '--'}</td>
+                        <td>
+                          <div className="fw-semibold">{route.label}</div>
+                          <div className="small text-secondary">{route.driverName || '--'}</div>
+                        </td>
                         <td>{route.tripCount}</td>
-                        <td>{route.firstPickup}</td>
-                        <td>{route.lastDropoff}</td>
+                        <td>{route.firstPickup} to {route.lastDropoff}</td>
+                        <td className={styles.locationCell}>{route.startAddress}</td>
+                        <td className={styles.locationCell}>{route.endAddress}</td>
+                        <td><Badge bg={route.lateTripCount > 0 ? 'warning' : 'success'} text={route.lateTripCount > 0 ? 'dark' : undefined}>{route.lateTripCount > 0 ? `${route.lateTripCount} late` : 'On time'}</Badge></td>
                       </tr>) : <tr>
-                        <td colSpan={5}><div className={styles.emptyState}>No routes were archived for this day.</div></td>
+                        <td colSpan={6}><div className={styles.emptyState}>No routes were archived for this day.</div></td>
                       </tr>}
                   </tbody>
                 </Table>
@@ -457,11 +614,13 @@ const DispatcherHistoryWorkspace = () => {
                     <tr>
                       <th>Trip</th>
                       <th>Rider</th>
-                      <th>Driver</th>
                       <th>Status</th>
                       <th>Route</th>
-                      <th>PU</th>
-                      <th>DO</th>
+                      <th>From</th>
+                      <th>To</th>
+                      <th>Window</th>
+                      <th>Late</th>
+                      <th>Notes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -471,19 +630,18 @@ const DispatcherHistoryWorkspace = () => {
                           <div className="small text-secondary">{trip.id}</div>
                         </td>
                         <td>{trip.rider || '--'}</td>
-                        <td>{trip.driverName || trip.driverId || '--'}</td>
                         <td><Badge bg={getStatusBadge(trip.status)}>{trip.status || 'Unknown'}</Badge></td>
                         <td>{trip.routeLabel}</td>
+                        <td className={styles.locationCell}>{getTripPickupAddress(trip)}</td>
+                        <td className={styles.locationCell}>{getTripDropoffAddress(trip)}</td>
                         <td>
-                          <div>{trip.scheduledPickup || '--'}</div>
-                          <div className="small text-secondary">Actual {trip.actualPickup || '--'}</div>
+                          <div>{trip.scheduledPickup || '--'} to {trip.scheduledDropoff || '--'}</div>
+                          <div className="small text-secondary">Actual {trip.actualPickup || '--'} to {trip.actualDropoff || '--'}</div>
                         </td>
-                        <td>
-                          <div>{trip.scheduledDropoff || '--'}</div>
-                          <div className="small text-secondary">Actual {trip.actualDropoff || '--'}</div>
-                        </td>
+                        <td><Badge bg={getTripLateMinutes(trip) > 0 ? 'warning' : 'success'} text={getTripLateMinutes(trip) > 0 ? 'dark' : undefined}>{getTripPunctualityLabel(trip)}</Badge></td>
+                        <td className={styles.notesCell}>{String(trip?.notes || trip?.additionalNotes || '').trim() || '--'}</td>
                       </tr>) : <tr>
-                        <td colSpan={7}><div className={styles.emptyState}>No trips were archived for this day.</div></td>
+                        <td colSpan={9}><div className={styles.emptyState}>No trips were archived for this day.</div></td>
                       </tr>}
                   </tbody>
                 </Table>
@@ -595,6 +753,8 @@ const DispatcherHistoryWorkspace = () => {
             </Col>
           </Row>
         </>}
+        </div>
+      </div>
       <Modal show={Boolean(previewPhoto)} onHide={() => setPreviewPhoto(null)} centered size="lg">
         <Modal.Header closeButton>
           <Modal.Title>{previewPhoto?.name || 'Photo preview'}</Modal.Title>

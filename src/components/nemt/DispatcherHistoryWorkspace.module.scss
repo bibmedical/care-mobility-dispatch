@@ -4,6 +4,28 @@
   gap: 1rem;
 }
 
+.historyShell {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.sidebarColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: sticky;
+  top: 90px;
+}
+
+.contentColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
 .heroCard {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 20px;
@@ -23,30 +45,55 @@
   margin-bottom: 0;
 }
 
+.heroSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 0.75rem;
+  min-width: min(100%, 460px);
+}
+
+.heroSummaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.78);
+  padding: 0.85rem 0.95rem;
+}
+
+.heroSummaryLabel {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #68778c;
+}
+
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+  gap: 0.65rem;
 }
 
 .statCard {
-  border-radius: 18px;
+  border-radius: 16px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   background: #fff;
-  padding: 1rem;
+  padding: 0.8rem 0.9rem;
 }
 
 .statLabel {
   color: #68778c;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .statValue {
-  font-size: 1.7rem;
+  font-size: 1.45rem;
   font-weight: 700;
   color: #102033;
+  line-height: 1.05;
 }
 
 .sectionCard {
@@ -64,6 +111,33 @@
 .sectionMeta {
   color: #6f7c90;
   font-size: 0.88rem;
+}
+
+.detailHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.detailBadgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.detailBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.4rem 0.7rem;
+  background: #f4f7fb;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  color: #314154;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .threadGrid {
@@ -123,6 +197,90 @@
   border-radius: 16px;
   background: #f7f9fc;
   color: #66758a;
+}
+
+.sidebarCard {
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+.sidebarFormStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.sidebarButtonRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.sidebarList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.sidebarItem {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  text-align: left;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #fbfcfe;
+  padding: 0.8rem 0.85rem;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.sidebarItem:hover {
+  border-color: rgba(15, 23, 42, 0.18);
+  background: #ffffff;
+  transform: translateY(-1px);
+}
+
+.sidebarItemActive {
+  border-color: rgba(15, 23, 42, 0.72);
+  background: linear-gradient(135deg, #102033 0%, #1b3552 100%);
+  color: #f8fbff;
+}
+
+.sidebarItemActive .sidebarItemTitle,
+.sidebarItemActive .sidebarItemMeta,
+.sidebarItemActive .sidebarItemPill {
+  color: inherit;
+}
+
+.sidebarItemTitle {
+  font-weight: 700;
+  color: #122033;
+}
+
+.sidebarItemMeta {
+  font-size: 0.78rem;
+  color: #6f7c90;
+  margin-top: 0.2rem;
+}
+
+.sidebarItemPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  color: #3f5066;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0 0.45rem;
 }
 
 .dateList {
@@ -210,9 +368,36 @@
   padding: 1rem;
 }
 
+.locationCell {
+  min-width: 220px;
+  max-width: 320px;
+  white-space: normal;
+  color: #334155;
+}
+
+.notesCell {
+  min-width: 170px;
+  max-width: 260px;
+  white-space: normal;
+  color: #475569;
+}
+
 @media (max-width: 767px) {
   .heroTitle {
     font-size: 1.55rem;
+  }
+
+  .historyShell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebarColumn {
+    position: static;
+  }
+
+  .heroSummaryGrid {
+    grid-template-columns: 1fr;
+    min-width: 0;
   }
 
   .threadGrid {
