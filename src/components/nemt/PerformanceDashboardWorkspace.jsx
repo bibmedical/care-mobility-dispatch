@@ -11,7 +11,7 @@ import Link from 'next/link';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Card, CardBody, Col, ProgressBar, Row, Spinner, Table } from 'react-bootstrap';
 
-const OPERATIONAL_ALERT_TYPES = new Set(['no-departure-alert']);
+const OPERATIONAL_ALERT_TYPES = new Set(['no-departure', 'late-start', 'late-pickup', 'late-dropoff']);
 
 const getStartOfDay = reference => {
   const nextDate = new Date(reference);
@@ -159,11 +159,11 @@ const PerformanceDashboardWorkspace = () => {
 
     const loadOperationalAlerts = async () => {
       try {
-        const response = await fetch('/api/system-messages', { cache: 'no-store' });
+        const response = await fetch('/api/nemt/driver-discipline', { cache: 'no-store' });
         if (!response.ok) throw new Error(`Unable to load operational alerts (${response.status})`);
         const payload = await response.json();
-        const nextAlerts = (Array.isArray(payload?.messages) ? payload.messages : [])
-          .filter(message => OPERATIONAL_ALERT_TYPES.has(String(message?.type || '').trim()))
+        const nextAlerts = (Array.isArray(payload?.events) ? payload.events : [])
+          .filter(event => OPERATIONAL_ALERT_TYPES.has(String(event?.eventType || '').trim()))
           .sort((left, right) => new Date(right?.createdAt || 0).getTime() - new Date(left?.createdAt || 0).getTime());
 
         if (isMounted) {

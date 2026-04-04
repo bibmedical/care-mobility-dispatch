@@ -58,7 +58,6 @@ export const readSystemMessages = async () => {
 
 export const writeSystemMessages = async messages => {
   await ensureTable();
-  await query(`DELETE FROM system_messages`);
   for (const msg of messages) {
     await upsertSystemMessage(msg);
   }

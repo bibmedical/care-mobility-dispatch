@@ -4,6 +4,8 @@ import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripServiceDateKey, par
 import { getActiveMessageForDriver, resolveSystemMessageById } from '@/server/system-messages-store';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
 import { sendTripArrivalNotifications } from '@/server/sms-confirmation-service';
+import { upsertDriverDisciplineEvent, resolveDriverDisciplineEventById } from '@/server/driver-discipline-store';
+import { appendTripWorkflowEvent, logTripArrivalEvent } from '@/server/trip-workflow-store';
 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
 
@@ -80,6 +82,7 @@ const buildComplianceForAction = (trip, action, timestamp) => {
 
 const buildWorkflowEvent = ({ tripId, action, timestamp, timeLabel, locationSnapshot, riderSignatureName, compliance }) => ({
   id: `${tripId}-${action}-${timestamp}`,
+  tripId,
   action,
   timestamp,
   timeLabel,
@@ -88,86 +91,131 @@ const buildWorkflowEvent = ({ tripId, action, timestamp, timeLabel, locationSnap
   compliance
 });
 
-const buildTripActionPatch = (trip, action, timestamp, options = {}) => {
+const buildDisciplineEventForAction = ({ trip, driverId, action, timestamp, compliance }) => {
+  if (!compliance?.measured || !compliance?.isLate) return null;
+  const eventType = action === 'en-route' ? 'late-start' : action === 'arrived' ? 'late-pickup' : action === 'complete' ? 'late-dropoff' : '';
+  if (!eventType) return null;
+  const lateByMinutes = Math.max(0, Number(compliance?.lateByMinutes) || 0);
+  return {
+    id: `discipline-${eventType}-${trip?.id || 'trip'}`,
+    driverId,
+    tripId: trip?.id || '',
+    eventType,
+    severity: lateByMinutes >= 15 ? 'high' : 'normal',
+    status: 'logged',
+    summary: `${eventType.replace(/-/g, ' ')} recorded for ${trip?.rider || 'patient'}`,
+    body: `${trip?.rider || 'Patient'} was ${lateByMinutes} minute${lateByMinutes === 1 ? '' : 's'} late during ${action}.`,
+    occurredAt: new Date(timestamp).toISOString(),
+    data: {
+      lateByMinutes,
+      action,
+      scheduledPickup: trip?.scheduledPickup || trip?.pickup || '',
+      scheduledDropoff: trip?.scheduledDropoff || trip?.dropoff || ''
+    }
+  };
+};
+
+const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
   const timeLabel = formatClockTime(timestamp);
   const existingWorkflow = trip?.driverWorkflow && typeof trip.driverWorkflow === 'object' ? trip.driverWorkflow : {};
+  const { auditTrail: _ignoredAuditTrail, ...workflowState } = existingWorkflow;
   const compliance = buildComplianceForAction(trip, action, timestamp);
   const locationSnapshot = normalizeLocationSnapshot(options.locationSnapshot);
   const riderSignatureName = String(options.riderSignatureName || '').trim();
-  const auditTrail = Array.isArray(existingWorkflow.auditTrail) ? existingWorkflow.auditTrail : [];
+  const workflowEvent = buildWorkflowEvent({
+    tripId: trip?.id || 'trip',
+    action,
+    timestamp,
+    timeLabel,
+    locationSnapshot,
+    riderSignatureName,
+    compliance
+  });
   const nextWorkflow = {
-    ...existingWorkflow,
-    auditTrail: [...auditTrail, buildWorkflowEvent({
-      tripId: trip?.id || 'trip',
-      action,
-      timestamp,
-      timeLabel,
-      locationSnapshot,
-      riderSignatureName,
-      compliance
-    })]
+    ...workflowState
   };
 
   if (action === 'en-route') {
     return {
-      status: 'In Progress',
-      driverTripStatus: 'En Route',
-      enRouteAt: timestamp,
-      departureLocationSnapshot: locationSnapshot,
-      driverWorkflow: {
-        ...nextWorkflow,
-        status: 'en-route',
-        departureAt: timestamp,
-        departureTimeLabel: timeLabel,
+      patch: {
+        status: 'In Progress',
+        driverTripStatus: 'En Route',
+        enRouteAt: timestamp,
         departureLocationSnapshot: locationSnapshot,
-        startedLate: Boolean(compliance.isLate),
-        startLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'en-route',
+          departureAt: timestamp,
+          departureTimeLabel: timeLabel,
+          departureLocationSnapshot: locationSnapshot,
+          startedLate: Boolean(compliance.isLate),
+          startLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null
+        },
+        updatedAt: timestamp
       },
-      updatedAt: timestamp
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
     };
   }
 
   if (action === 'arrived') {
     return {
-      status: 'Arrived',
-      driverTripStatus: 'Arrived',
-      arrivedAt: timestamp,
-      arrivalLocationSnapshot: locationSnapshot,
-      actualPickup: trip?.actualPickup || timeLabel,
-      driverWorkflow: {
-        ...nextWorkflow,
-        status: 'arrived',
-        arrivalAt: timestamp,
-        arrivalTimeLabel: timeLabel,
+      patch: {
+        status: 'Arrived',
+        driverTripStatus: 'Arrived',
+        arrivedAt: timestamp,
         arrivalLocationSnapshot: locationSnapshot,
-        pickupLate: Boolean(compliance.isLate),
-        pickupLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null
+        actualPickup: trip?.actualPickup || timeLabel,
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'arrived',
+          arrivalAt: timestamp,
+          arrivalTimeLabel: timeLabel,
+          arrivalLocationSnapshot: locationSnapshot,
+          pickupLate: Boolean(compliance.isLate),
+          pickupLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null
+        },
+        updatedAt: timestamp
       },
-      updatedAt: timestamp
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
     };
   }
 
   if (action === 'complete') {
     return {
-      status: 'Completed',
-      driverTripStatus: 'Completed',
-      completedAt: timestamp,
-      completionLocationSnapshot: locationSnapshot,
-      actualDropoff: trip?.actualDropoff || timeLabel,
-      riderSignatureName,
-      riderSignedAt: riderSignatureName ? timestamp : trip?.riderSignedAt || null,
-      driverWorkflow: {
-        ...nextWorkflow,
-        status: 'completed',
+      patch: {
+        status: 'Completed',
+        driverTripStatus: 'Completed',
         completedAt: timestamp,
-        completedTimeLabel: timeLabel,
         completionLocationSnapshot: locationSnapshot,
-        dropoffLate: Boolean(compliance.isLate),
-        dropoffLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null,
-        riderSignatureName: riderSignatureName || existingWorkflow?.riderSignatureName || '',
-        riderSignedAt: riderSignatureName ? timestamp : existingWorkflow?.riderSignedAt || null
+        actualDropoff: trip?.actualDropoff || timeLabel,
+        riderSignatureName,
+        riderSignedAt: riderSignatureName ? timestamp : trip?.riderSignedAt || null,
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'completed',
+          completedAt: timestamp,
+          completedTimeLabel: timeLabel,
+          completionLocationSnapshot: locationSnapshot,
+          dropoffLate: Boolean(compliance.isLate),
+          dropoffLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null,
+          riderSignatureName: riderSignatureName || existingWorkflow?.riderSignatureName || '',
+          riderSignedAt: riderSignatureName ? timestamp : existingWorkflow?.riderSignedAt || null
+        },
+        updatedAt: timestamp
       },
-      updatedAt: timestamp
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
     };
   }
 
@@ -213,13 +261,14 @@ export async function POST(request) {
   }
 
   const timestamp = Date.now();
-  const patch = buildTripActionPatch(currentTrip, action, timestamp, {
+  const actionUpdate = buildTripActionUpdate(currentTrip, action, timestamp, {
     locationSnapshot: body?.locationSnapshot,
     riderSignatureName
   });
-  if (!patch) {
+  if (!actionUpdate?.patch) {
     return NextResponse.json({ ok: false, error: 'Unsupported action.' }, { status: 400 });
   }
+  const patch = actionUpdate.patch;
 
   const nextTrips = trips.map(trip => String(trip?.id || '').trim() === tripId ? {
     ...trip,
@@ -230,6 +279,26 @@ export async function POST(request) {
     ...dispatchState,
     trips: nextTrips
   });
+
+  await appendTripWorkflowEvent({
+    ...actionUpdate.workflowEvent,
+    driverId,
+    metadata: {
+      tripStatus: patch.driverTripStatus || patch.status || '',
+      locationRecorded: Boolean(actionUpdate.locationSnapshot)
+    }
+  });
+
+  const disciplineEvent = buildDisciplineEventForAction({
+    trip: currentTrip,
+    driverId,
+    action,
+    timestamp,
+    compliance: actionUpdate.compliance
+  });
+  if (disciplineEvent) {
+    await upsertDriverDisciplineEvent(disciplineEvent);
+  }
 
   let arrivalNotifications = null;
   if (action === 'arrived' && !currentTrip?.arrivedAt) {
@@ -243,6 +312,16 @@ export async function POST(request) {
         },
         driverName: String(driver?.name || currentTrip?.driverName || '').trim()
       });
+      await logTripArrivalEvent({
+        id: `arrival-${tripId}-${timestamp}`,
+        tripId,
+        driverId,
+        rider: currentTrip?.rider || '',
+        pickupAddress: currentTrip?.address || '',
+        actualPickup: patch.actualPickup || actionUpdate.timeLabel,
+        arrivalTimestamp: timestamp,
+        notificationSummary: arrivalNotifications || {}
+      });
     } catch (error) {
       arrivalNotifications = {
         ok: false,
@@ -255,9 +334,11 @@ export async function POST(request) {
 
   if (['en-route', 'arrived', 'complete'].includes(action)) {
     await resolveSystemMessageById(buildAutoNoDepartureAlertId(driverId, tripId));
+    await resolveDriverDisciplineEventById(buildAutoNoDepartureAlertId(driverId, tripId));
     const activeNoDepartureAlert = await getActiveMessageForDriver(driverId, AUTO_NO_DEPARTURE_ALERT_TYPE);
     if (activeNoDepartureAlert?.id) {
       await resolveSystemMessageById(activeNoDepartureAlert.id);
+      await resolveDriverDisciplineEventById(activeNoDepartureAlert.id);
     }
   }
 

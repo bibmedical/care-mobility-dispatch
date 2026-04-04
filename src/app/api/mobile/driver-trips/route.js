@@ -3,6 +3,8 @@ import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripLateMinutesDisplay,
 import { readNemtAdminPayload, readNemtAdminState } from '@/server/nemt-admin-store';
 import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { getActiveMessageForDriver, resolveSystemMessageById, upsertSystemMessage } from '@/server/system-messages-store';
+import { readTripWorkflowEventsByTripIds } from '@/server/trip-workflow-store';
+import { resolveDriverDisciplineEventById, upsertDriverDisciplineEvent } from '@/server/driver-discipline-store';
 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
 const AUTO_NO_DEPARTURE_THRESHOLD_MINUTES = 5;
@@ -105,7 +107,25 @@ const getEffectiveTripStatus = trip => {
   return normalizedStatus || 'Unassigned';
 };
 
-const mapTripForDriver = trip => {
+const buildDriverWorkflowState = (trip, workflowEvents = []) => {
+  const existingWorkflow = trip?.driverWorkflow && typeof trip.driverWorkflow === 'object' ? trip.driverWorkflow : null;
+  const fallbackAuditTrail = Array.isArray(existingWorkflow?.auditTrail) ? existingWorkflow.auditTrail : [];
+  const auditTrail = workflowEvents.length > 0 ? workflowEvents.map(event => ({
+    id: event.id,
+    action: event.action,
+    timestamp: event.timestamp,
+    timeLabel: event.timeLabel,
+    riderSignatureName: event.riderSignatureName,
+    compliance: event.compliance || null
+  })) : fallbackAuditTrail;
+  if (!existingWorkflow && auditTrail.length === 0) return null;
+  return {
+    ...(existingWorkflow || {}),
+    auditTrail
+  };
+};
+
+const mapTripForDriver = (trip, workflowEvents = []) => {
   const normalizedTrip = normalizeTripRecord(trip);
   const effectiveStatus = getEffectiveTripStatus(normalizedTrip);
 
@@ -140,7 +160,7 @@ const mapTripForDriver = trip => {
     completedAt: normalizedTrip.completedAt || null,
     riderSignatureName: String(normalizedTrip.riderSignatureName || '').trim(),
     riderSignedAt: normalizedTrip.riderSignedAt || null,
-    driverWorkflow: normalizedTrip.driverWorkflow || null
+    driverWorkflow: buildDriverWorkflowState(normalizedTrip, workflowEvents)
   };
 };
 
@@ -179,7 +199,9 @@ export async function GET(request) {
       }, { status: 404 });
     }
 
-    const trips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => trip?.driverId === driver.id && !isCancelledTrip(trip)).sort(sortTripsByPickupTime).map(mapTripForDriver);
+    const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => trip?.driverId === driver.id && !isCancelledTrip(trip)).sort(sortTripsByPickupTime);
+    const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(driverTrips.map(trip => trip?.id));
+    const trips = driverTrips.map(trip => mapTripForDriver(trip, workflowEventsByTripId.get(String(trip?.id || '').trim()) || []));
     const activeTrip = trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed') || trips[0] || null;
     const driverState = (Array.isArray(adminState?.drivers) ? adminState.drivers : []).find(item => String(item?.id || '').trim() === String(driver.id).trim()) || null;
 
@@ -194,11 +216,31 @@ export async function GET(request) {
 
     if (autoAlert) {
       await upsertSystemMessage(autoAlert);
+      await upsertDriverDisciplineEvent({
+        id: autoAlert.id,
+        driverId: autoAlert.driverId,
+        tripId: autoAlert.tripId,
+        eventType: 'no-departure',
+        severity: autoAlert.priority === 'high' ? 'high' : 'normal',
+        status: 'active',
+        summary: autoAlert.subject,
+        body: autoAlert.body,
+        sourceMessageId: autoAlert.id,
+        occurredAt: autoAlert.createdAt,
+        data: {
+          lateByMinutes: autoAlert.lateByMinutes,
+          scheduledPickup: autoAlert.scheduledPickup,
+          trackingAgeMinutes: autoAlert.trackingAgeMinutes,
+          serviceDate: autoAlert.serviceDate
+        }
+      });
       if (existingActiveAlert?.id && existingActiveAlert.id !== autoAlert.id) {
         await resolveSystemMessageById(existingActiveAlert.id);
+        await resolveDriverDisciplineEventById(existingActiveAlert.id);
       }
     } else if (existingActiveAlert?.id) {
       await resolveSystemMessageById(existingActiveAlert.id);
+      await resolveDriverDisciplineEventById(existingActiveAlert.id);
     }
 
     return NextResponse.json({

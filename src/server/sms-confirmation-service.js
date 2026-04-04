@@ -2,6 +2,7 @@ import { readIntegrationsState } from '@/server/integrations-store';
 import { readBlacklistState } from '@/server/blacklist-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
+import { logSmsDelivery } from '@/server/sms-delivery-log-store';
 
 const PROVIDER_PORTALS = {
   twilio: 'https://console.twilio.com/',
@@ -266,11 +267,48 @@ export const sendTripArrivalNotifications = async ({ trip, driverName = '' }) =>
           to: normalizedPhone,
           body: renderConfirmationTemplate(arrivalNotifications.patientTemplate, normalizedTrip, '')
         });
+        await logSmsDelivery({
+          tripId: normalizedTrip.id,
+          driverId: normalizedTrip.driverId || null,
+          audience: 'patient',
+          eventType: 'arrival-patient',
+          provider: providerState.provider,
+          recipientPhone: normalizedPhone,
+          recipientName: normalizedTrip.rider || 'patient',
+          messageBody: renderConfirmationTemplate(arrivalNotifications.patientTemplate, normalizedTrip, ''),
+          messageId: providerResult.messageId,
+          providerStatus: providerResult.providerStatus,
+          status: 'sent'
+        });
         results.push({ audience: 'patient', phone: normalizedPhone, ok: true, messageId: providerResult.messageId, status: providerResult.providerStatus });
       } catch (error) {
+        await logSmsDelivery({
+          tripId: normalizedTrip.id,
+          driverId: normalizedTrip.driverId || null,
+          audience: 'patient',
+          eventType: 'arrival-patient',
+          provider: providerState.provider,
+          recipientPhone: normalizedPhone,
+          recipientName: normalizedTrip.rider || 'patient',
+          messageBody: renderConfirmationTemplate(arrivalNotifications.patientTemplate, normalizedTrip, ''),
+          status: 'failed',
+          error: error.message || 'Unable to send patient arrival SMS.'
+        });
         results.push({ audience: 'patient', phone: normalizedPhone, ok: false, error: error.message || 'Unable to send patient arrival SMS.' });
       }
     } else {
+      await logSmsDelivery({
+        tripId: normalizedTrip.id,
+        driverId: normalizedTrip.driverId || null,
+        audience: 'patient',
+        eventType: 'arrival-patient',
+        provider: providerState.provider,
+        recipientPhone: '',
+        recipientName: normalizedTrip.rider || 'patient',
+        messageBody: renderConfirmationTemplate(arrivalNotifications.patientTemplate, normalizedTrip, ''),
+        status: 'skipped',
+        error: 'Missing patient phone number.'
+      });
       results.push({ audience: 'patient', phone: '', ok: false, error: 'Missing patient phone number.' });
     }
   }
@@ -291,8 +329,41 @@ export const sendTripArrivalNotifications = async ({ trip, driverName = '' }) =>
           to: normalizedOfficePhone,
           body: renderConfirmationTemplate(arrivalNotifications.officeTemplate, normalizedTrip, '')
         });
+        await logSmsDelivery({
+          tripId: normalizedTrip.id,
+          driverId: normalizedTrip.driverId || null,
+          audience: 'office',
+          eventType: 'arrival-office',
+          provider: providerState.provider,
+          recipientPhone: normalizedOfficePhone,
+          recipientName: officeRecipient.name || 'office',
+          messageBody: renderConfirmationTemplate(arrivalNotifications.officeTemplate, normalizedTrip, ''),
+          messageId: providerResult.messageId,
+          providerStatus: providerResult.providerStatus,
+          status: 'sent',
+          metadata: {
+            recipientId: officeRecipient.id,
+            notes: officeRecipient.notes || ''
+          }
+        });
         results.push({ audience: 'office', recipientId: officeRecipient.id, phone: normalizedOfficePhone, ok: true, messageId: providerResult.messageId, status: providerResult.providerStatus });
       } catch (error) {
+        await logSmsDelivery({
+          tripId: normalizedTrip.id,
+          driverId: normalizedTrip.driverId || null,
+          audience: 'office',
+          eventType: 'arrival-office',
+          provider: providerState.provider,
+          recipientPhone: normalizedOfficePhone,
+          recipientName: officeRecipient.name || 'office',
+          messageBody: renderConfirmationTemplate(arrivalNotifications.officeTemplate, normalizedTrip, ''),
+          status: 'failed',
+          error: error.message || 'Unable to send office arrival SMS.',
+          metadata: {
+            recipientId: officeRecipient.id,
+            notes: officeRecipient.notes || ''
+          }
+        });
         results.push({ audience: 'office', recipientId: officeRecipient.id, phone: normalizedOfficePhone, ok: false, error: error.message || 'Unable to send office arrival SMS.' });
       }
     }
@@ -335,6 +406,18 @@ export const sendTripConfirmationRequests = async ({ tripIds }) => {
       defaultCountryCode: smsState?.defaultCountryCode
     });
     if (blockingState.isBlocked) {
+      await logSmsDelivery({
+        tripId,
+        driverId: trip?.driverId || null,
+        audience: 'patient',
+        eventType: 'confirmation',
+        provider: providerState.provider,
+        recipientPhone: trip?.patientPhoneNumber || '',
+        recipientName: trip?.rider || 'patient',
+        messageBody: '',
+        status: 'skipped',
+        error: blockingState.reason || 'Trip is on the do-not-confirm list.'
+      });
       updatedTrips[tripIndex] = {
         ...trip,
         safeRideStatus: 'Do Not Confirm',
@@ -351,6 +434,18 @@ export const sendTripConfirmationRequests = async ({ tripIds }) => {
 
     const normalizedPhone = normalizePhoneNumber(trip.patientPhoneNumber, smsState.defaultCountryCode);
     if (!normalizedPhone) {
+      await logSmsDelivery({
+        tripId,
+        driverId: trip?.driverId || null,
+        audience: 'patient',
+        eventType: 'confirmation',
+        provider: providerState.provider,
+        recipientPhone: '',
+        recipientName: trip?.rider || 'patient',
+        messageBody: '',
+        status: 'failed',
+        error: 'Trip is missing a valid patient phone number.'
+      });
       updatedTrips[tripIndex] = {
         ...trip,
         safeRideStatus: 'Needs Call',
@@ -395,6 +490,20 @@ export const sendTripConfirmationRequests = async ({ tripIds }) => {
           lastError: ''
         }
       };
+      await logSmsDelivery({
+        tripId,
+        driverId: trip?.driverId || null,
+        audience: 'patient',
+        eventType: 'confirmation',
+        provider: providerState.provider,
+        recipientPhone: normalizedPhone,
+        recipientName: trip?.rider || 'patient',
+        messageBody: message,
+        messageId: providerResult.messageId,
+        providerStatus: providerResult.providerStatus,
+        status: 'sent',
+        metadata: { code, requestId }
+      });
       results.push({
         tripId,
         ok: true,
@@ -417,6 +526,19 @@ export const sendTripConfirmationRequests = async ({ tripIds }) => {
           lastError: error.message || 'Unable to send SMS confirmation.'
         }
       };
+      await logSmsDelivery({
+        tripId,
+        driverId: trip?.driverId || null,
+        audience: 'patient',
+        eventType: 'confirmation',
+        provider: providerState.provider,
+        recipientPhone: normalizedPhone,
+        recipientName: trip?.rider || 'patient',
+        messageBody: message,
+        status: 'failed',
+        error: error.message || 'Unable to send SMS confirmation.',
+        metadata: { code, requestId }
+      });
       results.push({ tripId, ok: false, error: error.message || 'Unable to send SMS confirmation.' });
     }
   }
@@ -458,6 +580,18 @@ export const sendCustomSmsRequests = async ({ tripIds, message }) => {
     const trip = updatedTrips[tripIndex];
     const normalizedPhone = normalizePhoneNumber(trip.patientPhoneNumber, smsState.defaultCountryCode);
     if (!normalizedPhone) {
+      await logSmsDelivery({
+        tripId,
+        driverId: trip?.driverId || null,
+        audience: 'patient',
+        eventType: 'custom',
+        provider: providerState.provider,
+        recipientPhone: '',
+        recipientName: trip?.rider || 'patient',
+        messageBody: String(message).trim(),
+        status: 'failed',
+        error: 'Trip is missing a valid patient phone number.'
+      });
       results.push({ tripId, ok: false, error: 'Trip is missing a valid patient phone number.' });
       continue;
     }
@@ -482,6 +616,19 @@ export const sendCustomSmsRequests = async ({ tripIds, message }) => {
           lastCustomMessageText: String(message).trim()
         }
       };
+      await logSmsDelivery({
+        tripId,
+        driverId: trip?.driverId || null,
+        audience: 'patient',
+        eventType: 'custom',
+        provider: providerState.provider,
+        recipientPhone: normalizedPhone,
+        recipientName: trip?.rider || 'patient',
+        messageBody: String(message).trim(),
+        messageId: providerResult.messageId,
+        providerStatus: providerResult.providerStatus,
+        status: 'sent'
+      });
       results.push({ tripId, ok: true, messageId: providerResult.messageId, status: providerResult.providerStatus });
     } catch (error) {
       updatedTrips[tripIndex] = {
@@ -492,6 +639,18 @@ export const sendCustomSmsRequests = async ({ tripIds, message }) => {
           lastError: error.message || 'Unable to send custom SMS.'
         }
       };
+      await logSmsDelivery({
+        tripId,
+        driverId: trip?.driverId || null,
+        audience: 'patient',
+        eventType: 'custom',
+        provider: providerState.provider,
+        recipientPhone: normalizedPhone,
+        recipientName: trip?.rider || 'patient',
+        messageBody: String(message).trim(),
+        status: 'failed',
+        error: error.message || 'Unable to send custom SMS.'
+      });
       results.push({ tripId, ok: false, error: error.message || 'Unable to send custom SMS.' });
     }
   }
