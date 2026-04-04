@@ -464,7 +464,31 @@ const isTripEnRoute = trip => {
   return travelState === 'enroute' || travelState === 'inprogress';
 };
 
-const getTripTargetPosition = trip => isTripEnRoute(trip) ? trip?.destinationPosition ?? trip?.position : trip?.position;
+const getSelectedDriverEtaTarget = trip => {
+  const travelState = getTripTravelState(trip);
+
+  if (travelState === 'inprogress') {
+    return {
+      stage: 'dropoff',
+      label: 'Heading to Dropoff',
+      shortLabel: 'To Dropoff',
+      position: trip?.destinationPosition ?? trip?.position,
+      detail: trip?.destination || 'Destination pending',
+      color: '#2563eb'
+    };
+  }
+
+  return {
+    stage: 'pickup',
+    label: 'Heading to Pickup',
+    shortLabel: 'To Pickup',
+    position: trip?.position,
+    detail: trip?.address || 'Pickup pending',
+    color: '#16a34a'
+  };
+};
+
+const getTripTargetPosition = trip => getSelectedDriverEtaTarget(trip)?.position ?? trip?.position;
 
 const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   className: 'driver-map-icon-shell',
@@ -1224,8 +1248,10 @@ const DispatcherWorkspace = () => {
   }, [routeTrips, selectedDriver, selectedDriverActiveTrip, selectedTripIds, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
-    const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip));
+    const target = getSelectedDriverEtaTarget(selectedDriverActiveTrip);
+    const miles = getDistanceMiles(selectedDriver.position, target?.position);
     return {
+      target,
       miles,
       label: formatEta(miles)
     };
@@ -1972,11 +1998,12 @@ const DispatcherWorkspace = () => {
                 {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
                     <div className="small text-uppercase text-secondary">Driver ETA</div>
                     <div className="fw-semibold d-flex align-items-center gap-2"><IconifyIcon icon="iconoir:map-pin" /> {selectedDriver.name}</div>
-                    <div className="small mt-1">Heading to {selectedDriverActiveTrip.id} • {selectedDriverActiveTrip.rider}</div>
-                    <div className="small text-secondary">{selectedDriverActiveTrip.pickup} • {selectedDriverActiveTrip.address}</div>
+                    <div className="small mt-1">{selectedDriverEta?.target?.label || 'Heading to trip'} • {selectedDriverActiveTrip.id} • {selectedDriverActiveTrip.rider}</div>
+                    <div className="small text-secondary">{selectedDriverEta?.target?.detail || selectedDriverActiveTrip.address}</div>
                     <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
                       <Badge bg="info">{selectedDriverEta?.label || 'ETA unavailable'}</Badge>
                       <Badge bg="secondary">{selectedDriverEta?.miles != null ? `${selectedDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
+                      <Badge style={{ backgroundColor: selectedDriverEta?.target?.color || '#475569' }}>{selectedDriverEta?.target?.shortLabel || 'ETA'}</Badge>
                       <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
                     </div>
                   </div> : selectedDriver?.hasRealLocation && selectedDriverPendingEtaTrip ? <div className="position-absolute bottom-0 start-0 m-3 bg-dark text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: '#2a3144' }}>
@@ -1995,7 +2022,16 @@ const DispatcherWorkspace = () => {
                   <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-                  {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+                  {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <>
+                      <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: selectedDriverEta?.target?.color || '#f59e0b', weight: 4, dashArray: '10 8', opacity: 0.95 }} />
+                      <Marker position={getTripTargetPosition(selectedDriverActiveTrip)} icon={createRouteStopIcon(selectedDriverEta?.target?.stage === 'dropoff' ? 'DO' : 'PU', selectedDriverEta?.target?.stage === 'dropoff' ? 'dropoff' : 'pickup')}>
+                        <Popup>
+                          <div className="fw-semibold">{selectedDriverEta?.target?.label || 'Trip target'}</div>
+                          <div>{selectedDriverActiveTrip.rider}</div>
+                          <div className="small text-muted">{selectedDriverEta?.target?.detail || 'Location pending'}</div>
+                        </Popup>
+                      </Marker>
+                    </> : null}
                   {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online' })}>
                       <Popup>
                         <div className="fw-semibold">{selectedDriver.name}</div>
