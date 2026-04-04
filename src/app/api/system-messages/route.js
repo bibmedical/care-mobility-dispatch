@@ -83,7 +83,11 @@ export async function POST(request) {
       createdAt: new Date().toISOString(),
       lastEmailSentAt: body.lastEmailSentAt || null,
       emailSentCount: body.emailSentCount || 0,
-      resolvedAt: null
+      resolvedAt: null,
+      source: body.source || null,
+      deliveryMethod: body.deliveryMethod || null,
+      mediaUrl: body.mediaUrl || null,
+      mediaType: body.mediaType || null
     };
 
     const saved = await upsertSystemMessage(msg);
