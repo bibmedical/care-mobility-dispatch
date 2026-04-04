@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isAdminRole } from '@/helpers/system-users';
-import { readDispatchHistoryArchive, readDispatchHistoryArchiveIndex } from '@/server/dispatch-history-store';
+import { readDispatchHistoryArchive, readDispatchHistoryArchiveIndex, runDispatchHistoryBackfill } from '@/server/dispatch-history-store';
 
 const normalizeDateKey = value => {
   const text = String(value || '').trim();
@@ -32,5 +32,24 @@ export async function GET(request) {
     selectedDateKey,
     availableDates,
     archive
+  });
+}
+
+export async function POST() {
+  const session = await getServerSession(options);
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  if (!isAdminRole(session?.user?.role)) {
+    return NextResponse.json({ error: 'Only administrators can backfill dispatch history' }, { status: 403 });
+  }
+
+  const result = await runDispatchHistoryBackfill();
+
+  return NextResponse.json({
+    ok: true,
+    ...result
   });
 }

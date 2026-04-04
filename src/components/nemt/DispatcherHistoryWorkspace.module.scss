@@ -135,6 +135,22 @@
   border-radius: 999px;
 }
 
+.toolbarActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.statusPill {
+  border-radius: 999px;
+  background: #eef6e9;
+  color: #285b2a;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
 @media (max-width: 767px) {
   .heroTitle {
     font-size: 1.55rem;

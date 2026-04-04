@@ -383,3 +383,62 @@ export const readDispatchHistoryArchiveIndex = async (limit = 60) => {
     updatedAt: row.updated_at
   }));
 };
+
+const readDispatchHistorySnapshots = async (limit = 2000) => {
+  const safeLimit = Math.min(Math.max(Number(limit) || 2000, 1), 10000);
+  const result = await query(
+    `SELECT id, snapshot, trip_count, reason, created_at
+     FROM dispatch_state_history
+     ORDER BY created_at ASC, id ASC
+     LIMIT $1`,
+    [safeLimit]
+  );
+  return result.rows.map(row => ({
+    id: Number(row.id) || 0,
+    snapshot: normalizePersistentDispatchState(row.snapshot || {}),
+    tripCount: Number(row.trip_count) || 0,
+    reason: String(row.reason || '').trim(),
+    createdAt: row.created_at
+  }));
+};
+
+export const runDispatchHistoryBackfill = async (options = {}) => {
+  await ensureTable();
+  const snapshotRows = await readDispatchHistorySnapshots(options.limit);
+  const archiveDateSet = new Set();
+  let processedSnapshots = 0;
+  let candidateArchiveDays = 0;
+
+  for (const snapshotRow of snapshotRows) {
+    const snapshotState = normalizePersistentDispatchState(snapshotRow.snapshot || {});
+    const snapshotTimeZone = snapshotState?.uiPreferences?.timeZone;
+    const snapshotDateKey = getLocalDateKey(snapshotRow.createdAt, snapshotTimeZone);
+    if (!snapshotDateKey) continue;
+
+    const partition = partitionDispatchStateForArchive(snapshotState, {
+      todayDateKey: snapshotDateKey
+    });
+
+    if (partition.archiveDays.length === 0) continue;
+    processedSnapshots += 1;
+    candidateArchiveDays += partition.archiveDays.length;
+
+    for (const archiveDay of partition.archiveDays) {
+      archiveDateSet.add(archiveDay.dateKey);
+    }
+
+    await archiveDispatchState(snapshotState, {
+      todayDateKey: snapshotDateKey
+    });
+  }
+
+  const availableDates = await readDispatchHistoryArchiveIndex(365);
+
+  return {
+    processedSnapshots,
+    candidateArchiveDays,
+    archiveDates: Array.from(archiveDateSet).sort(compareDateKeys),
+    totalArchivedDays: availableDates.length,
+    availableDates
+  };
+};

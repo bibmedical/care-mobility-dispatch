@@ -53,9 +53,11 @@ const buildRouteTripMap = (routePlans, trips) => {
 const DispatcherHistoryWorkspace = () => {
   const { showNotification } = useNotificationContext();
   const [loading, setLoading] = useState(true);
+  const [backfillRunning, setBackfillRunning] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [availableDates, setAvailableDates] = useState([]);
   const [archive, setArchive] = useState(null);
+  const [backfillStatus, setBackfillStatus] = useState('');
 
   const fetchHistory = async nextDate => {
     setLoading(true);
@@ -83,6 +85,40 @@ const DispatcherHistoryWorkspace = () => {
   useEffect(() => {
     fetchHistory('');
   }, []);
+
+  const handleBackfill = async () => {
+    setBackfillRunning(true);
+    setBackfillStatus('');
+    try {
+      const response = await fetch('/api/nemt/dispatch-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Unable to backfill dispatcher history');
+      }
+      const archiveDates = Array.isArray(payload?.archiveDates) ? payload.archiveDates : [];
+      const message = archiveDates.length > 0
+        ? `Backfill complete. ${archiveDates.length} archived day(s) refreshed from ${payload?.processedSnapshots || 0} snapshots.`
+        : `Backfill checked ${payload?.processedSnapshots || 0} snapshots. No missing archived days were found.`;
+      setBackfillStatus(message);
+      showNotification({
+        message,
+        variant: 'success'
+      });
+      await fetchHistory(selectedDate || '');
+    } catch (error) {
+      const message = error?.message || 'Unable to backfill dispatcher history';
+      setBackfillStatus('');
+      showNotification({
+        message,
+        variant: 'danger'
+      });
+    } finally {
+      setBackfillRunning(false);
+    }
+  };
 
   const routeRows = useMemo(() => buildRouteTripMap(archive?.routePlans, archive?.trips), [archive]);
 
@@ -124,15 +160,19 @@ const DispatcherHistoryWorkspace = () => {
               <h1 className={styles.heroTitle}>History</h1>
               <p className={styles.heroText}>Cada día archivado queda guardado aquí con sus rutas, viajes, mensajes y actividad. A medianoche se mueve fuera del tablero activo para que Dispatcher no se siga llenando.</p>
             </div>
-            <div className="d-flex flex-column flex-sm-row gap-2 align-items-sm-end">
+            <div className={styles.toolbarActions}>
               <Form.Group>
                 <Form.Label className="small text-secondary">Select day</Form.Label>
                 <Form.Control type="date" value={selectedDate} onChange={event => setSelectedDate(event.target.value)} />
               </Form.Group>
               <Button variant="dark" onClick={() => fetchHistory(selectedDate)} disabled={loading || !selectedDate}>Load</Button>
               <Button variant="outline-secondary" onClick={() => fetchHistory('')} disabled={loading}>Latest</Button>
+              <Button variant="outline-success" onClick={handleBackfill} disabled={loading || backfillRunning}>{backfillRunning ? 'Backfilling...' : 'Backfill old days'}</Button>
             </div>
           </div>
+          {backfillStatus ? <div className="mt-3">
+              <span className={styles.statusPill}>{backfillStatus}</span>
+            </div> : null}
           <div className="mt-3 d-flex flex-wrap gap-2 align-items-center">
             <span className="small text-secondary">Archived days:</span>
             <div className={styles.dateList}>
