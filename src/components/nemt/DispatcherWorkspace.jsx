@@ -479,10 +479,10 @@ const createLiveVehicleIcon = ({ heading = 0, isOnline = false }) => {
   const bodyColor = isOnline ? '#16a34a' : '#475569';
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 4px 12px rgba(15,23,42,0.35));"><svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.2 8.4L8.3 5.5C8.7 5 9.3 4.7 9.9 4.7H14.1C14.8 4.7 15.4 5 15.7 5.5L17.8 8.4H19C20.1 8.4 21 9.3 21 10.4V15.8C21 16.4 20.6 16.8 20 16.8H18.8C18.7 18 17.7 19 16.5 19C15.3 19 14.3 18 14.2 16.8H9.8C9.7 18 8.7 19 7.5 19C6.3 19 5.3 18 5.2 16.8H4C3.4 16.8 3 16.4 3 15.8V10.4C3 9.3 3.9 8.4 5 8.4H6.2Z" fill="${bodyColor}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.7 8.4H15.3L13.9 6.4C13.8 6.2 13.5 6 13.2 6H10.8C10.5 6 10.2 6.2 10.1 6.4L8.7 8.4Z" fill="#dbeafe" opacity="0.95"/><circle cx="7.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><circle cx="16.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><path d="M18.9 11.2H19.7" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/><path d="M4.3 11.2H5.1" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/></svg></div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -14]
+    html: `<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 3px 8px rgba(15,23,42,0.28));"><svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.2 8.4L8.3 5.5C8.7 5 9.3 4.7 9.9 4.7H14.1C14.8 4.7 15.4 5 15.7 5.5L17.8 8.4H19C20.1 8.4 21 9.3 21 10.4V15.8C21 16.4 20.6 16.8 20 16.8H18.8C18.7 18 17.7 19 16.5 19C15.3 19 14.3 18 14.2 16.8H9.8C9.7 18 8.7 19 7.5 19C6.3 19 5.3 18 5.2 16.8H4C3.4 16.8 3 16.4 3 15.8V10.4C3 9.3 3.9 8.4 5 8.4H6.2Z" fill="${bodyColor}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.7 8.4H15.3L13.9 6.4C13.8 6.2 13.5 6 13.2 6H10.8C10.5 6 10.2 6.2 10.1 6.4L8.7 8.4Z" fill="#dbeafe" opacity="0.95"/><circle cx="7.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><circle cx="16.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><path d="M18.9 11.2H19.7" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/><path d="M4.3 11.2H5.1" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/></svg></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -11]
   });
 };
 

@@ -72,6 +72,16 @@ const CHAT_THEME_OPTIONS = {
   }
 };
 
+const NOTIFICATION_TONE_OPTIONS = {
+  classic: { label: 'Classic' },
+  soft: { label: 'Soft' },
+  urgent: { label: 'Urgent' },
+  custom: { label: 'My Sound' },
+  silent: { label: 'Silent' }
+};
+
+const COORDINATE_LIKE_TEXT = /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/;
+
 const getAlertVariant = priority => {
   if (priority === 'high' || priority === 'urgent') return 'danger';
   if (priority === 'normal') return 'warning';
@@ -132,10 +142,9 @@ const mergeThreads = (threads, drivers) => {
 };
 
 const getDriverLocationLabel = driver => {
-  if (String(driver?.checkpoint || '').trim()) return String(driver.checkpoint).trim();
-  if (Array.isArray(driver?.position) && driver.position.length === 2) {
-    return `${Number(driver.position[0]).toFixed(4)}, ${Number(driver.position[1]).toFixed(4)}`;
-  }
+  const checkpoint = String(driver?.checkpoint || '').trim();
+  if (checkpoint && !COORDINATE_LIKE_TEXT.test(checkpoint)) return checkpoint;
+  if (Array.isArray(driver?.position) && driver.position.length === 2) return 'Live location';
   return 'No GPS location';
 };
 
@@ -162,6 +171,9 @@ const DispatcherMessagingPanel = ({
   const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const [hiddenDriverIds, setHiddenDriverIds] = useState([]);
   const [chatTheme, setChatTheme] = useState('ocean');
+  const [notificationTone, setNotificationTone] = useState('classic');
+  const [customNotificationSoundName, setCustomNotificationSoundName] = useState('');
+  const [customNotificationSoundDataUrl, setCustomNotificationSoundDataUrl] = useState('');
   const [dailyForm, setDailyForm] = useState({ firstName: '', lastNameOrOrg: '' });
   const [draftMessage, setDraftMessage] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
@@ -175,8 +187,11 @@ const DispatcherMessagingPanel = ({
   const [deletingMessageId, setDeletingMessageId] = useState('');
   const [previewImage, setPreviewImage] = useState(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState(null);
+  const [showPanelSettings, setShowPanelSettings] = useState(false);
   const photoInputRef = useRef(null);
   const documentInputRef = useRef(null);
+  const customSoundInputRef = useRef(null);
+  const notificationAudioRef = useRef(null);
   const seenIncomingMessageIdsRef = useRef(new Set());
   const seenAlertIdsRef = useRef(new Set());
 
@@ -199,7 +214,10 @@ const DispatcherMessagingPanel = ({
     if (userPreferencesLoading) return;
     setHiddenDriverIds(Array.isArray(userPreferences?.dispatcherMessaging?.hiddenDriverIds) ? userPreferences.dispatcherMessaging.hiddenDriverIds : []);
     setChatTheme(String(userPreferences?.dispatcherMessaging?.chatTheme || 'ocean').trim() || 'ocean');
-  }, [userPreferences?.dispatcherMessaging?.chatTheme, userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferencesLoading]);
+    setNotificationTone(String(userPreferences?.dispatcherMessaging?.notificationTone || 'classic').trim() || 'classic');
+    setCustomNotificationSoundName(String(userPreferences?.dispatcherMessaging?.customNotificationSoundName || '').trim());
+    setCustomNotificationSoundDataUrl(String(userPreferences?.dispatcherMessaging?.customNotificationSoundDataUrl || '').trim());
+  }, [userPreferences?.dispatcherMessaging?.chatTheme, userPreferences?.dispatcherMessaging?.customNotificationSoundDataUrl, userPreferences?.dispatcherMessaging?.customNotificationSoundName, userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferences?.dispatcherMessaging?.notificationTone, userPreferencesLoading]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
@@ -208,10 +226,13 @@ const DispatcherMessagingPanel = ({
       dispatcherMessaging: {
         ...userPreferences?.dispatcherMessaging,
         hiddenDriverIds,
-        chatTheme
+        chatTheme,
+        notificationTone,
+        customNotificationSoundName,
+        customNotificationSoundDataUrl
       }
     });
-  }, [chatTheme, hiddenDriverIds, saveUserPreferences, userPreferences, userPreferencesLoading]);
+  }, [chatTheme, customNotificationSoundDataUrl, customNotificationSoundName, hiddenDriverIds, notificationTone, saveUserPreferences, userPreferences, userPreferencesLoading]);
   const normalizedSearch = driverSearch.trim().toLowerCase();
   const filteredThreads = useMemo(() => visibleThreads.filter(thread => {
     if (!normalizedSearch) return true;
@@ -238,21 +259,36 @@ const DispatcherMessagingPanel = ({
 
   const playIncomingTone = () => {
     if (typeof window === 'undefined') return;
+    if (notificationTone === 'silent') return;
+    if (notificationTone === 'custom' && customNotificationSoundDataUrl) {
+      try {
+        if (notificationAudioRef.current) {
+          notificationAudioRef.current.pause();
+        }
+        const audio = new Audio(customNotificationSoundDataUrl);
+        audio.volume = 1;
+        notificationAudioRef.current = audio;
+        void audio.play();
+        return;
+      } catch {
+        // Fall back to web audio.
+      }
+    }
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
     try {
       const audioContext = new AudioContextClass();
       const oscillator = audioContext.createOscillator();
       const gain = audioContext.createGain();
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      oscillator.type = notificationTone === 'urgent' ? 'square' : notificationTone === 'soft' ? 'triangle' : 'sine';
+      oscillator.frequency.setValueAtTime(notificationTone === 'urgent' ? 980 : notificationTone === 'soft' ? 620 : 880, audioContext.currentTime);
       gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.08, audioContext.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.35);
+      gain.gain.exponentialRampToValueAtTime(notificationTone === 'urgent' ? 0.12 : 0.08, audioContext.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + (notificationTone === 'soft' ? 0.48 : 0.35));
       oscillator.connect(gain);
       gain.connect(audioContext.destination);
       oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.36);
+      oscillator.stop(audioContext.currentTime + (notificationTone === 'soft' ? 0.5 : 0.36));
       oscillator.onended = () => {
         void audioContext.close();
       };
@@ -646,6 +682,27 @@ const DispatcherMessagingPanel = ({
     }
   };
 
+  const handleCustomNotificationSoundPick = event => {
+    const file = event?.target?.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setSmsStatus('Custom sound blocked: file exceeds 2MB limit.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCustomNotificationSoundName(file.name);
+      setCustomNotificationSoundDataUrl(String(reader.result || ''));
+      setNotificationTone('custom');
+      setSmsStatus('Custom notification sound saved.');
+    };
+    reader.onerror = () => {
+      setSmsStatus('Unable to read custom notification sound.');
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="h-100 d-flex flex-column border rounded-3 overflow-hidden bg-white" style={{ borderColor: '#dbe3ef' }}>
       <div className="d-flex justify-content-between align-items-center p-2 border-bottom flex-wrap gap-2" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef', color: '#0f172a' }}>
@@ -655,7 +712,19 @@ const DispatcherMessagingPanel = ({
           <Badge bg="warning" text="dark">{unreadCount} unread</Badge>
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
         </div>
-        <div className="d-flex gap-2 flex-wrap">
+        <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 220, maxWidth: 360 }}>
+          <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." />
+          <button
+            type="button"
+            onClick={() => setShowPanelSettings(true)}
+            className="border-0 rounded-circle d-inline-flex align-items-center justify-content-center"
+            style={{ width: 18, height: 18, backgroundColor: selectedChatTheme.accent, boxShadow: `0 0 0 2px ${selectedChatTheme.accent}33` }}
+            title="Messaging colors and notification sound"
+          >
+            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block' }} />
+          </button>
+        </div>
+        <div className="d-flex gap-2 flex-wrap justify-content-end">
           <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
           <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleSendMessage('ETA update sent from dispatch.')}>Quick ETA</Button>
         </div>
@@ -664,7 +733,6 @@ const DispatcherMessagingPanel = ({
         <div className="border-end d-flex flex-column bg-white" style={{ width: '40%', minWidth: 220, minHeight: 0, borderColor: '#dbe3ef' }}>
           <div className="p-3 border-bottom" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef' }}>
             <div className="d-flex flex-column gap-2">
-              <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." />
               <div className="d-flex flex-wrap align-items-center gap-2 small" style={{ color: '#64748b' }}>
                 <span className="d-inline-flex align-items-center gap-1" title="Flag = driver alert or urgent issue">
                   <IconifyIcon icon="iconoir:triangle-flag" style={{ color: '#dc2626' }} /> Alert
@@ -675,26 +743,6 @@ const DispatcherMessagingPanel = ({
                 <span className="d-inline-flex align-items-center gap-1" title="Message = this thread has unread chat activity">
                   <IconifyIcon icon="iconoir:message-text" style={{ color: selectedChatTheme.accent }} /> Chat
                 </span>
-              </div>
-              <div className="d-flex flex-wrap align-items-center gap-2">
-                <span className="small fw-semibold text-muted">Chat color</span>
-                {Object.entries(CHAT_THEME_OPTIONS).map(([themeKey, theme]) => (
-                  <button
-                    key={themeKey}
-                    type="button"
-                    onClick={() => setChatTheme(themeKey)}
-                    className="border-0 rounded-pill px-2 py-1 small"
-                    style={{
-                      backgroundColor: theme.activeThread,
-                      color: '#ffffff',
-                      opacity: chatTheme === themeKey ? 1 : 0.68,
-                      boxShadow: chatTheme === themeKey ? `0 0 0 2px ${theme.accent}33` : 'none'
-                    }}
-                    title={`Switch chat colors to ${theme.label}`}
-                  >
-                    {theme.label}
-                  </button>
-                ))}
               </div>
             </div>
             {showAddDriver ? (
@@ -975,6 +1023,52 @@ const DispatcherMessagingPanel = ({
             {deletingMessageId === deleteConfirmation?.messageId ? 'Deleting...' : 'Yes, delete photo'}
           </Button>
         </Modal.Footer>
+      </Modal>
+      <Modal show={showPanelSettings} onHide={() => setShowPanelSettings(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Messaging Settings</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <div className="small fw-semibold text-muted mb-2">Chat colors</div>
+          <div className="d-flex flex-wrap gap-2 mb-4">
+            {Object.entries(CHAT_THEME_OPTIONS).map(([themeKey, theme]) => (
+              <button
+                key={themeKey}
+                type="button"
+                onClick={() => setChatTheme(themeKey)}
+                className="border-0 rounded-pill px-3 py-2 small"
+                style={{
+                  backgroundColor: theme.activeThread,
+                  color: '#ffffff',
+                  opacity: chatTheme === themeKey ? 1 : 0.72,
+                  boxShadow: chatTheme === themeKey ? `0 0 0 2px ${theme.accent}33` : 'none'
+                }}
+              >
+                {theme.label}
+              </button>
+            ))}
+          </div>
+          <div className="small fw-semibold text-muted mb-2">Notification sound</div>
+          <div className="d-flex flex-wrap gap-2 mb-3">
+            {Object.entries(NOTIFICATION_TONE_OPTIONS).map(([toneKey, tone]) => (
+              <Button
+                key={toneKey}
+                size="sm"
+                variant={notificationTone === toneKey ? 'dark' : 'outline-secondary'}
+                onClick={() => setNotificationTone(toneKey)}
+              >
+                {tone.label}
+              </Button>
+            ))}
+          </div>
+          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <Button size="sm" variant="outline-dark" onClick={playIncomingTone}>Preview sound</Button>
+            <Button size="sm" variant="outline-secondary" onClick={() => customSoundInputRef.current?.click()}>Upload my sound</Button>
+            {customNotificationSoundName ? <span className="small text-muted">{customNotificationSoundName}</span> : null}
+          </div>
+          <input ref={customSoundInputRef} type="file" accept="audio/*" className="d-none" onChange={handleCustomNotificationSoundPick} />
+          <div className="small text-muted">You can use a custom sound file or keep one of the built-in tones.</div>
+        </Modal.Body>
       </Modal>
     </div>
   );

@@ -26,7 +26,10 @@ export const DEFAULT_USER_PREFERENCES = {
   },
   dispatcherMessaging: {
     hiddenDriverIds: [],
-    chatTheme: 'ocean'
+    chatTheme: 'ocean',
+    notificationTone: 'classic',
+    customNotificationSoundName: '',
+    customNotificationSoundDataUrl: ''
   }
 };
 
@@ -59,7 +62,10 @@ const normalizeTripDashboardPreferences = value => ({
 
 const normalizeDispatcherMessagingPreferences = value => ({
   hiddenDriverIds: normalizeStringArray(value?.hiddenDriverIds),
-  chatTheme: String(value?.chatTheme || DEFAULT_USER_PREFERENCES.dispatcherMessaging.chatTheme).trim() || DEFAULT_USER_PREFERENCES.dispatcherMessaging.chatTheme
+  chatTheme: String(value?.chatTheme || DEFAULT_USER_PREFERENCES.dispatcherMessaging.chatTheme).trim() || DEFAULT_USER_PREFERENCES.dispatcherMessaging.chatTheme,
+  notificationTone: String(value?.notificationTone || DEFAULT_USER_PREFERENCES.dispatcherMessaging.notificationTone).trim() || DEFAULT_USER_PREFERENCES.dispatcherMessaging.notificationTone,
+  customNotificationSoundName: String(value?.customNotificationSoundName || '').trim(),
+  customNotificationSoundDataUrl: String(value?.customNotificationSoundDataUrl || '').trim()
 });
 
 const normalizeAssistantAvatarPreferences = value => ({
