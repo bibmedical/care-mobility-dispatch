@@ -3,6 +3,7 @@
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel';
 import { useNemtContext } from '@/context/useNemtContext';
+import { getDriverColor } from '@/helpers/nemt-driver-colors';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
@@ -217,6 +218,26 @@ const DispatcherMapResizer = ({ resizeKey }) => {
 
     return () => window.clearTimeout(timeoutId);
   }, [map, resizeKey]);
+
+  return null;
+};
+
+const FollowDriverMapController = ({ enabled, position, zoom = 14 }) => {
+  const map = useMap();
+  const lastPositionRef = useRef('');
+
+  useEffect(() => {
+    if (!enabled || !Array.isArray(position) || position.length !== 2) return;
+    const normalizedPosition = position.map(value => Number(value));
+    if (normalizedPosition.some(value => !Number.isFinite(value))) return;
+    const positionKey = normalizedPosition.map(value => value.toFixed(6)).join(',');
+    if (lastPositionRef.current === positionKey) return;
+    lastPositionRef.current = positionKey;
+    map.flyTo(normalizedPosition, Math.max(map.getZoom(), zoom), {
+      animate: true,
+      duration: 0.8
+    });
+  }, [enabled, map, position, zoom]);
 
   return null;
 };
@@ -572,21 +593,9 @@ const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   popupAnchor: [0, -16]
 });
 
-const DRIVER_VEHICLE_COLORS = ['#2563eb', '#0f766e', '#dc2626', '#7c3aed', '#ea580c', '#0891b2', '#65a30d', '#be185d'];
-
-const getDriverVehicleColor = driverKey => {
-  const normalizedKey = String(driverKey || '').trim().toLowerCase();
-  if (!normalizedKey) return DRIVER_VEHICLE_COLORS[0];
-  let hash = 0;
-  for (let index = 0; index < normalizedKey.length; index += 1) {
-    hash = (hash * 31 + normalizedKey.charCodeAt(index)) >>> 0;
-  }
-  return DRIVER_VEHICLE_COLORS[hash % DRIVER_VEHICLE_COLORS.length];
-};
-
 const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '' }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
-  const bodyColor = isOnline ? getDriverVehicleColor(driverKey) : '#94a3b8';
+  const bodyColor = isOnline ? getDriverColor(driverKey) : '#94a3b8';
   const bodyShadow = isOnline ? '#0f172a' : '#64748b';
   const glassColor = '#dbeafe';
   const trimColor = '#0f172a';
@@ -637,6 +646,7 @@ const DispatcherWorkspace = () => {
   const [tripDateFilter, setTripDateFilter] = useState(() => getLocalDateKey());
   const [selectedTripIds, setSelectedTripIds] = useState([]);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [followSelectedDriver, setFollowSelectedDriver] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
@@ -729,6 +739,7 @@ const DispatcherWorkspace = () => {
   };
 
   const selectedDriver = useMemo(() => drivers.find(driver => driver.id === selectedDriverId) ?? null, [drivers, selectedDriverId]);
+  const selectedDriverColor = useMemo(() => getDriverColor(selectedDriver?.id || selectedDriver?.name), [selectedDriver]);
   const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
   const dispatchTimeZone = uiPreferences?.timeZone;
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), dispatchTimeZone), [dispatchTimeZone]);
@@ -745,6 +756,11 @@ const DispatcherWorkspace = () => {
     if (drivers.some(driver => driver.id === selectedDriverId)) return;
     setSelectedDriverId(null);
   }, [drivers, selectedDriverId]);
+
+  useEffect(() => {
+    if (selectedDriver?.hasRealLocation) return;
+    setFollowSelectedDriver(false);
+  }, [selectedDriver]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
@@ -994,6 +1010,7 @@ const DispatcherWorkspace = () => {
               {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
             </Form.Select>
             <Button variant={selectedDriverId ? 'outline-dark' : 'dark'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked} style={selectedDriverId ? greenToolbarButtonStyle : undefined}>All drivers</Button>
+            {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-dark'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked} style={followSelectedDriver ? undefined : greenToolbarButtonStyle}>{followSelectedDriver ? 'Following' : 'Follow'}</Button> : null}
           </div>;
       case 'secondary-driver':
         return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
@@ -1704,6 +1721,7 @@ const DispatcherWorkspace = () => {
     setSelectedRouteId('');
 
     if (!nextDriverId) {
+      setFollowSelectedDriver(false);
       setStatusMessage('Mostrando todos los trips otra vez.');
       return;
     }
@@ -2267,7 +2285,7 @@ const DispatcherWorkspace = () => {
                         <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
                           <Badge bg="info">{selectedDriverEta?.label || 'ETA unavailable'}</Badge>
                           <Badge bg="secondary">{selectedDriverEta?.miles != null ? `${selectedDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
-                          <Badge style={{ backgroundColor: selectedDriverEta?.target?.color || '#475569' }}>{selectedDriverEta?.target?.shortLabel || 'ETA'}</Badge>
+                          <Badge style={{ backgroundColor: selectedDriverColor }}>{selectedDriverEta?.target?.shortLabel || 'ETA'}</Badge>
                           <Badge bg={selectedDriver.live === 'Online' ? 'success' : 'dark'}>{selectedDriver.live}</Badge>
                         </div>
                       </> : <>
@@ -2281,11 +2299,12 @@ const DispatcherWorkspace = () => {
                   </div> : null}
                 <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
+                  <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
                   <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
                   {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <>
-                      <Polyline positions={selectedDriverRouteGeometry.length > 1 ? selectedDriverRouteGeometry : [selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: selectedDriverEta?.target?.color || '#f59e0b', weight: 4, dashArray: selectedDriverRouteGeometry.length > 1 && selectedDriverRouteMetrics?.isFallback !== true ? undefined : '10 8', opacity: 0.95 }} />
+                      <Polyline positions={selectedDriverRouteGeometry.length > 1 ? selectedDriverRouteGeometry : [selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: selectedDriverColor, weight: 4, dashArray: selectedDriverRouteGeometry.length > 1 && selectedDriverRouteMetrics?.isFallback !== true ? undefined : '10 8', opacity: 0.95 }} />
                       <Marker position={getTripTargetPosition(selectedDriverActiveTrip)} icon={createRouteStopIcon(selectedDriverEta?.target?.stage === 'dropoff' ? 'DO' : 'PU', selectedDriverEta?.target?.stage === 'dropoff' ? 'dropoff' : 'pickup')}>
                         <Popup>
                           <div className="fw-semibold">{selectedDriverEta?.target?.label || 'Trip target'}</div>
@@ -2739,6 +2758,7 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0 h-100">
               <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} onLocateDriver={driverId => {
               setSelectedDriverId(driverId);
+              setFollowSelectedDriver(true);
               setStatusMessage(dispatcherLayout.mapVisible ? `Driver ${driverId} selected for the map.` : `Driver ${driverId} selected. Open the map manually when you want to view it.`);
             }} openFullChat={() => {
               refreshDrivers();

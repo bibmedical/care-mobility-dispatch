@@ -1,6 +1,7 @@
 'use client';
 
 import { useNotificationContext } from '@/context/useNotificationContext';
+import { getDriverColor, withDriverAlpha } from '@/helpers/nemt-driver-colors';
 import { formatDispatchTime, formatTripDateLabel, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
@@ -146,6 +147,7 @@ const DispatcherHistoryWorkspace = () => {
   const [backfillStatus, setBackfillStatus] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
+  const [tripFilterMode, setTripFilterMode] = useState('all');
   const [previewPhoto, setPreviewPhoto] = useState(null);
 
   const fetchHistory = async (nextDate, nextDriverId = selectedDriverId) => {
@@ -337,6 +339,8 @@ const DispatcherHistoryWorkspace = () => {
     });
   }, [filteredTrips, routeRows]);
 
+  const visibleTripRows = useMemo(() => tripFilterMode === 'late' ? tripRows.filter(trip => getTripLateMinutes(trip) > 0) : tripRows, [tripFilterMode, tripRows]);
+
   const auditRows = useMemo(() => [...(Array.isArray(archive?.auditLog) ? archive.auditLog : [])].filter(item => {
     if (!selectedDriverId) return false;
     const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
@@ -378,7 +382,7 @@ const DispatcherHistoryWorkspace = () => {
   }, [archive, threadRows, tripRows]);
 
   const stats = {
-    tripCount: tripRows.length,
+    tripCount: visibleTripRows.length,
     routeCount: routeRows.length,
     threadCount: threadRows.length,
     messageCount: threadRows.reduce((sum, thread) => sum + (Array.isArray(thread?.messages) ? thread.messages.length : 0), 0),
@@ -387,6 +391,7 @@ const DispatcherHistoryWorkspace = () => {
 
   const selectedDriverSummary = availableDrivers.find(option => option.driverId === selectedDriverId) || archiveDriverOptions.find(option => option.driverId === selectedDriverId) || null;
   const selectedDriverLabel = selectedDriverSummary?.label || (selectedDriverId ? getDriverLabel(selectedDriverId, archive) : '');
+  const selectedDriverColor = getDriverColor(selectedDriverSummary?.driverId || selectedDriverId || selectedDriverLabel);
   const selectedDaySummary = availableDates.find(item => item.dateKey === selectedDate) || null;
 
   const archiveStats = archive?.summary || {
@@ -479,9 +484,9 @@ const DispatcherHistoryWorkspace = () => {
               </div>
               <Form.Control size="sm" className="mb-3" placeholder="Search driver" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} />
               <div className={styles.sidebarList}>
-                {filteredDriverOptions.length > 0 ? filteredDriverOptions.map(option => <button key={option.driverId} type="button" className={`${styles.sidebarItem} ${option.driverId === selectedDriverId ? styles.sidebarItemActive : ''}`} onClick={() => fetchHistory('', option.driverId)}>
+                {filteredDriverOptions.length > 0 ? filteredDriverOptions.map(option => <button key={option.driverId} type="button" className={`${styles.sidebarItem} ${option.driverId === selectedDriverId ? styles.sidebarItemActive : ''}`} style={option.driverId === selectedDriverId ? { borderColor: getDriverColor(option.driverId), boxShadow: `0 0 0 1px ${withDriverAlpha(getDriverColor(option.driverId), 0.28)}` } : undefined} onClick={() => fetchHistory('', option.driverId)}>
                     <div>
-                      <div className={styles.sidebarItemTitle}>{option.label}</div>
+                      <div className={styles.sidebarItemTitle}><span className={styles.driverDot} style={{ backgroundColor: getDriverColor(option.driverId) }} />{option.label}</div>
                       <div className={styles.sidebarItemMeta}>{option.archivedDayCount} days · {option.routeCount} routes · {option.tripCount} trips</div>
                     </div>
                     <span className={styles.sidebarItemPill}>{option.archivedDayCount}</span>
@@ -521,6 +526,7 @@ const DispatcherHistoryWorkspace = () => {
                     <div className={styles.sectionMeta}>Aquí ves la ruta completa del día, las personas tarde, los mensajes y la actividad grabada en history.</div>
                   </div>
                   <div className={styles.detailBadgeRow}>
+                    {selectedDriverLabel ? <span className={styles.detailBadge} style={{ backgroundColor: withDriverAlpha(selectedDriverColor, 0.12), borderColor: withDriverAlpha(selectedDriverColor, 0.28), color: selectedDriverColor }}><span className={styles.driverDot} style={{ backgroundColor: selectedDriverColor }} />{selectedDriverLabel}</span> : null}
                     {selectedDaySummary ? <span className={styles.detailBadge}>Day total: {selectedDaySummary.tripCount} trips</span> : null}
                     {selectedDriverSummary ? <span className={styles.detailBadge}>Driver total: {selectedDriverSummary.tripCount} trips</span> : null}
                     <span className={styles.detailBadge}>Messages: {stats.messageCount}</span>
@@ -615,7 +621,11 @@ const DispatcherHistoryWorkspace = () => {
                   <div className={styles.sectionTitle}>Trips</div>
                   <div className={styles.sectionMeta}>All archived trip records for the selected day.</div>
                 </div>
-                <Badge bg="dark">{tripRows.length} trips</Badge>
+                <div className="d-flex gap-2 align-items-center flex-wrap">
+                  <Button size="sm" variant={tripFilterMode === 'all' ? 'dark' : 'outline-dark'} onClick={() => setTripFilterMode('all')}>All trips</Button>
+                  <Button size="sm" variant={tripFilterMode === 'late' ? 'warning' : 'outline-warning'} onClick={() => setTripFilterMode('late')}>Late only</Button>
+                  <Badge bg="dark">{visibleTripRows.length} trips</Badge>
+                </div>
               </div>
               <div className="table-responsive">
                 <Table hover className="align-middle mb-0">
@@ -633,7 +643,7 @@ const DispatcherHistoryWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {tripRows.length > 0 ? tripRows.map(trip => <tr key={trip.id}>
+                    {visibleTripRows.length > 0 ? visibleTripRows.map(trip => <tr key={trip.id}>
                         <td>
                           <div className="fw-semibold">{trip.rideId || trip.id}</div>
                           <div className="small text-secondary">{trip.id}</div>

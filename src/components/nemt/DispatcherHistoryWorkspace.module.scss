@@ -259,8 +259,19 @@
 }
 
 .sidebarItemTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 700;
   color: #122033;
+}
+
+.driverDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: 0 0 auto;
 }
 
 .sidebarItemMeta {

@@ -3,6 +3,7 @@
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
+import { getDriverColor, withDriverAlpha } from '@/helpers/nemt-driver-colors';
 import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
 import { normalizePhoneDigits } from '@/helpers/system-users';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
@@ -796,14 +797,15 @@ const DispatcherMessagingPanel = ({
               const threadUnreadCount = thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length;
               const threadAlertCount = activeAlertCounts[thread.driverId] || 0;
               const hasUrgentAlert = driverAlerts.some(alert => alert.driverId === thread.driverId && alert.status !== 'resolved' && (alert.priority === 'high' || alert.priority === 'urgent'));
+              const driverColor = getDriverColor(driver?.id || driver?.name || thread.driverId);
               return (
                 <div
                   key={thread.driverId}
                   className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
                   style={{
-                    backgroundColor: thread.driverId === activeDriverId ? selectedChatTheme.activeThread : hasUrgentAlert ? '#fff1f2' : '#ffffff',
+                    backgroundColor: thread.driverId === activeDriverId ? driverColor : hasUrgentAlert ? '#fff1f2' : withDriverAlpha(driverColor, 0.05),
                     borderBottomColor: '#e2e8f0',
-                    borderLeft: hasUrgentAlert ? '4px solid #ea580c' : '4px solid transparent'
+                    borderLeft: `4px solid ${hasUrgentAlert ? '#ea580c' : driverColor}`
                   }}
                 >
                   <div className="d-flex align-items-center gap-2 px-2 py-1" style={{ minHeight: 58 }}>
@@ -824,6 +826,7 @@ const DispatcherMessagingPanel = ({
                             </div>
                             <div style={{ minWidth: 0 }}>
                               <div className="fw-semibold d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: 210 }}>
+                                <span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${thread.driverId === activeDriverId ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
                                 {driver?.name ?? 'Driver'}
                                 {driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
                               </div>
@@ -838,7 +841,7 @@ const DispatcherMessagingPanel = ({
                                 className="border-0 p-0 mt-1 bg-transparent text-start small"
                                 style={{
                                   maxWidth: 220,
-                                  color: hasGps ? (thread.driverId === activeDriverId ? '#dbeafe' : selectedChatTheme.accent) : (thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : '#94a3b8'),
+                                  color: hasGps ? (thread.driverId === activeDriverId ? '#dbeafe' : driverColor) : (thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : '#94a3b8'),
                                   textDecoration: hasGps ? 'underline' : 'none',
                                   cursor: hasGps ? 'pointer' : 'default'
                                 }}
