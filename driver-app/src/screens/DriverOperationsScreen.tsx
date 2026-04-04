@@ -10,6 +10,7 @@ import { DriverHistorySection } from '../components/driver/DriverHistorySection'
 import { DriverMessagesSection } from '../components/driver/DriverMessagesSection';
 import { DriverProfileSection } from '../components/driver/DriverProfileSection';
 import { DriverTripsSection } from '../components/driver/DriverTripsSection';
+import { getDriverAccentColor, withDriverAccentAlpha } from '../components/driver/driverColor';
 import { driverSharedStyles, driverTheme } from '../components/driver/driverTheme';
 import { DriverRuntime } from '../hooks/useDriverRuntime';
 import { DriverAppTab } from '../types/driver';
@@ -34,6 +35,10 @@ const SCREEN_TITLES: Record<DriverAppTab, string> = {
 
 export const DriverOperationsScreen = ({ runtime }: Props) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const driverAccent = getDriverAccentColor({
+    id: runtime.driverSession?.driverId,
+    name: runtime.driverSession?.name || runtime.driverCode
+  });
 
   const renderBody = () => {
     if (runtime.activeTab === 'home') return <DriverDashboardSection runtime={runtime} />;
@@ -49,12 +54,12 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
   };
 
   return <View style={styles.screen}>
-      <View style={styles.topBar}>
-        <Pressable style={styles.menuButton} onPress={() => setIsDrawerOpen(true)}>
+      <View style={[styles.topBar, { borderBottomColor: withDriverAccentAlpha(driverAccent, 0.2) }]}>
+        <Pressable style={[styles.menuButton, { backgroundColor: driverAccent, borderColor: withDriverAccentAlpha(driverAccent, 0.55) }]} onPress={() => setIsDrawerOpen(true)}>
           <Text style={styles.menuButtonText}>Menu</Text>
         </Pressable>
         <View style={styles.titleBlock}>
-          <Text style={styles.titleEyebrow}>Driver App</Text>
+          <Text style={[styles.titleEyebrow, { color: driverAccent }]}>Driver App</Text>
           <Text style={styles.titleText}>{SCREEN_TITLES[runtime.activeTab]}</Text>
         </View>
       </View>
@@ -63,7 +68,7 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
         {renderBody()}
       </ScrollView>
 
-      {isDrawerOpen ? <DriverDrawerMenu activeTab={runtime.activeTab} onChange={runtime.setActiveTab} onClose={() => setIsDrawerOpen(false)} driverName={runtime.driverSession?.name || runtime.driverCode || 'Driver'} /> : null}
+      {isDrawerOpen ? <DriverDrawerMenu activeTab={runtime.activeTab} onChange={runtime.setActiveTab} onClose={() => setIsDrawerOpen(false)} driverName={runtime.driverSession?.name || runtime.driverCode || 'Driver'} driverKey={runtime.driverSession?.driverId || runtime.driverSession?.name || runtime.driverCode || 'driver'} /> : null}
     </View>;
 };
 

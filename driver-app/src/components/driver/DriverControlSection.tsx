@@ -1,5 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
+import { getDriverAccentColor, withDriverAccentAlpha } from './driverColor';
 import { driverSharedStyles, driverTheme } from './driverTheme';
 
 type Props = {
@@ -7,14 +8,18 @@ type Props = {
 };
 
 export const DriverControlSection = ({ runtime }: Props) => {
+  const driverAccent = getDriverAccentColor({
+    id: runtime.driverSession?.driverId,
+    name: runtime.driverSession?.name || runtime.driverCode
+  });
   const textMessagesEnabled = runtime.notificationMode !== 'silent';
   const phoneCallAlertsEnabled = runtime.notificationMode === 'sound';
 
   return <View style={styles.screen}>
       <Text style={styles.pageTitle}>Settings</Text>
 
-      <View style={styles.profileCard}>
-        <View style={styles.avatarCircle}>
+      <View style={[styles.profileCard, { borderColor: withDriverAccentAlpha(driverAccent, 0.2) }]}>
+        <View style={[styles.avatarCircle, { backgroundColor: withDriverAccentAlpha(driverAccent, 0.14) }]}>
           <Text style={styles.avatarText}>{(runtime.driverSession?.name || 'D').slice(0, 1).toUpperCase()}</Text>
         </View>
         <View style={styles.profileCopy}>
@@ -24,7 +29,7 @@ export const DriverControlSection = ({ runtime }: Props) => {
         <Text style={styles.chevron}>›</Text>
       </View>
 
-      <Pressable style={styles.accountButton} onPress={() => runtime.setActiveTab('profile')}>
+      <Pressable style={[styles.accountButton, { backgroundColor: driverAccent }]} onPress={() => runtime.setActiveTab('profile')}>
         <Text style={styles.accountButtonText}>Account</Text>
       </Pressable>
 
@@ -36,7 +41,7 @@ export const DriverControlSection = ({ runtime }: Props) => {
         <SettingRow label="Sign Out" onPress={() => void runtime.signOut()} />
       </View>
 
-      <Text style={styles.groupTitle}>More Options</Text>
+      <Text style={[styles.groupTitle, { color: driverAccent }]}>More Options</Text>
       <View style={styles.groupCard}>
         <SettingSwitchRow label="Newsletter" value={runtime.trackingEnabled} onValueChange={runtime.setTrackingEnabled} />
         <SettingSwitchRow label="Text Message" value={textMessagesEnabled} onValueChange={enabled => runtime.setDriverNotificationMode(enabled ? 'vibrate' : 'silent')} />
@@ -45,7 +50,7 @@ export const DriverControlSection = ({ runtime }: Props) => {
         <SettingRow label="Linked Accounts" value="Facebook, Google" onPress={() => runtime.setActiveTab('profile')} />
       </View>
 
-      {!runtime.notificationPermissionGranted ? <Pressable style={styles.permissionButton} onPress={() => void runtime.requestNotificationPermission()}>
+      {!runtime.notificationPermissionGranted ? <Pressable style={[styles.permissionButton, { backgroundColor: driverAccent }]} onPress={() => void runtime.requestNotificationPermission()}>
           <Text style={styles.permissionButtonText}>Enable notifications</Text>
         </Pressable> : null}
 

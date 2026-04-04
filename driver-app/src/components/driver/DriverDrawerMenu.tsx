@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { DriverAppTab } from '../../types/driver';
+import { getDriverAccentColor, withDriverAccentAlpha } from './driverColor';
 import { driverTheme } from './driverTheme';
 
 type MenuItem = {
@@ -12,6 +13,7 @@ type Props = {
   onChange: (tab: DriverAppTab) => void;
   onClose: () => void;
   driverName: string;
+  driverKey: string;
 };
 
 const MENU_ITEMS: MenuItem[] = [
@@ -27,11 +29,12 @@ const MENU_ITEMS: MenuItem[] = [
   { key: 'help', label: 'Help' }
 ];
 
-export const DriverDrawerMenu = ({ activeTab, onChange, onClose, driverName }: Props) => {
+export const DriverDrawerMenu = ({ activeTab, onChange, onClose, driverName, driverKey }: Props) => {
+  const driverAccent = getDriverAccentColor(driverKey);
   return <View style={styles.overlay}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
+      <Pressable style={[styles.backdrop, { backgroundColor: withDriverAccentAlpha(driverAccent, 0.26) }]} onPress={onClose} />
       <View style={styles.drawer}>
-        <View style={styles.header}>
+        <View style={[styles.header, { backgroundColor: driverAccent }]}> 
           <Text style={styles.headerEyebrow}>Care Mobility</Text>
           <Text style={styles.headerTitle}>{driverName}</Text>
           <Text style={styles.headerBody}>Driver app navigation</Text>
@@ -41,7 +44,7 @@ export const DriverDrawerMenu = ({ activeTab, onChange, onClose, driverName }: P
           {MENU_ITEMS.map(item => <Pressable key={item.key} onPress={() => {
           onChange(item.key);
           onClose();
-        }} style={[styles.menuItem, activeTab === item.key ? styles.menuItemActive : null]}>
+        }} style={[styles.menuItem, activeTab === item.key ? styles.menuItemActive : null, activeTab === item.key ? { backgroundColor: driverAccent, borderColor: driverAccent } : null]}>
               <Text style={[styles.menuItemText, activeTab === item.key ? styles.menuItemTextActive : null]}>{item.label}</Text>
             </Pressable>)}
         </ScrollView>
@@ -56,8 +59,7 @@ const styles = StyleSheet.create({
     zIndex: 50
   },
   backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(9,43,27,0.26)'
+    flex: 1
   },
   drawer: {
     width: 290,

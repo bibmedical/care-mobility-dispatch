@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View, Linking } from 'react-native';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
+import { getDriverAccentColor, withDriverAccentAlpha } from './driverColor';
 import { driverSharedStyles, driverTheme } from './driverTheme';
 import { getTripTone, getTripWindow } from './driverUtils';
 
@@ -14,7 +15,12 @@ const openPhoneCall = async (phoneNumber?: string) => {
 };
 
 export const DriverActiveTripSection = ({ runtime }: Props) => {
-  return <View style={driverSharedStyles.card}>
+  const driverAccent = getDriverAccentColor({
+    id: runtime.driverSession?.driverId,
+    name: runtime.driverSession?.name || runtime.driverCode
+  });
+
+  return <View style={[driverSharedStyles.card, { borderColor: withDriverAccentAlpha(driverAccent, 0.24) }]}>
       <View style={driverSharedStyles.rowBetween}>
         <View style={styles.copyBlock}>
           <Text style={driverSharedStyles.eyebrow}>Active trip workspace</Text>
@@ -27,7 +33,7 @@ export const DriverActiveTripSection = ({ runtime }: Props) => {
       </View>
 
       {runtime.activeTrip ? <>
-          <View style={styles.routeBox}>
+          <View style={[styles.routeBox, { borderColor: withDriverAccentAlpha(driverAccent, 0.18) }]}>
             <View style={styles.routeRow}>
               <View style={styles.routeMarkerPickup} />
               <View style={styles.routeTextBlock}>
@@ -38,7 +44,7 @@ export const DriverActiveTripSection = ({ runtime }: Props) => {
             </View>
             <View style={styles.routeDivider} />
             <View style={styles.routeRow}>
-              <View style={styles.routeMarkerDropoff} />
+              <View style={[styles.routeMarkerDropoff, { backgroundColor: driverAccent }]} />
               <View style={styles.routeTextBlock}>
                 <Text style={styles.routeLabel}>Dropoff</Text>
                 <Text style={styles.routeText}>{runtime.activeTrip.destination}</Text>
@@ -51,13 +57,13 @@ export const DriverActiveTripSection = ({ runtime }: Props) => {
             <Pressable style={styles.actionSoft} onPress={() => void openPhoneCall(runtime.activeTrip?.patientPhoneNumber)}>
               <Text style={styles.actionSoftText}>Call rider</Text>
             </Pressable>
-            <Pressable style={[styles.actionSoft, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('en-route')} disabled={runtime.activeTripAction.length > 0}>
-              <Text style={styles.actionSoftText}>{runtime.activeTripAction === 'en-route' ? 'Sending...' : 'En Route'}</Text>
+            <Pressable style={[styles.actionSoft, { backgroundColor: withDriverAccentAlpha(driverAccent, 0.12) }, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('en-route')} disabled={runtime.activeTripAction.length > 0}>
+              <Text style={[styles.actionSoftText, { color: driverAccent }]}>{runtime.activeTripAction === 'en-route' ? 'Sending...' : 'En Route'}</Text>
             </Pressable>
-            <Pressable style={[styles.actionSoft, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived')} disabled={runtime.activeTripAction.length > 0}>
-              <Text style={styles.actionSoftText}>{runtime.activeTripAction === 'arrived' ? 'Sending...' : 'Arrived'}</Text>
+            <Pressable style={[styles.actionSoft, { backgroundColor: withDriverAccentAlpha(driverAccent, 0.12) }, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived')} disabled={runtime.activeTripAction.length > 0}>
+              <Text style={[styles.actionSoftText, { color: driverAccent }]}>{runtime.activeTripAction === 'arrived' ? 'Sending...' : 'Arrived'}</Text>
             </Pressable>
-            <Pressable style={[styles.actionDark, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('complete')} disabled={runtime.activeTripAction.length > 0}>
+            <Pressable style={[styles.actionDark, { backgroundColor: driverAccent }, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('complete')} disabled={runtime.activeTripAction.length > 0}>
               <Text style={styles.actionDarkText}>{runtime.activeTripAction === 'complete' ? 'Sending...' : 'Complete'}</Text>
             </Pressable>
           </View>
@@ -107,7 +113,9 @@ const styles = StyleSheet.create({
     backgroundColor: driverTheme.colors.surfaceMuted,
     borderRadius: 18,
     padding: 14,
-    gap: 10
+    gap: 10,
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
   },
   routeRow: {
     flexDirection: 'row',

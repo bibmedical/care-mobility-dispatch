@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
+import { getDriverAccentColor, withDriverAccentAlpha } from './driverColor';
 import { driverTheme } from './driverTheme';
 import { getTrackingLabel, getTrackingTone } from './driverUtils';
 
@@ -8,15 +9,20 @@ type Props = {
 };
 
 export const DriverHeaderCard = ({ runtime }: Props) => {
-  return <View style={styles.card}>
+  const driverAccent = getDriverAccentColor({
+    id: runtime.driverSession?.driverId,
+    name: runtime.driverSession?.name || runtime.driverCode
+  });
+
+  return <View style={[styles.card, { backgroundColor: driverAccent, borderColor: withDriverAccentAlpha(driverAccent, 0.55) }]}>
       <View style={styles.topRow}>
         <View style={styles.identityBlock}>
           <Text style={styles.eyebrow}>Care Mobility Driver</Text>
           <Text style={styles.name}>{runtime.driverSession?.name || runtime.driverCode || 'Driver'}</Text>
           <Text style={styles.subline}>{runtime.driverSession?.driverCode || runtime.driverSession?.username || 'Unit pending'} | {runtime.shiftState.replace('-', ' ')}</Text>
         </View>
-        <Pressable style={styles.signOutButton} onPress={() => void runtime.signOut()}>
-          <Text style={styles.signOutText}>Salir</Text>
+        <Pressable style={[styles.signOutButton, { borderColor: withDriverAccentAlpha(driverAccent, 0.18) }]} onPress={() => void runtime.signOut()}>
+          <Text style={[styles.signOutText, { color: driverAccent }]}>Salir</Text>
         </Pressable>
       </View>
 

@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
+import { getDriverAccentColor, withDriverAccentAlpha } from './driverColor';
 import { driverTheme } from './driverTheme';
 
 type Props = {
@@ -10,6 +11,7 @@ const getInitials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0,
 
 export const DriverDashboardSection = ({ runtime }: Props) => {
   const driverName = runtime.driverSession?.name || runtime.driverCode || 'Driver';
+  const driverAccent = getDriverAccentColor({ id: runtime.driverSession?.driverId, name: driverName });
   const initials = getInitials(driverName);
   const tripCount = runtime.assignedTrips.length;
   const urgentMessages = runtime.messages.filter(message => String(message.source || '').toLowerCase() !== 'mobile-driver-app').length;
@@ -17,7 +19,7 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
 
   return <View style={styles.screen}>
       <View style={styles.topRow}>
-        <View style={styles.avatarBubble}>
+        <View style={[styles.avatarBubble, { backgroundColor: withDriverAccentAlpha(driverAccent, 0.12), borderColor: withDriverAccentAlpha(driverAccent, 0.28) }]}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
 
@@ -26,18 +28,18 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
           <Text style={styles.driverName}>{driverName}</Text>
         </View>
 
-        <Pressable style={styles.profileChip} onPress={() => runtime.setActiveTab('profile')}>
-          <Text style={styles.profileChipText}>Profile</Text>
+        <Pressable style={[styles.profileChip, { borderColor: withDriverAccentAlpha(driverAccent, 0.24), backgroundColor: withDriverAccentAlpha(driverAccent, 0.06) }]} onPress={() => runtime.setActiveTab('profile')}>
+          <Text style={[styles.profileChipText, { color: driverAccent }]}>Profile</Text>
         </Pressable>
       </View>
 
-      <Pressable style={styles.primaryCard} onPress={() => runtime.setActiveTab('trips')}>
+      <Pressable style={[styles.primaryCard, { backgroundColor: driverAccent, borderColor: withDriverAccentAlpha(driverAccent, 0.52) }]} onPress={() => runtime.setActiveTab('trips')}>
         <View style={styles.primaryCardCopy}>
           <Text style={styles.primaryLabel}>Trips</Text>
           <Text style={styles.primaryValue}>{tripCount}</Text>
           <Text style={styles.primaryMeta}>{tripCount === 1 ? '1 trip assigned today' : `${tripCount} trips assigned today`}</Text>
         </View>
-        <View style={styles.primaryBadge}>
+        <View style={[styles.primaryBadge, { backgroundColor: withDriverAccentAlpha('#ffffff', 0.18), borderColor: withDriverAccentAlpha('#ffffff', 0.26) }]}>
           <Text style={styles.primaryBadgeText}>{tripCount}</Text>
         </View>
       </Pressable>
@@ -135,7 +137,7 @@ const styles = StyleSheet.create({
     borderColor: driverTheme.colors.border
   },
   avatarText: {
-    color: '#2d3b4c',
+    color: '#1f2937',
     fontSize: 18,
     fontWeight: '800'
   },
@@ -197,7 +199,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: driverTheme.radius.md,
-    backgroundColor: driverTheme.colors.primary,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center'
   },
