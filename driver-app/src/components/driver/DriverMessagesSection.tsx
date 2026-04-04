@@ -121,7 +121,7 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
       <ScrollView style={styles.chatScroll} contentContainerStyle={styles.chatBody}>
         {selectedMessages.length === 0 ? <Text style={styles.emptyText}>No messages yet. Send the first message.</Text> : selectedMessages.map(message => <View key={message.id} style={[styles.bubble, isOutgoing(message) ? styles.bubbleOutgoing : styles.bubbleIncoming]}>
               <Text style={[styles.bubbleText, isOutgoing(message) ? styles.bubbleTextOutgoing : null]}>{message.body}</Text>
-              {message.mediaType === 'image' && message.mediaUrl ? <Image source={{ uri: message.mediaUrl }} style={styles.bubbleImage} resizeMode="cover" /> : null}
+              {(String(message.mediaType || '').toLowerCase() === 'image' || String(message.mediaType || '').toLowerCase().startsWith('image/')) && message.mediaUrl ? <Image source={{ uri: message.mediaUrl }} style={styles.bubbleImage} resizeMode="cover" /> : null}
               <Text style={[styles.bubbleTime, isOutgoing(message) ? styles.bubbleTimeOutgoing : null]}>{formatShortClock(message.createdAt)}</Text>
             </View>)}
       </ScrollView>

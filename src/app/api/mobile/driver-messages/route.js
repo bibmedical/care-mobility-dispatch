@@ -30,7 +30,14 @@ const appendIncomingDriverThreadMessage = (dispatchThreads, driverId, message) =
     direction: 'incoming',
     text: message.body,
     timestamp: message.createdAt,
-    status: 'sent'
+    status: 'sent',
+    attachments: message?.mediaUrl ? [{
+      id: `${message.id}-media`,
+      kind: String(message?.mediaType || '').toLowerCase().includes('image') ? 'photo' : 'document',
+      name: String(message?.mediaType || '').toLowerCase().includes('image') ? 'Driver photo' : 'Driver attachment',
+      mimeType: String(message?.mediaType || '').trim(),
+      dataUrl: String(message?.mediaUrl || '').trim()
+    }] : []
   });
 
   const currentThreads = Array.isArray(dispatchThreads) ? dispatchThreads : [];

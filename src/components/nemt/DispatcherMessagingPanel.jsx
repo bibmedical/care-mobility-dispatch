@@ -251,7 +251,7 @@ const DispatcherMessagingPanel = ({
           source: 'dispatcher-web',
           deliveryMethod: 'in-app',
           mediaUrl: firstAttachment?.dataUrl || null,
-          mediaType: firstAttachment?.mimeType || firstAttachment?.kind || null
+          mediaType: firstAttachment?.kind === 'photo' || String(firstAttachment?.mimeType || '').toLowerCase().startsWith('image/') ? 'image' : firstAttachment?.mimeType || firstAttachment?.kind || null
         })
       });
       const payload = await readJsonResponse(response);
@@ -359,6 +359,31 @@ const DispatcherMessagingPanel = ({
     reader.readAsDataURL(file);
   });
 
+  const readPhotoAsCompressedDataUrl = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const maxSide = 1280;
+        const scale = Math.min(1, maxSide / Math.max(image.width || 1, image.height || 1));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('Unable to prepare image.'));
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      image.onerror = () => reject(new Error('Unable to read image.'));
+      image.src = String(reader.result || '');
+    };
+    reader.onerror = () => reject(new Error('Unable to read file.'));
+    reader.readAsDataURL(file);
+  });
+
   const handleAttachmentPick = async (event, kind) => {
     const file = event?.target?.files?.[0];
     event.target.value = '';
@@ -368,13 +393,13 @@ const DispatcherMessagingPanel = ({
       return;
     }
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const dataUrl = kind === 'photo' ? await readPhotoAsCompressedDataUrl(file) : await readFileAsDataUrl(file);
       await handleSendMessage('', {
         attachments: [{
           id: `${kind}-${Date.now()}`,
           kind,
           name: file.name,
-          mimeType: file.type || '',
+          mimeType: kind === 'photo' ? 'image/jpeg' : file.type || '',
           dataUrl
         }]
       });
