@@ -407,6 +407,51 @@
     color: var(--sl-offline-text);
   }
 
+  .statusSent {
+    background: rgba(34, 197, 94, 0.18);
+    color: #a7f3d0;
+  }
+
+  .statusFailed {
+    background: rgba(239, 68, 68, 0.18);
+    color: #fecaca;
+  }
+
+  .statusSkipped {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fde68a;
+  }
+
+  .statusQueued {
+    background: rgba(59, 130, 246, 0.18);
+    color: #bfdbfe;
+  }
+
+  .severityHigh {
+    background: rgba(220, 38, 38, 0.2);
+    color: #fecaca;
+  }
+
+  .severityNormal {
+    background: rgba(249, 115, 22, 0.16);
+    color: #fdba74;
+  }
+
+  .disciplineActive {
+    background: rgba(239, 68, 68, 0.18);
+    color: #fecaca;
+  }
+
+  .disciplineLogged {
+    background: rgba(59, 130, 246, 0.18);
+    color: #bfdbfe;
+  }
+
+  .disciplineResolved {
+    background: rgba(34, 197, 94, 0.18);
+    color: #a7f3d0;
+  }
+
   .actionLOGIN {
     background: #dff6df;
     color: #1f7a3f;

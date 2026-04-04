@@ -135,3 +135,67 @@ export const readTripWorkflowEventsByTripIds = async tripIds => {
   });
   return grouped;
 };
+
+export const readRecentTripWorkflowEvents = async ({ tripId = '', driverId = '', limit = 200 } = {}) => {
+  await ensureTables();
+  const clauses = [];
+  const params = [];
+  if (String(tripId || '').trim()) {
+    params.push(String(tripId).trim());
+    clauses.push(`trip_id = $${params.length}`);
+  }
+  if (String(driverId || '').trim()) {
+    params.push(String(driverId).trim());
+    clauses.push(`driver_id = $${params.length}`);
+  }
+  params.push(Math.max(1, Math.min(Number(limit) || 200, 1000)));
+  const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  const result = await query(
+    `SELECT * FROM trip_workflow_events ${whereClause} ORDER BY timestamp_ms DESC, created_at DESC LIMIT $${params.length}`,
+    params
+  );
+  return result.rows.map(row => ({
+    id: row.event_id,
+    tripId: row.trip_id,
+    driverId: row.driver_id,
+    action: row.action,
+    timestamp: Number(row.timestamp_ms) || 0,
+    timeLabel: row.time_label || '',
+    riderSignatureName: row.rider_signature_name || '',
+    compliance: row.compliance || {},
+    locationSnapshot: row.location_snapshot || {},
+    metadata: row.metadata || {},
+    createdAt: row.created_at
+  }));
+};
+
+export const readTripArrivalEvents = async ({ tripId = '', driverId = '', limit = 200 } = {}) => {
+  await ensureTables();
+  const clauses = [];
+  const params = [];
+  if (String(tripId || '').trim()) {
+    params.push(String(tripId).trim());
+    clauses.push(`trip_id = $${params.length}`);
+  }
+  if (String(driverId || '').trim()) {
+    params.push(String(driverId).trim());
+    clauses.push(`driver_id = $${params.length}`);
+  }
+  params.push(Math.max(1, Math.min(Number(limit) || 200, 1000)));
+  const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  const result = await query(
+    `SELECT * FROM trip_arrival_events ${whereClause} ORDER BY arrival_timestamp_ms DESC, created_at DESC LIMIT $${params.length}`,
+    params
+  );
+  return result.rows.map(row => ({
+    id: row.event_id,
+    tripId: row.trip_id,
+    driverId: row.driver_id,
+    rider: row.rider || '',
+    pickupAddress: row.pickup_address || '',
+    actualPickup: row.actual_pickup || '',
+    arrivalTimestamp: Number(row.arrival_timestamp_ms) || 0,
+    notificationSummary: row.notification_summary || {},
+    createdAt: row.created_at
+  }));
+};

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
-import { readDriverDisciplineEvents } from '@/server/driver-discipline-store';
+import { readRecentTripWorkflowEvents } from '@/server/trip-workflow-store';
 
 export async function GET(request) {
   try {
@@ -11,12 +11,12 @@ export async function GET(request) {
     }
 
     const { searchParams } = new URL(request.url);
+    const tripId = String(searchParams.get('tripId') || '').trim();
     const driverId = String(searchParams.get('driverId') || '').trim();
-    const activeOnly = searchParams.get('activeOnly') === 'true';
-    const limit = Number(searchParams.get('limit') || 500);
-    const events = await readDriverDisciplineEvents({ driverId, activeOnly, limit });
+    const limit = Number(searchParams.get('limit') || 200);
+    const events = await readRecentTripWorkflowEvents({ tripId, driverId, limit });
     return NextResponse.json({ ok: true, events });
   } catch (error) {
-    return NextResponse.json({ error: error?.message || 'Unable to load driver discipline events' }, { status: 500 });
+    return NextResponse.json({ error: error?.message || 'Unable to load trip workflow events' }, { status: 500 });
   }
 }
