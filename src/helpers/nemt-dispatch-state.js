@@ -289,6 +289,9 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   key: 'serviceAnimal',
   label: 'Animal'
 }, {
+  key: 'notes',
+  label: 'Notes'
+}, {
   key: 'leg',
   label: 'Leg'
 }, {

@@ -81,6 +81,10 @@ const getPrintColumns = getTripTypeLabel => ({
     key: 'destination',
     label: 'DO Address',
     render: trip => trip?.destination || '-'
+  }, {
+    key: 'notes',
+    label: 'Notes',
+    render: trip => String(trip?.notes || '').trim() || '-'
   }],
   'ride-id-compact': [{
     key: 'sequence',
@@ -106,6 +110,10 @@ const getPrintColumns = getTripTypeLabel => ({
     key: 'rider',
     label: 'Rider',
     render: trip => trip?.rider || '-'
+  }, {
+    key: 'notes',
+    label: 'Notes',
+    render: trip => String(trip?.notes || '').trim() || '-'
   }],
   'ride-id-manifest': [{
     key: 'sequence',
@@ -147,6 +155,10 @@ const getPrintColumns = getTripTypeLabel => ({
     key: 'destination',
     label: 'DO Address',
     render: trip => trip?.destination || '-'
+  }, {
+    key: 'notes',
+    label: 'Notes',
+    render: trip => String(trip?.notes || '').trim() || '-'
   }]
 });
 

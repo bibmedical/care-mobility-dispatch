@@ -479,6 +479,8 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
       return Number(trip.miles) || 0;
     case 'vehicle':
       return trip.vehicleType;
+    case 'notes':
+      return trip.notes;
     case 'leg':
       return trip.legLabel;
     case 'punctuality':
@@ -2735,6 +2737,7 @@ const DispatcherWorkspace = () => {
                         {visibleTripColumns.includes('mobility') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.mobilityType || '-'}</td> : null}
                         {visibleTripColumns.includes('assistLevel') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.assistLevel || '-'}</td> : null}
                         {visibleTripColumns.includes('serviceAnimal') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark">🐕 Yes</Badge> : '-'}</td> : null}
+                        {visibleTripColumns.includes('notes') ? <td style={{ minWidth: 220, maxWidth: 320, whiteSpace: 'normal' }}>{getTripNoteText(row.trip) || '-'}</td> : null}
                         {visibleTripColumns.includes('leg') ? <td style={{ whiteSpace: 'nowrap' }}>{getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant}>{getLegBadge(row.trip).label}</Badge> : '-'}</td> : null}
                         {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
                         {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}
