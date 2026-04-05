@@ -115,7 +115,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                 <View style={styles.routeCardBottom}>
                   <View style={styles.routeBottomLeft}>
                     <Text style={styles.routeServiceText}>{trip.leg || 'Route'}</Text>
-                    <Text style={styles.routeRiderText}>{trip.rider || 'Care Mobility Service'}</Text>
+                    <Text style={styles.routeRiderText}>{trip.rider || 'Florida Mobility Group Service'}</Text>
                   </View>
                   <Text style={styles.routeTimeText}>{trip.pickup || trip.scheduledPickup || '--'} - {trip.dropoff || trip.scheduledDropoff || '--'}</Text>
                   <Text style={styles.routeStatusText}>{trip.punctualityLabel || trip.status || 'Accepted'}</Text>

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Care Mobility Driver App",
+    "name": "Florida Mobility Group Driver App",
     "slug": "care-mobility-driver-app",
     "version": "1.0.8",
     "orientation": "portrait",
@@ -33,10 +33,8 @@
         "FOREGROUND_SERVICE_LOCATION"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#071a2a",
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -47,7 +45,9 @@
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "shortName": "FMG Driver",
+      "name": "Florida Mobility Group Driver App"
     },
     "plugins": [
       [

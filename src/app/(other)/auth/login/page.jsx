@@ -13,7 +13,7 @@ const Login = () => {
         <CardBody>
           <div className="d-flex justify-content-center mb-4">
             <Link href="/" className="text-decoration-none" aria-label="Florida Mobility Group home">
-              <Image src="/florida-mobility-group-logo-classic.svg" alt="Florida Mobility Group logo" width={420} height={156} style={{ width: '100%', maxWidth: 420, height: 'auto' }} priority />
+              <Image src="/fmg-login-logo.png" alt="Florida Mobility Group logo" width={640} height={360} style={{ width: '100%', maxWidth: 420, height: 'auto' }} priority />
             </Link>
           </div>
           <LoginForm />

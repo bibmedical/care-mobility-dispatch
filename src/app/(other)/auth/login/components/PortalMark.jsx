@@ -2,7 +2,7 @@ import Image from 'next/image';
 
 const PortalMark = ({ size = 72, showWordmark = false, textColor = '#e6f4f7' }) => {
   return <div className="d-inline-flex align-items-center gap-3">
-      <Image src="/app.png" alt="Florida Mobility Group logo" width={size} height={size} style={{ borderRadius: Math.max(18, Math.round(size * 0.28)), objectFit: 'cover' }} priority={false} />
+      <Image src="/fmg-app-icon.png" alt="Florida Mobility Group icon" width={size} height={size} style={{ borderRadius: Math.max(18, Math.round(size * 0.28)), objectFit: 'cover' }} priority={false} />
       {showWordmark ? <div>
           <div className="fw-semibold" style={{ color: textColor, letterSpacing: '0.08em', fontSize: 12, textTransform: 'uppercase' }}>Florida Mobility Group</div>
           <div className="fw-bold" style={{ color: textColor, fontSize: 28, lineHeight: 1.05 }}>Operations Portal</div>

@@ -17,7 +17,7 @@ export const DriverSidebarMenu = ({ runtime }: Props) => {
           <View style={styles.avatarPlaceholder} />
           <View style={styles.identity}>
             <Text style={styles.name}>{name}</Text>
-            <View style={styles.rolePill}><Text style={styles.roleText}>Care Mobility</Text></View>
+            <View style={styles.rolePill}><Text style={styles.roleText}>Florida Mobility Group</Text></View>
           </View>
         </View>
 

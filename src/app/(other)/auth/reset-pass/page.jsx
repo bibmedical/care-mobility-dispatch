@@ -11,7 +11,7 @@ const ResetPassword = () => {
         <CardBody className="p-0 bg-black auth-header-box rounded-top">
           <div className="text-center p-3">
             <Link href="/" className="logo logo-admin">
-              <Image src="/florida-mobility-group-logo-classic.svg" width={420} height={156} alt="Florida Mobility Group logo" className="auth-logo" style={{ width: '100%', maxWidth: 320, height: 'auto' }} priority />
+              <Image src="/fmg-login-logo.png" width={640} height={360} alt="Florida Mobility Group logo" className="auth-logo" style={{ width: '100%', maxWidth: 320, height: 'auto' }} priority />
             </Link>
             <h4 className="mt-3 mb-1 fw-semibold text-white fs-18">Reset Password</h4>
             <p className="text-muted fw-medium mb-0">Enter your account email, receive a code, and create a new password.</p>

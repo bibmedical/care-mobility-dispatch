@@ -17,7 +17,7 @@ export const DriverHeaderCard = ({ runtime }: Props) => {
   return <View style={[styles.card, { backgroundColor: driverAccent, borderColor: withDriverAccentAlpha(driverAccent, 0.55) }]}>
       <View style={styles.topRow}>
         <View style={styles.identityBlock}>
-          <Text style={styles.eyebrow}>Care Mobility Driver</Text>
+          <Text style={styles.eyebrow}>Florida Mobility Group Driver</Text>
           <Text style={styles.name}>{runtime.driverSession?.name || runtime.driverCode || 'Driver'}</Text>
           <Text style={styles.subline}>{runtime.driverSession?.driverCode || runtime.driverSession?.username || 'Unit pending'} | {runtime.shiftState.replace('-', ' ')}</Text>
         </View>

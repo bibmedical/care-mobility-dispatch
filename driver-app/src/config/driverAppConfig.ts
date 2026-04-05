@@ -17,7 +17,7 @@ export const DRIVER_APP_CONFIG = {
   gpsTimeIntervalMs: 10000,
   backgroundGpsDistanceIntervalMeters: 25,
   backgroundGpsTimeIntervalMs: 30000,
-  backgroundLocationNotificationTitle: 'Care Mobility tracking active',
+  backgroundLocationNotificationTitle: 'Florida Mobility Group tracking active',
   backgroundLocationNotificationBody: 'Dispatcher can keep seeing your live vehicle position while the app is in the background.'
 };
 

@@ -35,7 +35,7 @@ export const DriverDrawerMenu = ({ activeTab, onChange, onClose, driverName, dri
       <Pressable style={[styles.backdrop, { backgroundColor: withDriverAccentAlpha(driverAccent, 0.26) }]} onPress={onClose} />
       <View style={styles.drawer}>
         <View style={[styles.header, { backgroundColor: driverAccent }]}> 
-          <Text style={styles.headerEyebrow}>Care Mobility</Text>
+          <Text style={styles.headerEyebrow}>Florida Mobility Group</Text>
           <Text style={styles.headerTitle}>{driverName}</Text>
           <Text style={styles.headerBody}>Driver app navigation</Text>
         </View>
