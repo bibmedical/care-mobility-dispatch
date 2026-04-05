@@ -71,7 +71,8 @@ const CONFIRMATION_OUTPUT_COLUMN_OPTIONS = [
   { key: 'dispatchStatus', label: 'Dispatch Status' },
   { key: 'reply', label: 'Reply' },
   { key: 'sent', label: 'Sent' },
-  { key: 'responded', label: 'Responded' }
+  { key: 'responded', label: 'Responded' },
+  { key: 'internalNotes', label: 'Notes (Print only)' }
 ];
 const DEFAULT_CONFIRMATION_OUTPUT_COLUMNS = ['tripId', 'rider', 'phone', 'pickupTime', 'pickupAddress', 'dropoffAddress', 'miles', 'leg', 'type', 'confirmation', 'dispatchStatus', 'reply'];
 
@@ -998,16 +999,18 @@ const ConfirmationWorkspace = () => {
         return trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-';
       case 'responded':
         return trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-';
+      case 'internalNotes':
+        return String(trip.notes || '').trim() || '-';
       default:
         return '-';
     }
   };
 
-  const buildTripOutputLine = trip => selectedOutputColumnOptions.map(option => `${option.label}: ${getOutputColumnValue(trip, option.key)}`).join(' | ');
+  const buildTripOutputLine = trip => selectedOutputColumnOptions.filter(option => option.key !== 'internalNotes').map(option => `${option.label}: ${getOutputColumnValue(trip, option.key)}`).join(' | ');
 
   const getOutputCellHtml = (trip, columnKey) => {
     const value = getOutputColumnValue(trip, columnKey);
-    if (columnKey === 'pickupAddress' || columnKey === 'dropoffAddress') {
+    if (columnKey === 'pickupAddress' || columnKey === 'dropoffAddress' || columnKey === 'internalNotes') {
       return escapeHtml(formatAddressForPrint(value)).replace(/\n/g, '<br/>');
     }
     return escapeHtml(value);
@@ -1105,6 +1108,12 @@ const ConfirmationWorkspace = () => {
             th.col-pickupAddress, td.col-pickupAddress, th.col-dropoffAddress, td.col-dropoffAddress {
               min-width: 190px;
               max-width: 220px;
+              white-space: normal;
+              line-height: 1.2;
+            }
+            th.col-internalNotes, td.col-internalNotes {
+              min-width: 220px;
+              max-width: 280px;
               white-space: normal;
               line-height: 1.2;
             }
