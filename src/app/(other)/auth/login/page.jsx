@@ -12,8 +12,8 @@ const Login = () => {
       <Card>
         <CardBody>
           <div className="d-flex justify-content-center mb-4">
-            <Link href="/" className="text-decoration-none" aria-label="Care Mobility home">
-              <Image src="/care-mobility-logo.png" alt="Care Mobility logo" width={631} height={292} style={{ width: '100%', maxWidth: 440, height: 'auto' }} priority />
+            <Link href="/" className="text-decoration-none" aria-label="Florida Mobility Group home">
+              <Image src="/florida-mobility-group-logo-classic.svg" alt="Florida Mobility Group logo" width={420} height={156} style={{ width: '100%', maxWidth: 420, height: 'auto' }} priority />
             </Link>
           </div>
           <LoginForm />
