@@ -1,9 +1,8 @@
 'use client';
 
-import BrandImage from '@/components/BrandImage';
 import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
-import { BRANDING_PAGE_OPTIONS, DEFAULT_BRANDING_SETTINGS, normalizeBrandingSettings } from '@/helpers/branding';
+import { BRANDING_PAGE_OPTIONS, DEFAULT_BRANDING_PAGES, DEFAULT_BRANDING_SETTINGS, normalizeBrandingSettings } from '@/helpers/branding';
 import useBrandingApi from '@/hooks/useBrandingApi';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
@@ -57,6 +56,8 @@ const createDraft = branding => {
 const createCombinationId = () => `combo-${Date.now()}`;
 
 const getSafeActiveCombinationId = draft => draft.combinations.some(item => item.id === draft.activeCombinationId) ? draft.activeCombinationId : 'default';
+
+const getPreviewImage = (draft, pageKey) => String(draft?.pages?.[pageKey] || DEFAULT_BRANDING_PAGES[pageKey] || '').trim();
 
 const PreferencesWorkspace = () => {
   const { themeMode } = useLayoutContext();
@@ -289,11 +290,11 @@ const PreferencesWorkspace = () => {
                               <Badge bg="secondary-subtle" text="secondary">{option.group}</Badge>
                             </div>
                             <div className="rounded-4 d-flex align-items-center justify-content-center mb-3" style={{ minHeight: 120, background: groupName === 'Portal' ? '#071226' : '#000000' }}>
-                              <BrandImage target={option.key} alt={`${option.label} preview`} fallbackSrc={draft.pages[option.key]} style={{ width: '100%', maxWidth: option.key === 'portalSidebar' || option.key === 'authPortalMark' ? 120 : 240, maxHeight: 80, objectFit: 'contain' }} />
+                              <img src={getPreviewImage(draft, option.key)} alt={`${option.label} preview`} style={{ width: '100%', maxWidth: option.key === 'portalSidebar' || option.key === 'authPortalMark' ? 120 : 240, maxHeight: 80, objectFit: 'contain' }} />
                             </div>
                             <Form.Label className="small text-uppercase text-secondary fw-semibold">Logo</Form.Label>
                             <Form.Control value={draft.pages[option.key] || ''} style={surfaceStyles.input} onChange={event => handlePageValueChange(option.key, event.target.value)} placeholder="/fmg-login-logo.png" />
-                            <div className="small text-secondary mt-2">Use a file from public or upload one below.</div>
+                            <div className="small text-secondary mt-2">Use a file from public or upload one below. The preview changes here right away.</div>
                             <Form.Control type="file" accept="image/*" style={{ ...surfaceStyles.input, marginTop: 12 }} onChange={handlePickFile(option.key)} />
                             <div className="d-flex flex-wrap gap-2 mt-3">
                               {BRANDING_PRESETS.map(image => <Button key={`${option.key}-${image}`} style={surfaceStyles.button} className="rounded-pill" onClick={() => handlePageValueChange(option.key, image)}>{image.split('/').pop()}</Button>)}
