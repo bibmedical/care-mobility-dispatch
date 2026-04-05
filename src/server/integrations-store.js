@@ -41,11 +41,11 @@ const DEFAULT_STATE = {
   sms: {
     activeProvider: 'disabled',
     defaultCountryCode: '1',
-    confirmationTemplate: 'Hello {{rider}}, this is Care Mobility about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
+    confirmationTemplate: 'Hello {{rider}}, this is Florida Mobility Group about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
     arrivalNotifications: {
       patientEnabled: true,
       officeEnabled: true,
-      patientTemplate: 'Hello {{rider}}, this is Care Mobility. Your driver {{driver}} has arrived for pickup at {{pickupAddress}}. If you need help, call the office.',
+      patientTemplate: 'Hello {{rider}}, this is Florida Mobility Group. Your driver {{driver}} has arrived for pickup at {{pickupAddress}}. If you need help, call the office.',
       officeTemplate: 'Arrival notice: driver {{driver}} has arrived for {{rider}} at {{pickupAddress}} for trip {{tripId}}.',
       officeRecipients: []
     },

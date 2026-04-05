@@ -124,7 +124,7 @@ const sendViber = async (viberNumber, message, driverId, logEntry) => {
       body: JSON.stringify({
         receiver: viberNumber,
         min_api_version: 1,
-        sender: { name: 'Care Mobility', avatar: 'https://caremobility.com/logo.png' },
+        sender: { name: 'Florida Mobility Group', avatar: 'https://caremobility.com/logo.png' },
         type: 'text',
         text: message
       })

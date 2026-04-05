@@ -5,5 +5,5 @@ export const developedBy = 'Tu equipo';
 export const contactUs = 'admin@local';
 export const buyLink = '';
 export const basePath = '';
-export const DEFAULT_PAGE_TITLE = 'Care Mobility Dispatch';
+export const DEFAULT_PAGE_TITLE = 'Florida Mobility Group Dispatch';
 export const colorVariants = ['primary', 'secondary', 'success', 'warning', 'info', 'danger', 'dark', 'light'];

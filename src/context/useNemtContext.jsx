@@ -1042,7 +1042,7 @@ export const NemtProvider = ({
     })
   });
 
-  const updateTripRecord = (tripId, updates) => updateState(currentState => {
+  const updateTripRecord = (tripId, updates, auditOptions = {}) => updateState(currentState => {
     const normalizedTripId = String(tripId || '').trim();
     if (!normalizedTripId) return currentState;
     const updatedAt = getMutationTimestamp();
@@ -1057,12 +1057,14 @@ export const NemtProvider = ({
   }, {
     markDispatchDirty: true,
     buildAuditEntry: () => ({
-      action: 'trip-record-update',
+      action: String(auditOptions?.action || 'trip-record-update').trim() || 'trip-record-update',
       entityType: 'trip',
       entityId: String(tripId || '').trim(),
-      source: 'dispatcher',
-      summary: `Updated trip ${String(tripId || '').trim()}`,
-      metadata: updates || {}
+      actorId: String(auditOptions?.actorId || session?.user?.id || '').trim(),
+      actorName: String(auditOptions?.actorName || getActorIdentity(session).name).trim(),
+      source: String(auditOptions?.source || 'dispatcher').trim() || 'dispatcher',
+      summary: String(auditOptions?.summary || `Updated trip ${String(tripId || '').trim()}`).trim(),
+      metadata: auditOptions?.metadata && typeof auditOptions.metadata === 'object' ? auditOptions.metadata : updates || {}
     })
   });
 
@@ -1239,7 +1241,7 @@ export const NemtProvider = ({
     getDriverName,
     refreshDrivers: syncDriversFromServer,
     refreshDispatchState: syncDispatchFromServer
-  }), [resolvedUiPreferences, state])}>
+  }), [resolvedUiPreferences, session, state])}>
       {children}
     </NemtContext.Provider>;
 };

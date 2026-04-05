@@ -4,11 +4,11 @@ const DEFAULT_TEMPLATES = {
   licenseExpiry: {
     id: 'licenseExpiry',
     name: 'License Expiry Alert',
-    subject: '[Care Mobility] License Expiring in {{daysUntilExpiry}} days — {{driverName}}',
-    subjectExpired: '[Care Mobility] EXPIRED: Driver License — {{driverName}}',
+    subject: '[Florida Mobility Group] License Expiring in {{daysUntilExpiry}} days — {{driverName}}',
+    subjectExpired: '[Florida Mobility Group] EXPIRED: Driver License — {{driverName}}',
     htmlBody: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#f8f8f8">
   <div style="background:#1a1a2e;padding:16px 24px;border-radius:8px 8px 0 0">
-    <h2 style="color:#fff;margin:0;font-size:18px">Care Mobility — Driver License Alert</h2>
+    <h2 style="color:#fff;margin:0;font-size:18px">Florida Mobility Group — Driver License Alert</h2>
   </div>
   <div style="background:#fff;padding:24px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px">
     <p style="font-size:15px">Dear <strong>{{driverName}}</strong>,</p>
@@ -16,7 +16,7 @@ const DEFAULT_TEMPLATES = {
     <p style="font-size:14px;color:{{urgencyColor}};font-weight:bold">{{urgencyText}}</p>
     <p style="font-size:14px">Please contact your dispatcher or update your license information in the system immediately.</p>
     <hr style="border:none;border-top:1px solid #eee;margin:20px 0"/>
-    <p style="font-size:11px;color:#999">This is an automated reminder from Care Mobility Dispatch. You will receive this reminder every 3 days until your license record is updated.</p>
+    <p style="font-size:11px;color:#999">This is an automated reminder from Florida Mobility Group Dispatch. You will receive this reminder every 3 days until your license record is updated.</p>
   </div>
 </div>`,
     textBody: `Dear {{driverName}},
@@ -26,7 +26,7 @@ const DEFAULT_TEMPLATES = {
 
 Please contact your dispatcher or update your license information immediately.
 
-— Care Mobility Dispatch (automated reminder, sent every 3 days)`
+— Florida Mobility Group Dispatch (automated reminder, sent every 3 days)`
   }
 };
 

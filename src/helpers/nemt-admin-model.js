@@ -257,7 +257,7 @@ export const createBlankDriver = () => ({
   attendantId: '',
   vehicleId: '',
   groupingId: 'grp-3',
-  companyName: 'Care Mobility Services',
+  companyName: 'Florida Mobility Group',
   taxId: '',
   brokerId: '',
   notes: '',

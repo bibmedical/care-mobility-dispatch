@@ -25,7 +25,7 @@ const buildSurfaceStyles = isLight => ({
   }
 });
 
-const AVATAR_PRESETS = [DEFAULT_ASSISTANT_AVATAR.image, '/ai-avatar/cartoon-owner.svg', '/care-mobility-logo.png'];
+const AVATAR_PRESETS = [DEFAULT_ASSISTANT_AVATAR.image, '/ai-avatar/cartoon-owner.svg', '/app.png'];
 
 const buildDraft = avatar => ({
   name: String(avatar?.name || DEFAULT_ASSISTANT_AVATAR.name),

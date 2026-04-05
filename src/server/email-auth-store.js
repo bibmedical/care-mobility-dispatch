@@ -89,12 +89,12 @@ export const verifyEmailAuthCode = async (email, submittedCode) => {
 export const sendEmailAuthCode = async email => {
   const { code, expiresIn } = await generateEmailAuthCode(email);
 
-  const subject = 'Care Mobility login verification code';
+  const subject = 'Florida Mobility Group login verification code';
   const minutes = Math.floor(expiresIn / 60000);
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
       <h2 style="margin-bottom: 12px; color: #0f172a;">Your login code</h2>
-      <p>Use this verification code to sign in to Care Mobility:</p>
+      <p>Use this verification code to sign in to Florida Mobility Group:</p>
       <div style="display: inline-block; margin: 16px 0; padding: 14px 20px; font-size: 28px; font-weight: 700; letter-spacing: 6px; background: #f3f4f6; border-radius: 10px; color: #111827;">
         ${code}
       </div>
@@ -102,7 +102,7 @@ export const sendEmailAuthCode = async email => {
       <p style="color: #6b7280; font-size: 14px;">If you did not request this code, you can ignore this email.</p>
     </div>
   `;
-  const text = `Your Care Mobility login code is ${code}. It expires in ${minutes} minutes.`;
+  const text = `Your Florida Mobility Group login code is ${code}. It expires in ${minutes} minutes.`;
 
   const emailResult = await sendEmail({
     to: email,

@@ -10,6 +10,7 @@ import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { openWhatsAppConversation } from '@/utils/whatsapp';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 
@@ -44,6 +45,14 @@ const STATUS_VARIANTS = {
 const DISCONNECTED_BADGE_STYLE = {
   backgroundColor: '#6f42c1',
   color: '#ffffff'
+};
+
+const INLINE_CONFIRMATION_TIME_COLUMNS = new Set(['pickup', 'dropoff']);
+
+const buildConfirmationActor = session => {
+  const id = String(session?.user?.id || '').trim();
+  const name = String(session?.user?.name || session?.user?.username || session?.user?.email || 'Dispatcher').trim() || 'Dispatcher';
+  return { id, name };
 };
 
 const BLOCK_REASON_OPTIONS = [
@@ -219,6 +228,35 @@ const normalizeTripTimeDisplay = value => {
   return text;
 };
 
+const getInlineConfirmationTimeValue = (trip, columnKey) => {
+  if (columnKey === 'pickup') return String(trip?.scheduledPickup || trip?.pickup || '').trim();
+  if (columnKey === 'dropoff') return String(trip?.scheduledDropoff || trip?.dropoff || '').trim();
+  return '';
+};
+
+const buildConfirmationTimeSortValue = (trip, timeText, fallbackKey) => {
+  const parsedMinutes = parseTripClockMinutes(timeText);
+  if (parsedMinutes == null) return Number.isFinite(Number(trip?.[fallbackKey])) ? Number(trip[fallbackKey]) : Number.MAX_SAFE_INTEGER;
+  const serviceDateKey = getTripServiceDateKey(trip) || new Date().toISOString().slice(0, 10);
+  const [year, month, day] = String(serviceDateKey || '').split('-').map(Number);
+  if (!year || !month || !day) return Number.isFinite(Number(trip?.[fallbackKey])) ? Number(trip[fallbackKey]) : Number.MAX_SAFE_INTEGER;
+  const hours = Math.floor(parsedMinutes / 60);
+  const minutes = parsedMinutes % 60;
+  return new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
+};
+
+const buildScheduleChangeNoteLine = ({ actorName, oldPickup, newPickup, oldDropoff, newDropoff }) => {
+  const details = [];
+  if (String(oldPickup || '').trim() !== String(newPickup || '').trim()) {
+    details.push(`Pickup: ${oldPickup || '-'} -> ${newPickup || '-'}`);
+  }
+  if (String(oldDropoff || '').trim() !== String(newDropoff || '').trim()) {
+    details.push(`Dropoff: ${oldDropoff || '-'} -> ${newDropoff || '-'}`);
+  }
+  if (details.length === 0) return '';
+  return `[SCHEDULE CHANGE] ${new Date().toLocaleString()}: ${actorName} changed ${details.join(' | ')}`;
+};
+
 const parseSpreadsheetTimeMinutes = value => {
   if (value == null) return null;
   const raw = typeof value === 'number' ? value : Number(String(value).trim());
@@ -297,6 +335,7 @@ const ConfirmationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const router = useRouter();
+  const { data: session } = useSession();
   const { trips, refreshDispatchState, updateTripRecord, deleteTripRecord } = useNemtContext();
   const { data: smsData, saveData: saveSmsData } = useSmsIntegrationApi();
   const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
@@ -310,6 +349,8 @@ const ConfirmationWorkspace = () => {
   const [legFilter, setLegFilter] = useState('all');
   const [rideTypeFilter, setRideTypeFilter] = useState('all');
   const [confirmationSending, setConfirmationSending] = useState(false);
+  const [inlineTimeEditCell, setInlineTimeEditCell] = useState(null);
+  const [inlineTimeEditValue, setInlineTimeEditValue] = useState('');
   
   // New states for date, time, and manual confirmation
   const [confirmationDate, setConfirmationDate] = useState(() => {
@@ -357,6 +398,7 @@ const ConfirmationWorkspace = () => {
   const [tripUpdateNote, setTripUpdateNote] = useState('');
   const [tripUpdateCompanionNote, setTripUpdateCompanionNote] = useState('');
   const [tripUpdateMobilityNote, setTripUpdateMobilityNote] = useState('');
+  const confirmationActor = useMemo(() => buildConfirmationActor(session), [session]);
   const [patientSearch, setPatientSearch] = useState('');
   const [patientFromDate, setPatientFromDate] = useState('');
   const [patientToDate, setPatientToDate] = useState('');
@@ -685,6 +727,7 @@ const ConfirmationWorkspace = () => {
       const rightValue = rightMiles == null ? Number.NEGATIVE_INFINITY : rightMiles;
       const phoneDirection = getConfirmationSortDirection(milesSortOrder, 'phone');
       const pickupDirection = getConfirmationSortDirection(milesSortOrder, 'pickup');
+      const dropoffDirection = getConfirmationSortDirection(milesSortOrder, 'dropoff');
       const legDirection = getConfirmationSortDirection(milesSortOrder, 'leg');
       const typeDirection = getConfirmationSortDirection(milesSortOrder, 'type');
 
@@ -706,6 +749,18 @@ const ConfirmationWorkspace = () => {
         const leftPickupLabel = formatMinutesAsClock(leftPickupMinutes) || leftTrip?.scheduledPickup || leftTrip?.pickup || '-';
         const rightPickupLabel = formatMinutesAsClock(rightPickupMinutes) || rightTrip?.scheduledPickup || rightTrip?.pickup || '-';
         return compareConfirmationText(leftPickupLabel, rightPickupLabel, pickupDirection);
+      }
+      if (dropoffDirection) {
+        const leftDropoffLabel = normalizeTripTimeDisplay(leftTrip?.scheduledDropoff || leftTrip?.dropoff || '-');
+        const rightDropoffLabel = normalizeTripTimeDisplay(rightTrip?.scheduledDropoff || rightTrip?.dropoff || '-');
+        const leftDropoffMinutes = parseTripClockMinutes(leftDropoffLabel);
+        const rightDropoffMinutes = parseTripClockMinutes(rightDropoffLabel);
+        const normalizedLeftMinutes = leftDropoffMinutes == null ? Number.MAX_SAFE_INTEGER : leftDropoffMinutes;
+        const normalizedRightMinutes = rightDropoffMinutes == null ? Number.MAX_SAFE_INTEGER : rightDropoffMinutes;
+        if (normalizedLeftMinutes !== normalizedRightMinutes) {
+          return dropoffDirection === 'asc' ? normalizedLeftMinutes - normalizedRightMinutes : normalizedRightMinutes - normalizedLeftMinutes;
+        }
+        return compareConfirmationText(leftDropoffLabel, rightDropoffLabel, dropoffDirection);
       }
       if (legDirection) return compareConfirmationText(getTripLegFilterKey(leftTrip), getTripLegFilterKey(rightTrip), legDirection);
       if (typeDirection) return compareConfirmationText(getTripTypeLabel(leftTrip), getTripTypeLabel(rightTrip), typeDirection);
@@ -1382,6 +1437,11 @@ const ConfirmationWorkspace = () => {
     return trip?.scheduledPickup || trip?.pickup || '-';
   };
 
+  const getTripDisplayDropoffTime = trip => {
+    if (trip?.scheduleChange?.newDropoff) return `${trip.scheduleChange.newDropoff} (NEW)`;
+    return trip?.scheduledDropoff || trip?.dropoff || '-';
+  };
+
   const getRiderProfileKey = trip => {
     const phoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
     if (phoneKey) return `phone:${phoneKey}`;
@@ -1478,6 +1538,112 @@ const ConfirmationWorkspace = () => {
     setTripUpdateMobilityNote(String(profile?.mobility || ''));
   };
 
+  const isInlineConfirmationTimeEditing = (tripId, columnKey) => inlineTimeEditCell?.tripId === tripId && inlineTimeEditCell?.columnKey === columnKey;
+
+  const handleStartInlineConfirmationTimeEdit = (trip, columnKey) => {
+    if (!trip || !INLINE_CONFIRMATION_TIME_COLUMNS.has(columnKey)) return;
+    setInlineTimeEditCell({ tripId: trip.id, columnKey });
+    setInlineTimeEditValue(getInlineConfirmationTimeValue(trip, columnKey));
+  };
+
+  const handleCancelInlineConfirmationTimeEdit = () => {
+    setInlineTimeEditCell(null);
+    setInlineTimeEditValue('');
+  };
+
+  const handleSaveInlineConfirmationTimeEdit = trip => {
+    if (!trip || !inlineTimeEditCell?.columnKey) return;
+
+    const columnKey = inlineTimeEditCell.columnKey;
+    const currentValue = String(getInlineConfirmationTimeValue(trip, columnKey) || '').trim();
+    const nextValue = String(inlineTimeEditValue || '').trim();
+
+    if (!nextValue || nextValue === currentValue) {
+      handleCancelInlineConfirmationTimeEdit();
+      return;
+    }
+
+    const oldPickup = normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || '');
+    const oldDropoff = normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || '');
+    const newPickup = columnKey === 'pickup' ? nextValue : oldPickup;
+    const newDropoff = columnKey === 'dropoff' ? nextValue : oldDropoff;
+    const nowIso = new Date().toISOString();
+    const noteLine = buildScheduleChangeNoteLine({
+      actorName: confirmationActor.name,
+      oldPickup,
+      newPickup,
+      oldDropoff,
+      newDropoff
+    });
+    const mergedNotes = [String(trip?.notes || '').trim(), noteLine].filter(Boolean).join('\n');
+
+    updateTripRecord(trip.id, {
+      notes: mergedNotes,
+      ...(columnKey === 'pickup' ? {
+        pickup: nextValue,
+        scheduledPickup: nextValue,
+        pickupSortValue: buildConfirmationTimeSortValue(trip, nextValue, 'pickupSortValue')
+      } : {
+        dropoff: nextValue,
+        scheduledDropoff: nextValue,
+        dropoffSortValue: buildConfirmationTimeSortValue(trip, nextValue, 'dropoffSortValue')
+      }),
+      scheduleChange: {
+        oldPickup,
+        newPickup,
+        oldDropoff,
+        newDropoff,
+        changedAt: nowIso,
+        updatedById: confirmationActor.id,
+        updatedByName: confirmationActor.name,
+        marker: 'NEW'
+      }
+    }, {
+      action: 'trip-schedule-inline-update',
+      source: 'confirmation-workspace',
+      actorId: confirmationActor.id,
+      actorName: confirmationActor.name,
+      summary: `${confirmationActor.name} changed ${columnKey} time on trip ${String(trip.id || '').trim()}`,
+      metadata: {
+        tripId: String(trip.id || '').trim(),
+        field: columnKey,
+        oldValue: currentValue,
+        newValue: nextValue
+      }
+    });
+
+    setCustomStatus(`Time updated on trip ${String(trip.id || '').trim()} by ${confirmationActor.name}.`);
+    handleCancelInlineConfirmationTimeEdit();
+  };
+
+  const renderInlineConfirmationTimeCell = (trip, columnKey, displayValue) => {
+    const isEditing = isInlineConfirmationTimeEditing(trip.id, columnKey);
+    const changedBy = String(trip?.scheduleChange?.updatedByName || '').trim();
+    return <td style={{ cursor: 'text' }} onDoubleClick={() => handleStartInlineConfirmationTimeEdit(trip, columnKey)} title="Double-click to edit time">
+        {isEditing ? <Form.Control
+          size="sm"
+          autoFocus
+          value={inlineTimeEditValue}
+          placeholder="e.g. 07:30 AM"
+          onChange={event => setInlineTimeEditValue(event.target.value)}
+          onBlur={() => handleSaveInlineConfirmationTimeEdit(trip)}
+          onKeyDown={event => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            handleSaveInlineConfirmationTimeEdit(trip);
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            handleCancelInlineConfirmationTimeEdit();
+          }
+        }}
+        /> : <>
+            <span style={{ borderBottom: '1px dashed rgba(107, 114, 128, 0.5)', display: 'inline-block' }}>{displayValue || '-'}</span>
+            {changedBy ? <div className="small text-muted mt-1">Changed by {changedBy}</div> : null}
+          </>}
+      </td>;
+  };
+
   const handleSaveTripUpdate = async () => {
     if (!tripUpdateModal) return;
     const nowIso = new Date().toISOString();
@@ -1492,6 +1658,8 @@ const ConfirmationWorkspace = () => {
     const newDropoff = String(tripUpdateDropoffTime || '').trim();
     const pickupChanged = Boolean(newPickup) && newPickup !== oldPickup;
     const dropoffChanged = Boolean(newDropoff) && newDropoff !== oldDropoff;
+    const effectivePickup = newPickup || oldPickup;
+    const effectiveDropoff = newDropoff || oldDropoff;
 
     const detailLines = [];
     if (isSmsLeftUnconfirmed) {
@@ -1506,7 +1674,13 @@ const ConfirmationWorkspace = () => {
       detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
     }
     if (pickupChanged || dropoffChanged) {
-      detailLines.push(`[SCHEDULE NEW] Pickup: ${oldPickup || '-'} -> ${newPickup || oldPickup || '-'} | Dropoff: ${oldDropoff || '-'} -> ${newDropoff || oldDropoff || '-'}`);
+      detailLines.push(buildScheduleChangeNoteLine({
+        actorName: confirmationActor.name,
+        oldPickup,
+        newPickup: effectivePickup,
+        oldDropoff,
+        newDropoff: effectiveDropoff
+      }));
     }
     if (tripUpdateCompanionNote.trim()) detailLines.push(`[PASSENGER NOTE] ${tripUpdateCompanionNote.trim()}`);
     if (tripUpdateMobilityNote.trim()) detailLines.push(`[MOBILITY NOTE] ${tripUpdateMobilityNote.trim()}`);
@@ -1516,8 +1690,12 @@ const ConfirmationWorkspace = () => {
 
     updateTripRecord(tripUpdateModal.id, {
       status: isCancelledByPatient ? 'Cancelled' : tripUpdateModal.status,
-      scheduledPickup: newPickup || oldPickup,
-      scheduledDropoff: newDropoff || oldDropoff,
+      pickup: effectivePickup,
+      scheduledPickup: effectivePickup,
+      pickupSortValue: buildConfirmationTimeSortValue(tripUpdateModal, effectivePickup, 'pickupSortValue'),
+      dropoff: effectiveDropoff,
+      scheduledDropoff: effectiveDropoff,
+      dropoffSortValue: buildConfirmationTimeSortValue(tripUpdateModal, effectiveDropoff, 'dropoffSortValue'),
       notes: mergedNotes,
       confirmation: {
         ...(tripUpdateModal.confirmation || {}),
@@ -1529,10 +1707,12 @@ const ConfirmationWorkspace = () => {
       },
       scheduleChange: pickupChanged || dropoffChanged ? {
         oldPickup,
-        newPickup: newPickup || oldPickup,
+        newPickup: effectivePickup,
         oldDropoff,
-        newDropoff: newDropoff || oldDropoff,
+        newDropoff: effectiveDropoff,
         changedAt: nowIso,
+        updatedById: confirmationActor.id,
+        updatedByName: confirmationActor.name,
         marker: 'NEW'
       } : tripUpdateModal.scheduleChange || null,
       passengerProfile: {
@@ -1540,6 +1720,22 @@ const ConfirmationWorkspace = () => {
         companion: tripUpdateCompanionNote.trim(),
         mobility: tripUpdateMobilityNote.trim(),
         updatedAt: nowIso
+      }
+    }, {
+      action: pickupChanged || dropoffChanged ? 'trip-confirmation-schedule-update' : 'trip-confirmation-update',
+      source: 'confirmation-workspace',
+      actorId: confirmationActor.id,
+      actorName: confirmationActor.name,
+      summary: pickupChanged || dropoffChanged ? `${confirmationActor.name} updated confirmation and changed the schedule for trip ${String(tripUpdateModal.id || '').trim()}` : `${confirmationActor.name} updated confirmation for trip ${String(tripUpdateModal.id || '').trim()}`,
+      metadata: {
+        tripId: String(tripUpdateModal.id || '').trim(),
+        method: tripUpdateConfirmMethod,
+        oldPickup,
+        newPickup: effectivePickup,
+        oldDropoff,
+        newDropoff: effectiveDropoff,
+        pickupChanged,
+        dropoffChanged
       }
     });
 
@@ -1561,7 +1757,7 @@ const ConfirmationWorkspace = () => {
       });
     }
 
-    setCustomStatus(`Trip ${tripUpdateModal.id} updated. Method: ${methodLabel}${pickupChanged || dropoffChanged ? ' | Schedule marked NEW' : ''}.`);
+    setCustomStatus(`Trip ${tripUpdateModal.id} updated by ${confirmationActor.name}. Method: ${methodLabel}${pickupChanged || dropoffChanged ? ' | Schedule marked NEW' : ''}.`);
     setTripUpdateModal(null);
   };
 
@@ -2140,6 +2336,7 @@ const ConfirmationWorkspace = () => {
                   {renderSortableConfirmationHeader('rider', 'Rider')}
                   {renderSortableConfirmationHeader('phone', 'Phone')}
                   {renderSortableConfirmationHeader('pickup', 'Pickup Time')}
+                  {renderSortableConfirmationHeader('dropoff', 'Dropoff Time')}
                   {renderSortableConfirmationHeader('miles', 'Miles')}
                   {renderSortableConfirmationHeader('leg', 'Leg')}
                   {renderSortableConfirmationHeader('type', 'Type')}
@@ -2175,7 +2372,8 @@ const ConfirmationWorkspace = () => {
                         {riderProfile?.mobility ? <div className="small text-warning">Mobility: {riderProfile.mobility}</div> : null}
                       </td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
-                      <td>{getTripDisplayPickupTime(trip)}</td>
+                      {renderInlineConfirmationTimeCell(trip, 'pickup', getTripDisplayPickupTime(trip))}
+                      {renderInlineConfirmationTimeCell(trip, 'dropoff', getTripDisplayDropoffTime(trip))}
                       <td>{getTripMilesDisplay(trip)}</td>
                       <td>{getTripLegFilterKey(trip)}</td>
                       <td>{getTripTypeLabel(trip)}</td>
@@ -2238,7 +2436,7 @@ const ConfirmationWorkspace = () => {
                       </td>
                     </tr>;
                 }) : <tr>
-                    <td colSpan={15} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
+                    <td colSpan={16} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
                   </tr>}
               </tbody>
             </Table>

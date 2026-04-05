@@ -10,7 +10,7 @@ runMigrations().catch(err => console.error('[DB] Migration error:', err));
 
 export const metadata = {
   title: {
-    template: '%s | Care Mobility Dispatch',
+    template: '%s | Florida Mobility Group Dispatch',
     default: DEFAULT_PAGE_TITLE
   },
   description: 'NEMT Operations Panel — trips, drivers, and dispatch management'

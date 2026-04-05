@@ -9,7 +9,7 @@ const Footer = () => {
             <Card className="mb-0 border-bottom-0 rounded-bottom-0">
               <CardBody>
                 <p className="text-muted mb-0">
-                  © {currentYear}&nbsp;Care Mobility
+                  © {currentYear}&nbsp;Florida Mobility Group
                   <span className="text-muted d-none d-sm-inline-block float-end">
                     NEMT operations panel</span>
                 </p>

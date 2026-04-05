@@ -80,11 +80,11 @@ export const verifyPasswordResetCode = async (email, submittedCode) => {
 export const sendPasswordResetCode = async email => {
   const { code, expiresIn, email: normalizedEmail } = await generatePasswordResetCode(email);
   const minutes = Math.floor(expiresIn / 60000);
-  const subject = 'Care Mobility password reset code';
+  const subject = 'Florida Mobility Group password reset code';
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
       <h2 style="margin-bottom: 12px; color: #0f172a;">Reset your password</h2>
-      <p>Use this code to create a new password for your Care Mobility account:</p>
+      <p>Use this code to create a new password for your Florida Mobility Group account:</p>
       <div style="display: inline-block; margin: 16px 0; padding: 14px 20px; font-size: 28px; font-weight: 700; letter-spacing: 6px; background: #f3f4f6; border-radius: 10px; color: #111827;">
         ${code}
       </div>
@@ -92,7 +92,7 @@ export const sendPasswordResetCode = async email => {
       <p style="color: #6b7280; font-size: 14px;">If you did not request a password reset, you can ignore this email.</p>
     </div>
   `;
-  const text = `Your Care Mobility password reset code is ${code}. It expires in ${minutes} minutes.`;
+  const text = `Your Florida Mobility Group password reset code is ${code}. It expires in ${minutes} minutes.`;
   const emailResult = await sendEmail({
     to: normalizedEmail,
     subject,
