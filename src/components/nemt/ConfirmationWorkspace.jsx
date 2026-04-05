@@ -34,10 +34,16 @@ const buildSurfaceStyles = isLight => ({
 const STATUS_VARIANTS = {
   Confirmed: 'success',
   Cancelled: 'danger',
+  Disconnected: 'secondary',
   'Needs Call': 'warning',
   Pending: 'primary',
   'Not Sent': 'secondary',
   'Opted Out': 'dark'
+};
+
+const DISCONNECTED_BADGE_STYLE = {
+  backgroundColor: '#6f42c1',
+  color: '#ffffff'
 };
 
 const BLOCK_REASON_OPTIONS = [
@@ -1515,7 +1521,7 @@ const ConfirmationWorkspace = () => {
       notes: mergedNotes,
       confirmation: {
         ...(tripUpdateModal.confirmation || {}),
-        status: isCancelledByPatient ? 'Cancelled' : isSmsLeftUnconfirmed || isCallLeftMessage || isDisconnected ? 'Needs Call' : 'Confirmed',
+        status: isCancelledByPatient ? 'Cancelled' : isDisconnected ? 'Disconnected' : isSmsLeftUnconfirmed || isCallLeftMessage ? 'Needs Call' : 'Confirmed',
         provider: tripUpdateConfirmMethod,
         respondedAt: isCancelledByPatient ? '' : nowIso,
         lastResponseText: isCancelledByPatient ? 'Cancelled by patient.' : isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : isCallLeftMessage ? 'Called and left message.' : isDisconnected ? 'Disconnected.' : `Confirmed via ${methodLabel}`,
@@ -2044,6 +2050,7 @@ const ConfirmationWorkspace = () => {
                 <option value="Pending">Pending</option>
                 <option value="Confirmed">Confirmed</option>
                 <option value="Cancelled">Cancelled</option>
+                <option value="Disconnected">Disconnected</option>
                 <option value="Needs Call">Needs Call</option>
                 <option value="Opted Out">Opted Out</option>
               </Form.Select>
@@ -2191,7 +2198,7 @@ const ConfirmationWorkspace = () => {
                           </Button>
                         )}
                       </td>
-                      <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}{trip.confirmation?.lastResponseCode ? <Badge bg="light" text="dark" className="ms-1">{trip.confirmation.lastResponseCode}</Badge> : null}</td>
+                      <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : confirmationStatus === 'Disconnected' ? <Badge style={DISCONNECTED_BADGE_STYLE}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}{trip.confirmation?.lastResponseCode ? <Badge bg="light" text="dark" className="ms-1">{trip.confirmation.lastResponseCode}</Badge> : null}</td>
                       <td>{trip.safeRideStatus || trip.status || '-'}</td>
                       <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td>
                       <td>{trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td>
