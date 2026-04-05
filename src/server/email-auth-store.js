@@ -1,4 +1,5 @@
 import { query, queryOne } from '@/server/db';
+import { sendEmail } from '@/server/email-service';
 
 const CODE_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_ATTEMPTS = 3;
@@ -87,24 +88,43 @@ export const verifyEmailAuthCode = async (email, submittedCode) => {
  */
 export const sendEmailAuthCode = async email => {
   const { code, expiresIn } = await generateEmailAuthCode(email);
-  
-  // TODO: Integrate with email service (SendGrid, Twilio SendGrid, Amazon SES, etc)
-  // For now, log to console in development
-  console.log(`
-╔═══════════════════════════════════════════════════════╗
-║         EMAIL VERIFICATION CODE (Development)         ║
-╠═══════════════════════════════════════════════════════╣
-║ Email: ${email.padEnd(48)}║
-║ Code:  ${code.padEnd(48)}║
-║ Valid for: ${Math.floor(expiresIn / 60000)} minutes${' '.repeat(32)}║
-╚═══════════════════════════════════════════════════════╝
-  `);
+
+  const subject = 'Care Mobility login verification code';
+  const minutes = Math.floor(expiresIn / 60000);
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111827;">
+      <h2 style="margin-bottom: 12px; color: #0f172a;">Your login code</h2>
+      <p>Use this verification code to sign in to Care Mobility:</p>
+      <div style="display: inline-block; margin: 16px 0; padding: 14px 20px; font-size: 28px; font-weight: 700; letter-spacing: 6px; background: #f3f4f6; border-radius: 10px; color: #111827;">
+        ${code}
+      </div>
+      <p>This code expires in ${minutes} minutes.</p>
+      <p style="color: #6b7280; font-size: 14px;">If you did not request this code, you can ignore this email.</p>
+    </div>
+  `;
+  const text = `Your Care Mobility login code is ${code}. It expires in ${minutes} minutes.`;
+
+  const emailResult = await sendEmail({
+    to: email,
+    subject,
+    html,
+    text
+  });
+
+  if (!emailResult.success) {
+    await query(`DELETE FROM email_auth_codes WHERE email = $1`, [String(email ?? '').trim().toLowerCase()]);
+
+    if (emailResult.reason === 'SMTP_NOT_CONFIGURED') {
+      throw new Error('Email service is not configured. Add SMTP settings in Render to send verification codes.');
+    }
+
+    throw new Error(`Unable to send verification code email: ${emailResult.reason || 'Unknown email error'}`);
+  }
 
   return {
     success: true,
     email,
     expiresIn,
-    // In production, remove this, use actual email service
     developerCode: code
   };
 };

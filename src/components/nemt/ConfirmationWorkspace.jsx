@@ -1310,6 +1310,8 @@ const ConfirmationWorkspace = () => {
     if (method === 'whatsapp') return 'W';
     if (method === 'sms') return 'S';
     if (method === 'call') return 'C';
+    if (method === 'call-left-message') return 'CL';
+    if (method === 'cancelled-by-patient') return 'CP';
     if (method === 'sms-left-unconfirmed') return 'SL';
     return 'M';
   };
@@ -1318,6 +1320,8 @@ const ConfirmationWorkspace = () => {
     if (method === 'whatsapp') return 'WhatsApp';
     if (method === 'sms') return 'SMS';
     if (method === 'call') return 'Call';
+    if (method === 'call-left-message') return 'Called and left message';
+    if (method === 'cancelled-by-patient') return 'Cancelled by patient';
     if (method === 'sms-left-unconfirmed') return 'Could not confirm, SMS left (English)';
     return 'Manual';
   };
@@ -1471,6 +1475,8 @@ const ConfirmationWorkspace = () => {
     const nowIso = new Date().toISOString();
     const methodLabel = getMethodLabel(tripUpdateConfirmMethod);
     const isSmsLeftUnconfirmed = tripUpdateConfirmMethod === 'sms-left-unconfirmed';
+    const isCallLeftMessage = tripUpdateConfirmMethod === 'call-left-message';
+    const isCancelledByPatient = tripUpdateConfirmMethod === 'cancelled-by-patient';
     const oldPickup = normalizeTripTimeDisplay(tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '');
     const oldDropoff = normalizeTripTimeDisplay(tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '');
     const newPickup = String(tripUpdatePickupTime || '').trim();
@@ -1481,6 +1487,10 @@ const ConfirmationWorkspace = () => {
     const detailLines = [];
     if (isSmsLeftUnconfirmed) {
       detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Could not confirm by phone. English SMS was left for follow-up.`);
+    } else if (isCallLeftMessage) {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Called patient and left a message.`);
+    } else if (isCancelledByPatient) {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Trip cancelled by patient.`);
     } else {
       detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
     }
@@ -1494,15 +1504,16 @@ const ConfirmationWorkspace = () => {
     const mergedNotes = [String(tripUpdateModal.notes || '').trim(), detailLines.join('\n')].filter(Boolean).join('\n');
 
     updateTripRecord(tripUpdateModal.id, {
+      status: isCancelledByPatient ? 'Cancelled' : tripUpdateModal.status,
       scheduledPickup: newPickup || oldPickup,
       scheduledDropoff: newDropoff || oldDropoff,
       notes: mergedNotes,
       confirmation: {
         ...(tripUpdateModal.confirmation || {}),
-        status: isSmsLeftUnconfirmed ? 'Needs Call' : 'Confirmed',
+        status: isCancelledByPatient ? 'Cancelled' : isSmsLeftUnconfirmed || isCallLeftMessage ? 'Needs Call' : 'Confirmed',
         provider: tripUpdateConfirmMethod,
-        respondedAt: nowIso,
-        lastResponseText: isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : `Confirmed via ${methodLabel}`,
+        respondedAt: isCancelledByPatient ? '' : nowIso,
+        lastResponseText: isCancelledByPatient ? 'Cancelled by patient.' : isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : isCallLeftMessage ? 'Called and left message.' : `Confirmed via ${methodLabel}`,
         lastResponseCode: getMethodCode(tripUpdateConfirmMethod)
       },
       scheduleChange: pickupChanged || dropoffChanged ? {
@@ -2355,6 +2366,8 @@ const ConfirmationWorkspace = () => {
               <Form.Label className="small text-uppercase text-muted fw-semibold">Confirmed Via</Form.Label>
               <Form.Select value={tripUpdateConfirmMethod} onChange={event => setTripUpdateConfirmMethod(event.target.value)}>
                 <option value="call">Call</option>
+                <option value="call-left-message">Called and left message</option>
+                <option value="cancelled-by-patient">Cancelled by patient</option>
                 <option value="sms">SMS</option>
                 <option value="whatsapp">WhatsApp</option>
                 <option value="sms-left-unconfirmed">Could not confirm, SMS left (English)</option>

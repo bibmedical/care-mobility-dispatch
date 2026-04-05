@@ -79,6 +79,11 @@ NEXTAUTH_SECRET=generated-in-render
 NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_public_token
 NEXT_PUBLIC_MAPBOX_STYLE_ID=mapbox/streets-v12
 STORAGE_ROOT=/var/data/care-mobility/storage
+SMTP_HOST=your_smtp_host
+SMTP_PORT=587
+SMTP_USER=your_smtp_user
+SMTP_PASS=your_smtp_password
+SMTP_FROM=your_from_address
 ```
 
 ### Disco persistente

@@ -349,6 +349,14 @@ export const readSystemUsersPayload = async () => {
   return buildUsersPayload(state);
 };
 
+export const findPersistedSystemUserByEmail = async email => {
+  const normalizedEmail = normalizeAuthValue(email);
+  if (!normalizedEmail) return null;
+
+  const payload = await readSystemUsersPayload();
+  return payload.users.find(user => normalizeAuthValue(user.email) === normalizedEmail) || null;
+};
+
 export const writeSystemUsersState = async nextState => {
   await ensureTable();
   const currentState = await readSystemUsersState();
@@ -360,6 +368,40 @@ export const writeSystemUsersState = async nextState => {
   );
   await syncUsersToAdminState(normalized.users.map(user => enrichSystemUser(user, normalized.protectedUserIds)), currentState.users.map(user => enrichSystemUser(user, currentState.protectedUserIds)));
   return buildUsersPayload(normalized);
+};
+
+export const updatePersistedSystemUserPasswordByEmail = async (email, password) => {
+  const normalizedEmail = normalizeAuthValue(email);
+  const nextPassword = String(password ?? '').trim();
+
+  if (!normalizedEmail) {
+    throw new Error('Email is required');
+  }
+
+  if (!nextPassword) {
+    throw new Error('Password is required');
+  }
+
+  const currentState = await readSystemUsersState();
+  const payload = await buildUsersPayload(currentState);
+  const matchedUser = payload.users.find(user => normalizeAuthValue(user.email) === normalizedEmail);
+
+  if (!matchedUser) {
+    throw new Error('User with this email not found');
+  }
+
+  const nextUsers = currentState.users.map(user => user.id === matchedUser.id ? {
+    ...user,
+    password: nextPassword
+  } : user);
+
+  await writeSystemUsersState({
+    version: currentState.version,
+    protectedUserIds: currentState.protectedUserIds,
+    users: nextUsers
+  });
+
+  return matchedUser.id;
 };
 
 export const authorizePersistedSystemUser = async credentials => {

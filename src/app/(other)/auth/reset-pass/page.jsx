@@ -1,6 +1,5 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import logoSmImg from '@/assets/images/logo-sm.png';
 import ResetPasswordForm from './components/ResetPasswordForm';
 import { Card, CardBody, Col } from 'react-bootstrap';
 export const metadata = {
@@ -12,10 +11,10 @@ const ResetPassword = () => {
         <CardBody className="p-0 bg-black auth-header-box rounded-top">
           <div className="text-center p-3">
             <Link href="/" className="logo logo-admin">
-              <Image src={logoSmImg} height={50} alt="logo" className="auth-logo" />
+              <Image src="/care-mobility-logo.png" width={631} height={292} alt="Care Mobility logo" className="auth-logo" style={{ width: '100%', maxWidth: 320, height: 'auto' }} priority />
             </Link>
             <h4 className="mt-3 mb-1 fw-semibold text-white fs-18">Reset Password</h4>
-            <p className="text-muted fw-medium mb-0">Enter your Email and instructions will be sent to you!</p>
+            <p className="text-muted fw-medium mb-0">Enter your account email, receive a code, and create a new password.</p>
           </div>
         </CardBody>
         <CardBody>
