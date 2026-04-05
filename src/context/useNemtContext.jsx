@@ -164,6 +164,7 @@ export const NemtProvider = ({
   const lastPersistedSnapshotRef = useRef('');
   const hasLocalDispatchChangesRef = useRef(false);
   const persistInFlightRef = useRef(false);
+  const liveSyncInFlightRef = useRef(false);
   const pendingPersistSnapshotRef = useRef('');
   const allowTripShrinkNextPersistRef = useRef(false);
   const pendingAllowTripShrinkRef = useRef(false);
@@ -402,11 +403,17 @@ export const NemtProvider = ({
     let active = true;
 
     const syncLiveState = async () => {
-      if (!active) return;
-      await Promise.allSettled([syncDriversFromServer(), syncDispatchFromServer()]);
+      if (!active || liveSyncInFlightRef.current) return;
+      liveSyncInFlightRef.current = true;
+      try {
+        await Promise.allSettled([syncDriversFromServer(), syncDispatchFromServer()]);
+      } finally {
+        liveSyncInFlightRef.current = false;
+      }
     };
 
     const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
       void syncLiveState();
     }, DISPATCH_SYNC_POLL_MS);
 

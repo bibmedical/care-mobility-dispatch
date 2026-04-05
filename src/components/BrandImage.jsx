@@ -4,6 +4,13 @@ import { BRANDING_PAGE_KEYS, DEFAULT_BRANDING_SETTINGS, resolveBrandingImage } f
 import useBrandingApi from '@/hooks/useBrandingApi';
 import { useEffect, useMemo, useState } from 'react';
 
+const appendCacheVersion = (value, version) => {
+  const src = String(value || '').trim();
+  const cacheVersion = String(version || '').trim();
+  if (!src || !cacheVersion || src.startsWith('data:')) return src;
+  return `${src}${src.includes('?') ? '&' : '?'}v=${encodeURIComponent(cacheVersion)}`;
+};
+
 const BrandImage = ({
   kind = 'login',
   target,
@@ -23,6 +30,7 @@ const BrandImage = ({
     return resolveBrandingImage(branding, resolvedTarget) || defaultSrc;
   }, [branding, defaultSrc, resolvedTarget]);
   const [src, setSrc] = useState(defaultSrc);
+  const versionedSrc = useMemo(() => appendCacheVersion(src || defaultSrc, branding?.updatedAt), [branding?.updatedAt, defaultSrc, src]);
 
   useEffect(() => {
     setSrc(resolvedSrc || defaultSrc);
@@ -44,7 +52,7 @@ const BrandImage = ({
     setSrc(defaultSrc);
   };
 
-  return <img src={src || defaultSrc} alt={alt} className={className} style={style} width={width} height={height} onClick={onClick} onError={handleError} />;
+  return <img src={versionedSrc || defaultSrc} alt={alt} className={className} style={style} width={width} height={height} onClick={onClick} onError={handleError} />;
 };
 
 export default BrandImage;

@@ -4,23 +4,59 @@ import { DEFAULT_BRANDING_SETTINGS, normalizeBrandingSettings } from '@/helpers/
 import { useEffect, useState } from 'react';
 
 const BRANDING_EVENT_NAME = 'care-mobility-branding-updated';
+let cachedBranding = DEFAULT_BRANDING_SETTINGS;
+let hasLoadedBranding = false;
+let brandingRequestPromise = null;
+const brandingSubscribers = new Set();
+
+const broadcastBranding = branding => {
+  cachedBranding = normalizeBrandingSettings(branding);
+  hasLoadedBranding = true;
+  brandingSubscribers.forEach(listener => listener(cachedBranding));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(BRANDING_EVENT_NAME, { detail: cachedBranding }));
+  }
+  return cachedBranding;
+};
+
+const fetchBranding = async () => {
+  if (brandingRequestPromise) return brandingRequestPromise;
+
+  brandingRequestPromise = (async () => {
+    const response = await fetch('/api/branding', { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload?.error || 'Unable to load branding settings');
+    return broadcastBranding(payload?.branding);
+  })().finally(() => {
+    brandingRequestPromise = null;
+  });
+
+  return brandingRequestPromise;
+};
 
 const useBrandingApi = () => {
-  const [data, setData] = useState({ branding: DEFAULT_BRANDING_SETTINGS });
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState({ branding: cachedBranding });
+  const [loading, setLoading] = useState(!hasLoadedBranding);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const refresh = async () => {
+  const refresh = async (options = {}) => {
+    const force = options?.force === true;
+    if (hasLoadedBranding && !force) {
+      setData({ branding: cachedBranding });
+      setLoading(false);
+      return cachedBranding;
+    }
+
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/branding', { cache: 'no-store' });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload?.error || 'Unable to load branding settings');
-      setData({ branding: normalizeBrandingSettings(payload?.branding) });
+      const branding = await fetchBranding();
+      setData({ branding });
+      return branding;
     } catch (fetchError) {
       setError(fetchError.message || 'Unable to load branding settings');
+      throw fetchError;
     } finally {
       setLoading(false);
     }
@@ -37,11 +73,8 @@ const useBrandingApi = () => {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || 'Unable to save branding settings');
-      const normalized = normalizeBrandingSettings(payload?.branding);
+      const normalized = broadcastBranding(payload?.branding);
       setData({ branding: normalized });
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent(BRANDING_EVENT_NAME, { detail: normalized }));
-      }
       return normalized;
     } catch (saveError) {
       const message = saveError.message || 'Unable to save branding settings';
@@ -53,7 +86,23 @@ const useBrandingApi = () => {
   };
 
   useEffect(() => {
-    refresh();
+    const handleBroadcast = branding => {
+      setData({ branding });
+      setLoading(false);
+    };
+
+    brandingSubscribers.add(handleBroadcast);
+    if (hasLoadedBranding) {
+      setData({ branding: cachedBranding });
+      setLoading(false);
+    } else {
+      refresh().catch(() => {});
+    }
+
+    return () => {
+      brandingSubscribers.delete(handleBroadcast);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {
