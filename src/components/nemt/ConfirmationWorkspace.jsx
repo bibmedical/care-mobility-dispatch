@@ -1405,7 +1405,7 @@ const ConfirmationWorkspace = () => {
     updatedAt: new Date().toISOString()
   });
 
-      setConfirmationLegScope(getSiblingLegTrips(trip, trips).length > 0 ? '' : 'single');
+  const getTripConfirmActionLabel = (trip, confirmationStatus) => {
     if (confirmationStatus === 'Confirmed') return 'Unconfirm';
     const code = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
     if (code) return `Confirm (${code})`;
