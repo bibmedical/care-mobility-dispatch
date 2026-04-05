@@ -1312,6 +1312,7 @@ const ConfirmationWorkspace = () => {
     if (method === 'call') return 'C';
     if (method === 'call-left-message') return 'CL';
     if (method === 'cancelled-by-patient') return 'CP';
+    if (method === 'disconnected') return 'DC';
     if (method === 'sms-left-unconfirmed') return 'SL';
     return 'M';
   };
@@ -1322,6 +1323,7 @@ const ConfirmationWorkspace = () => {
     if (method === 'call') return 'Call';
     if (method === 'call-left-message') return 'Called and left message';
     if (method === 'cancelled-by-patient') return 'Cancelled by patient';
+    if (method === 'disconnected') return 'Disconnected';
     if (method === 'sms-left-unconfirmed') return 'Could not confirm, SMS left (English)';
     return 'Manual';
   };
@@ -1477,6 +1479,7 @@ const ConfirmationWorkspace = () => {
     const isSmsLeftUnconfirmed = tripUpdateConfirmMethod === 'sms-left-unconfirmed';
     const isCallLeftMessage = tripUpdateConfirmMethod === 'call-left-message';
     const isCancelledByPatient = tripUpdateConfirmMethod === 'cancelled-by-patient';
+    const isDisconnected = tripUpdateConfirmMethod === 'disconnected';
     const oldPickup = normalizeTripTimeDisplay(tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '');
     const oldDropoff = normalizeTripTimeDisplay(tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '');
     const newPickup = String(tripUpdatePickupTime || '').trim();
@@ -1491,6 +1494,8 @@ const ConfirmationWorkspace = () => {
       detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Called patient and left a message.`);
     } else if (isCancelledByPatient) {
       detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Trip cancelled by patient.`);
+    } else if (isDisconnected) {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Phone disconnected.`);
     } else {
       detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
     }
@@ -1510,10 +1515,10 @@ const ConfirmationWorkspace = () => {
       notes: mergedNotes,
       confirmation: {
         ...(tripUpdateModal.confirmation || {}),
-        status: isCancelledByPatient ? 'Cancelled' : isSmsLeftUnconfirmed || isCallLeftMessage ? 'Needs Call' : 'Confirmed',
+        status: isCancelledByPatient ? 'Cancelled' : isSmsLeftUnconfirmed || isCallLeftMessage || isDisconnected ? 'Needs Call' : 'Confirmed',
         provider: tripUpdateConfirmMethod,
         respondedAt: isCancelledByPatient ? '' : nowIso,
-        lastResponseText: isCancelledByPatient ? 'Cancelled by patient.' : isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : isCallLeftMessage ? 'Called and left message.' : `Confirmed via ${methodLabel}`,
+        lastResponseText: isCancelledByPatient ? 'Cancelled by patient.' : isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : isCallLeftMessage ? 'Called and left message.' : isDisconnected ? 'Disconnected.' : `Confirmed via ${methodLabel}`,
         lastResponseCode: getMethodCode(tripUpdateConfirmMethod)
       },
       scheduleChange: pickupChanged || dropoffChanged ? {
@@ -2368,6 +2373,7 @@ const ConfirmationWorkspace = () => {
                 <option value="call">Call</option>
                 <option value="call-left-message">Called and left message</option>
                 <option value="cancelled-by-patient">Cancelled by patient</option>
+                <option value="disconnected">Disconnected</option>
                 <option value="sms">SMS</option>
                 <option value="whatsapp">WhatsApp</option>
                 <option value="sms-left-unconfirmed">Could not confirm, SMS left (English)</option>

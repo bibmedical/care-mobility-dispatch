@@ -9,46 +9,46 @@
 
 // Topbar
 $topbar-height:                        52px;
-$topbar-bg:                            #f7fbfe;
-$topbar-b-border-color:                #dbe8f3;
-$topbar-nav-icon-bg:                   #edf7fc;
-$topbar-nav-icon-color:                #23306a;
-$topbar-box-shadow:                    0 10px 28px rgba(35,48,106,.08);
+$topbar-bg:                            $white;
+$topbar-b-border-color:                #f8f9fb;
+$topbar-nav-icon-bg:                   $white;
+$topbar-nav-icon-color:                #424d65;
+$topbar-box-shadow:                    0 3px 4px rgba(142,134,171,.10);
 
 // Sidebar
 $startbar-width:                       230px;
 $startbar-collapsed-width:             70px;
 
-$startbar-bg:                          #eff8fc;
+$startbar-bg:                          #f8f9fb;
 // $startbar-bg-navy-blue:                #0a2555;
-$startbar-e-border-color:              #d0dfeb;
+$startbar-e-border-color:              $gray-300;
 
-$menu-icon-color:                    #5f75a3;
-$menu-link-color:                    #23306a;
+$menu-icon-color:                    #96a0b5;
+$menu-link-color:                    #4a505e;
 $menu-link-active-color:             #ffffff;
 $menu-link-hover-color:             #ffffff;
-$nav-link-disc-color:                #86a1c0;
-$menu-label-color:                   #6d84a9;
+$nav-link-disc-color:                #8997bd;
+$menu-label-color:                   #a0a5b3;
 
-$text-secondary:                     #6b84a7;
-$border-secondary:                     #6b84a7;
+$text-secondary:                     #95a0c5;
+$border-secondary:                     #95a0c5;
 
 // form
-$label-color:                        #4d6494;
+$label-color:                        #656d9a;
 
 $theme-white-color:                  #ffffff;
 $table-color:                           #a8abbf;
 // scss-docs-start gray-color-variables
 $white:    #ffffff;
-$gray-100: #f5fbff;
-$gray-200: #ebf4fa;
-$gray-300: #d8e5f0;
-$gray-400: #b7cbe0;
-$gray-500: #8ea9c6;
-$gray-600: #6f88a9;
-$gray-700: #556d8c;
-$gray-800: #324766;
-$gray-900: #17243d;
+$gray-100: #f4f6f9;
+$gray-200: #eaeff5;
+$gray-300: #d9e1ec;
+$gray-400: #c1cde0;
+$gray-500: #a8b5d1;
+$gray-600: #95a0c5;
+$gray-700: #7a82b1;
+$gray-800: #555b7e;
+$gray-900: #172935;
 $black:    #000000;
 // scss-docs-end gray-color-variables
 
@@ -69,16 +69,16 @@ $grays: (
 // fusv-enable
 
 // scss-docs-start color-variables
-$blue:    #25356f;
+$blue:    #1761fd;
 $indigo:  #6610f2;
-$purple:  #1fbad4;
+$purple:  #6f6af8;
 $pink:    #fd3c97;
 $red:     #f5325c;
 $orange:  #ff8500;
 $yellow:  #ffb822;
 $green:   #22b783;
-$teal:    #1fbad4;
-$cyan:    #34c6de;
+$teal:    #16cdc7;
+$cyan:    #12a4ed;
 $beanred: #FE6B8B;
 $gray:    #9ba7ca;
 // scss-docs-end color-variables
@@ -333,10 +333,10 @@ $cyans: (
 // fusv-enable
 
 // scss-docs-start theme-color-variables
-$primary:       $teal;
+$primary:       $purple;
 $secondary:     $gray-500;
-$success:       $blue;
-$info:          $cyan;
+$success:       $green;
+$info:          $teal;
 $warning:       $yellow;
 $danger:        $red;
 $pink:          $pink;
