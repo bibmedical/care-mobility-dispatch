@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
 import path from 'path';
+import { getStorageRoot } from '@/server/storage-paths';
 
 const MIME_BY_EXT = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
+  '.svg': 'image/svg+xml',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
   '.pdf': 'application/pdf'
@@ -30,9 +32,13 @@ export async function GET(request) {
   }
 
   const workspaceRoot = process.cwd();
-  const absolutePath = path.resolve(workspaceRoot, requestedPath);
+  const storageRoot = getStorageRoot();
+  const isStoragePath = requestedPath.toLowerCase().startsWith('storage/');
+  const absolutePath = isStoragePath ? path.resolve(storageRoot, requestedPath.slice('storage/'.length)) : path.resolve(workspaceRoot, requestedPath);
 
-  if (!absolutePath.startsWith(workspaceRoot)) {
+  const allowedRoot = isStoragePath ? storageRoot : workspaceRoot;
+
+  if (!absolutePath.startsWith(allowedRoot)) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 403 });
   }
 

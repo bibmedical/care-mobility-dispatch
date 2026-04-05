@@ -39,7 +39,12 @@ const BrandImage = ({
     return () => window.removeEventListener(eventName, handleBrandingUpdated);
   }, [defaultSrc, eventName, resolvedTarget]);
 
-  return <img src={src || defaultSrc} alt={alt} className={className} style={style} width={width} height={height} onClick={onClick} />;
+  const handleError = () => {
+    if (!defaultSrc || src === defaultSrc) return;
+    setSrc(defaultSrc);
+  };
+
+  return <img src={src || defaultSrc} alt={alt} className={className} style={style} width={width} height={height} onClick={onClick} onError={handleError} />;
 };
 
 export default BrandImage;

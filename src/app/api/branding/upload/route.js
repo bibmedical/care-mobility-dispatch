@@ -4,11 +4,12 @@ import path from 'path';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isAdminRole } from '@/helpers/system-users';
+import { getStorageRoot } from '@/server/storage-paths';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
 const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
-const BRANDING_STORAGE_DIR = path.join(process.cwd(), 'storage', 'branding');
+const BRANDING_STORAGE_DIR = path.join(getStorageRoot(), 'branding');
 
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 const forbidden = () => NextResponse.json({ error: 'Admin access required' }, { status: 403 });
