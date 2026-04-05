@@ -314,6 +314,8 @@ const sortTripsByPickupTime = items => [...items].sort((leftTrip, rightTrip) => 
   return String(leftTrip.id).localeCompare(String(rightTrip.id));
 });
 
+const normalizeTripId = tripId => String(tripId || '').trim();
+
 const normalizeSortValue = value => {
   if (value == null) return '';
   if (typeof value === 'number') return value;
@@ -715,7 +717,12 @@ const DispatcherWorkspace = () => {
   })])), [blacklistEntries, optOutList, routePlans, smsData?.sms?.defaultCountryCode, trips]);
 
   const toggleTripSelection = tripId => {
-    setSelectedTripIds(currentTripIds => currentTripIds.includes(tripId) ? currentTripIds.filter(id => id !== tripId) : [...currentTripIds, tripId]);
+    const normalizedTripId = normalizeTripId(tripId);
+    if (!normalizedTripId) return;
+    setSelectedTripIds(currentTripIds => {
+      const currentIds = currentTripIds.map(normalizeTripId).filter(Boolean);
+      return currentIds.includes(normalizedTripId) ? currentIds.filter(id => id !== normalizedTripId) : [...currentIds, normalizedTripId];
+    });
   };
 
   const syncTripTableScroll = source => {
@@ -1293,7 +1300,8 @@ const DispatcherWorkspace = () => {
       return cityMatches && zipMatches;
     });
   }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
-  const visibleTripIds = filteredTrips.map(trip => trip.id);
+  const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
+  const visibleTripIds = filteredTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const filteredDrivers = drivers;
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
@@ -1412,7 +1420,7 @@ const DispatcherWorkspace = () => {
   const assignedTripsCount = trips.filter(trip => trip.status === 'Assigned').length;
   const activeInfoTrip = useMemo(() => {
     if (selectedTripIds.length > 0) {
-      return trips.find(trip => selectedTripIds.includes(trip.id)) ?? null;
+      return trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null;
     }
 
     if (selectedRoute) {
@@ -1424,25 +1432,25 @@ const DispatcherWorkspace = () => {
     }
 
     return null;
-  }, [routeTrips, selectedDriver, selectedRoute, selectedTripIds, trips]);
-  const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIds.includes(id));
+  }, [routeTrips, selectedDriver, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
+  const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const tripTableColumnCount = visibleTripColumns.length + 3;
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
-    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
+    const preferredTrip = trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
     if (preferredTrip) return preferredTrip;
     const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
     if (routeTrip) return routeTrip;
     return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip)) ?? null;
-  }, [routeTrips, selectedDriver, selectedTripIds, trips]);
+  }, [routeTrips, selectedDriver, selectedTripIdSet, trips]);
   const selectedDriverPendingEtaTrip = useMemo(() => {
     if (!selectedDriver || selectedDriverActiveTrip) return null;
-    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && isTripAssignedToDriver(trip, selectedDriver.id));
+    const preferredTrip = trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id));
     if (preferredTrip) return preferredTrip;
     const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id));
     if (routeTrip) return routeTrip;
     return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
-  }, [routeTrips, selectedDriver, selectedDriverActiveTrip, selectedTripIds, trips]);
+  }, [routeTrips, selectedDriver, selectedDriverActiveTrip, selectedTripIdSet, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!dispatcherLayout.mapVisible || !selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
     const target = getSelectedDriverEtaTarget(selectedDriverActiveTrip);
@@ -1600,11 +1608,11 @@ const DispatcherWorkspace = () => {
 
   const handleSelectAll = checked => {
     if (checked) {
-      setSelectedTripIds(Array.from(new Set([...selectedTripIds, ...visibleTripIds])));
+      setSelectedTripIds(currentIds => Array.from(new Set([...currentIds.map(normalizeTripId).filter(Boolean), ...visibleTripIds])));
       setStatusMessage('Trips visibles seleccionados.');
       return;
     }
-    setSelectedTripIds(selectedTripIds.filter(id => !visibleTripIds.includes(id)));
+    setSelectedTripIds(currentIds => currentIds.map(normalizeTripId).filter(id => id && !visibleTripIds.includes(id)));
     setStatusMessage('Trips visibles deseleccionados.');
   };
 
@@ -1616,7 +1624,7 @@ const DispatcherWorkspace = () => {
 
   const handleTripSelectionToggle = tripId => {
     const trip = trips.find(item => item.id === tripId);
-    const isSelecting = !selectedTripIds.includes(tripId);
+    const isSelecting = !selectedTripIdSet.has(normalizeTripId(tripId));
 
     toggleTripSelection(tripId);
 
@@ -2359,7 +2367,7 @@ const DispatcherWorkspace = () => {
                         <div>{stop.detail}</div>
                       </Popup>
                     </Marker>) : null}
-                  {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIds.includes(trip.id)).map(trip => <CircleMarker key={trip.id} center={trip.position} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
+                  {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).map(trip => <CircleMarker key={trip.id} center={trip.position} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
                     click: () => toggleTripSelection(trip.id)
                   }}>
                       <Popup>{`${trip.brokerTripId || trip.id} | ${trip.legLabel || 'Ride'} | ${trip.rider} | ${trip.pickup}`}</Popup>
@@ -2575,11 +2583,11 @@ const DispatcherWorkspace = () => {
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} className="table-light">
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
-                      </tr> : <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
+                      </tr> : <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
                         <td>
                           <input
                             type="checkbox"
-                            checked={selectedTripIds.includes(row.trip.id)}
+                            checked={selectedTripIdSet.has(normalizeTripId(row.trip.id))}
                             onChange={() => handleTripSelectionToggle(row.trip.id)}
                             disabled={mapLocked}
                             style={{
@@ -2811,10 +2819,10 @@ const DispatcherWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIds.includes(trip.id) ? 'table-success' : ''}>
+                    {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
                         <td>
                           <div className="d-flex align-items-center gap-1">
-                            <Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => handleTripSelectionToggle(trip.id)} disabled={mapLocked} />
+                            <Form.Check checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => handleTripSelectionToggle(trip.id)} disabled={mapLocked} />
                             <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
                           </div>
                         </td>

@@ -674,7 +674,12 @@ const TripDashboardWorkspace = () => {
   })])), [blacklistEntries, optOutList, routePlans, smsData?.sms?.defaultCountryCode, trips]);
 
   const toggleTripSelection = tripId => {
-    setSelectedTripIds(currentTripIds => currentTripIds.includes(tripId) ? currentTripIds.filter(id => id !== tripId) : [...currentTripIds, tripId]);
+    const normalizedTripId = normalizeTripId(tripId);
+    if (!normalizedTripId) return;
+    setSelectedTripIds(currentTripIds => {
+      const currentIds = currentTripIds.map(normalizeTripId).filter(Boolean);
+      return currentIds.includes(normalizedTripId) ? currentIds.filter(id => id !== normalizedTripId) : [...currentIds, normalizedTripId];
+    });
   };
 
   const syncTripTableScroll = source => {
@@ -702,7 +707,7 @@ const TripDashboardWorkspace = () => {
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const activeDateTripIdSet = useMemo(() => {
-    if (tripDateFilter === 'all') return new Set();
+    if (tripDateFilter === 'all') return null;
     return new Set(trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter).map(trip => String(trip?.id || '').trim()).filter(Boolean));
   }, [tripDateFilter, routePlans, trips]);
 
@@ -712,7 +717,7 @@ const TripDashboardWorkspace = () => {
       selectedTripIds,
       selectedDriverId,
       selectedRouteId,
-      activeDateTripIds: Array.from(activeDateTripIdSet),
+      activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
       capturedAt: Date.now()
     }));
   }, [activeDateTripIdSet, selectedDriverId, selectedRouteId, selectedTripIds, tripDateFilter]);
@@ -1190,9 +1195,8 @@ const TripDashboardWorkspace = () => {
     if (tripStatusFilter === 'unconfirm') return confirmationStatus === 'Not Sent' || String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase() === 'U';
     return normalizedStatus === tripStatusFilter;
   }).filter(trip => {
-    const effectiveTripDateFilter = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
-    if (!effectiveTripDateFilter) return false;
-    return getTripTimelineDateKey(trip, routePlans, trips) === effectiveTripDateFilter;
+    if (tripDateFilter === 'all') return true;
+    return getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
     return getTripLegFilterKey(trip) === tripLegFilter;
@@ -1284,12 +1288,13 @@ const TripDashboardWorkspace = () => {
       return cityMatches && zipMatches;
     });
   }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
-  const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIds.includes(trip.id)), [selectedTripIds, trips]);
+  const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
+  const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
-    const selectedVisibleTrips = sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIds.includes(trip.id)));
+    const selectedVisibleTrips = sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))));
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
     return sortTripsByPickupTime(filteredTrips).slice(0, 200);
-  }, [filteredTrips, selectedTripIds]);
+  }, [filteredTrips, selectedTripIdSet]);
   const aiPlannerCityOptions = useMemo(() => {
     const citySet = new Set();
     aiPlannerBaseScopeTrips.forEach(trip => {
@@ -1328,14 +1333,14 @@ const TripDashboardWorkspace = () => {
   }), [aiPlannerBaseScopeTrips, aiPlannerCityFilter, aiPlannerLegFilter, aiPlannerRoutePairMode, aiPlannerRoutePairSet, aiPlannerTypeFilter]);
   const aiPlannerAnchorTrip = useMemo(() => aiPlanningScopeTrips.find(trip => trip.id === aiPlannerAnchorTripId) ?? null, [aiPlanningScopeTrips, aiPlannerAnchorTripId]);
   const aiPlannerZipOptions = useMemo(() => Array.from(new Set(aiPlanningScopeTrips.flatMap(trip => [getPickupZip(trip), getDropoffZip(trip)]).filter(Boolean))).sort((left, right) => left.localeCompare(right)), [aiPlanningScopeTrips]);
-  const visibleTripIds = filteredTrips.map(trip => trip.id);
+  const visibleTripIds = filteredTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean);
   const filteredDrivers = useMemo(() => {
     const term = driverSearch.trim().toLowerCase();
     if (!term) return drivers;
     return drivers.filter(driver => [driver?.name, driver?.code, driver?.vehicle, driver?.attendant, driver?.live].some(value => String(value || '').toLowerCase().includes(term)));
   }, [driverSearch, drivers]);
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
-  const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIds.includes(trip.id) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIds]);
+  const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIdSet]);
   const selectedDriverWorkingTrips = useMemo(() => {
     if (!selectedDriver) return [];
     const relevantTrips = filteredTrips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id) || selectedDriverCandidateTripIds.has(trip.id));
@@ -1528,7 +1533,7 @@ const TripDashboardWorkspace = () => {
       selectedTripIds,
       selectedDriverId,
       selectedRouteId,
-      activeDateTripIds: Array.from(activeDateTripIdSet),
+      activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
       routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
       capturedAt: Date.now()
     }));
@@ -1605,17 +1610,17 @@ const TripDashboardWorkspace = () => {
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
 
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
-  const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIds.includes(trip.id)) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
-  const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIds.includes(id));
+  const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
+  const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
-    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && isTripAssignedToDriver(trip, selectedDriver.id));
+    const preferredTrip = trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id));
     if (preferredTrip) return preferredTrip;
     const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id));
     if (routeTrip) return routeTrip;
     return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
-  }, [routeTrips, selectedDriver, selectedTripIds, trips]);
+  }, [routeTrips, selectedDriver, selectedTripIdSet, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
     const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip));
@@ -2114,12 +2119,12 @@ const TripDashboardWorkspace = () => {
 
   const handleSelectAll = checked => {
     if (checked) {
-      setSelectedTripIds(Array.from(new Set([...selectedTripIds, ...visibleTripIds])));
+      setSelectedTripIds(currentIds => Array.from(new Set([...currentIds.map(normalizeTripId).filter(Boolean), ...visibleTripIds])));
       setStatusMessage('Visible trips selected.');
       return;
     }
 
-    setSelectedTripIds(selectedTripIds.filter(id => !visibleTripIds.includes(id)));
+    setSelectedTripIds(currentIds => currentIds.map(normalizeTripId).filter(id => id && !visibleTripIds.includes(id)));
     setStatusMessage('Visible trips deselected.');
   };
 
@@ -2634,7 +2639,7 @@ const TripDashboardWorkspace = () => {
       selectedTripIds,
       selectedDriverId,
       selectedRouteId,
-      activeDateTripIds: Array.from(activeDateTripIdSet),
+      activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
       routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
       capturedAt: Date.now()
     }));
@@ -2782,10 +2787,10 @@ const TripDashboardWorkspace = () => {
               </tr>
             </thead>
             <tbody>
-              {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIds.includes(trip.id) ? 'table-success' : ''}>
+              {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
                   <td>
                     <div className="d-flex align-items-center gap-1">
-                      <Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => toggleTripSelection(trip.id)} />
+                      <Form.Check checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => toggleTripSelection(trip.id)} />
                       <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
                     </div>
                   </td>
@@ -3342,11 +3347,11 @@ const TripDashboardWorkspace = () => {
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'section' ? <tr key={row.key} className="table-light">
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
-                      </tr> : <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
+                      </tr> : <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
                         <td>
                           <input
                             type="checkbox"
-                            checked={selectedTripIds.includes(row.trip.id)}
+                            checked={selectedTripIdSet.has(normalizeTripId(row.trip.id))}
                             onChange={() => handleTripSelectionToggle(row.trip.id)}
                             style={{
                               width: 16,
