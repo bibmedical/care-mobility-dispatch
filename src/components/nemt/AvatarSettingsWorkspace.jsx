@@ -40,7 +40,12 @@ const buildDraft = avatar => ({
   }
 });
 
-const AvatarSettingsWorkspace = () => {
+const AvatarSettingsWorkspace = ({
+  embedded = false,
+  pageTitle = 'Avatar',
+  pageSubName = 'Settings',
+  settingsPathLabel = 'Settings > Avatar'
+}) => {
   const { data, loading, saving, error, refresh, saveData } = useAvatarSettingsApi();
   const { changeTheme, themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
@@ -82,8 +87,8 @@ const AvatarSettingsWorkspace = () => {
     reader.readAsDataURL(file);
   };
 
-  return <>
-      <PageTitle title="Avatar" subName="Settings" />
+    return <>
+      {embedded ? null : <PageTitle title={pageTitle} subName={pageSubName} />}
       <Row className="g-3 mb-3">
         <Col md={6} xl={3}>
           <Card style={surfaceStyles.card} className="h-100 border">
@@ -123,7 +128,7 @@ const AvatarSettingsWorkspace = () => {
         <CardBody>
           <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-4">
             <div>
-              <h5 className="mb-1">Settings &gt; Avatar</h5>
+              <h5 className="mb-1">{settingsPathLabel}</h5>
               <p className="text-secondary mb-2">Puedes usar una imagen ya guardada en public o subir una foto nueva desde esta página. También puedes escribir memoria extra para que la IA local sepa más cosas de tu operación.</p>
               <div className="small text-secondary">{saving ? 'Saving avatar settings...' : message}</div>
             </div>
