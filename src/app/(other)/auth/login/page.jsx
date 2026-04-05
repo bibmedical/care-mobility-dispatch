@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import BrandImage from '@/components/BrandImage';
 import Link from 'next/link';
 import LoginForm from './components/LoginForm';
 import { Card, CardBody, Col } from 'react-bootstrap';
@@ -13,7 +13,7 @@ const Login = () => {
         <CardBody>
           <div className="d-flex justify-content-center mb-4">
             <Link href="/" className="text-decoration-none" aria-label="Florida Mobility Group home">
-              <Image src="/fmg-login-logo.png" alt="Florida Mobility Group logo" width={640} height={360} style={{ width: '100%', maxWidth: 420, height: 'auto' }} priority />
+              <BrandImage target="authLogin" alt="Florida Mobility Group login logo" width={640} height={360} style={{ width: '100%', maxWidth: 420, height: 'auto', objectFit: 'contain' }} />
             </Link>
           </div>
           <LoginForm />

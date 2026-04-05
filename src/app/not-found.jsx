@@ -1,8 +1,8 @@
+import BrandImage from '@/components/BrandImage';
 import Image from 'next/image';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
 import errorImg from '@/assets/images/extra/error.svg';
-import logoSm from '@/assets/images/logo-sm.png';
 import { Card, CardBody, Col, Row } from 'react-bootstrap';
 const NotFound = () => {
   return <div className="container-xxl">
@@ -15,7 +15,7 @@ const NotFound = () => {
                   <CardBody className="p-0 bg-black auth-header-box rounded-top">
                     <div className="text-center p-3">
                       <Link href="/" className="logo logo-admin">
-                        <Image src={logoSm} height={50} alt="logo" className="auth-logo" />
+                        <BrandImage target="error404" height={50} width={180} alt="404 logo" className="auth-logo" style={{ width: '100%', maxWidth: 180, height: 'auto', objectFit: 'contain' }} />
                       </Link>
                       <h4 className="mt-3 mb-1 fw-semibold text-white fs-18">Oops! Sorry page does not found</h4>
                       <p className="text-muted fw-medium mb-0">Back to dashboard of Dastone</p>

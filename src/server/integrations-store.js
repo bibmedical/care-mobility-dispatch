@@ -1,4 +1,5 @@
 import { query, queryOne } from '@/server/db';
+import { DEFAULT_BRANDING_SETTINGS, normalizeBrandingSettings } from '@/helpers/branding';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
 
 const DEFAULT_STATE = {
@@ -37,6 +38,9 @@ const DEFAULT_STATE = {
     notes: '',
     connectionStatus: 'Not configured',
     lastValidatedAt: ''
+  },
+  branding: {
+    ...DEFAULT_BRANDING_SETTINGS
   },
   sms: {
     activeProvider: 'disabled',
@@ -158,6 +162,8 @@ const normalizeAiState = value => ({
   lastValidatedAt: String(value?.lastValidatedAt ?? '')
 });
 
+const normalizeBrandingState = value => normalizeBrandingSettings(value);
+
 const normalizeSmsOptOutEntry = value => ({
   id: String(value?.id ?? `${String(value?.phone ?? '').replace(/\D/g, '') || String(value?.name ?? '').trim().toLowerCase().replace(/\s+/g, '-')}`),
   name: String(value?.name ?? ''),
@@ -211,6 +217,7 @@ const normalizeState = value => ({
   version: 1,
   uber: normalizeUberState(value?.uber),
   ai: normalizeAiState(value?.ai),
+  branding: normalizeBrandingState(value?.branding),
   sms: normalizeSmsState(value?.sms)
 });
 
