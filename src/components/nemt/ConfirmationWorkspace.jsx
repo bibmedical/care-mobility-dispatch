@@ -1367,6 +1367,12 @@ const ConfirmationWorkspace = () => {
     setConfirmationMethod('whatsapp');
   };
 
+  const handleCloseConfirmationMethod = () => {
+    setConfirmationMethodModal(null);
+    setConfirmationSourceTrip(null);
+    setConfirmationLegScope('single');
+  };
+
   const getMethodCode = method => {
     if (method === 'whatsapp') return 'W';
     if (method === 'sms') return 'S';
@@ -1399,7 +1405,7 @@ const ConfirmationWorkspace = () => {
     updatedAt: new Date().toISOString()
   });
 
-  const getTripConfirmActionLabel = (trip, confirmationStatus) => {
+      setConfirmationLegScope(getSiblingLegTrips(trip, trips).length > 0 ? '' : 'single');
     if (confirmationStatus === 'Confirmed') return 'Unconfirm';
     const code = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
     if (code) return `Confirm (${code})`;
@@ -1761,13 +1767,21 @@ const ConfirmationWorkspace = () => {
     setTripUpdateModal(null);
   };
 
+  const confirmationSiblingTrips = useMemo(() => confirmationSourceTrip ? getSiblingLegTrips(confirmationSourceTrip, trips) : EMPTY_ARRAY, [confirmationSourceTrip, trips]);
+  const confirmationRequiresLegChoice = Boolean(confirmationSourceTrip && confirmationSiblingTrips.length > 0);
+
   const handleSendConfirmation = async () => {
     if (!confirmationMethodModal || confirmationMethodModal.length === 0) {
       setCustomStatus('No trips selected for confirmation.');
       return;
     }
 
-    const siblingTrips = confirmationSourceTrip ? getSiblingLegTrips(confirmationSourceTrip, trips) : [];
+    if (confirmationRequiresLegChoice && !confirmationLegScope) {
+      setCustomStatus('Choose whether to confirm only this leg or both legs before sending.');
+      return;
+    }
+
+    const siblingTrips = confirmationSiblingTrips;
     const targetTrips = confirmationSourceTrip && confirmationLegScope === 'both' ? Array.from(new Map([confirmationSourceTrip, ...siblingTrips].map(item => [item.id, item])).values()) : confirmationMethodModal;
     if (selectedOutputColumnOptions.length === 0) {
       setCustomStatus('Selecciona al menos una columna para enviar.');
@@ -1853,9 +1867,7 @@ const ConfirmationWorkspace = () => {
       }
       
       await refreshDispatchState({ forceServer: true });
-      setConfirmationMethodModal(null);
-      setConfirmationSourceTrip(null);
-      setConfirmationLegScope('single');
+      handleCloseConfirmationMethod();
     } catch (error) {
       setCustomStatus(`Error sending confirmation: ${error.message}`);
     } finally {
@@ -2488,7 +2500,7 @@ const ConfirmationWorkspace = () => {
         </Modal.Footer>
       </Modal>
 
-      <Modal show={Boolean(confirmationMethodModal)} onHide={() => setConfirmationMethodModal(null)} centered>
+      <Modal show={Boolean(confirmationMethodModal)} onHide={handleCloseConfirmationMethod} centered>
         <Modal.Header closeButton>
           <Modal.Title>Send Confirmation</Modal.Title>
         </Modal.Header>
@@ -2505,9 +2517,13 @@ const ConfirmationWorkspace = () => {
             )}
           </div>
 
-          {confirmationSourceTrip && getSiblingLegTrips(confirmationSourceTrip, trips).length > 0 ? <>
+          {confirmationRequiresLegChoice ? <>
+              <div className="alert alert-warning small">
+                This trip has another leg. Choose if you want to confirm only this leg or both legs.
+              </div>
               <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Leg Scope</Form.Label>
               <Form.Select className="mb-3" value={confirmationLegScope} onChange={event => setConfirmationLegScope(event.target.value)}>
+                <option value="">Choose one option</option>
                 <option value="single">Only this leg ({confirmationSourceTrip.id})</option>
                 <option value="both">Both legs (A and B)</option>
               </Form.Select>
@@ -2558,8 +2574,8 @@ const ConfirmationWorkspace = () => {
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setConfirmationMethodModal(null)} disabled={isSendingConfirmation}>Close</Button>
-          <Button variant="primary" onClick={handleSendConfirmation} disabled={isSendingConfirmation}>
+          <Button variant="secondary" onClick={handleCloseConfirmationMethod} disabled={isSendingConfirmation}>Close</Button>
+          <Button variant="primary" onClick={handleSendConfirmation} disabled={isSendingConfirmation || (confirmationRequiresLegChoice && !confirmationLegScope)}>
             {isSendingConfirmation ? 'Sending...' : `Send via ${confirmationMethod === 'whatsapp' ? 'WhatsApp' : confirmationMethod === 'sms' ? 'SMS' : 'Call'}`}
           </Button>
         </Modal.Footer>
