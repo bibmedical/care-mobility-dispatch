@@ -57,7 +57,7 @@ const createCombinationId = () => `combo-${Date.now()}`;
 
 const getSafeActiveCombinationId = draft => draft.combinations.some(item => item.id === draft.activeCombinationId) ? draft.activeCombinationId : 'default';
 
-const getPreviewImage = (draft, pageKey) => String(draft?.pages?.[pageKey] || DEFAULT_BRANDING_PAGES[pageKey] || '').trim();
+const getPreviewImage = (draft, localPreviews, pageKey) => String(localPreviews?.[pageKey] || draft?.pages?.[pageKey] || DEFAULT_BRANDING_PAGES[pageKey] || '').trim();
 
 const PreferencesWorkspace = () => {
   const { themeMode } = useLayoutContext();
@@ -66,6 +66,8 @@ const PreferencesWorkspace = () => {
   const [draft, setDraft] = useState(createDraft(DEFAULT_BRANDING_SETTINGS));
   const [message, setMessage] = useState('Edit each page logo independently and save your own combinations in SQL.');
   const [combinationName, setCombinationName] = useState('');
+  const [uploadingPages, setUploadingPages] = useState({});
+  const [localPreviews, setLocalPreviews] = useState({});
 
   useEffect(() => {
     setDraft(createDraft(data?.branding || DEFAULT_BRANDING_SETTINGS));
@@ -110,18 +112,54 @@ const PreferencesWorkspace = () => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      setMessage('The image is too large. Use a file under 2MB.');
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage('The image is too large. Use a file under 5MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '').trim();
-      if (!result) return;
-      handlePageValueChange(pageKey, result);
-      setMessage(`${file.name} loaded. Click Save Branding to apply it.`);
-    };
-    reader.readAsDataURL(file);
+
+    const previewUrl = URL.createObjectURL(file);
+    setLocalPreviews(current => ({
+      ...current,
+      [pageKey]: previewUrl
+    }));
+    setUploadingPages(current => ({
+      ...current,
+      [pageKey]: true
+    }));
+    setMessage(`Uploading ${file.name}...`);
+
+    const formData = new FormData();
+    formData.append('pageKey', pageKey);
+    formData.append('file', file);
+
+    fetch('/api/branding/upload', {
+      method: 'POST',
+      body: formData
+    }).then(async response => {
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to upload image');
+
+      handlePageValueChange(pageKey, String(payload?.path || '').trim());
+      setLocalPreviews(current => {
+        const nextState = { ...current };
+        delete nextState[pageKey];
+        return nextState;
+      });
+      setMessage(`${file.name} added. Click Save Branding to apply it.`);
+    }).catch(uploadError => {
+      URL.revokeObjectURL(previewUrl);
+      setLocalPreviews(current => {
+        const nextState = { ...current };
+        delete nextState[pageKey];
+        return nextState;
+      });
+      setMessage(uploadError.message || 'Unable to upload image.');
+    }).finally(() => {
+      setUploadingPages(current => ({
+        ...current,
+        [pageKey]: false
+      }));
+    });
   };
 
   const handleSaveCurrentAsCombination = async () => {
@@ -290,12 +328,13 @@ const PreferencesWorkspace = () => {
                               <Badge bg="secondary-subtle" text="secondary">{option.group}</Badge>
                             </div>
                             <div className="rounded-4 d-flex align-items-center justify-content-center mb-3" style={{ minHeight: 120, background: groupName === 'Portal' ? '#071226' : '#000000' }}>
-                              <img src={getPreviewImage(draft, option.key)} alt={`${option.label} preview`} style={{ width: '100%', maxWidth: option.key === 'portalSidebar' || option.key === 'authPortalMark' ? 120 : 240, maxHeight: 80, objectFit: 'contain' }} />
+                              <img src={getPreviewImage(draft, localPreviews, option.key)} alt={`${option.label} preview`} style={{ width: '100%', maxWidth: option.key === 'portalSidebar' || option.key === 'authPortalMark' ? 120 : 240, maxHeight: 80, objectFit: 'contain' }} />
                             </div>
                             <Form.Label className="small text-uppercase text-secondary fw-semibold">Logo</Form.Label>
                             <Form.Control value={draft.pages[option.key] || ''} style={surfaceStyles.input} onChange={event => handlePageValueChange(option.key, event.target.value)} placeholder="/fmg-login-logo.png" />
                             <div className="small text-secondary mt-2">Use a file from public or upload one below. The preview changes here right away.</div>
-                            <Form.Control type="file" accept="image/*" style={{ ...surfaceStyles.input, marginTop: 12 }} onChange={handlePickFile(option.key)} />
+                            <Form.Control type="file" accept="image/*" style={{ ...surfaceStyles.input, marginTop: 12 }} onChange={handlePickFile(option.key)} disabled={uploadingPages[option.key] === true} />
+                            {uploadingPages[option.key] === true ? <div className="small text-info mt-2">Uploading image...</div> : null}
                             <div className="d-flex flex-wrap gap-2 mt-3">
                               {BRANDING_PRESETS.map(image => <Button key={`${option.key}-${image}`} style={surfaceStyles.button} className="rounded-pill" onClick={() => handlePageValueChange(option.key, image)}>{image.split('/').pop()}</Button>)}
                             </div>
