@@ -22,7 +22,7 @@ export const DriverHeaderCard = ({ runtime }: Props) => {
           <Text style={styles.subline}>{runtime.driverSession?.driverCode || runtime.driverSession?.username || 'Unit pending'} | {runtime.shiftState.replace('-', ' ')}</Text>
         </View>
         <Pressable style={[styles.signOutButton, { borderColor: withDriverAccentAlpha(driverAccent, 0.18) }]} onPress={() => void runtime.signOut()}>
-          <Text style={[styles.signOutText, { color: driverAccent }]}>Salir</Text>
+          <Text style={[styles.signOutText, { color: driverAccent }]}>Sign Out</Text>
         </Pressable>
       </View>
 

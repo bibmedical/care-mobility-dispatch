@@ -182,6 +182,64 @@ const getDerivedRideId = trip => {
   return firstSegment || normalizedId;
 };
 
+const getTripAssistanceTokens = trip => {
+  return Array.from(new Set([
+    ...String(trip?.assistanceNeeds || '').split('|'),
+    ...String(trip?.subMobilityType || '').split('|')
+  ].map(normalizeTextValue).filter(Boolean)));
+};
+
+const findAssistanceToken = (tokens, patterns) => {
+  return tokens.find(token => {
+    const normalizedToken = token.toLowerCase();
+    return patterns.some(pattern => normalizedToken === pattern || normalizedToken.includes(pattern));
+  }) || '';
+};
+
+export const getTripSupportMetadata = trip => {
+  const assistanceTokens = getTripAssistanceTokens(trip);
+  const hasServiceAnimal = Boolean(findAssistanceToken(assistanceTokens, ['service animal', 'service dog']));
+  const assistLevelToken = findAssistanceToken(assistanceTokens, ['room to door', 'door to door', 'curb to curb']);
+  const mobilityToken = findAssistanceToken(assistanceTokens, ['wheelchair-power/electric', 'power wheelchair', 'standard manual wheelchair', 'manual wheelchair', 'folding wheelchair', 'stretcher/gurney', 'stretcher', 'gurney', 'scooter', 'walker', 'cane', 'none']);
+
+  const mobilityType = mobilityToken
+    ? mobilityToken.toLowerCase().includes('wheelchair-power/electric') || mobilityToken.toLowerCase().includes('power wheelchair')
+      ? 'Power Wheelchair'
+      : mobilityToken.toLowerCase().includes('standard manual wheelchair') || mobilityToken.toLowerCase() === 'manual wheelchair'
+        ? 'Manual Wheelchair'
+        : mobilityToken.toLowerCase().includes('folding wheelchair')
+          ? 'Folding Wheelchair'
+          : mobilityToken.toLowerCase().includes('stretcher') || mobilityToken.toLowerCase().includes('gurney')
+            ? 'Stretcher/Gurney'
+            : mobilityToken.toLowerCase().includes('scooter')
+              ? 'Scooter'
+              : mobilityToken.toLowerCase().includes('walker')
+                ? 'Walker'
+                : mobilityToken.toLowerCase().includes('cane')
+                  ? 'Cane'
+                  : mobilityToken.toLowerCase() === 'none'
+                    ? 'None'
+                    : mobilityToken
+    : '';
+
+  const assistLevel = assistLevelToken
+    ? assistLevelToken.toLowerCase().includes('room to door')
+      ? 'Room to Door'
+      : assistLevelToken.toLowerCase().includes('door to door')
+        ? 'Door to Door'
+        : assistLevelToken.toLowerCase().includes('curb to curb')
+          ? 'Curb to Curb'
+          : assistLevelToken
+    : '';
+
+  return {
+    assistanceTokens,
+    hasServiceAnimal,
+    mobilityType,
+    assistLevel
+  };
+};
+
 export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   key: 'trip',
   label: 'Trip / Ride'
@@ -221,6 +279,15 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
 }, {
   key: 'vehicle',
   label: 'Vehicle'
+}, {
+  key: 'mobility',
+  label: 'Mobility'
+}, {
+  key: 'assistLevel',
+  label: 'Assist'
+}, {
+  key: 'serviceAnimal',
+  label: 'Animal'
 }, {
   key: 'leg',
   label: 'Leg'
@@ -369,6 +436,8 @@ export const normalizeTripRecord = trip => {
   const scheduledDropoff = normalizeTextValue(trip?.scheduledDropoff || trip?.rawDropoffTime || trip?.dropoff);
   const actualPickup = normalizeTextValue(trip?.actualPickup);
   const actualDropoff = normalizeTextValue(trip?.actualDropoff);
+  const assistanceNeeds = normalizeTextValue(trip?.assistanceNeeds);
+  const subMobilityType = normalizeTextValue(trip?.subMobilityType);
   const delay = trip?.delay ?? '';
   const avgDelay = trip?.avgDelay ?? '';
   const lateMinutes = getTripLateMinutes({
@@ -380,6 +449,11 @@ export const normalizeTripRecord = trip => {
     delay,
     avgDelay
   });
+  const supportMetadata = getTripSupportMetadata({
+    ...trip,
+    assistanceNeeds,
+    subMobilityType
+  });
   return {
     ...trip,
     rider,
@@ -390,8 +464,13 @@ export const normalizeTripRecord = trip => {
     scheduledDropoff,
     actualPickup,
     actualDropoff,
+    assistanceNeeds,
+    subMobilityType,
     delay,
     avgDelay,
+    hasServiceAnimal: supportMetadata.hasServiceAnimal,
+    mobilityType: supportMetadata.mobilityType,
+    assistLevel: supportMetadata.assistLevel,
     late: normalizeTripBoolean(trip?.late),
     delayed: normalizeTripBoolean(trip?.delayed),
     lateMinutes,

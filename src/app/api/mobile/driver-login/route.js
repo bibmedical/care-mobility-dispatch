@@ -4,6 +4,7 @@ import { buildDriverSessionError, claimDriverMobileSession } from '@/server/driv
 import { isDriverRole, normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
 import { getFullName, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors } from '@/server/mobile-api-cors';
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
 
@@ -71,7 +72,7 @@ export async function POST(request) {
   try {
     payload = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Invalid request body.' }, { status: 400 });
   }
 
   const identifier = String(payload?.identifier || payload?.email || '').trim();
@@ -80,7 +81,7 @@ export async function POST(request) {
   const deviceId = String(payload?.deviceId || '').trim();
 
   if (!deviceId) {
-    return NextResponse.json({ ok: false, error: 'Device ID is required.', code: 'driver-session-device-required' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Device ID is required.', code: 'driver-session-device-required' }, { status: 400 });
   }
 
   const state = await readNemtAdminState();
@@ -96,21 +97,21 @@ export async function POST(request) {
       });
 
       if (!isDriverRole(authUser?.role)) {
-        return NextResponse.json({ ok: false, error: 'This account is not a driver profile.' }, { status: 403 });
+        return jsonWithMobileCors(request, { ok: false, error: 'This account is not a driver profile.' }, { status: 403 });
       }
 
       const driver = findDriverFromAuthUser(normalizedDrivers, authUser);
       if (!driver) {
-        return NextResponse.json({ ok: false, error: 'Driver profile not found.' }, { status: 404 });
+        return jsonWithMobileCors(request, { ok: false, error: 'Driver profile not found.' }, { status: 404 });
       }
 
       if (normalizeLookupValue(driver.profileStatus) !== 'active') {
-        return NextResponse.json({ ok: false, error: 'Driver profile is not active.' }, { status: 403 });
+        return jsonWithMobileCors(request, { ok: false, error: 'Driver profile is not active.' }, { status: 403 });
       }
 
       const driverCode = buildDriverCode(driver, state);
 
-      return NextResponse.json({
+      return jsonWithMobileCors(request, {
         ok: true,
         session: await buildDriverSessionPayload(driver, {
           driverId: driver.id,
@@ -125,40 +126,40 @@ export async function POST(request) {
       });
     } catch (error) {
       if (error?.code === 'driver-session-conflict' || error?.code === 'driver-session-bad-request') {
-        return NextResponse.json({ ok: false, error: error.message, code: error.code }, { status: Number(error.status) || 409 });
+        return jsonWithMobileCors(request, { ok: false, error: error.message, code: error.code }, { status: Number(error.status) || 409 });
       }
-      return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Invalid credentials.' }, { status: 401 });
+      return jsonWithMobileCors(request, { ok: false, error: error instanceof Error ? error.message : 'Invalid credentials.' }, { status: 401 });
     }
   }
 
   // Legacy fallback path: identifier + mobile PIN.
   if (!identifier || !pin) {
-    return NextResponse.json({ ok: false, error: 'Identifier and PIN are required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Identifier and PIN are required.' }, { status: 400 });
   }
 
   const driver = normalizedDrivers
     .find(item => matchesDriverIdentifier(item, state, identifier));
 
   if (!driver) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
   if (normalizeLookupValue(driver.profileStatus) !== 'active') {
-    return NextResponse.json({ ok: false, error: 'Driver profile is not active.' }, { status: 403 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver profile is not active.' }, { status: 403 });
   }
 
   if (!String(driver.mobilePin || '').trim()) {
-    return NextResponse.json({ ok: false, error: 'Driver PIN has not been configured.' }, { status: 403 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver PIN has not been configured.' }, { status: 403 });
   }
 
   if (String(driver.mobilePin).trim() !== pin) {
-    return NextResponse.json({ ok: false, error: 'Invalid PIN.' }, { status: 401 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Invalid PIN.' }, { status: 401 });
   }
 
   const driverCode = buildDriverCode(driver, state);
 
   try {
-    return NextResponse.json({
+    return jsonWithMobileCors(request, {
       ok: true,
       session: await buildDriverSessionPayload(driver, {
         driverId: driver.id,
@@ -173,6 +174,10 @@ export async function POST(request) {
     });
   } catch (error) {
     const sessionError = error?.code ? error : buildDriverSessionError('Unable to create driver session.', 500, 'driver-session-create-failed');
-    return NextResponse.json({ ok: false, error: sessionError.message, code: sessionError.code }, { status: Number(sessionError.status) || 500 });
+    return jsonWithMobileCors(request, { ok: false, error: sessionError.message, code: sessionError.code }, { status: Number(sessionError.status) || 500 });
   }
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
 }

@@ -19,6 +19,23 @@ export const DriverActiveTripSection = ({ runtime }: Props) => {
     id: runtime.driverSession?.driverId,
     name: runtime.driverSession?.name || runtime.driverCode
   });
+  const activeTrip = runtime.activeTrip;
+
+  const renderSupportBadges = () => {
+    if (!activeTrip || (!activeTrip.hasServiceAnimal && !activeTrip.mobilityType && !activeTrip.assistLevel)) return null;
+
+    return <View style={styles.supportBadgeRow}>
+        {activeTrip.hasServiceAnimal ? <View style={[styles.supportBadge, styles.supportBadgeAnimal]}>
+            <Text style={styles.supportBadgeAnimalText}>🐕 Service Animal</Text>
+          </View> : null}
+        {activeTrip.mobilityType ? <View style={styles.supportBadge}>
+            <Text style={styles.supportBadgeText}>{activeTrip.mobilityType}</Text>
+          </View> : null}
+        {activeTrip.assistLevel ? <View style={styles.supportBadge}>
+            <Text style={styles.supportBadgeText}>{activeTrip.assistLevel}</Text>
+          </View> : null}
+      </View>;
+  };
 
   return <View style={[driverSharedStyles.card, { borderColor: withDriverAccentAlpha(driverAccent, 0.24) }]}>
       <View style={driverSharedStyles.rowBetween}>
@@ -52,6 +69,8 @@ export const DriverActiveTripSection = ({ runtime }: Props) => {
               <Text style={styles.routeTime}>{runtime.activeTrip.scheduledDropoff || runtime.activeTrip.dropoff || '--'}</Text>
             </View>
           </View>
+
+          {renderSupportBadges()}
 
           <View style={styles.actionGrid}>
             <Pressable style={styles.actionSoft} onPress={() => void openPhoneCall(runtime.activeTrip?.patientPhoneNumber)}>
@@ -160,6 +179,33 @@ const styles = StyleSheet.create({
     height: 18,
     width: 2,
     backgroundColor: driverTheme.colors.borderStrong
+  },
+  supportBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  supportBadge: {
+    backgroundColor: '#eef4f8',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#d8e2ea'
+  },
+  supportBadgeAnimal: {
+    backgroundColor: '#fff2cc',
+    borderColor: '#f3d26b'
+  },
+  supportBadgeText: {
+    color: '#334a59',
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  supportBadgeAnimalText: {
+    color: '#6f4e00',
+    fontSize: 11,
+    fontWeight: '800'
   },
   actionGrid: {
     flexDirection: 'row',

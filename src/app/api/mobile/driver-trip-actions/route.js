@@ -7,6 +7,7 @@ import { sendTripArrivalNotifications } from '@/server/sms-confirmation-service'
 import { upsertDriverDisciplineEvent, resolveDriverDisciplineEventById } from '@/server/driver-discipline-store';
 import { appendTripWorkflowEvent, logTripArrivalEvent } from '@/server/trip-workflow-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
 
@@ -223,7 +224,7 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
   return null;
 };
 
-const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+const internalError = (request, error) => jsonWithMobileCors(request, { ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
 
 export async function POST(request) {
   try {
@@ -234,34 +235,34 @@ export async function POST(request) {
   const riderSignatureName = String(body?.riderSignatureName || '').trim();
 
   if (!tripId || !driverId || !action) {
-    return NextResponse.json({ ok: false, error: 'tripId, driverId, and action are required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'tripId, driverId, and action are required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverId);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   const dispatchState = await readNemtDispatchState();
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
   const currentTrip = trips.find(trip => String(trip?.id || '').trim() === tripId);
 
   if (!currentTrip) {
-    return NextResponse.json({ ok: false, error: 'Trip not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Trip not found.' }, { status: 404 });
   }
 
   if (String(currentTrip?.driverId || '').trim() !== driverId) {
-    return NextResponse.json({ ok: false, error: 'Trip is not assigned to this driver.' }, { status: 403 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Trip is not assigned to this driver.' }, { status: 403 });
   }
 
   if (action === 'arrived' && !currentTrip?.enRouteAt) {
-    return NextResponse.json({ ok: false, error: 'Driver must mark En Route before Arrived.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark En Route before Arrived.' }, { status: 400 });
   }
 
   if (action === 'complete' && !currentTrip?.arrivedAt) {
-    return NextResponse.json({ ok: false, error: 'Driver must mark Arrived before Complete.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived before Complete.' }, { status: 400 });
   }
 
   if (action === 'complete' && !riderSignatureName) {
-    return NextResponse.json({ ok: false, error: 'Rider signature is required before completing the trip.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Rider signature is required before completing the trip.' }, { status: 400 });
   }
 
   const timestamp = Date.now();
@@ -270,7 +271,7 @@ export async function POST(request) {
     riderSignatureName
   });
   if (!actionUpdate?.patch) {
-    return NextResponse.json({ ok: false, error: 'Unsupported action.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Unsupported action.' }, { status: 400 });
   }
   const patch = actionUpdate.patch;
 
@@ -346,8 +347,12 @@ export async function POST(request) {
     }
   }
 
-  return NextResponse.json({ ok: true, tripId, action, updatedAt: timestamp, arrivalNotifications });
+  return jsonWithMobileCors(request, { ok: true, tripId, action, updatedAt: timestamp, arrivalNotifications });
   } catch (error) {
-    return internalError(error);
+    return internalError(request, error);
   }
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
 }

@@ -589,6 +589,7 @@ const TripDashboardWorkspace = () => {
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
+  const [serviceAnimalOnly, setServiceAnimalOnly] = useState(false);
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
   const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
   const [pickupZipFilter, setPickupZipFilter] = useState('');
@@ -1009,6 +1010,7 @@ const TripDashboardWorkspace = () => {
             <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
             <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
             <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
+            <Button variant={serviceAnimalOnly ? 'dark' : 'outline-dark'} size="sm" style={serviceAnimalOnly ? undefined : greenToolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
           </div>;
       case 'closed-route':
         return <Button variant={isActiveRouteClosed ? 'danger' : 'outline-dark'} size="sm" style={isActiveRouteClosed ? {
@@ -1198,6 +1200,9 @@ const TripDashboardWorkspace = () => {
     if (tripTypeFilter === 'all') return true;
     return getTripTypeLabel(trip) === tripTypeFilter;
   }).filter(trip => {
+    if (!serviceAnimalOnly) return true;
+    return Boolean(trip?.hasServiceAnimal);
+  }).filter(trip => {
     const searchValue = tripIdSearch.trim().toLowerCase();
     if (!searchValue) return true;
     const tokens = searchValue.split(/\s+/).filter(Boolean);
@@ -1215,7 +1220,7 @@ const TripDashboardWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, todayDateKey, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, serviceAnimalOnly, todayDateKey, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -3326,6 +3331,9 @@ const TripDashboardWorkspace = () => {
                       {visibleTripColumns.includes('doZip') ? renderTripHeader('doZip', 'DO ZIP') : null}
                       {visibleTripColumns.includes('phone') ? renderTripHeader('phone', 'Phone') : null}
                       {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
+                      {visibleTripColumns.includes('mobility') ? renderTripHeader('mobility', 'Mobility') : null}
+                      {visibleTripColumns.includes('assistLevel') ? renderTripHeader('assistLevel', 'Assist') : null}
+                      {visibleTripColumns.includes('serviceAnimal') ? renderTripHeader('serviceAnimal', 'Animal') : null}
                       {visibleTripColumns.includes('leg') ? renderTripHeader('leg', 'Leg') : null}
                       {visibleTripColumns.includes('punctuality') ? renderTripHeader('punctuality', 'Punctuality') : null}
                       {visibleTripColumns.includes('lateMinutes') ? renderTripHeader('lateMinutes', 'Late Min') : null}
@@ -3381,7 +3389,9 @@ const TripDashboardWorkspace = () => {
                         </td>
                         {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
                             <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
-                            {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1">{getLegBadge(row.trip).label}</Badge> : null}
+                            {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1 me-1">{getLegBadge(row.trip).label}</Badge> : null}
+                            {row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
+                            {row.trip.mobilityType ? <Badge bg="light" text="dark" className="mt-1 border">{row.trip.mobilityType}</Badge> : null}
                           </td> : null}
                         {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}{getTripAddedByLabel(row.trip) ? <div className="mt-1"><Badge bg="dark">{getTripAddedByLabel(row.trip)}</Badge></div> : null}{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
                         {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}><div>{getTripDriverDisplay(row.trip)}</div>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}</td> : null}
@@ -3480,6 +3490,9 @@ const TripDashboardWorkspace = () => {
                       },
                       placeholder: 'Ambulatory'
                     }) : null}
+                        {visibleTripColumns.includes('mobility') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.mobilityType || '-'}</td> : null}
+                        {visibleTripColumns.includes('assistLevel') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.assistLevel || '-'}</td> : null}
+                        {visibleTripColumns.includes('serviceAnimal') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark">🐕 Yes</Badge> : '-'}</td> : null}
                         {visibleTripColumns.includes('leg') ? <td style={{ whiteSpace: 'nowrap' }}>{getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant}>{getLegBadge(row.trip).label}</Badge> : '-'}</td> : null}
                         {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
                         {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const normalizeDriverId = value => String(value || '').trim();
 const normalizePushToken = value => String(value || '').trim();
@@ -10,21 +11,21 @@ export async function POST(request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid JSON body.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Invalid JSON body.' }, { status: 400 });
   }
 
   const driverId = normalizeDriverId(body?.driverId);
   const pushToken = normalizePushToken(body?.pushToken);
 
   if (!driverId || !pushToken) {
-    return NextResponse.json({ ok: false, error: 'driverId and pushToken are required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId and pushToken are required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverId);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   if (!pushToken.startsWith('ExponentPushToken[') && !pushToken.startsWith('ExpoPushToken[')) {
-    return NextResponse.json({ ok: false, error: 'Invalid Expo push token.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Invalid Expo push token.' }, { status: 400 });
   }
 
   const adminState = await readNemtAdminState();
@@ -32,7 +33,7 @@ export async function POST(request) {
 
   const driverExists = drivers.some(driver => normalizeDriverId(driver?.id) === driverId);
   if (!driverExists) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
   const nextDrivers = drivers.map(driver => {
@@ -53,5 +54,9 @@ export async function POST(request) {
     drivers: nextDrivers
   });
 
-  return NextResponse.json({ ok: true });
+  return jsonWithMobileCors(request, { ok: true });
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
 }

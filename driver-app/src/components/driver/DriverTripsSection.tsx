@@ -46,6 +46,22 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const canMarkArrived = Boolean(focusTrip?.enRouteAt);
   const canCompleteTrip = Boolean(focusTrip?.arrivedAt) && riderSignatureName.trim().length > 1;
 
+  const renderSupportBadges = (trip?: DriverRuntime['activeTrip']) => {
+    if (!trip || (!trip.hasServiceAnimal && !trip.mobilityType && !trip.assistLevel)) return null;
+
+    return <View style={styles.supportBadgeRow}>
+        {trip.hasServiceAnimal ? <View style={[styles.supportBadge, styles.supportBadgeAnimal]}>
+            <Text style={styles.supportBadgeAnimalText}>🐕 Service Animal</Text>
+          </View> : null}
+        {trip.mobilityType ? <View style={styles.supportBadge}>
+            <Text style={styles.supportBadgeText}>{trip.mobilityType}</Text>
+          </View> : null}
+        {trip.assistLevel ? <View style={styles.supportBadge}>
+            <Text style={styles.supportBadgeText}>{trip.assistLevel}</Text>
+          </View> : null}
+      </View>;
+  };
+
   return <View style={styles.screen}>
       <View style={styles.routeShell}>
         <View style={styles.queueHeaderRow}>
@@ -88,6 +104,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                     <Text style={styles.routeIdText}>ID: {trip.rideId || trip.id}</Text>
                     <Text style={styles.routeAddressText} numberOfLines={1}>{trip.address}</Text>
                     <Text style={styles.routeAddressSubText} numberOfLines={1}>{trip.destination}</Text>
+                    {renderSupportBadges(trip)}
                   </View>
                   <View style={styles.routeTopMeta}>
                     <Text style={styles.routeTopMetaText}>{trip.miles ? `${trip.miles} mi` : '--'}</Text>
@@ -110,6 +127,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               <Text style={driverSharedStyles.eyebrow}>Current trip</Text>
               <Text style={styles.focusTitle}>{focusTrip.rider}</Text>
               <Text style={styles.focusMeta}>{focusTrip.rideId || focusTrip.id} | {getTripWindow(focusTrip)}</Text>
+              {renderSupportBadges(focusTrip)}
             </View>
             <View style={[driverSharedStyles.pill, { backgroundColor: getTripTone(focusTrip.punctualityVariant) }]}>
               <Text style={driverSharedStyles.pillText}>{focusTrip.punctualityLabel || focusTrip.status || 'Pending'}</Text>
@@ -293,6 +311,34 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '700'
+  },
+  supportBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6
+  },
+  supportBadge: {
+    backgroundColor: '#eef4f8',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#d8e2ea'
+  },
+  supportBadgeAnimal: {
+    backgroundColor: '#fff2cc',
+    borderColor: '#f3d26b'
+  },
+  supportBadgeText: {
+    color: '#334a59',
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  supportBadgeAnimalText: {
+    color: '#6f4e00',
+    fontSize: 11,
+    fontWeight: '800'
   },
   routeCardBottom: {
     paddingHorizontal: 10,

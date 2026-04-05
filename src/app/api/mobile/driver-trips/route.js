@@ -6,6 +6,7 @@ import { getActiveMessageForDriver, resolveSystemMessageById, upsertSystemMessag
 import { readTripWorkflowEventsByTripIds } from '@/server/trip-workflow-store';
 import { resolveDriverDisciplineEventById, upsertDriverDisciplineEvent } from '@/server/driver-discipline-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
 const AUTO_NO_DEPARTURE_THRESHOLD_MINUTES = 5;
@@ -147,6 +148,10 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
     dropoffZip: normalizedTrip.destinationZip || normalizedTrip.doZip || '',
     notes: String(normalizedTrip.notes || normalizedTrip.note || normalizedTrip.comments || '').trim(),
     patientPhoneNumber: normalizedTrip.patientPhoneNumber || '',
+    assistanceNeeds: normalizedTrip.assistanceNeeds || '',
+    mobilityType: normalizedTrip.mobilityType || '',
+    assistLevel: normalizedTrip.assistLevel || '',
+    hasServiceAnimal: Boolean(normalizedTrip.hasServiceAnimal),
     status: effectiveStatus,
     vehicleType: normalizedTrip.vehicleType || '',
     miles: Number(normalizedTrip.miles) || 0,
@@ -165,7 +170,7 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
   };
 };
 
-const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+const internalError = (request, error) => jsonWithMobileCors(request, { ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
 
 export async function GET(request) {
   try {
@@ -175,14 +180,14 @@ export async function GET(request) {
     const lookupValue = normalizeLookupValue(driverId || driverCode);
 
     if (!lookupValue) {
-      return NextResponse.json({
+      return jsonWithMobileCors(request, {
         ok: false,
         error: 'driverId or driverCode is required.'
       }, { status: 400 });
     }
 
     const authResult = await authorizeMobileDriverRequest(request, lookupValue);
-    if (authResult.response) return authResult.response;
+    if (authResult.response) return withMobileCors(authResult.response, request);
 
     const [adminPayload, adminState, dispatchState] = await Promise.all([
       readNemtAdminPayload(),
@@ -197,7 +202,7 @@ export async function GET(request) {
     });
 
     if (!driver) {
-      return NextResponse.json({
+      return jsonWithMobileCors(request, {
         ok: false,
         error: 'Driver not found.'
       }, { status: 404 });
@@ -247,7 +252,7 @@ export async function GET(request) {
       await resolveDriverDisciplineEventById(existingActiveAlert.id);
     }
 
-    return NextResponse.json({
+    return jsonWithMobileCors(request, {
       ok: true,
       driver: {
         id: driver.id,
@@ -261,6 +266,10 @@ export async function GET(request) {
       updatedAt: now
     });
   } catch (error) {
-    return internalError(error);
+    return internalError(request, error);
   }
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
 }

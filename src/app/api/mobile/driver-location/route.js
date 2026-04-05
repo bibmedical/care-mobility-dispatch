@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const formatCheckpoint = (latitude, longitude) => `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`;
 
-const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+const internalError = (request, error) => jsonWithMobileCors(request, { ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
 
 export async function POST(request) {
   try {
@@ -19,18 +20,18 @@ export async function POST(request) {
   const sourceTimestamp = Number(body?.timestamp);
 
   if (!driverId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return NextResponse.json({ ok: false, error: 'driverId, latitude, and longitude are required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId, latitude, and longitude are required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverId);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   const adminState = await readNemtAdminState();
   const drivers = Array.isArray(adminState?.drivers) ? adminState.drivers : [];
   const currentDriver = drivers.find(driver => String(driver?.id || '').trim() === driverId);
 
   if (!currentDriver) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
   const trackingLastSeen = Number.isFinite(sourceTimestamp) ? new Date(sourceTimestamp).toISOString() : new Date().toISOString();
@@ -51,8 +52,12 @@ export async function POST(request) {
     drivers: nextDrivers
   });
 
-  return NextResponse.json({ ok: true, driverId, trackingLastSeen });
+  return jsonWithMobileCors(request, { ok: true, driverId, trackingLastSeen });
   } catch (error) {
-    return internalError(error);
+    return internalError(request, error);
   }
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
 }

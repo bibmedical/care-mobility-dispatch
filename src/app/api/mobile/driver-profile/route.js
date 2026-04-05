@@ -4,6 +4,7 @@ import { readSystemUsersState, writeSystemUsersState } from '@/server/system-use
 import { getFullName } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const splitFullName = value => {
   const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
@@ -31,19 +32,19 @@ const findDriver = (drivers, driverId) => (Array.isArray(drivers) ? drivers : []
 export async function GET(request) {
   const driverId = request.nextUrl.searchParams.get('driverId') || '';
   if (!driverId) {
-    return NextResponse.json({ ok: false, error: 'driverId is required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId is required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverId);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   const adminState = await readNemtAdminState();
   const driver = findDriver(adminState.drivers, driverId);
   if (!driver) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true, session: buildSessionPayload(driver) });
+  return jsonWithMobileCors(request, { ok: true, session: buildSessionPayload(driver) });
 }
 
 export async function POST(request) {
@@ -51,7 +52,7 @@ export async function POST(request) {
   try {
     payload = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Invalid request body.' }, { status: 400 });
   }
 
   const driverId = String(payload?.driverId || '').trim();
@@ -60,16 +61,16 @@ export async function POST(request) {
   const phone = normalizePhoneDigits(payload?.phone || '');
 
   if (!driverId) {
-    return NextResponse.json({ ok: false, error: 'driverId is required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId is required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverId);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   const adminState = await readNemtAdminState();
   const driver = findDriver(adminState.drivers, driverId);
   if (!driver) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
   const { firstName, lastName } = splitFullName(name || getFullName(driver));
@@ -113,9 +114,13 @@ export async function POST(request) {
     });
   }
 
-  return NextResponse.json({ ok: true, session: {
+  return jsonWithMobileCors(request, { ok: true, session: {
     ...buildSessionPayload(updatedDriver),
     deviceId: request.headers.get('x-driver-device-id') || '',
     sessionToken: request.headers.get('x-driver-session-token') || ''
   } });
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
 }

@@ -28,6 +28,10 @@ export type DriverTrip = {
   dropoffZip?: string;
   notes?: string;
   patientPhoneNumber?: string;
+  assistanceNeeds?: string;
+  mobilityType?: string;
+  assistLevel?: string;
+  hasServiceAnimal?: boolean;
   status?: string;
   vehicleType?: string;
   miles?: number;

@@ -1,7 +1,14 @@
 import { RoadmapVersion } from '../types/driver';
 
+const normalizeApiBaseUrl = (value?: string) => {
+  const normalizedValue = String(value || '').trim();
+  return normalizedValue.replace(/\/$/, '');
+};
+
+const resolvedApiBaseUrl = normalizeApiBaseUrl(process.env.EXPO_PUBLIC_DRIVER_API_BASE_URL) || 'https://care-mobility-dispatch-web.onrender.com';
+
 export const DRIVER_APP_CONFIG = {
-  apiBaseUrl: 'https://care-mobility-dispatch-web.onrender.com',
+  apiBaseUrl: resolvedApiBaseUrl,
   enableBackgroundTracking: true,
   tripSyncIntervalMs: 5000,
   messageSyncIntervalMs: 5000,

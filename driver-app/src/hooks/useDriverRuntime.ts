@@ -57,6 +57,10 @@ const fetchJsonWithTimeout = async (input: string, init?: RequestInit, timeoutMs
       throw new Error('The server took too long to respond. Check your connection and try again.');
     }
 
+    if (error instanceof Error && /failed to fetch|network request failed/i.test(error.message)) {
+      throw new Error(`Unable to reach the driver API at ${DRIVER_APP_CONFIG.apiBaseUrl}. If you are testing on web/local, make sure the backend is running there or keep using Render after the CORS fix is deployed.`);
+    }
+
     throw error;
   } finally {
     clearTimeout(timeoutId);

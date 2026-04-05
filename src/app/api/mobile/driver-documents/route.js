@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const getDocumentUrl = value => {
   if (!value) return '';
@@ -29,19 +30,19 @@ const findDriver = (drivers, driverId) => (Array.isArray(drivers) ? drivers : []
 export async function GET(request) {
   const driverId = request.nextUrl.searchParams.get('driverId') || '';
   if (!driverId) {
-    return NextResponse.json({ ok: false, error: 'driverId is required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId is required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverId);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   const adminState = await readNemtAdminState();
   const driver = findDriver(adminState.drivers, driverId);
   if (!driver) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true, ...buildDocumentsPayload(driver) });
+  return jsonWithMobileCors(request, { ok: true, ...buildDocumentsPayload(driver) });
 }
 
 export async function POST(request) {
@@ -49,7 +50,7 @@ export async function POST(request) {
   try {
     payload = await request.json();
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid request body.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Invalid request body.' }, { status: 400 });
   }
 
   const driverId = String(payload?.driverId || '').trim();
@@ -58,21 +59,21 @@ export async function POST(request) {
   const fileName = String(payload?.fileName || '').trim();
 
   if (!driverId || !documentKey || !fileDataUrl) {
-    return NextResponse.json({ ok: false, error: 'driverId, documentKey, and fileDataUrl are required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId, documentKey, and fileDataUrl are required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverId);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   const allowedKeys = new Set(['profilePhoto', 'licenseFront', 'licenseBack', 'insuranceCertificate', 'w9Document', 'trainingCertificate']);
   if (!allowedKeys.has(documentKey)) {
-    return NextResponse.json({ ok: false, error: 'Unsupported document key.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Unsupported document key.' }, { status: 400 });
   }
 
   const adminState = await readNemtAdminState();
   const driver = findDriver(adminState.drivers, driverId);
   if (!driver) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
   const nextDrivers = adminState.drivers.map(item => {
@@ -97,5 +98,9 @@ export async function POST(request) {
   });
 
   const updatedDriver = findDriver(nextAdminState.drivers, driverId);
-  return NextResponse.json({ ok: true, ...buildDocumentsPayload(updatedDriver) });
+  return jsonWithMobileCors(request, { ok: true, ...buildDocumentsPayload(updatedDriver) });
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
 }

@@ -5,6 +5,7 @@ import { readNemtAdminPayload } from '@/server/nemt-admin-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readSystemMessages, upsertSystemMessage } from '@/server/system-messages-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
 
@@ -62,7 +63,7 @@ const appendIncomingDriverThreadMessage = (dispatchThreads, driverId, message) =
   } : thread);
 };
 
-const internalError = error => NextResponse.json({ ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+const internalError = (request, error) => jsonWithMobileCors(request, { ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
 
 export async function GET(request) {
   try {
@@ -70,15 +71,15 @@ export async function GET(request) {
   const driverLookup = searchParams.get('driverId') || searchParams.get('driverCode');
 
   if (!driverLookup) {
-    return NextResponse.json({ ok: false, error: 'driverId or driverCode is required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId or driverCode is required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverLookup);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   const driver = await resolveDriverByLookup(driverLookup);
   if (!driver) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
   const messages = await readSystemMessages();
@@ -88,9 +89,9 @@ export async function GET(request) {
     return !messageDriverId || messageDriverId === normalizedDriverId;
   }).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
 
-  return NextResponse.json({ ok: true, messages: visibleMessages, driverId: normalizedDriverId });
+  return jsonWithMobileCors(request, { ok: true, messages: visibleMessages, driverId: normalizedDriverId });
   } catch (error) {
-    return internalError(error);
+    return internalError(request, error);
   }
 }
 
@@ -103,15 +104,15 @@ export async function POST(request) {
   const mediaType = String(body?.mediaType || '').trim();
 
   if (!driverLookup || (!messageText && !mediaUrl)) {
-    return NextResponse.json({ ok: false, error: 'driverId or driverCode and at least one of body/mediaUrl are required.' }, { status: 400 });
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId or driverCode and at least one of body/mediaUrl are required.' }, { status: 400 });
   }
 
   const authResult = await authorizeMobileDriverRequest(request, driverLookup);
-  if (authResult.response) return authResult.response;
+  if (authResult.response) return withMobileCors(authResult.response, request);
 
   const driver = await resolveDriverByLookup(driverLookup);
   if (!driver) {
-    return NextResponse.json({ ok: false, error: 'Driver not found.' }, { status: 404 });
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
   const message = {
@@ -139,8 +140,12 @@ export async function POST(request) {
     ...dispatchState,
     dispatchThreads: appendIncomingDriverThreadMessage(dispatchState?.dispatchThreads, String(driver?.id || '').trim(), message)
   });
-  return NextResponse.json({ ok: true, message });
+  return jsonWithMobileCors(request, { ok: true, message });
   } catch (error) {
-    return internalError(error);
+    return internalError(request, error);
   }
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
 }
