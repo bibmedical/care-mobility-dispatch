@@ -82,6 +82,18 @@ const normalizeConfirmationOutputColumns = value => {
   return unique.length > 0 ? unique : [...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS];
 };
 
+const getConfirmationSortDirection = (sortOrder, columnKey) => {
+  if (sortOrder === `${columnKey}-asc`) return 'asc';
+  if (sortOrder === `${columnKey}-desc`) return 'desc';
+  return null;
+};
+
+const compareConfirmationText = (leftValue, rightValue, direction) => {
+  const leftText = String(leftValue || '');
+  const rightText = String(rightValue || '');
+  return direction === 'asc' ? leftText.localeCompare(rightText) : rightText.localeCompare(leftText);
+};
+
 const escapeHtml = value => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -664,6 +676,10 @@ const ConfirmationWorkspace = () => {
       const rightMiles = getTripMilesValue(rightTrip);
       const leftValue = leftMiles == null ? Number.NEGATIVE_INFINITY : leftMiles;
       const rightValue = rightMiles == null ? Number.NEGATIVE_INFINITY : rightMiles;
+      const phoneDirection = getConfirmationSortDirection(milesSortOrder, 'phone');
+      const pickupDirection = getConfirmationSortDirection(milesSortOrder, 'pickup');
+      const legDirection = getConfirmationSortDirection(milesSortOrder, 'leg');
+      const typeDirection = getConfirmationSortDirection(milesSortOrder, 'type');
 
       if (milesSortOrder === 'miles-asc') return leftValue - rightValue;
       if (milesSortOrder === 'miles-desc') return rightValue - leftValue;
@@ -671,6 +687,19 @@ const ConfirmationWorkspace = () => {
       if (milesSortOrder === 'rider-desc') return String(rightTrip.rider || '').localeCompare(String(leftTrip.rider || ''));
       if (milesSortOrder === 'trip-asc') return String(leftTrip.id || '').localeCompare(String(rightTrip.id || ''));
       if (milesSortOrder === 'trip-desc') return String(rightTrip.id || '').localeCompare(String(leftTrip.id || ''));
+      if (phoneDirection) return compareConfirmationText(leftTrip.patientPhoneNumber, rightTrip.patientPhoneNumber, phoneDirection);
+      if (pickupDirection) {
+        const leftPickupMinutes = getTripTimeMinutesForFilter(leftTrip);
+        const rightPickupMinutes = getTripTimeMinutesForFilter(rightTrip);
+        const normalizedLeftMinutes = leftPickupMinutes == null ? Number.MAX_SAFE_INTEGER : leftPickupMinutes;
+        const normalizedRightMinutes = rightPickupMinutes == null ? Number.MAX_SAFE_INTEGER : rightPickupMinutes;
+        if (normalizedLeftMinutes !== normalizedRightMinutes) {
+          return pickupDirection === 'asc' ? normalizedLeftMinutes - normalizedRightMinutes : normalizedRightMinutes - normalizedLeftMinutes;
+        }
+        return compareConfirmationText(getTripDisplayPickupTime(leftTrip), getTripDisplayPickupTime(rightTrip), pickupDirection);
+      }
+      if (legDirection) return compareConfirmationText(getTripLegFilterKey(leftTrip), getTripLegFilterKey(rightTrip), legDirection);
+      if (typeDirection) return compareConfirmationText(getTripTypeLabel(leftTrip), getTripTypeLabel(rightTrip), typeDirection);
       return rightValue - leftValue;
     });
   }, [baseFilteredTrips, milesSortOrder, milesRangeMatchedTripIds, primaryFilterMode, timeWindowMatchedTripIds]);
@@ -687,6 +716,20 @@ const ConfirmationWorkspace = () => {
 
   const toggleTripSelection = tripId => {
     setSelectedTripIds(current => current.includes(tripId) ? current.filter(id => id !== tripId) : [...current, tripId]);
+  };
+
+  const handleConfirmationTableSort = columnKey => {
+    setMilesSortOrder(currentSort => getConfirmationSortDirection(currentSort, columnKey) === 'asc' ? `${columnKey}-desc` : `${columnKey}-asc`);
+  };
+
+  const renderSortableConfirmationHeader = (columnKey, label) => {
+    const direction = getConfirmationSortDirection(milesSortOrder, columnKey);
+    return <th>
+        <button type="button" onClick={() => handleConfirmationTableSort(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
+          <span>{label}</span>
+          <span className="small">{direction === 'asc' ? '↑' : direction === 'desc' ? '↓' : '↕'}</span>
+        </button>
+      </th>;
   };
 
   const handleToggleAllVisible = checked => {
@@ -1943,6 +1986,14 @@ const ConfirmationWorkspace = () => {
                 <option value="rider-desc">Rider: Z to A</option>
                 <option value="trip-asc">Trip ID: A to Z</option>
                 <option value="trip-desc">Trip ID: Z to A</option>
+                <option value="phone-asc">Phone: A to Z</option>
+                <option value="phone-desc">Phone: Z to A</option>
+                <option value="pickup-asc">Pickup Time: Early to Late</option>
+                <option value="pickup-desc">Pickup Time: Late to Early</option>
+                <option value="leg-asc">Leg: A to Z</option>
+                <option value="leg-desc">Leg: Z to A</option>
+                <option value="type-asc">Type: A to Z</option>
+                <option value="type-desc">Type: Z to A</option>
               </Form.Select>
               <Button style={surfaceStyles.button} onClick={() => {
                 setTimeFromFilter('');
@@ -2051,13 +2102,13 @@ const ConfirmationWorkspace = () => {
                       title="Select all visible"
                     />
                   </th>
-                  <th>Trip ID</th>
-                  <th>Rider</th>
-                  <th>Phone</th>
-                  <th>Pickup Time</th>
-                  <th>Miles</th>
-                  <th>Leg</th>
-                  <th>Type</th>
+                  {renderSortableConfirmationHeader('trip', 'Trip ID')}
+                  {renderSortableConfirmationHeader('rider', 'Rider')}
+                  {renderSortableConfirmationHeader('phone', 'Phone')}
+                  {renderSortableConfirmationHeader('pickup', 'Pickup Time')}
+                  {renderSortableConfirmationHeader('miles', 'Miles')}
+                  {renderSortableConfirmationHeader('leg', 'Leg')}
+                  {renderSortableConfirmationHeader('type', 'Type')}
                   <th>Do Not Confirm</th>
                   <th>Hospital/Rehab</th>
                   <th>Confirmation</th>
