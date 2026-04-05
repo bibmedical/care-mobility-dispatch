@@ -697,7 +697,9 @@ const ConfirmationWorkspace = () => {
         if (normalizedLeftMinutes !== normalizedRightMinutes) {
           return pickupDirection === 'asc' ? normalizedLeftMinutes - normalizedRightMinutes : normalizedRightMinutes - normalizedLeftMinutes;
         }
-        return compareConfirmationText(getTripDisplayPickupTime(leftTrip), getTripDisplayPickupTime(rightTrip), pickupDirection);
+        const leftPickupLabel = formatMinutesAsClock(leftPickupMinutes) || leftTrip?.scheduledPickup || leftTrip?.pickup || '-';
+        const rightPickupLabel = formatMinutesAsClock(rightPickupMinutes) || rightTrip?.scheduledPickup || rightTrip?.pickup || '-';
+        return compareConfirmationText(leftPickupLabel, rightPickupLabel, pickupDirection);
       }
       if (legDirection) return compareConfirmationText(getTripLegFilterKey(leftTrip), getTripLegFilterKey(rightTrip), legDirection);
       if (typeDirection) return compareConfirmationText(getTripTypeLabel(leftTrip), getTripTypeLabel(rightTrip), typeDirection);
