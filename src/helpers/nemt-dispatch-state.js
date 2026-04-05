@@ -1,7 +1,7 @@
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 
 const DEFAULT_CENTER = [28.5383, -81.3792];
-const DEFAULT_ASSISTANT_AVATAR_IMAGE = '/WhatsApp%20Image%202026-03-28%20at%2011.58.52%20PM.jpeg';
+const DEFAULT_ASSISTANT_AVATAR_IMAGE = '/fmg-login-logo.png';
 export const DEFAULT_DISPATCH_TIME_ZONE = 'America/New_York';
 
 const normalizeTextValue = value => String(value ?? '').trim();
