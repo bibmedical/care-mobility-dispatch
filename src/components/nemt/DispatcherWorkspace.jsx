@@ -160,6 +160,39 @@ const greenToolbarButtonStyle = {
   backgroundColor: 'transparent'
 };
 
+const dispatcherPanelCardStyle = {
+  background: 'linear-gradient(180deg, #0f172a 0%, #111827 100%)',
+  border: '1px solid rgba(71, 85, 105, 0.72)',
+  color: '#e5eefc',
+  boxShadow: '0 18px 40px rgba(2, 6, 23, 0.34)'
+};
+
+const dispatcherPanelHeaderStyle = {
+  background: 'linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(15, 23, 42, 0.96) 100%)',
+  borderColor: 'rgba(71, 85, 105, 0.6)',
+  color: '#e5eefc'
+};
+
+const dispatcherDarkSelectStyle = {
+  backgroundColor: '#0f172a',
+  color: '#e5eefc',
+  borderColor: 'rgba(100, 116, 139, 0.7)'
+};
+
+const dispatcherDarkButtonStyle = {
+  color: '#dbeafe',
+  borderColor: 'rgba(96, 165, 250, 0.45)',
+  backgroundColor: 'rgba(15, 23, 42, 0.58)'
+};
+
+const dispatcherDarkTableStyle = {
+  '--bs-table-bg': '#0f172a',
+  '--bs-table-striped-bg': '#162033',
+  '--bs-table-hover-bg': '#172237',
+  '--bs-table-color': '#e5eefc',
+  '--bs-table-border-color': 'rgba(71, 85, 105, 0.55)'
+};
+
 const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
   try {
     await fetch('/api/system-logs', {
@@ -2269,20 +2302,20 @@ const DispatcherWorkspace = () => {
         </div>
 
         <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.mapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
-          <Card className="h-100">
+          <Card className="h-100" style={dispatcherPanelCardStyle}>
             <CardBody className="p-0">
               {showInlineMap ? <div className="position-relative h-100">
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapLocked}>Clear</Button>
-                  <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                  <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherDarkSelectStyle }}>
                     <option value="">City</option>
                     {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
                   </Form.Select>
-                  <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 130, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                  <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 130, ...dispatcherDarkSelectStyle }}>
                     <option value="">ZIP Code</option>
                     {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
                   </Form.Select>
-                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapLocked} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherDarkSelectStyle }}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
@@ -2398,7 +2431,7 @@ const DispatcherWorkspace = () => {
         </div>
 
         <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.tripsVisible ? 'block' : 'none', gridColumn: 3, gridRow: tripsPanelGridRow }}>
-          <Card className="h-100">
+          <Card className="h-100" style={dispatcherPanelCardStyle}>
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                 {/* Row 1: Trip filters and selection */}
@@ -2434,7 +2467,7 @@ const DispatcherWorkspace = () => {
                     borderRadius: 8,
                     padding: '2px 4px',
                     cursor: 'move',
-                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(34, 197, 94, 0.18)' : 'rgba(15, 23, 42, 0.72)'
                   } : undefined}
                   >
                       {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
@@ -2474,7 +2507,7 @@ const DispatcherWorkspace = () => {
                     borderRadius: 8,
                     padding: '2px 4px',
                     cursor: 'move',
-                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(34, 197, 94, 0.18)' : 'rgba(15, 23, 42, 0.72)'
                   } : undefined}
                   >
                       {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
@@ -2514,7 +2547,7 @@ const DispatcherWorkspace = () => {
                     borderRadius: 8,
                     padding: '2px 4px',
                     cursor: 'move',
-                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(34, 197, 94, 0.18)' : 'rgba(15, 23, 42, 0.72)'
                   } : undefined}
                   >
                       {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
@@ -2538,8 +2571,8 @@ const DispatcherWorkspace = () => {
                     <div style={{ fontSize: '12px', color: '#d1d5db' }}>Click "Unlock" to make changes</div>
                   </div>
                 </div>}
-                <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', width: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', opacity: mapLocked ? 0.6 : 1 }}>
-                  <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
+                <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ ...dispatcherDarkTableStyle, whiteSpace: 'nowrap', minWidth: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', width: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', opacity: mapLocked ? 0.6 : 1 }}>
+                  <thead style={{ position: 'sticky', top: 0, backgroundColor: '#172033', color: '#f8fafc' }}>
                     <tr>
                       <th style={{ width: 48 }}>
                         <input
@@ -2583,9 +2616,9 @@ const DispatcherWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} className="table-light">
-                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
-                      </tr> : <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
+                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={{ backgroundColor: '#172033' }}>
+                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#93c5fd' }}>{row.label}</td>
+                      </tr> : <tr key={row.trip.id} style={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? { backgroundColor: '#102a43', color: '#eff6ff' } : isTripAssignedToSelectedDriver(row.trip) ? { backgroundColor: '#123524', color: '#ecfdf5' } : { backgroundColor: '#0f172a', color: '#e5eefc' }}>
                         <td>
                           <input
                             type="checkbox"
@@ -2742,7 +2775,7 @@ const DispatcherWorkspace = () => {
                         {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
                         {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}
                       </tr>) : <tr>
-                        <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No trips loaded. Waiting for your real trips.</td>
+                        <td colSpan={tripTableColumnCount} className="text-center py-4" style={{ color: '#94a3b8' }}>No trips loaded. Waiting for your real trips.</td>
                       </tr>}
                   </tbody>
                 </Table>
@@ -2778,7 +2811,7 @@ const DispatcherWorkspace = () => {
       }} />
 
         <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: dispatcherLayout.messagingVisible ? 'block' : 'none', gridColumn: 1, gridRow: messagingPanelGridRow }}>
-          <Card className="h-100">
+          <Card className="h-100" style={dispatcherPanelCardStyle}>
             <CardBody className="p-0 h-100">
               <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} onLocateDriver={driverId => {
               setSelectedDriverId(driverId);
@@ -2794,23 +2827,23 @@ const DispatcherWorkspace = () => {
         </div>
 
         <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.actionsVisible ? 'block' : 'none', gridColumn: 3, gridRow: actionsPanelGridRow }}>
-          <Card className="h-100">
+          <Card className="h-100" style={dispatcherPanelCardStyle}>
             <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex justify-content-between align-items-center p-2 border-bottom gap-2 flex-wrap" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef', color: '#0f172a' }}>
+              <div className="d-flex justify-content-between align-items-center p-2 border-bottom gap-2 flex-wrap" style={dispatcherPanelHeaderStyle}>
                 <div className="d-flex gap-2 flex-wrap align-items-center">
-                    <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220, backgroundColor: '#ffffff', color: '#0f172a', borderColor: '#cbd5e1' }}>
+                    <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220, ...dispatcherDarkSelectStyle }}>
                     <option value="">Reassign to active driver</option>
                     {activeDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
-                  <Button variant="outline-secondary" size="sm" onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
-                  <Button variant="outline-secondary" size="sm" onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
-                  <Button variant="outline-secondary" size="sm" onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
-                  <Button variant="outline-secondary" size="sm" onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
+                  <Button variant="outline-secondary" size="sm" style={dispatcherDarkButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
+                  <Button variant="outline-secondary" size="sm" style={dispatcherDarkButtonStyle} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
+                  <Button variant="outline-secondary" size="sm" style={dispatcherDarkButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
+                  <Button variant="outline-secondary" size="sm" style={dispatcherDarkButtonStyle} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
                 </div>
               </div>
               <div className="table-responsive flex-grow-1" style={{ minHeight: 0 }}>
-                <Table className="align-middle mb-0">
-                  <thead className="table-light">
+                <Table className="align-middle mb-0" style={dispatcherDarkTableStyle}>
+                  <thead style={{ backgroundColor: '#172033', color: '#f8fafc' }}>
                     <tr>
                       <th style={{ width: 48 }} />
                       <th>Driver</th>
@@ -2822,7 +2855,7 @@ const DispatcherWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
+                    {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} style={selectedTripIdSet.has(normalizeTripId(trip.id)) ? { backgroundColor: '#123524', color: '#ecfdf5' } : { backgroundColor: '#0f172a', color: '#e5eefc' }}>
                         <td>
                           <div className="d-flex align-items-center gap-1">
                             <Form.Check checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => handleTripSelectionToggle(trip.id)} disabled={mapLocked} />
@@ -2836,7 +2869,7 @@ const DispatcherWorkspace = () => {
                         <td>{trip.rider}</td>
                         <td>{trip.patientPhoneNumber || '-'}</td>
                       </tr>) : <tr>
-                        <td colSpan={6} className="text-center text-muted py-4">Selecciona una ruta, un chofer o trips para ver el menu de ruta.</td>
+                        <td colSpan={6} className="text-center py-4" style={{ color: '#94a3b8' }}>Selecciona una ruta, un chofer o trips para ver el menu de ruta.</td>
                       </tr>}
                   </tbody>
                 </Table>
@@ -2859,8 +2892,8 @@ const DispatcherWorkspace = () => {
                 className="btn btn-sm text-start"
                 style={{
                   border: preset.id === dispatcherLayout.preset ? '1px solid #0f766e' : '1px solid #d1d5db',
-                  backgroundColor: preset.id === dispatcherLayout.preset ? '#ecfeff' : '#ffffff',
-                  color: '#0f172a'
+                  backgroundColor: preset.id === dispatcherLayout.preset ? '#123247' : '#0f172a',
+                  color: '#e5eefc'
                 }}
               >
                 <div className="fw-semibold">{preset.label}</div>
@@ -2889,8 +2922,8 @@ const DispatcherWorkspace = () => {
                 className="btn btn-sm d-flex justify-content-between align-items-center"
                 style={{
                   border: '1px solid #d1d5db',
-                  backgroundColor: dispatcherLayout[item.key] ? '#f0fdf4' : '#f8fafc',
-                  color: '#0f172a'
+                  backgroundColor: dispatcherLayout[item.key] ? '#123524' : '#0f172a',
+                  color: '#e5eefc'
                 }}
               >
                 <span>{item.label}</span>

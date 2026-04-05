@@ -17,6 +17,30 @@ const greenToolbarButtonStyle = {
   backgroundColor: 'transparent'
 };
 
+const messagingShellStyle = {
+  background: 'linear-gradient(180deg, #0f172a 0%, #111827 100%)',
+  borderColor: 'rgba(71, 85, 105, 0.68)',
+  color: '#e5eefc'
+};
+
+const messagingHeaderStyle = {
+  background: 'linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(15, 23, 42, 0.96) 100%)',
+  borderColor: 'rgba(71, 85, 105, 0.58)',
+  color: '#e5eefc'
+};
+
+const messagingInputStyle = {
+  backgroundColor: '#0f172a',
+  color: '#e5eefc',
+  borderColor: 'rgba(100, 116, 139, 0.7)'
+};
+
+const messagingButtonStyle = {
+  color: '#dbeafe',
+  borderColor: 'rgba(96, 165, 250, 0.45)',
+  backgroundColor: 'rgba(15, 23, 42, 0.58)'
+};
+
 const MOBILE_ALERT_POLL_MS = 5000;
 
 const DRIVER_ALERT_SMS_TEMPLATES = {
@@ -37,10 +61,10 @@ const CHAT_THEME_OPTIONS = {
     outgoingBubble: '#3157c7',
     outgoingText: '#ffffff',
     outgoingMeta: 'rgba(255,255,255,0.72)',
-    incomingBubble: '#eff6ff',
-    incomingBorder: '#bfdbfe',
-    incomingText: '#0f172a',
-    incomingMeta: '#64748b',
+    incomingBubble: '#162033',
+    incomingBorder: '#3157c7',
+    incomingText: '#e2e8f0',
+    incomingMeta: '#94a3b8',
     accent: '#3157c7'
   },
   emerald: {
@@ -51,10 +75,10 @@ const CHAT_THEME_OPTIONS = {
     outgoingBubble: '#0f766e',
     outgoingText: '#ffffff',
     outgoingMeta: 'rgba(255,255,255,0.72)',
-    incomingBubble: '#ecfdf5',
-    incomingBorder: '#a7f3d0',
-    incomingText: '#052e2b',
-    incomingMeta: '#4b5563',
+    incomingBubble: '#10261f',
+    incomingBorder: '#10b981',
+    incomingText: '#dcfce7',
+    incomingMeta: '#94a3b8',
     accent: '#10b981'
   },
   sunset: {
@@ -65,10 +89,10 @@ const CHAT_THEME_OPTIONS = {
     outgoingBubble: '#c2410c',
     outgoingText: '#ffffff',
     outgoingMeta: 'rgba(255,255,255,0.72)',
-    incomingBubble: '#fff7ed',
-    incomingBorder: '#fdba74',
-    incomingText: '#431407',
-    incomingMeta: '#7c2d12',
+    incomingBubble: '#2a1b12',
+    incomingBorder: '#f97316',
+    incomingText: '#ffedd5',
+    incomingMeta: '#fdba74',
     accent: '#f97316'
   }
 };
@@ -90,11 +114,11 @@ const getAlertVariant = priority => {
 };
 
 const getAlertSurfaceStyle = alert => {
-  if (alert?.type === 'uber-request') return { backgroundColor: '#fff1f2', borderColor: '#be123c', borderWidth: 2 };
-  if (alert?.type === 'backup-driver-request') return { backgroundColor: '#eff6ff', borderColor: '#1d4ed8', borderWidth: 2 };
-  if (alert?.type === 'delay-alert') return { backgroundColor: '#fff7ed', borderColor: '#ea580c', borderWidth: 2 };
-  if (alert?.priority === 'high' || alert?.priority === 'urgent') return { backgroundColor: '#fef2f2', borderColor: '#b91c1c', borderWidth: 2 };
-  return { backgroundColor: '#fff8e1', borderColor: '#f59e0b', borderWidth: 1 };
+  if (alert?.type === 'uber-request') return { backgroundColor: '#3f1020', borderColor: '#fb7185', borderWidth: 2, color: '#ffe4e6' };
+  if (alert?.type === 'backup-driver-request') return { backgroundColor: '#12203c', borderColor: '#60a5fa', borderWidth: 2, color: '#dbeafe' };
+  if (alert?.type === 'delay-alert') return { backgroundColor: '#3a2312', borderColor: '#fb923c', borderWidth: 2, color: '#ffedd5' };
+  if (alert?.priority === 'high' || alert?.priority === 'urgent') return { backgroundColor: '#3c1114', borderColor: '#ef4444', borderWidth: 2, color: '#fee2e2' };
+  return { backgroundColor: '#33270f', borderColor: '#f59e0b', borderWidth: 1, color: '#fef3c7' };
 };
 
 const getAlertLabel = alert => {
@@ -722,8 +746,8 @@ const DispatcherMessagingPanel = ({
   };
 
   return (
-    <div className="h-100 d-flex flex-column border rounded-3 overflow-hidden bg-white" style={{ borderColor: '#dbe3ef' }}>
-      <div className="d-flex justify-content-between align-items-center p-2 border-bottom flex-wrap gap-2" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef', color: '#0f172a' }}>
+    <div className="h-100 d-flex flex-column border rounded-3 overflow-hidden" style={messagingShellStyle}>
+      <div className="d-flex justify-content-between align-items-center p-2 border-bottom flex-wrap gap-2" style={messagingHeaderStyle}>
         <div className="d-flex align-items-center gap-2 flex-wrap">
           <strong>Messaging</strong>
           <Badge bg="light" text="dark">{visibleThreads.length} threads</Badge>
@@ -731,7 +755,7 @@ const DispatcherMessagingPanel = ({
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
         </div>
         <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 220, maxWidth: 360 }}>
-          <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." />
+          <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." style={messagingInputStyle} />
           <button
             type="button"
             onClick={() => setShowPanelSettings(true)}
@@ -743,15 +767,15 @@ const DispatcherMessagingPanel = ({
           </button>
         </div>
         <div className="d-flex gap-2 flex-wrap justify-content-end">
-          <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
-          <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleSendMessage('ETA update sent from dispatch.')}>Quick ETA</Button>
+          <Button variant="outline-dark" size="sm" style={messagingButtonStyle} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
+          <Button variant="outline-dark" size="sm" style={messagingButtonStyle} onClick={() => handleSendMessage('ETA update sent from dispatch.')}>Quick ETA</Button>
         </div>
       </div>
       <div className="d-flex flex-grow-1" style={{ minHeight: 0, overflow: 'hidden' }}>
-        <div className="border-end d-flex flex-column bg-white" style={{ width: '40%', minWidth: 220, minHeight: 0, borderColor: '#dbe3ef' }}>
-          <div className="p-3 border-bottom" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef' }}>
+        <div className="border-end d-flex flex-column" style={{ width: '40%', minWidth: 220, minHeight: 0, borderColor: 'rgba(71, 85, 105, 0.52)', backgroundColor: '#111827' }}>
+          <div className="p-3 border-bottom" style={{ backgroundColor: '#172033', borderColor: 'rgba(71, 85, 105, 0.52)' }}>
             <div className="d-flex flex-column gap-2">
-              <div className="d-flex flex-wrap align-items-center gap-2 small" style={{ color: '#64748b' }}>
+              <div className="d-flex flex-wrap align-items-center gap-2 small" style={{ color: '#94a3b8' }}>
                 <span className="d-inline-flex align-items-center gap-1" title="Flag = driver alert or urgent issue">
                   <IconifyIcon icon="iconoir:triangle-flag" style={{ color: '#dc2626' }} /> Alert
                 </span>
@@ -764,11 +788,12 @@ const DispatcherMessagingPanel = ({
               </div>
             </div>
             {showAddDriver ? (
-              <div className="mt-3 border rounded p-2 bg-white">
+              <div className="mt-3 border rounded p-2" style={{ backgroundColor: '#0f172a', borderColor: 'rgba(71, 85, 105, 0.52)' }}>
                 <div className="fw-semibold small mb-2">Daily Driver de emergencia</div>
                 <Form.Control
                   size="sm"
                   className="mb-2"
+                  style={messagingInputStyle}
                   placeholder="Nombre *"
                   value={dailyForm.firstName}
                   onChange={e => setDailyForm(f => ({ ...f, firstName: e.target.value }))}
@@ -777,6 +802,7 @@ const DispatcherMessagingPanel = ({
                 <Form.Control
                   size="sm"
                   className="mb-2"
+                  style={messagingInputStyle}
                   placeholder="Apellido u Organizacion (ej. Uber)"
                   value={dailyForm.lastNameOrOrg}
                   onChange={e => setDailyForm(f => ({ ...f, lastNameOrOrg: e.target.value }))}
@@ -803,8 +829,8 @@ const DispatcherMessagingPanel = ({
                   key={thread.driverId}
                   className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
                   style={{
-                    backgroundColor: thread.driverId === activeDriverId ? driverColor : hasUrgentAlert ? '#fff1f2' : withDriverAlpha(driverColor, 0.05),
-                    borderBottomColor: '#e2e8f0',
+                    backgroundColor: thread.driverId === activeDriverId ? driverColor : hasUrgentAlert ? 'rgba(127, 29, 29, 0.65)' : withDriverAlpha(driverColor, 0.16),
+                    borderBottomColor: 'rgba(71, 85, 105, 0.4)',
                     borderLeft: `4px solid ${hasUrgentAlert ? '#ea580c' : driverColor}`
                   }}
                 >
@@ -850,7 +876,7 @@ const DispatcherMessagingPanel = ({
                                 <IconifyIcon icon="iconoir:map-pin" className="me-1" />
                                 {getDriverLocationLabel(driver)}
                               </button>
-                              <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : '#64748b' }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
+                              <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : '#94a3b8' }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                             </div>
                           </div>
                           <div className="text-end">
@@ -872,11 +898,11 @@ const DispatcherMessagingPanel = ({
                   </div>
                 </div>
               );
-            }) : <div className="text-center text-muted py-4 small">{driverSearch.trim() ? 'No drivers match this search.' : 'No driver threads available.'}</div>}
+            }) : <div className="text-center py-4 small" style={{ color: '#94a3b8' }}>{driverSearch.trim() ? 'No drivers match this search.' : 'No driver threads available.'}</div>}
           </div>
         </div>
-        <div className="d-flex flex-column flex-grow-1 bg-white" style={{ minWidth: 0 }}>
-          <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', minHeight: 0 }}>
+        <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0, backgroundColor: '#0f172a' }}>
+          <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', minHeight: 0, background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.82) 0%, rgba(17, 24, 39, 0.96) 100%)' }}>
             {isLoadingAlerts && activeDriverAlerts.length === 0 ? <div className="small text-muted mb-3">Loading driver alerts...</div> : null}
             {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') || smsStatus.toLowerCase().includes('failed') ? 'alert-warning' : smsStatus.toLowerCase().includes('sending') ? 'alert-info' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}
             {activeDriverAlerts.length > 0 ? <div className="d-flex flex-column gap-2 mb-3">
@@ -959,16 +985,16 @@ const DispatcherMessagingPanel = ({
                   <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status === 'sending' ? 'sending...' : message.status}` : ''}</div>
                 </div>
               </div>
-            )) : <div className="text-center text-muted py-5">No messages yet for this driver.</div>}
+            )) : <div className="text-center py-5" style={{ color: '#94a3b8' }}>No messages yet for this driver.</div>}
           </div>
-          <div className="p-3 border-top" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe3ef' }}>
+          <div className="p-3 border-top" style={{ backgroundColor: '#172033', borderColor: 'rgba(71, 85, 105, 0.52)' }}>
             <input ref={photoInputRef} type="file" accept="image/*" className="d-none" onChange={event => {
               void handleAttachmentPick(event, 'photo');
             }} />
             <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.txt,image/*" className="d-none" onChange={event => {
               void handleAttachmentPick(event, 'document');
             }} />
-            <div className="d-flex align-items-center gap-2 border rounded-3 px-2 py-2 bg-white" style={{ borderColor: '#dbe3ef' }}>
+            <div className="d-flex align-items-center gap-2 border rounded-3 px-2 py-2" style={{ borderColor: 'rgba(71, 85, 105, 0.52)', backgroundColor: '#0f172a' }}>
               <button
                 type="button"
                 onClick={() => photoInputRef.current?.click()}
@@ -989,7 +1015,7 @@ const DispatcherMessagingPanel = ({
               >
                 <IconifyIcon icon="iconoir:page" />
               </button>
-              <Form.Control value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder={activeDriver ? `Message ${activeDriver.name}` : 'Select a driver first'} disabled={!activeDriver || isSendingMessage} className="border-0 shadow-none" style={{ backgroundColor: 'transparent' }} onKeyDown={event => {
+              <Form.Control value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder={activeDriver ? `Message ${activeDriver.name}` : 'Select a driver first'} disabled={!activeDriver || isSendingMessage} className="border-0 shadow-none" style={{ backgroundColor: 'transparent', color: '#e5eefc' }} onKeyDown={event => {
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   void handleSendMessage(draftMessage);
