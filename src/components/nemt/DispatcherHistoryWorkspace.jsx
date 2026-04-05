@@ -536,23 +536,23 @@ const DispatcherHistoryWorkspace = () => {
             </Card> : null}
 
           <div className={styles.statsGrid}>
-            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.14)} 0%, rgba(13, 19, 31, 0.98) 100%)` } : undefined}>
               <div className={styles.statLabel}>Routes</div>
               <div className={styles.statValue}>{stats.routeCount}</div>
             </div>
-            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.14)} 0%, rgba(13, 19, 31, 0.98) 100%)` } : undefined}>
               <div className={styles.statLabel}>Trips</div>
               <div className={styles.statValue}>{stats.tripCount}</div>
             </div>
-            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.14)} 0%, rgba(13, 19, 31, 0.98) 100%)` } : undefined}>
               <div className={styles.statLabel}>Threads</div>
               <div className={styles.statValue}>{stats.threadCount}</div>
             </div>
-            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.14)} 0%, rgba(13, 19, 31, 0.98) 100%)` } : undefined}>
               <div className={styles.statLabel}>Messages</div>
               <div className={styles.statValue}>{stats.messageCount}</div>
             </div>
-            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.08)} 0%, #ffffff 100%)` } : undefined}>
+            <div className={styles.statCard} style={selectedDriverId ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.14)} 0%, rgba(13, 19, 31, 0.98) 100%)` } : undefined}>
               <div className={styles.statLabel}>Late Trips</div>
               <div className={styles.statValue}>{tripRows.filter(trip => getTripLateMinutes(trip) > 0).length}</div>
             </div>
@@ -678,7 +678,7 @@ const DispatcherHistoryWorkspace = () => {
                 <Badge bg="dark">{photoGroups.reduce((sum, group) => sum + group.photos.length, 0)} photos</Badge>
               </div>
               <div className="d-flex flex-column gap-3">
-                {photoGroups.length > 0 ? photoGroups.map(group => <div key={group.key} className={styles.patientGroup} style={group.trip ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.06)} 0%, #fcfdff 100%)` } : undefined}>
+                {photoGroups.length > 0 ? photoGroups.map(group => <div key={group.key} className={styles.patientGroup} style={group.trip ? { borderColor: withDriverAlpha(selectedDriverColor, 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.11)} 0%, rgba(17, 24, 39, 0.94) 100%)` } : undefined}>
                     <div className="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
                       <div>
                         <div className="fw-semibold">{group.title}</div>
@@ -714,7 +714,7 @@ const DispatcherHistoryWorkspace = () => {
                     <Badge bg="dark">{stats.messageCount} messages</Badge>
                   </div>
                   {threadRows.length > 0 ? <div className={styles.threadGrid}>
-                      {threadRows.map(thread => <div key={thread.driverId} className={styles.threadCard} style={{ borderColor: withDriverAlpha(getDriverColor(thread.driverId), 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(getDriverColor(thread.driverId), 0.07)} 0%, #fcfdff 100%)` }}>
+                      {threadRows.map(thread => <div key={thread.driverId} className={styles.threadCard} style={{ borderColor: withDriverAlpha(getDriverColor(thread.driverId), 0.24), background: `linear-gradient(180deg, ${withDriverAlpha(getDriverColor(thread.driverId), 0.12)} 0%, rgba(15, 22, 35, 0.98) 100%)` }}>
                           <div className={styles.threadHeader}>
                             <div>
                               <div className="fw-semibold d-flex align-items-center gap-2"><span className={styles.driverDot} style={{ backgroundColor: getDriverColor(thread.driverId) }} />{thread.driverLabel}</div>
@@ -756,7 +756,7 @@ const DispatcherHistoryWorkspace = () => {
                     <Badge bg="dark">{auditRows.length}</Badge>
                   </div>
                   <div className="d-flex flex-column gap-2">
-                    {auditRows.length > 0 ? auditRows.map(item => <div key={item.id} className={styles.threadCard} style={{ borderColor: withDriverAlpha(selectedDriverColor, 0.2), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.05)} 0%, #fcfdff 100%)` }}>
+                    {auditRows.length > 0 ? auditRows.map(item => <div key={item.id} className={styles.threadCard} style={{ borderColor: withDriverAlpha(selectedDriverColor, 0.2), background: `linear-gradient(180deg, ${withDriverAlpha(selectedDriverColor, 0.1)} 0%, rgba(15, 22, 35, 0.98) 100%)` }}>
                         <div className="d-flex justify-content-between gap-2 align-items-start">
                           <div>
                             <div className="fw-semibold">{item.summary || item.action}</div>
