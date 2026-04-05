@@ -56,6 +56,8 @@ const createDraft = branding => {
 
 const createCombinationId = () => `combo-${Date.now()}`;
 
+const getSafeActiveCombinationId = draft => draft.combinations.some(item => item.id === draft.activeCombinationId) ? draft.activeCombinationId : 'default';
+
 const PreferencesWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const { data, loading, saving, error, refresh, saveData } = useBrandingApi();
@@ -84,7 +86,7 @@ const PreferencesWorkspace = () => {
       loginLogo: combination.pages.authLogin,
       appLogo: combination.pages.portalSidebar
     }));
-    setMessage(`Combination ${combination.name} applied locally. Save to persist it.`);
+    setMessage(`Combination ${combination.name} loaded.`);
   };
 
   const handlePageValueChange = (pageKey, value) => {
@@ -108,7 +110,7 @@ const PreferencesWorkspace = () => {
     event.target.value = '';
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      setMessage(`${pageKey} blocked: file exceeds 2MB.`);
+      setMessage('The image is too large. Use a file under 2MB.');
       return;
     }
     const reader = new FileReader();
@@ -116,12 +118,12 @@ const PreferencesWorkspace = () => {
       const result = String(reader.result || '').trim();
       if (!result) return;
       handlePageValueChange(pageKey, result);
-      setMessage(`${pageKey} image loaded from ${file.name}. Save to apply it.`);
+      setMessage(`${file.name} loaded. Click Save Branding to apply it.`);
     };
     reader.readAsDataURL(file);
   };
 
-  const handleSaveCurrentAsCombination = () => {
+  const handleSaveCurrentAsCombination = async () => {
     const name = combinationName.trim();
     if (!name) {
       setMessage('Write a combination name first.');
@@ -133,35 +135,69 @@ const PreferencesWorkspace = () => {
       pages: { ...draft.pages },
       updatedAt: new Date().toISOString()
     };
+    const nextDraft = {
+      ...draft,
+      combinations: [...draft.combinations.filter(item => item.name.toLowerCase() !== name.toLowerCase()), nextCombination],
+      activeCombinationId: nextCombination.id
+    };
     setDraft(current => ({
       ...current,
       combinations: [...current.combinations.filter(item => item.name.toLowerCase() !== name.toLowerCase()), nextCombination],
       activeCombinationId: nextCombination.id
     }));
-    setCombinationName('');
-    setMessage(`Combination ${name} created locally. Save to store it in SQL.`);
+    try {
+      const normalized = await saveData({
+        pages: nextDraft.pages,
+        combinations: nextDraft.combinations,
+        activeCombinationId: nextCombination.id,
+        loginLogo: nextDraft.pages.authLogin,
+        appLogo: nextDraft.pages.portalSidebar
+      });
+      setDraft(createDraft(normalized));
+      setCombinationName('');
+      setMessage(`Combination ${name} saved to SQL.`);
+    } catch {
+      setMessage(`Could not save combination ${name}.`);
+    }
   };
 
-  const handleDeleteCombination = combinationId => {
+  const handleDeleteCombination = async combinationId => {
     if (combinationId === 'default') return;
-    setDraft(current => ({
-      ...current,
-      combinations: current.combinations.filter(item => item.id !== combinationId),
-      activeCombinationId: current.activeCombinationId === combinationId ? 'custom' : current.activeCombinationId
-    }));
-    setMessage('Combination removed locally. Save to persist the change.');
+    const nextDraft = {
+      ...draft,
+      combinations: draft.combinations.filter(item => item.id !== combinationId),
+      activeCombinationId: draft.activeCombinationId === combinationId ? 'default' : draft.activeCombinationId
+    };
+    setDraft(nextDraft);
+    try {
+      const normalized = await saveData({
+        pages: nextDraft.pages,
+        combinations: nextDraft.combinations,
+        activeCombinationId: getSafeActiveCombinationId(nextDraft),
+        loginLogo: nextDraft.pages.authLogin,
+        appLogo: nextDraft.pages.portalSidebar
+      });
+      setDraft(createDraft(normalized));
+      setMessage('Combination removed.');
+    } catch {
+      setMessage('Could not remove the combination.');
+    }
   };
 
   const handleSave = async () => {
-    const normalized = await saveData({
-      pages: draft.pages,
-      combinations: draft.combinations,
-      activeCombinationId: draft.activeCombinationId,
-      loginLogo: draft.pages.authLogin,
-      appLogo: draft.pages.portalSidebar
-    });
-    setDraft(createDraft(normalized));
-    setMessage('Branding saved. Every configured page now uses your SQL branding setup.');
+    try {
+      const normalized = await saveData({
+        pages: draft.pages,
+        combinations: draft.combinations,
+        activeCombinationId: getSafeActiveCombinationId(draft),
+        loginLogo: draft.pages.authLogin,
+        appLogo: draft.pages.portalSidebar
+      });
+      setDraft(createDraft(normalized));
+      setMessage('Branding saved.');
+    } catch {
+      setMessage('Could not save branding changes.');
+    }
   };
 
   return <>
@@ -206,12 +242,12 @@ const PreferencesWorkspace = () => {
           <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-4">
             <div>
               <h5 className="mb-1">Settings &gt; Preferences &gt; Branding</h5>
-              <p className="text-secondary mb-2">You can edit each page individually, then save your own combinations to SQL and reapply them any time.</p>
+              <p className="text-secondary mb-2">Edit each page logo and save your own combinations to SQL.</p>
               <div className="small text-secondary">{saving ? 'Saving branding settings...' : message}</div>
             </div>
             <div className="d-flex flex-wrap gap-2 align-items-start">
-              <Badge bg="info-subtle" text="info">Per page</Badge>
-              <Badge bg="success-subtle" text="success">SQL combinations</Badge>
+              <Badge bg="info-subtle" text="info">Page by page</Badge>
+              <Badge bg="success-subtle" text="success">Saved in SQL</Badge>
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={refresh} disabled={loading || saving}>Refresh</Button>
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => setDraft(createDraft(DEFAULT_BRANDING_SETTINGS))} disabled={saving}>Reset</Button>
               <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleSave} disabled={saving}>Save Branding</Button>
@@ -223,12 +259,12 @@ const PreferencesWorkspace = () => {
               <div className="border rounded-4 p-3 mb-4" style={surfaceStyles.previewShell}>
                 <div className="d-flex flex-column flex-lg-row gap-3 align-items-start align-items-lg-center justify-content-between">
                   <div>
-                    <div className="small text-uppercase text-secondary fw-semibold mb-2">Combination Manager</div>
-                    <div className="small text-secondary">Apply, save, or remove your own page-by-page branding combinations.</div>
+                    <div className="small text-uppercase text-secondary fw-semibold mb-2">Combinations</div>
+                    <div className="small text-secondary">Save and reuse your own logo sets.</div>
                   </div>
                   <div className="d-flex flex-wrap gap-2 align-items-center w-100 justify-content-lg-end">
                     <Form.Control value={combinationName} style={{ ...surfaceStyles.input, maxWidth: 260 }} onChange={event => setCombinationName(event.target.value)} placeholder="My orange auth combo" />
-                    <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleSaveCurrentAsCombination}>Save Current As Combo</Button>
+                    <Button style={surfaceStyles.button} className="rounded-pill" onClick={handleSaveCurrentAsCombination} disabled={saving}>Save Combo</Button>
                   </div>
                 </div>
                 <div className="d-flex flex-wrap gap-2 mt-3">
@@ -248,15 +284,16 @@ const PreferencesWorkspace = () => {
                             <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
                               <div>
                                 <div className="fw-semibold">{option.label}</div>
-                                <div className="small text-secondary">{option.key}</div>
+                                <div className="small text-secondary">Choose the image for this page.</div>
                               </div>
                               <Badge bg="secondary-subtle" text="secondary">{option.group}</Badge>
                             </div>
                             <div className="rounded-4 d-flex align-items-center justify-content-center mb-3" style={{ minHeight: 120, background: groupName === 'Portal' ? '#071226' : '#000000' }}>
                               <BrandImage target={option.key} alt={`${option.label} preview`} fallbackSrc={draft.pages[option.key]} style={{ width: '100%', maxWidth: option.key === 'portalSidebar' || option.key === 'authPortalMark' ? 120 : 240, maxHeight: 80, objectFit: 'contain' }} />
                             </div>
-                            <Form.Label className="small text-uppercase text-secondary fw-semibold">Path or uploaded image</Form.Label>
+                            <Form.Label className="small text-uppercase text-secondary fw-semibold">Logo</Form.Label>
                             <Form.Control value={draft.pages[option.key] || ''} style={surfaceStyles.input} onChange={event => handlePageValueChange(option.key, event.target.value)} placeholder="/fmg-login-logo.png" />
+                            <div className="small text-secondary mt-2">Use a file from public or upload one below.</div>
                             <Form.Control type="file" accept="image/*" style={{ ...surfaceStyles.input, marginTop: 12 }} onChange={handlePickFile(option.key)} />
                             <div className="d-flex flex-wrap gap-2 mt-3">
                               {BRANDING_PRESETS.map(image => <Button key={`${option.key}-${image}`} style={surfaceStyles.button} className="rounded-pill" onClick={() => handlePageValueChange(option.key, image)}>{image.split('/').pop()}</Button>)}
