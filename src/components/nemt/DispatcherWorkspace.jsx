@@ -2318,12 +2318,6 @@ const DispatcherWorkspace = () => {
 
   return <>
       <div ref={workspaceRef} style={workspaceGridStyle}>
-        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 720 }}>
-          <Button variant="dark" size="sm" onClick={() => setShowLayoutModal(true)}>
-            Layout
-          </Button>
-        </div>
-
         <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.mapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
           <Card className="h-100" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0">
@@ -2840,6 +2834,8 @@ const DispatcherWorkspace = () => {
               setSelectedDriverId(driverId);
               setFollowSelectedDriver(true);
               setStatusMessage(dispatcherLayout.mapVisible ? `Driver ${driverId} selected for the map.` : `Driver ${driverId} selected. Open the map manually when you want to view it.`);
+            }} onOpenLayout={() => {
+              setShowLayoutModal(true);
             }} openFullChat={() => {
               refreshDrivers();
               router.push('/driver-chat');

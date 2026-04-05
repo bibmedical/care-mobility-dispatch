@@ -233,6 +233,7 @@ const DispatcherMessagingPanel = ({
   selectedDriverId,
   setSelectedDriverId,
   onLocateDriver,
+  onOpenLayout,
   openFullChat
 }) => {
   const { themeMode } = useLayoutContext();
@@ -812,7 +813,7 @@ const DispatcherMessagingPanel = ({
           <Badge bg="warning" text="dark">{unreadCount} unread</Badge>
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
         </div>
-        <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 220, maxWidth: 360 }}>
+        <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 140, maxWidth: 250 }}>
           <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." style={messagingSurfaceStyles.input} />
           <button
             type="button"
@@ -825,6 +826,7 @@ const DispatcherMessagingPanel = ({
           </button>
         </div>
         <div className="d-flex gap-2 flex-wrap justify-content-end">
+          <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => onOpenLayout?.()}>Layout</Button>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => handleSendMessage('ETA update sent from dispatch.')}>Quick ETA</Button>
         </div>
