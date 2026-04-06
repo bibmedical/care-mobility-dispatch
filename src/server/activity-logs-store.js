@@ -1,41 +1,86 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
+import { query, queryRows } from '@/server/db';
 
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('activity-logs.json');
 const STALE_OPEN_SESSION_MS = 18 * 60 * 60 * 1000;
 
-const ensureStorageFile = async () => {
-  try {
-    await mkdir(STORAGE_DIR, { recursive: true });
-    try {
-      await readFile(STORAGE_FILE, 'utf8');
-    } catch {
-      await writeFile(STORAGE_FILE, JSON.stringify({ logs: [] }, null, 2), 'utf8');
-    }
-  } catch (error) {
-    console.error('Error ensuring activity logs storage:', error);
-  }
+const toIsoTimestamp = value => {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return new Date().toISOString();
+  return parsed.toISOString();
 };
 
-const readActivityLogs = async () => {
-  try {
-    await ensureStorageFile();
-    const content = await readFile(STORAGE_FILE, 'utf8');
-    return JSON.parse(content) || { logs: [] };
-  } catch (error) {
-    console.error('Error reading activity logs:', error);
-    return { logs: [] };
-  }
+const toDateKey = timestamp => new Date(timestamp).toISOString().split('T')[0];
+
+const toTimeKey = timestamp => new Date(timestamp).toLocaleTimeString('en-US', {
+  hour12: false,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit'
+});
+
+const mapRowToLog = row => {
+  const timestamp = toIsoTimestamp(row?.timestamp);
+  return {
+    id: String(row?.id || ''),
+    userId: String(row?.user_id || ''),
+    userName: String(row?.user_name || ''),
+    userRole: String(row?.user_role || ''),
+    userEmail: String(row?.user_email || ''),
+    ipAddress: String(row?.ip_address || ''),
+    eventType: String(row?.event_type || ''),
+    eventLabel: String(row?.event_label || ''),
+    target: String(row?.target || ''),
+    metadata: row?.metadata && typeof row.metadata === 'object' ? row.metadata : null,
+    timestamp,
+    date: row?.date || toDateKey(timestamp),
+    time: row?.time || toTimeKey(timestamp)
+  };
 };
 
-const writeActivityLogs = async state => {
-  try {
-    await ensureStorageFile();
-    await writeFile(STORAGE_FILE, JSON.stringify(state, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error writing activity logs:', error);
-  }
+const fetchAllLogsDesc = async () => {
+  const rows = await queryRows(`
+    SELECT id, user_id, user_name, user_role, user_email, ip_address, event_type, event_label, target, metadata, timestamp, date, time
+    FROM activity_logs
+    ORDER BY timestamp DESC
+  `);
+  return rows.map(mapRowToLog);
+};
+
+const insertLog = async logEntry => {
+  await query(
+    `
+      INSERT INTO activity_logs (
+        id,
+        user_id,
+        user_name,
+        user_role,
+        user_email,
+        ip_address,
+        event_type,
+        event_label,
+        target,
+        metadata,
+        timestamp,
+        date,
+        time
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::timestamptz, $12, $13)
+    `,
+    [
+      logEntry.id,
+      logEntry.userId,
+      logEntry.userName,
+      logEntry.userRole,
+      logEntry.userEmail,
+      logEntry.ipAddress,
+      logEntry.eventType,
+      logEntry.eventLabel,
+      logEntry.target,
+      logEntry.metadata ? JSON.stringify(logEntry.metadata) : null,
+      logEntry.timestamp,
+      logEntry.date,
+      logEntry.time
+    ]
+  );
 };
 
 const buildBaseLogEntry = ({
@@ -50,8 +95,9 @@ const buildBaseLogEntry = ({
   target = ''
 }) => {
   const timestamp = new Date().toISOString();
+  const uniqueSuffix = Math.random().toString(36).slice(2, 8);
   return {
-    id: `${userId}-${timestamp}`,
+    id: `${userId}-${timestamp}-${uniqueSuffix}`,
     userId,
     userName,
     userRole,
@@ -93,8 +139,8 @@ const getOpenSessionsByUserId = logs => {
  */
 export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAddress = '') => {
   try {
-    const state = await readActivityLogs();
-    const openSessions = getOpenSessionsByUserId(state.logs);
+    const logs = await fetchAllLogsDesc();
+    const openSessions = getOpenSessionsByUserId(logs);
     const openSession = openSessions.get(userId);
     if (openSession) {
       const openSessionAgeMs = Date.now() - new Date(openSession.timestamp).getTime();
@@ -112,9 +158,8 @@ export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAdd
       eventType: 'LOGIN',
       eventLabel: 'Signed in'
     });
-    
-    state.logs.push(logEntry);
-    await writeActivityLogs(state);
+
+    await insertLog(logEntry);
     
     return logEntry;
   } catch (error) {
@@ -128,9 +173,9 @@ export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAdd
  */
 export const logLogoutEvent = async (userId) => {
   try {
-    const state = await readActivityLogs();
+    const logs = await fetchAllLogsDesc();
     // Find the corresponding login entry to get user details
-    const lastLoginEntry = state.logs
+    const lastLoginEntry = logs
       .filter(log => log.userId === userId && log.eventType === 'LOGIN')
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
     
@@ -143,9 +188,8 @@ export const logLogoutEvent = async (userId) => {
       eventType: 'LOGOUT',
       eventLabel: 'Signed out'
     });
-    
-    state.logs.push(logEntry);
-    await writeActivityLogs(state);
+
+    await insertLog(logEntry);
     
     return logEntry;
   } catch (error) {
@@ -158,8 +202,7 @@ export const logLogoutEvent = async (userId) => {
  */
 export const getAllActivityLogs = async () => {
   try {
-    const state = await readActivityLogs();
-    return state.logs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    return await fetchAllLogsDesc();
   } catch (error) {
     console.error('Error getting all activity logs:', error);
     return [];
@@ -181,7 +224,6 @@ export const logUserActionEvent = async ({
 }) => {
   try {
     if (!userId) return null;
-    const state = await readActivityLogs();
     const logEntry = buildBaseLogEntry({
       userId,
       userName: userName || 'Unknown',
@@ -193,8 +235,7 @@ export const logUserActionEvent = async ({
       target: String(target || ''),
       metadata: metadata && typeof metadata === 'object' ? metadata : null
     });
-    state.logs.push(logEntry);
-    await writeActivityLogs(state);
+    await insertLog(logEntry);
     return logEntry;
   } catch (error) {
     console.error('Error logging user action event:', error);
@@ -207,8 +248,8 @@ export const logUserActionEvent = async ({
  */
 export const getActivityLogsByUserId = async (userId) => {
   try {
-    const state = await readActivityLogs();
-    return state.logs
+    const logs = await fetchAllLogsDesc();
+    return logs
       .filter(log => log.userId === userId)
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   } catch (error) {
@@ -222,8 +263,8 @@ export const getActivityLogsByUserId = async (userId) => {
  */
 export const getActivityLogsByRole = async (role) => {
   try {
-    const state = await readActivityLogs();
-    return state.logs
+    const logs = await fetchAllLogsDesc();
+    return logs
       .filter(log => log.userRole === role)
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   } catch (error) {
@@ -237,8 +278,8 @@ export const getActivityLogsByRole = async (role) => {
  */
 export const getActivityLogsByDate = async (date) => {
   try {
-    const state = await readActivityLogs();
-    return state.logs
+    const logs = await fetchAllLogsDesc();
+    return logs
       .filter(log => log.date === date)
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   } catch (error) {
@@ -252,8 +293,7 @@ export const getActivityLogsByDate = async (date) => {
  */
 export const getActivityLogsSummary = async () => {
   try {
-    const state = await readActivityLogs();
-    const logs = state.logs;
+    const logs = await fetchAllLogsDesc();
     
     // Count events today
     const today = new Date().toISOString().split('T')[0];
@@ -310,14 +350,10 @@ export const getActivityLogsSummary = async () => {
  */
 export const clearOldActivityLogs = async (daysOld = 90) => {
   try {
-    const state = await readActivityLogs();
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-    
-    state.logs = state.logs.filter(log => new Date(log.timestamp) > cutoffDate);
-    
-    await writeActivityLogs(state);
-    return state.logs.length;
+    const safeDays = Math.max(1, Number(daysOld) || 90);
+    await query(`DELETE FROM activity_logs WHERE timestamp < NOW() - ($1::text || ' days')::interval`, [String(safeDays)]);
+    const [{ count }] = await queryRows(`SELECT COUNT(*)::int AS count FROM activity_logs`);
+    return Number(count) || 0;
   } catch (error) {
     console.error('Error clearing old activity logs:', error);
   }
