@@ -6,6 +6,7 @@ import useLocalStorage from '@/hooks/useLocalStorage';
 import { signOut, useSession } from 'next-auth/react';
 import { usePathname, useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from 'react-bootstrap';
 
 const STORAGE_KEY = '__CARE_MOBILITY_AI_ASSISTANT__';
@@ -223,6 +224,7 @@ const DispatchAssistantWidget = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [isHydrating, setIsHydrating] = useState(false);
   const [pendingRoutePlan, setPendingRoutePlan] = useState(null);
+  const [portalReady, setPortalReady] = useState(false);
   const recognitionRef = useRef(null);
   const recognitionRunningRef = useRef(false);
   const recognitionRestartTimeoutRef = useRef(null);
@@ -379,6 +381,10 @@ const DispatchAssistantWidget = () => {
       active = false;
     };
   }, [assistantName, clientId, session?.user?.id, setStoredAssistantState]);
+
+  useEffect(() => {
+    setPortalReady(typeof document !== 'undefined');
+  }, []);
 
   useEffect(() => {
     if (!speechRecognitionSupported) return undefined;
@@ -838,7 +844,11 @@ const DispatchAssistantWidget = () => {
     }
   };
 
-  return <div style={widgetStyles.shell}>
+  if (!portalReady || typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(<div style={widgetStyles.shell}>
       {open ? <div style={widgetStyles.panel}>
           <div style={widgetStyles.header}>
             <div className="d-flex align-items-start justify-content-between gap-3">
@@ -983,7 +993,7 @@ const DispatchAssistantWidget = () => {
           <span style={widgetStyles.launcherLabel}>{open ? 'ABIERTO' : 'IA'}</span>
         </button>
       </div>
-    </div>;
+    </div>, document.body);
 };
 
 export default DispatchAssistantWidget;
