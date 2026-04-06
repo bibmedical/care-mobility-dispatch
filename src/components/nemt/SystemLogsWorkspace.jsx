@@ -13,19 +13,29 @@ const DRIVER_ALERT_ACTION_LABELS = {
   'Loaded mobile driver alert into draft': 'use-as-draft'
 };
 
-const getTodayDateKey = nowMs => new Date(nowMs).toISOString().split('T')[0];
-const getDateKeyFromTimestampMs = timestampMs => new Date(timestampMs).toISOString().split('T')[0];
-const getUtcDayStartMs = dateKey => new Date(`${dateKey}T00:00:00.000Z`).getTime();
+const pad = value => String(value).padStart(2, '0');
+const getDateKeyFromTimestampMs = timestampMs => {
+  const date = new Date(timestampMs);
+  if (!Number.isFinite(date.getTime())) return '';
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+const getTodayDateKey = nowMs => getDateKeyFromTimestampMs(nowMs);
+const getLocalDayStartMs = dateKey => {
+  const [year, month, day] = String(dateKey || '').split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return Number.NaN;
+  return new Date(year, month - 1, day, 0, 0, 0, 0).getTime();
+};
 
-const addDurationAcrossUtcDays = (totalsMap, userId, startMs, endMs) => {
+const addDurationAcrossLocalDays = (totalsMap, userId, startMs, endMs) => {
   if (!userId || !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
 
   let cursor = startMs;
   while (cursor < endMs) {
     const dateKey = getDateKeyFromTimestampMs(cursor);
-    const dayStartMs = getUtcDayStartMs(dateKey);
+    const dayStartMs = getLocalDayStartMs(dateKey);
     if (!dateKey || !Number.isFinite(dayStartMs)) break;
-    const nextDayMs = dayStartMs + 24 * 60 * 60 * 1000;
+    const nextDayMs = new Date(dayStartMs);
+    nextDayMs.setDate(nextDayMs.getDate() + 1);
     const sliceEndMs = Math.min(endMs, nextDayMs);
     const bucketKey = `${userId}::${dateKey}`;
     totalsMap.set(bucketKey, (totalsMap.get(bucketKey) || 0) + Math.max(0, sliceEndMs - cursor));
@@ -42,19 +52,15 @@ const formatDurationMs = milliseconds => {
   return `${hours}:${minutes}:${seconds}`;
 };
 
-const formatClock12 = value => {
-  const text = String(value || '').trim();
-  const match = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  if (!match) return text || '--';
-  const sourceHours = Number(match[1]);
-  const minutes = match[2];
-  const seconds = match[3];
-  if (!Number.isFinite(sourceHours)) return text || '--';
-  const meridiem = sourceHours >= 12 ? 'PM' : 'AM';
-  const normalizedHours = sourceHours % 12 || 12;
-  return seconds
-    ? `${String(normalizedHours).padStart(2, '0')}:${minutes}:${seconds} ${meridiem}`
-    : `${String(normalizedHours).padStart(2, '0')}:${minutes} ${meridiem}`;
+const formatTimestamp12 = value => {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '--';
+  return date.toLocaleTimeString('en-US', {
+    hour12: true,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
 };
 
 const buildSessionState = logs => {
@@ -99,7 +105,7 @@ const buildWorkdayState = (logs, nowMs) => {
   const todayKey = getTodayDateKey(nowMs);
 
   (Array.isArray(logs) ? logs : [])
-    .filter(log => log?.userId && WORK_EVENT_TYPES.has(log.eventType) && log?.timestamp && log?.date)
+    .filter(log => log?.userId && WORK_EVENT_TYPES.has(log.eventType) && log?.timestamp)
     .forEach(log => {
       if (!logsByUserId.has(log.userId)) logsByUserId.set(log.userId, []);
       logsByUserId.get(log.userId).push(log);
@@ -120,7 +126,7 @@ const buildWorkdayState = (logs, nowMs) => {
         previousTimestampMs = timestampMs;
         lastOpenLog = log;
       } else {
-        addDurationAcrossUtcDays(totalByUserDate, userId, previousTimestampMs, timestampMs);
+        addDurationAcrossLocalDays(totalByUserDate, userId, previousTimestampMs, timestampMs);
         previousTimestampMs = timestampMs;
         lastOpenLog = log;
       }
@@ -133,7 +139,7 @@ const buildWorkdayState = (logs, nowMs) => {
     });
 
     if (segmentStartMs !== null && previousTimestampMs != null && lastOpenLog) {
-      addDurationAcrossUtcDays(totalByUserDate, userId, previousTimestampMs, nowMs);
+      addDurationAcrossLocalDays(totalByUserDate, userId, previousTimestampMs, nowMs);
       const todayTotalMs = totalByUserDate.get(`${userId}::${todayKey}`) || 0;
       if (todayTotalMs > 0) {
         activeDayByUserId.set(userId, {
@@ -307,7 +313,7 @@ const SystemLogsWorkspace = () => {
         userEmail: user.email || '-',
         todayWorkedMs: workdayState.totalByUserDate.get(`${user.id}::${todayDateKey}`) || 0,
         todayActionCount: 0,
-        todayLastTime: '',
+        todayLastTimestamp: 0,
         todayLastAction: 'Sin actividad',
         isOnline: workdayState.activeDayByUserId.has(user.id)
       });
@@ -323,7 +329,7 @@ const SystemLogsWorkspace = () => {
           userEmail: log.userEmail || '-',
           todayWorkedMs: 0,
           todayActionCount: 0,
-          todayLastTime: '',
+          todayLastTimestamp: 0,
           todayLastAction: 'Sin actividad',
           isOnline: false
         });
@@ -331,7 +337,9 @@ const SystemLogsWorkspace = () => {
 
       const current = summaryMap.get(log.userId);
       const todayWorkedMs = workdayState.totalByUserDate.get(`${log.userId}::${todayDateKey}`) || current.todayWorkedMs;
-      const isToday = log.date === todayDateKey;
+      const timestampMs = new Date(log.timestamp).getTime();
+      const isToday = Number.isFinite(timestampMs) && getDateKeyFromTimestampMs(timestampMs) === todayDateKey;
+      const shouldUpdateLastAction = isToday && timestampMs >= Number(current.todayLastTimestamp || 0);
       summaryMap.set(log.userId, {
         ...current,
         userName: current.userName || log.userName || log.userId,
@@ -339,8 +347,8 @@ const SystemLogsWorkspace = () => {
         userEmail: current.userEmail || log.userEmail || '-',
         todayWorkedMs,
         todayActionCount: current.todayActionCount + (isToday ? 1 : 0),
-        todayLastTime: isToday && (!current.todayLastTime || new Date(`${log.date}T${log.time}`) >= new Date(`${todayDateKey}T${current.todayLastTime || '00:00:00'}`)) ? log.time : current.todayLastTime,
-        todayLastAction: isToday && (!current.todayLastTime || new Date(`${log.date}T${log.time}`) >= new Date(`${todayDateKey}T${current.todayLastTime || '00:00:00'}`)) ? getActionLabel(log) : current.todayLastAction,
+        todayLastTimestamp: shouldUpdateLastAction ? timestampMs : current.todayLastTimestamp,
+        todayLastAction: shouldUpdateLastAction ? getActionLabel(log) : current.todayLastAction,
         isOnline: workdayState.activeDayByUserId.has(log.userId)
       });
     });
@@ -395,7 +403,10 @@ const SystemLogsWorkspace = () => {
     };
   }, [driverAlertLogs]);
 
-  const todayLogs = useMemo(() => summaryLogs.filter(log => log.date === todayDateKey), [todayDateKey, summaryLogs]);
+  const todayLogs = useMemo(
+    () => summaryLogs.filter(log => getDateKeyFromTimestampMs(new Date(log.timestamp).getTime()) === todayDateKey),
+    [todayDateKey, summaryLogs]
+  );
 
   const activeUsersTodayCount = useMemo(
     () => workerSummaries.filter(worker => worker.todayActionCount > 0 || worker.todayWorkedMs > 0).length,
@@ -421,10 +432,18 @@ const SystemLogsWorkspace = () => {
   const groupLogsByDate = sourceLogs => {
     const grouped = {};
     sourceLogs.forEach(log => {
-      if (!grouped[log.date]) grouped[log.date] = [];
-      grouped[log.date].push(log);
+      const timestampMs = new Date(log?.timestamp).getTime();
+      const dateKey = getDateKeyFromTimestampMs(timestampMs) || String(log?.date || 'unknown');
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(log);
     });
-    return Object.entries(grouped).sort((a, b) => new Date(b[0]) - new Date(a[0]));
+    return Object.entries(grouped).sort((a, b) => {
+      const [aYear, aMonth, aDay] = String(a[0]).split('-').map(Number);
+      const [bYear, bMonth, bDay] = String(b[0]).split('-').map(Number);
+      const aValue = Number.isFinite(aYear) ? new Date(aYear, aMonth - 1, aDay).getTime() : 0;
+      const bValue = Number.isFinite(bYear) ? new Date(bYear, bMonth - 1, bDay).getTime() : 0;
+      return bValue - aValue;
+    });
   };
 
   const selectedUserActiveSession = selectedUser?.userId
@@ -584,7 +603,7 @@ const SystemLogsWorkspace = () => {
                       <td>{worker.userEmail}</td>
                       <td>
                         <span className={`${styles.action} ${styles.actionACTION}`}>
-                          {worker.todayLastTime ? `${worker.todayLastAction} ${formatClock12(worker.todayLastTime)}` : 'Sin actividad hoy'}
+                          {worker.todayLastTimestamp ? `${worker.todayLastAction} ${formatTimestamp12(worker.todayLastTimestamp)}` : 'Sin actividad hoy'}
                         </span>
                       </td>
                       <td>{formatDurationMs(worker.todayWorkedMs)}</td>
@@ -633,7 +652,7 @@ const SystemLogsWorkspace = () => {
               ) : (
                 driverAlertLogs.slice(0, 300).map((log, index) => (
                   <tr key={`${log.id || 'alert-log'}-${index}`}>
-                    <td>{log.date} {formatClock12(log.time)}</td>
+                    <td>{getDateKeyFromTimestampMs(new Date(log.timestamp).getTime())} {formatTimestamp12(log.timestamp)}</td>
                     <td className={styles.userNameCell}>{log.userName || log.userId}</td>
                     <td>{log.metadata?.driverName || log.metadata?.driverId || '-'}</td>
                     <td>
@@ -693,7 +712,7 @@ const SystemLogsWorkspace = () => {
                         <div key={`${log.id || 'timeline'}-${log.userId || 'user'}-${log.timestamp || log.time || 'time'}-${index}`} className={styles.timelineEvent}>
                           <div className={`${styles.eventDot} ${styles[`dot${log.eventType}`]}`}></div>
                           <div className={styles.eventContent}>
-                            <span className={styles.eventTime}>{formatClock12(log.time)}</span>
+                            <span className={styles.eventTime}>{formatTimestamp12(log.timestamp)}</span>
                             <span className={`${styles.eventType} ${styles[`type${log.eventType}`]}`}>
                               {getActionLabel(log)}
                             </span>
