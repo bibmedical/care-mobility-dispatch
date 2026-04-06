@@ -74,6 +74,88 @@ const renderConfirmationTemplate = (template, trip, code) => {
   return String(template || '').replace(/{{\s*(\w+)\s*}}/g, (_, token) => String(tokens[token] ?? ''));
 };
 
+const SMS_OUTPUT_COLUMN_OPTIONS = [
+  'tripId',
+  'rider',
+  'phone',
+  'pickupTime',
+  'pickupAddress',
+  'puZip',
+  'dropoffAddress',
+  'doZip',
+  'miles',
+  'leg',
+  'type',
+  'doNotConfirm',
+  'hospitalRehab',
+  'confirmation',
+  'dispatchStatus',
+  'reply',
+  'sent',
+  'responded',
+  'internalNotes'
+];
+
+const normalizeSelectedColumns = selectedColumns => {
+  const allowed = new Set(SMS_OUTPUT_COLUMN_OPTIONS);
+  return Array.from(new Set((Array.isArray(selectedColumns) ? selectedColumns : []).filter(key => allowed.has(String(key)))));
+};
+
+const getSmsColumnValue = (trip, columnKey) => {
+  const confirmation = trip?.confirmation || {};
+  switch (columnKey) {
+    case 'tripId':
+      return trip?.id || '-';
+    case 'rider':
+      return trip?.rider || '-';
+    case 'phone':
+      return trip?.patientPhoneNumber || '-';
+    case 'pickupTime':
+      return trip?.pickup || trip?.scheduledPickup || '-';
+    case 'pickupAddress':
+      return trip?.address || '-';
+    case 'puZip':
+      return trip?.pickupZip || trip?.puZip || '-';
+    case 'dropoffAddress':
+      return trip?.destination || '-';
+    case 'doZip':
+      return trip?.dropoffZip || trip?.doZip || '-';
+    case 'miles':
+      return trip?.miles || '-';
+    case 'leg':
+      return trip?.legLabel || '-';
+    case 'type':
+      return trip?.tripType || '-';
+    case 'doNotConfirm':
+      return trip?.doNotConfirm ? 'Blocked' : 'Allowed';
+    case 'hospitalRehab':
+      return trip?.hospitalStatus?.type ? `${trip.hospitalStatus.type}${trip.hospitalStatus.endDate ? ` (${trip.hospitalStatus.endDate})` : ''}` : '-';
+    case 'confirmation':
+      return confirmation?.status || '-';
+    case 'dispatchStatus':
+      return trip?.status || '-';
+    case 'reply':
+      return confirmation?.lastResponseText || '-';
+    case 'sent':
+      return confirmation?.sentAt || '-';
+    case 'responded':
+      return confirmation?.respondedAt || '-';
+    case 'internalNotes':
+      return trip?.notes || '-';
+    default:
+      return '-';
+  }
+};
+
+const buildSelectedColumnsLine = (trip, selectedColumns) => {
+  const normalized = normalizeSelectedColumns(selectedColumns);
+  if (normalized.length === 0) return '';
+  const line = normalized
+    .map(columnKey => `${columnKey}: ${String(getSmsColumnValue(trip, columnKey) || '-').replace(/\s+/g, ' ').trim()}`)
+    .join(' | ');
+  return line.length > 420 ? `${line.slice(0, 417)}...` : line;
+};
+
 const parseErrorMessage = async response => {
   const fallback = `SMS provider request failed with status ${response.status}.`;
   try {
@@ -377,7 +459,7 @@ export const sendTripArrivalNotifications = async ({ trip, driverName = '' }) =>
   };
 };
 
-export const sendTripConfirmationRequests = async ({ tripIds }) => {
+export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = [] }) => {
   const uniqueTripIds = Array.from(new Set((Array.isArray(tripIds) ? tripIds : []).filter(Boolean)));
   if (uniqueTripIds.length === 0) throw new Error('Select at least one trip before sending confirmation SMS.');
 
@@ -462,7 +544,9 @@ export const sendTripConfirmationRequests = async ({ tripIds }) => {
 
     const requestId = `sms-${Date.now()}-${tripIndex + 1}`;
     const code = buildConfirmationCode();
-    const message = renderConfirmationTemplate(smsState.confirmationTemplate, trip, code);
+    const baseMessage = renderConfirmationTemplate(smsState.confirmationTemplate, trip, code);
+    const selectedColumnsLine = buildSelectedColumnsLine(trip, selectedColumns);
+    const message = selectedColumnsLine ? `${baseMessage}\n\nTrip: ${selectedColumnsLine}` : baseMessage;
 
     try {
       const providerResult = await sendThroughProvider({

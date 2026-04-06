@@ -8,7 +8,8 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const tripIds = Array.isArray(body?.tripIds) ? body.tripIds : body?.tripId ? [body.tripId] : [];
-    const payload = await sendTripConfirmationRequests({ tripIds });
+    const selectedColumns = Array.isArray(body?.selectedColumns) ? body.selectedColumns : [];
+    const payload = await sendTripConfirmationRequests({ tripIds, selectedColumns });
     const session = await getServerSession(options);
     if (session?.user?.id) {
       await logUserActionEvent({
