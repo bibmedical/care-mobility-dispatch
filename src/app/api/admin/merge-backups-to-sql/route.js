@@ -437,6 +437,32 @@ const requireAdmin = async () => {
   return session;
 };
 
+const applyMergedData = async ({ fromDate, fromDateRaw, session }) => {
+  const preview = await buildMergePreview({ fromDate });
+
+  await withTransaction(async client => {
+    await acquireAdvisoryLock(client, 'dispatch-state-update');
+    await acquireAdvisoryLock(client, 'admin-state-update');
+
+    await client.query(`UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = $2`, [preview.nextDispatchData, DISPATCH_ROW_ID]);
+    await client.query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [preview.nextAdminData, ADMIN_ROW_ID]);
+  });
+
+  await query(
+    `INSERT INTO activity_logs (id, username, role, action, timestamp, details)
+     VALUES ($1, $2, $3, $4, NOW(), $5)`,
+    [
+      `merge-${Date.now()}`,
+      String(session?.user?.name || session?.user?.email || session?.user?.id || 'admin'),
+      String(session?.user?.role || 'admin'),
+      'backup-sql-merge',
+      `Merged backups to SQL from ${fromDateRaw}. Trips ${preview.summary.dispatch.beforeTrips} -> ${preview.summary.dispatch.afterTrips}`
+    ]
+  ).catch(() => {});
+
+  return preview;
+};
+
 export async function GET(request) {
   const session = await requireAdmin();
   if (!session) {
@@ -449,6 +475,17 @@ export async function GET(request) {
 
   if (!Number.isFinite(fromDate) || fromDateParam.length !== 8) {
     return NextResponse.json({ error: 'fromDate must be YYYYMMDD' }, { status: 400 });
+  }
+
+  const apply = url.searchParams.get('apply') === '1';
+  const confirm = url.searchParams.get('confirm') === 'yes';
+
+  if (apply) {
+    if (!confirm) {
+      return NextResponse.json({ error: 'Add confirm=yes to apply merge via GET' }, { status: 400 });
+    }
+    const applied = await applyMergedData({ fromDate, fromDateRaw: fromDateParam, session });
+    return NextResponse.json({ ok: true, mode: 'applied', ...applied.summary });
   }
 
   const preview = await buildMergePreview({ fromDate });
@@ -480,27 +517,6 @@ export async function POST(request) {
     return NextResponse.json({ error: 'fromDate must be YYYYMMDD' }, { status: 400 });
   }
 
-  const preview = await buildMergePreview({ fromDate });
-
-  await withTransaction(async client => {
-    await acquireAdvisoryLock(client, 'dispatch-state-update');
-    await acquireAdvisoryLock(client, 'admin-state-update');
-
-    await client.query(`UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = $2`, [preview.nextDispatchData, DISPATCH_ROW_ID]);
-    await client.query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [preview.nextAdminData, ADMIN_ROW_ID]);
-  });
-
-  await query(
-    `INSERT INTO activity_logs (id, username, role, action, timestamp, details)
-     VALUES ($1, $2, $3, $4, NOW(), $5)`,
-    [
-      `merge-${Date.now()}`,
-      String(session?.user?.name || session?.user?.email || session?.user?.id || 'admin'),
-      String(session?.user?.role || 'admin'),
-      'backup-sql-merge',
-      `Merged backups to SQL from ${fromDateRaw}. Trips ${preview.summary.dispatch.beforeTrips} -> ${preview.summary.dispatch.afterTrips}`
-    ]
-  ).catch(() => {});
-
-  return NextResponse.json({ ok: true, mode: 'applied', ...preview.summary });
+  const applied = await applyMergedData({ fromDate, fromDateRaw, session });
+  return NextResponse.json({ ok: true, mode: 'applied', ...applied.summary });
 }
