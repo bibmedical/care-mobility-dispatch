@@ -333,6 +333,8 @@ const ConfirmationWorkspace = () => {
   const [tripUpdateConfirmMethod, setTripUpdateConfirmMethod] = useState('call');
   const [tripUpdatePickupTime, setTripUpdatePickupTime] = useState('');
   const [tripUpdateDropoffTime, setTripUpdateDropoffTime] = useState('');
+  const [tripUpdatePickupAddress, setTripUpdatePickupAddress] = useState('');
+  const [tripUpdateDropoffAddress, setTripUpdateDropoffAddress] = useState('');
   const [tripUpdateNote, setTripUpdateNote] = useState('');
   const [tripUpdateCompanionNote, setTripUpdateCompanionNote] = useState('');
   const [tripUpdateMobilityNote, setTripUpdateMobilityNote] = useState('');
@@ -1272,6 +1274,8 @@ const ConfirmationWorkspace = () => {
     setTripUpdateConfirmMethod('call');
     setTripUpdatePickupTime(normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || ''));
     setTripUpdateDropoffTime(normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || ''));
+    setTripUpdatePickupAddress(String(trip?.address || ''));
+    setTripUpdateDropoffAddress(String(trip?.destination || ''));
     setTripUpdateNote('');
     setTripUpdateCompanionNote(String(profile?.companion || ''));
     setTripUpdateMobilityNote(String(profile?.mobility || ''));
@@ -1287,12 +1291,18 @@ const ConfirmationWorkspace = () => {
     const newDropoff = String(tripUpdateDropoffTime || '').trim();
     const pickupChanged = Boolean(newPickup) && newPickup !== oldPickup;
     const dropoffChanged = Boolean(newDropoff) && newDropoff !== oldDropoff;
+    const newPickupAddress = String(tripUpdatePickupAddress || '').trim();
+    const newDropoffAddress = String(tripUpdateDropoffAddress || '').trim();
+    const pickupAddressChanged = newPickupAddress !== String(tripUpdateModal.address || '').trim();
+    const dropoffAddressChanged = newDropoffAddress !== String(tripUpdateModal.destination || '').trim();
 
     const detailLines = [];
     detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
     if (pickupChanged || dropoffChanged) {
       detailLines.push(`[SCHEDULE NEW] Pickup: ${oldPickup || '-'} -> ${newPickup || oldPickup || '-'} | Dropoff: ${oldDropoff || '-'} -> ${newDropoff || oldDropoff || '-'}`);
     }
+    if (pickupAddressChanged) detailLines.push(`[ADDRESS UPDATE] PU: ${tripUpdateModal.address || '-'} -> ${newPickupAddress || '-'}`);
+    if (dropoffAddressChanged) detailLines.push(`[ADDRESS UPDATE] DO: ${tripUpdateModal.destination || '-'} -> ${newDropoffAddress || '-'}`);
     if (tripUpdateCompanionNote.trim()) detailLines.push(`[PASSENGER NOTE] ${tripUpdateCompanionNote.trim()}`);
     if (tripUpdateMobilityNote.trim()) detailLines.push(`[MOBILITY NOTE] ${tripUpdateMobilityNote.trim()}`);
     if (tripUpdateNote.trim()) detailLines.push(`[DISPATCH NOTE] ${tripUpdateNote.trim()}`);
@@ -1302,6 +1312,8 @@ const ConfirmationWorkspace = () => {
     updateTripRecord(tripUpdateModal.id, {
       scheduledPickup: newPickup || oldPickup,
       scheduledDropoff: newDropoff || oldDropoff,
+      address: newPickupAddress || tripUpdateModal.address || '',
+      destination: newDropoffAddress || tripUpdateModal.destination || '',
       notes: mergedNotes,
       confirmation: {
         ...(tripUpdateModal.confirmation || {}),
@@ -1757,6 +1769,8 @@ const ConfirmationWorkspace = () => {
                   <th>Rider</th>
                   <th>Phone</th>
                   <th>Pickup Time</th>
+                  <th>PU Address</th>
+                  <th>DO Address</th>
                   <th>Miles</th>
                   <th>Leg</th>
                   <th>Type</th>
@@ -1793,6 +1807,8 @@ const ConfirmationWorkspace = () => {
                       </td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
                       <td>{getTripDisplayPickupTime(trip)}</td>
+                      <td style={{ maxWidth: 200, whiteSpace: 'normal', fontSize: '0.85em' }}>{trip.address || '-'}</td>
+                      <td style={{ maxWidth: 200, whiteSpace: 'normal', fontSize: '0.85em' }}>{trip.destination || '-'}</td>
                       <td>{getTripMilesDisplay(trip)}</td>
                       <td>{getTripLegFilterKey(trip)}</td>
                       <td>{getTripTypeLabel(trip)}</td>
@@ -1841,7 +1857,7 @@ const ConfirmationWorkspace = () => {
                       </td>
                     </tr>;
                 }) : <tr>
-                    <td colSpan={15} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
+                    <td colSpan={17} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
                   </tr>}
               </tbody>
             </Table>
@@ -1995,6 +2011,14 @@ const ConfirmationWorkspace = () => {
             </Col>
             <Col md={12}>
               <div className="small text-muted">Current pickup: {normalizeTripTimeDisplay(tripUpdateModal?.scheduledPickup || tripUpdateModal?.pickup || '') || '-'} | Current dropoff: {normalizeTripTimeDisplay(tripUpdateModal?.scheduledDropoff || tripUpdateModal?.dropoff || '') || '-'}</div>
+            </Col>
+            <Col md={6}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Pickup Address</Form.Label>
+              <Form.Control value={tripUpdatePickupAddress} onChange={event => setTripUpdatePickupAddress(event.target.value)} placeholder="e.g. 123 Main St, Orlando FL" />
+            </Col>
+            <Col md={6}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Dropoff Address</Form.Label>
+              <Form.Control value={tripUpdateDropoffAddress} onChange={event => setTripUpdateDropoffAddress(event.target.value)} placeholder="e.g. 456 Oak Ave, Orlando FL" />
             </Col>
             <Col md={6}>
               <Form.Label className="small text-uppercase text-muted fw-semibold">Companion Note</Form.Label>
