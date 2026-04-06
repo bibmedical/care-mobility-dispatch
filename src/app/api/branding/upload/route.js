@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, readdir, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
+import { BRANDING_PAGE_OPTIONS } from '@/helpers/branding';
 import { isAdminRole } from '@/helpers/system-users';
 import { getStorageRoot } from '@/server/storage-paths';
 
@@ -13,6 +14,7 @@ const BRANDING_STORAGE_DIR = path.join(getStorageRoot(), 'branding');
 
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 const forbidden = () => NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+const ALLOWED_PAGE_KEYS = new Set(BRANDING_PAGE_OPTIONS.map(option => option.key));
 
 const sanitizeFileName = value => String(value || '')
   .toLowerCase()
@@ -34,6 +36,10 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Page key is required.' }, { status: 400 });
     }
 
+    if (!ALLOWED_PAGE_KEYS.has(pageKey)) {
+      return NextResponse.json({ error: 'Invalid branding page key.' }, { status: 400 });
+    }
+
     if (!file || typeof file === 'string') {
       return NextResponse.json({ error: 'Select an image first.' }, { status: 400 });
     }
@@ -51,16 +57,27 @@ export async function POST(request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const timestamp = Date.now();
     const safeBaseName = sanitizeFileName(path.basename(fileName, extension)) || 'branding-image';
-    const storedFileName = `${pageKey}-${timestamp}-${safeBaseName}${extension}`;
+    const storedFileName = `${pageKey}-${safeBaseName}${extension}`;
 
     await mkdir(BRANDING_STORAGE_DIR, { recursive: true });
+
+    const existingFiles = await readdir(BRANDING_STORAGE_DIR).catch(() => []);
+    const existingPageFiles = existingFiles.filter(entry => entry === storedFileName || entry.startsWith(`${pageKey}-`) || entry.startsWith(`${pageKey}.`));
+
+    await Promise.all(existingPageFiles.map(async entry => {
+      try {
+        await unlink(path.join(BRANDING_STORAGE_DIR, entry));
+      } catch {
+        // Ignore cleanup failures and continue with the replacement write.
+      }
+    }));
+
     await writeFile(path.join(BRANDING_STORAGE_DIR, storedFileName), buffer);
 
     return NextResponse.json({
       ok: true,
-      path: `/api/files/local?path=${encodeURIComponent(`storage/branding/${storedFileName}`)}`,
+      path: `/api/branding/image?pageKey=${encodeURIComponent(pageKey)}`,
       fileName: storedFileName
     });
   } catch (error) {
