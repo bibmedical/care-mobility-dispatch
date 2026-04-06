@@ -104,40 +104,6 @@ const widgetStyles = {
     zIndex: 3,
     transition: 'all 120ms ease'
   },
-  launcherModeRow: {
-    width: '100%',
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr 1fr',
-    gap: 4
-  },
-  launcherModeButton: {
-    minHeight: 22,
-    borderRadius: 999,
-    padding: '0 6px',
-    fontSize: 10,
-    fontWeight: 800,
-    lineHeight: 1.1,
-    color: '#f8fafc',
-    backgroundColor: 'rgba(15, 23, 42, 0.94)',
-    border: '1px solid rgba(148, 163, 184, 0.55)',
-    textShadow: '0 1px 0 rgba(0, 0, 0, 0.42)'
-  },
-  launcherStatus: {
-    minWidth: 42,
-    height: 20,
-    borderRadius: 999,
-    background: 'rgba(15, 23, 42, 0.95)',
-    border: '1px solid rgba(148, 163, 184, 0.65)',
-    color: '#f8fafc',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '0 8px',
-    fontSize: 11,
-    fontWeight: 800,
-    letterSpacing: '0.08em',
-    textTransform: 'uppercase'
-  },
   header: {
     padding: '10px 10px 8px',
     borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
@@ -163,18 +129,6 @@ const widgetStyles = {
     lineHeight: 1.4,
     textAlign: 'center'
   },
-  providerPill: {
-    alignSelf: 'center',
-    borderRadius: 999,
-    minHeight: 22,
-    padding: '3px 8px',
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    color: '#dceeff',
-    fontSize: 10,
-    fontWeight: 700,
-    textAlign: 'center'
-  },
   smallGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
@@ -186,17 +140,6 @@ const widgetStyles = {
     fontSize: 10,
     fontWeight: 700,
     padding: '4px 8px'
-  },
-  modeRow: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr 1fr',
-    gap: 8
-  },
-  noteLine: {
-    minHeight: 18,
-    color: 'rgba(255,255,255,0.84)',
-    fontSize: 10,
-    textAlign: 'center'
   },
   iaTab: {
     position: 'fixed',
@@ -855,8 +798,6 @@ const DispatchAssistantWidget = () => {
     }
   };
 
-  const providerLabel = assistantMode === 'openai' ? 'GPT' : assistantMode === 'hybrid' ? 'HYB' : 'LOCAL';
-
   return <div style={widgetStyles.shell}>
       {open ? <div style={widgetStyles.panel}>
           <div style={widgetStyles.header}>
@@ -870,8 +811,6 @@ const DispatchAssistantWidget = () => {
           </div>
 
           <div style={widgetStyles.body}>
-            <div style={widgetStyles.providerPill}>{String(lastProvider || '').includes('openai') ? (String(lastProvider || '').includes('hybrid') ? 'Respuesta: Hibrido (GPT + local)' : 'Respuesta: GPT') : 'Respuesta: IA local'}</div>
-
             {/* Chat messages */}
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, minHeight: 80 }}>
               {messages.map(msg => (
@@ -919,6 +858,16 @@ const DispatchAssistantWidget = () => {
 
             {/* Text input */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+              <Button
+                type="button"
+                variant={isListening ? 'danger' : 'outline-light'}
+                onClick={handleToggleListening}
+                disabled={!speechRecognitionSupported || isSending}
+                style={{ ...widgetStyles.miniButton, minWidth: 42, padding: '6px 8px' }}
+                aria-label={isListening ? 'Detener microfono' : 'Activar microfono'}
+              >
+                {isListening ? 'Mic' : 'Habla'}
+              </Button>
               <textarea
                 value={textInput}
                 onChange={e => setTextInput(e.target.value)}
@@ -951,75 +900,13 @@ const DispatchAssistantWidget = () => {
                 ➤
               </Button>
             </div>
-
-            <div style={widgetStyles.modeRow}>
-              <Button type="button" variant={assistantMode === 'hybrid' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('hybrid')} style={widgetStyles.miniButton}>
-                Hibrido
-              </Button>
-              <Button type="button" variant={assistantMode === 'openai' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('openai')} style={widgetStyles.miniButton}>
-                GPT
-              </Button>
-              <Button type="button" variant={assistantMode === 'local' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('local')} style={widgetStyles.miniButton}>
-                IA local
-              </Button>
-            </div>
-            <div style={widgetStyles.smallGrid}>
-              <Button type="button" variant={isListening ? 'danger' : 'light'} onClick={handleToggleListening} disabled={!speechRecognitionSupported || isSending} style={widgetStyles.miniButton}>
-                {listeningMode || isListening ? 'Escucha on' : 'Escucha off'}
-              </Button>
-              <Button type="button" variant={voiceEnabled ? 'light' : 'outline-light'} onClick={() => setVoiceEnabled(currentValue => !currentValue)} style={widgetStyles.miniButton}>
-                {voiceEnabled ? 'Voz on' : 'Voz off'}
-              </Button>
-              <Button type="button" variant="outline-light" onClick={handleClearMemory} style={widgetStyles.miniButton}>
-                Borrar
-              </Button>
-              <Button type="button" variant="outline-light" onClick={stopSpeaking} style={widgetStyles.miniButton}>
-                Callar
-              </Button>
-            </div>
-            <div style={widgetStyles.noteLine}>{assistantMode === 'local' ? 'Modo sin OpenAI' : assistantMode === 'hybrid' ? 'Modo hibrido: GPT + logica local' : `Modelo ${voiceEnabled ? 'con voz' : 'sin voz'}`}</div>
           </div>
         </div> : null}
 
       <div style={widgetStyles.dock}>
         <button type="button" aria-label="Open dispatch assistant" onClick={toggleOpen} style={widgetStyles.launcher}>
           {showPhotoAvatar ? renderPhotoAvatar(widgetStyles.avatarFrame) : null}
-          <span style={widgetStyles.launcherStatus}>{providerLabel}</span>
         </button>
-        <div style={widgetStyles.launcherModeRow}>
-          <Button type="button" variant={assistantMode === 'hybrid' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('hybrid')} style={widgetStyles.launcherModeButton}>
-            Hybrid
-          </Button>
-          <Button type="button" variant={assistantMode === 'openai' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('openai')} style={widgetStyles.launcherModeButton}>
-            GPT
-          </Button>
-          <Button type="button" variant={assistantMode === 'local' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('local')} style={widgetStyles.launcherModeButton}>
-            Local
-          </Button>
-        </div>
-        <div style={widgetStyles.launcherModeRow}>
-          <Button type="button" variant={listeningMode || isListening ? 'danger' : 'light'} onClick={handleToggleListening} disabled={!speechRecognitionSupported || isSending} style={widgetStyles.launcherModeButton}>
-            {listeningMode || isListening ? 'On' : 'Off'}
-          </Button>
-          <Button type="button" variant={voiceEnabled ? 'light' : 'outline-light'} onClick={() => {
-          if (voiceEnabledRef.current) {
-            stopSpeaking();
-          }
-          setVoiceEnabled(currentValue => !currentValue);
-        }} style={widgetStyles.launcherModeButton}>
-            {voiceEnabled ? 'Voz on' : 'Voz off'}
-          </Button>
-        </div>
-        <div style={widgetStyles.launcherModeRow}>
-          <Button
-            type="button"
-            variant="outline-secondary"
-            onClick={() => setWidgetHidden(true)}
-            style={{ ...widgetStyles.launcherModeButton, gridColumn: '1 / -1', opacity: 0.7 }}
-          >
-            Hide
-          </Button>
-        </div>
       </div>
     </div>;
 };

@@ -4,6 +4,7 @@ import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { BRANDING_PAGE_OPTIONS, DEFAULT_BRANDING_PAGES, DEFAULT_BRANDING_SETTINGS, normalizeBrandingSettings } from '@/helpers/branding';
 import useBrandingApi from '@/hooks/useBrandingApi';
+import { compressImageFile } from '@/utils/client-image';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
 
@@ -123,7 +124,7 @@ const PreferencesWorkspace = () => {
     });
   };
 
-  const handlePickFile = pageKey => event => {
+  const handlePickFile = pageKey => async event => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -132,49 +133,64 @@ const PreferencesWorkspace = () => {
       return;
     }
 
-    const previewUrl = URL.createObjectURL(file);
+    let previewUrl = '';
     setLocalPreviews(current => ({
       ...current,
-      [pageKey]: previewUrl
+      [pageKey]: current[pageKey]
     }));
     setUploadingPages(current => ({
       ...current,
       [pageKey]: true
     }));
-    setMessage(`Uploading ${file.name}...`);
 
-    const formData = new FormData();
-    formData.append('pageKey', pageKey);
-    formData.append('file', file);
+    try {
+      const optimizedFile = await compressImageFile(file, {
+        maxWidth: 1400,
+        maxHeight: 1400,
+        quality: 0.72
+      });
+      previewUrl = URL.createObjectURL(optimizedFile);
+      setLocalPreviews(current => ({
+        ...current,
+        [pageKey]: previewUrl
+      }));
+      setMessage(`Uploading ${file.name} optimized for faster loading...`);
 
-    fetch('/api/branding/upload', {
-      method: 'POST',
-      body: formData
-    }).then(async response => {
+      const formData = new FormData();
+      formData.append('pageKey', pageKey);
+      formData.append('file', optimizedFile);
+
+      const response = await fetch('/api/branding/upload', {
+        method: 'POST',
+        body: formData
+      });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || 'Unable to upload image');
 
       handlePageValueChange(pageKey, String(payload?.path || '').trim());
-      setLocalPreviews(current => {
-        const nextState = { ...current };
-        delete nextState[pageKey];
-        return nextState;
-      });
-      setMessage(`${file.name} added. Click Save Branding to apply it.`);
-    }).catch(uploadError => {
       URL.revokeObjectURL(previewUrl);
       setLocalPreviews(current => {
         const nextState = { ...current };
         delete nextState[pageKey];
         return nextState;
       });
-      setMessage(uploadError.message || 'Unable to upload image.');
-    }).finally(() => {
+      setMessage(`${file.name} added with lighter quality for faster page loads. Click Save Branding to apply it.`);
+    } catch (uploadError) {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+      setLocalPreviews(current => {
+        const nextState = { ...current };
+        delete nextState[pageKey];
+        return nextState;
+      });
+      setMessage(uploadError instanceof Error ? uploadError.message : 'Unable to upload image.');
+    } finally {
       setUploadingPages(current => ({
         ...current,
         [pageKey]: false
       }));
-    });
+    }
   };
 
   const handleSaveCurrentAsCombination = async () => {

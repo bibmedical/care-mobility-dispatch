@@ -4,6 +4,7 @@ import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
 import useAvatarSettingsApi from '@/hooks/useAvatarSettingsApi';
+import { compressImageFile, fileToDataUrl } from '@/utils/client-image';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
 
@@ -73,18 +74,24 @@ const AvatarSettingsWorkspace = ({
 
   const handlePickFile = async event => {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || '').trim();
+    try {
+      const optimizedFile = await compressImageFile(file, {
+        maxWidth: 900,
+        maxHeight: 900,
+        quality: 0.7
+      });
+      const result = await fileToDataUrl(optimizedFile);
       if (!result) return;
       setDraft(current => ({
         ...current,
         image: result
       }));
-      setMessage(`Image loaded: ${file.name}. Save to apply it to the widget.`);
-    };
-    reader.readAsDataURL(file);
+      setMessage(`Image loaded: ${file.name}. It was optimized to load faster in the widget.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to process that image.');
+    }
   };
 
     return <>
