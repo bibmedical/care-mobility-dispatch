@@ -526,7 +526,7 @@ const ConfirmationWorkspace = () => {
         id: trip.id,
         dateKey,
         pickup: formatMinutesAsClock(getTripTimeMinutesForFilter(trip)) || trip.scheduledPickup || trip.pickup || '-',
-        dropoff: trip.scheduledDropoff || trip.dropoff || '-',
+        dropoff: normalizeTripTimeDisplay(trip.scheduledDropoff || trip.dropoff || '') || '-',
         status,
         completion: isTripCompleted(trip) ? 'Completed' : 'Open',
         confirmationStatus,
@@ -546,6 +546,12 @@ const ConfirmationWorkspace = () => {
       if (selectedPatientKey) setSelectedPatientKey('');
       return;
     }
+
+    if (!selectedPatientKey && patientHistoryRows.length === 1) {
+      setSelectedPatientKey(patientHistoryRows[0].key);
+      return;
+    }
+
     const exists = patientHistoryRows.some(row => row.key === selectedPatientKey);
     if (!exists && selectedPatientKey) setSelectedPatientKey('');
   }, [patientHistoryRows, selectedPatientKey]);
@@ -2131,7 +2137,7 @@ const ConfirmationWorkspace = () => {
                   {patientHistoryRows.map(row => <option key={row.key} value={row.key}>{row.rider || 'Unknown'} {row.phone ? `• ${row.phone}` : ''} • {row.totalTrips} trip(s)</option>)}
                 </Form.Select>
                 <Button style={surfaceStyles.button} onClick={() => setSelectedPatientKey('')}>
-                  No Patient Selected
+                  Clear Selected Patient
                 </Button>
                 <Button style={surfaceStyles.button} onClick={handleOpenPatientStatusModal} disabled={!selectedPatientHistory}>
                   Set Patient Rule
