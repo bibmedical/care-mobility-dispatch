@@ -2273,12 +2273,13 @@ const DispatcherWorkspace = () => {
   const workspaceHeight = 'calc(100dvh - 12px)';
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
+  const actionsPanelVisible = dispatcherLayout.actionsVisible && routeTrips.length > 0;
   const hasLeftColumn = dispatcherLayout.mapVisible || dispatcherLayout.messagingVisible;
-  const hasRightColumn = dispatcherLayout.tripsVisible || dispatcherLayout.actionsVisible;
+  const hasRightColumn = dispatcherLayout.tripsVisible || actionsPanelVisible;
   const hasTopRow = dispatcherLayout.mapVisible || dispatcherLayout.tripsVisible;
-  const hasBottomRow = dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible;
+  const hasBottomRow = dispatcherLayout.messagingVisible || actionsPanelVisible;
   const hasColumnSplit = hasLeftColumn && hasRightColumn;
-  const hasRowSplit = dispatcherLayout.mapVisible && dispatcherLayout.messagingVisible || dispatcherLayout.tripsVisible && dispatcherLayout.actionsVisible;
+  const hasRowSplit = dispatcherLayout.mapVisible && dispatcherLayout.messagingVisible || dispatcherLayout.tripsVisible && actionsPanelVisible;
   const gridTemplateColumns = hasColumnSplit ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : hasLeftColumn ? '1fr 0px 0px' : '0px 0px 1fr';
   const gridTemplateRows = hasRowSplit ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : hasTopRow ? '1fr 0px 0px' : hasBottomRow ? '0px 0px 1fr' : '1fr 0px 0px';
   const workspaceGridStyle = {
@@ -2291,7 +2292,7 @@ const DispatcherWorkspace = () => {
   };
   const mapPanelGridRow = dispatcherLayout.messagingVisible ? 1 : '1 / span 3';
   const messagingPanelGridRow = dispatcherLayout.mapVisible ? 3 : '1 / span 3';
-  const tripsPanelGridRow = dispatcherLayout.actionsVisible ? 1 : '1 / span 3';
+  const tripsPanelGridRow = actionsPanelVisible ? 1 : '1 / span 3';
   const actionsPanelGridRow = dispatcherLayout.tripsVisible ? 3 : '1 / span 3';
   const dividerBaseStyle = {
     backgroundColor: '#2d3448',
@@ -2845,7 +2846,7 @@ const DispatcherWorkspace = () => {
           </Card>
         </div>
 
-        <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.actionsVisible ? 'block' : 'none', gridColumn: 3, gridRow: actionsPanelGridRow }}>
+        <div style={{ minWidth: 0, minHeight: 0, display: actionsPanelVisible ? 'block' : 'none', gridColumn: 3, gridRow: actionsPanelGridRow }}>
           <Card className="h-100" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center p-2 border-bottom gap-2 flex-wrap" style={dispatcherSurfaceStyles.header}>
