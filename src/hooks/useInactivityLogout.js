@@ -33,7 +33,7 @@ const useInactivityLogout = ({ enabled = true } = {}) => {
     }
 
     lastActivityRef.current = Date.now();
-    const timeoutMinutes = session?.user?.inactivityTimeoutMinutes || 15;
+    const timeoutMinutes = session?.user?.inactivityTimeoutMinutes || 30;
     const timeoutMs = timeoutMinutes * 60 * 1000;
     const warningMs = Math.max(timeoutMs - 2 * 60 * 1000, 0); // 2 minutes before logout
 
