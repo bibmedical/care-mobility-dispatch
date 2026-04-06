@@ -120,6 +120,26 @@ const mergeRoutePlans = ({ currentPlans, backupPlans, backupTs }) => {
 const buildMergePreview = async ({ fromDate = 20260403 }) => {
   const storageRoot = getStorageRoot();
   const dispatchBackupDir = path.join(storageRoot, 'backups', 'nemt-dispatch');
+  const sources = {
+    dispatchSnapshots: {
+      directory: dispatchBackupDir,
+      scanned: 0,
+      used: 0,
+      error: ''
+    },
+    dispatchLegacyFile: {
+      path: getStorageFilePath('nemt-dispatch.json'),
+      found: false,
+      tripCount: 0,
+      routeCount: 0
+    },
+    adminLegacyFile: {
+      path: getStorageFilePath('nemt-admin.json'),
+      found: false,
+      driverCount: 0,
+      vehicleCount: 0
+    }
+  };
 
   const dispatchRow = await queryOne(`SELECT data FROM dispatch_state WHERE id = $1`, [DISPATCH_ROW_ID]);
   const adminRow = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ADMIN_ROW_ID]);
@@ -150,6 +170,7 @@ const buildMergePreview = async ({ fromDate = 20260403 }) => {
       .sort((left, right) => left.ts - right.ts);
 
     snapshotsScanned = snapshotFiles.length;
+    sources.dispatchSnapshots.scanned = snapshotFiles.length;
 
     for (const snapshot of snapshotFiles) {
       const snapshotPath = path.join(dispatchBackupDir, snapshot.fileName);
@@ -161,6 +182,7 @@ const buildMergePreview = async ({ fromDate = 20260403 }) => {
       }
 
       snapshotsUsed += 1;
+      sources.dispatchSnapshots.used = snapshotsUsed;
 
       mergedTrips = mergeByNewest({
         currentItems: mergedTrips,
@@ -246,15 +268,70 @@ const buildMergePreview = async ({ fromDate = 20260403 }) => {
         backupTs: snapshot.ts
       });
     }
-  } catch {
+  } catch (error) {
     snapshotsScanned = 0;
     snapshotsUsed = 0;
+    sources.dispatchSnapshots.error = String(error?.message || 'unable-to-read-dispatch-snapshots');
   }
+
+  // Fallback dispatch merge from legacy file on persistent disk.
+  try {
+    const dispatchRaw = await readFile(getStorageFilePath('nemt-dispatch.json'), 'utf8');
+    const dispatchJson = parseJsonSafe(dispatchRaw);
+    sources.dispatchLegacyFile.found = true;
+    sources.dispatchLegacyFile.tripCount = Array.isArray(dispatchJson?.trips) ? dispatchJson.trips.length : 0;
+    sources.dispatchLegacyFile.routeCount = Array.isArray(dispatchJson?.routePlans) ? dispatchJson.routePlans.length : 0;
+
+    mergedTrips = mergeByNewest({
+      currentItems: mergedTrips,
+      backupItems: dispatchJson?.trips,
+      keyFn: item => normalizeTripId(item),
+      updatedAtFn: item => toNumber(item?.updatedAt),
+      backupTs: Number(`${fromDate}0000`)
+    });
+
+    mergedRoutePlans = mergeRoutePlans({
+      currentPlans: mergedRoutePlans,
+      backupPlans: dispatchJson?.routePlans,
+      backupTs: Number(`${fromDate}0000`)
+    });
+
+    mergedThreads = mergeByNewest({
+      currentItems: mergedThreads,
+      backupItems: dispatchJson?.dispatchThreads,
+      keyFn: item => String(item?.driverId || '').trim(),
+      updatedAtFn: item => {
+        const messages = Array.isArray(item?.messages) ? item.messages : [];
+        const lastMessage = messages[messages.length - 1];
+        const ts = Date.parse(String(lastMessage?.timestamp || ''));
+        return Number.isFinite(ts) ? ts : 0;
+      },
+      backupTs: Number(`${fromDate}0000`)
+    });
+
+    mergedAuditLog = mergeByNewest({
+      currentItems: mergedAuditLog,
+      backupItems: dispatchJson?.auditLog,
+      keyFn: item => String(item?.id || '').trim(),
+      updatedAtFn: item => {
+        const ts = Date.parse(String(item?.timestamp || ''));
+        return Number.isFinite(ts) ? ts : 0;
+      },
+      backupTs: Number(`${fromDate}0000`)
+    });
+
+    if (dispatchJson?.uiPreferences) {
+      latestUiPreferences = dispatchJson.uiPreferences;
+    }
+  } catch {}
 
   // Fallback admin merge from legacy admin JSON on persistent disk if needed.
   try {
     const adminRaw = await readFile(getStorageFilePath('nemt-admin.json'), 'utf8');
     const adminJson = parseJsonSafe(adminRaw);
+    sources.adminLegacyFile.found = true;
+    sources.adminLegacyFile.driverCount = Array.isArray(adminJson?.drivers) ? adminJson.drivers.length : 0;
+    sources.adminLegacyFile.vehicleCount = Array.isArray(adminJson?.vehicles) ? adminJson.vehicles.length : 0;
     mergedDrivers = mergeByNewest({
       currentItems: mergedDrivers,
       backupItems: adminJson?.drivers,
@@ -321,6 +398,7 @@ const buildMergePreview = async ({ fromDate = 20260403 }) => {
     fromDate,
     snapshotsScanned,
     snapshotsUsed,
+    sources,
     dispatch: {
       beforeTrips: Array.isArray(dispatchSql?.trips) ? dispatchSql.trips.length : 0,
       afterTrips: nextDispatchData.trips.length,
