@@ -6,6 +6,9 @@ import useQueryParams from '@/hooks/useQueryParams';
 import { toggleDocumentAttribute } from '@/utils/layout';
 
 const MENU_AUTO_COLLAPSE_MS = 5 * 60 * 1000;
+const THEME_OPTIONS = new Set(['light', 'dark']);
+const MENU_THEME_OPTIONS = new Set(['light', 'dark']);
+const MENU_SIZE_OPTIONS = new Set(['default', 'collapsed']);
 
 const ThemeContext = createContext(undefined);
 const useLayoutContext = () => {
@@ -29,6 +32,21 @@ const useLayoutContext = () => {
   return context;
 };
 const getPreferredTheme = () => window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+const normalizeLayoutSettings = (value, fallbackState) => {
+  const normalizedTheme = THEME_OPTIONS.has(String(value?.theme || '').trim()) ? String(value.theme).trim() : fallbackState.theme;
+  const menuValue = value?.menu && typeof value.menu === 'object' ? value.menu : {};
+  const normalizedMenuTheme = MENU_THEME_OPTIONS.has(String(menuValue?.theme || '').trim()) ? String(menuValue.theme).trim() : fallbackState.menu.theme;
+  const normalizedMenuSize = MENU_SIZE_OPTIONS.has(String(menuValue?.size || '').trim()) ? String(menuValue.size).trim() : fallbackState.menu.size;
+
+  return {
+    theme: normalizedTheme,
+    menu: {
+      theme: normalizedMenuTheme,
+      size: normalizedMenuSize
+    }
+  };
+};
+
 const LayoutProvider = ({
   children
 }) => {
@@ -41,7 +59,8 @@ const LayoutProvider = ({
       size: queryParams['menu_size'] ? queryParams['menu_size'] : 'default'
     }
   };
-  const [settings, setSettings] = useLocalStorage('__Dastone_NEXT_CONFIG__', INIT_STATE, override);
+  const [storedSettings, setSettings] = useLocalStorage('__Dastone_NEXT_CONFIG__', INIT_STATE, override);
+  const settings = useMemo(() => normalizeLayoutSettings(storedSettings, INIT_STATE), [INIT_STATE, storedSettings]);
   const autoCollapseTimeoutRef = useRef(null);
 
   // update settings
