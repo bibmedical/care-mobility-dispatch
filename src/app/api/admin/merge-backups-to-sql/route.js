@@ -439,8 +439,8 @@ const requireAdmin = async () => {
   return session;
 };
 
-const applyMergedData = async ({ fromDate, fromDateRaw, session }) => {
-  const preview = await buildMergePreview({ fromDate, maxSnapshots: 8 });
+const applyMergedData = async ({ fromDate, fromDateRaw, session, maxSnapshots = 0 }) => {
+  const preview = await buildMergePreview({ fromDate, maxSnapshots });
 
   await withTransaction(async client => {
     await acquireAdvisoryLock(client, 'dispatch-state-update');
@@ -493,7 +493,12 @@ export async function GET(request) {
       if (!confirm) {
         return NextResponse.json({ error: 'Add confirm=yes to apply merge via GET' }, { status: 400 });
       }
-      const applied = await applyMergedData({ fromDate, fromDateRaw: fromDateParam, session });
+      const applied = await applyMergedData({
+        fromDate,
+        fromDateRaw: fromDateParam,
+        session,
+        maxSnapshots: maxSnapshots > 0 ? maxSnapshots : 0
+      });
       return NextResponse.json({ ok: true, mode: 'applied', ...applied.summary });
     }
 
@@ -521,6 +526,8 @@ export async function POST(request) {
     const confirm = Boolean(body?.confirm);
     const fromDateRaw = String(body?.fromDate || '20260403').trim();
     const fromDate = Number(fromDateRaw);
+    const maxSnapshotsRaw = String(body?.maxSnapshots || '').trim();
+    const maxSnapshots = maxSnapshotsRaw ? Number(maxSnapshotsRaw) : 0;
 
     if (!confirm) {
       return NextResponse.json({ error: 'Send { confirm: true } to apply merge' }, { status: 400 });
@@ -530,7 +537,16 @@ export async function POST(request) {
       return NextResponse.json({ error: 'fromDate must be YYYYMMDD' }, { status: 400 });
     }
 
-    const applied = await applyMergedData({ fromDate, fromDateRaw, session });
+    if (maxSnapshotsRaw && (!Number.isFinite(maxSnapshots) || maxSnapshots < 0)) {
+      return NextResponse.json({ error: 'maxSnapshots must be a positive number' }, { status: 400 });
+    }
+
+    const applied = await applyMergedData({
+      fromDate,
+      fromDateRaw,
+      session,
+      maxSnapshots: maxSnapshots > 0 ? maxSnapshots : 0
+    });
     return NextResponse.json({ ok: true, mode: 'applied', ...applied.summary });
   } catch (error) {
     return NextResponse.json({ ok: false, error: 'merge-apply-failed', message: String(error?.message || 'unknown-error') }, { status: 500 });
