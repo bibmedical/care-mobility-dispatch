@@ -1059,11 +1059,27 @@ const ConfirmationWorkspace = () => {
   };
 
   const selectedOutputColumnOptions = useMemo(() => CONFIRMATION_OUTPUT_COLUMN_OPTIONS.filter(option => outputColumns.includes(option.key)), [outputColumns]);
+  const showTripIdColumn = outputColumns.includes('tripId');
+  const showRiderColumn = outputColumns.includes('rider');
+  const showPhoneColumn = outputColumns.includes('phone');
+  const showPickupTimeColumn = outputColumns.includes('pickupTime');
   const showPickupAddressColumn = outputColumns.includes('pickupAddress');
   const showPickupZipColumn = outputColumns.includes('puZip');
+  const showDropoffTimeColumn = showPickupTimeColumn;
   const showDropoffAddressColumn = outputColumns.includes('dropoffAddress');
   const showDropoffZipColumn = outputColumns.includes('doZip');
-  const confirmationTableColumnCount = 18 + (showPickupAddressColumn ? 1 : 0) + (showPickupZipColumn ? 1 : 0) + (showDropoffAddressColumn ? 1 : 0) + (showDropoffZipColumn ? 1 : 0);
+  const showMilesColumn = outputColumns.includes('miles');
+  const showLegColumn = outputColumns.includes('leg');
+  const showTypeColumn = outputColumns.includes('type');
+  const showDoNotConfirmColumn = outputColumns.includes('doNotConfirm');
+  const showHospitalRehabColumn = outputColumns.includes('hospitalRehab');
+  const showConfirmationColumn = outputColumns.includes('confirmation');
+  const showDispatchStatusColumn = outputColumns.includes('dispatchStatus');
+  const showReplyColumn = outputColumns.includes('reply');
+  const showSentColumn = outputColumns.includes('sent');
+  const showRespondedColumn = outputColumns.includes('responded');
+  const showInternalNotesColumn = outputColumns.includes('internalNotes');
+  const confirmationTableColumnCount = 2 + outputColumns.length;
 
   const handleToggleOutputColumn = columnKey => {
     setOutputColumns(current => {
@@ -2423,26 +2439,26 @@ const ConfirmationWorkspace = () => {
                       title="Select all visible"
                     />
                   </th>
-                  {renderSortableConfirmationHeader('trip', 'Trip ID')}
-                  {renderSortableConfirmationHeader('rider', 'Rider')}
-                  {renderSortableConfirmationHeader('phone', 'Phone')}
-                  {renderSortableConfirmationHeader('pickup', 'Pickup Time')}
+                  {showTripIdColumn ? renderSortableConfirmationHeader('trip', 'Trip ID') : null}
+                  {showRiderColumn ? renderSortableConfirmationHeader('rider', 'Rider') : null}
+                  {showPhoneColumn ? renderSortableConfirmationHeader('phone', 'Phone') : null}
+                  {showPickupTimeColumn ? renderSortableConfirmationHeader('pickup', 'Pickup Time') : null}
                   {showPickupAddressColumn ? <th style={{ minWidth: 220 }}>PU Address</th> : null}
                   {showPickupZipColumn ? <th style={{ minWidth: 110 }}>PU ZIP</th> : null}
-                  {renderSortableConfirmationHeader('dropoff', 'Dropoff Time')}
+                  {showDropoffTimeColumn ? renderSortableConfirmationHeader('dropoff', 'Dropoff Time') : null}
                   {showDropoffAddressColumn ? <th style={{ minWidth: 220 }}>DO Address</th> : null}
                   {showDropoffZipColumn ? <th style={{ minWidth: 110 }}>DO ZIP</th> : null}
-                  {renderSortableConfirmationHeader('miles', 'Miles')}
-                  {renderSortableConfirmationHeader('leg', 'Leg')}
-                  {renderSortableConfirmationHeader('type', 'Type')}
-                  <th>Do Not Confirm</th>
-                  <th>Hospital/Rehab</th>
-                  <th>Confirmation</th>
-                  <th>Dispatch Status</th>
-                  <th>Reply</th>
-                  <th>Sent</th>
-                  <th>Responded</th>
-                  <th style={{ minWidth: 220 }}>Notes</th>
+                  {showMilesColumn ? renderSortableConfirmationHeader('miles', 'Miles') : null}
+                  {showLegColumn ? renderSortableConfirmationHeader('leg', 'Leg') : null}
+                  {showTypeColumn ? renderSortableConfirmationHeader('type', 'Type') : null}
+                  {showDoNotConfirmColumn ? <th>Do Not Confirm</th> : null}
+                  {showHospitalRehabColumn ? <th>Hospital/Rehab</th> : null}
+                  {showConfirmationColumn ? <th>Confirmation</th> : null}
+                  {showDispatchStatusColumn ? <th>Dispatch Status</th> : null}
+                  {showReplyColumn ? <th>Reply</th> : null}
+                  {showSentColumn ? <th>Sent</th> : null}
+                  {showRespondedColumn ? <th>Responded</th> : null}
+                  {showInternalNotesColumn ? <th style={{ minWidth: 220 }}>Notes</th> : null}
                   <th style={{ width: 160 }}>Action</th>
                 </tr>
               </thead>
@@ -2461,24 +2477,24 @@ const ConfirmationWorkspace = () => {
                           style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#22c55e' }}
                         />
                       </td>
-                      <td className="fw-semibold">{trip.id}</td>
-                      <td>
+                      {showTripIdColumn ? <td className="fw-semibold">{trip.id}</td> : null}
+                      {showRiderColumn ? <td>
                         <div>{trip.rider}</div>
                         {riderProfile?.companion ? <div className="small text-info">Companion: {riderProfile.companion}</div> : null}
                         {riderProfile?.mobility ? <div className="small text-warning">Mobility: {riderProfile.mobility}</div> : null}
-                      </td>
-                      <td>{trip.patientPhoneNumber || '-'}</td>
-                      {renderInlineConfirmationTimeCell(trip, 'pickup', getTripDisplayPickupTime(trip))}
+                      </td> : null}
+                      {showPhoneColumn ? <td>{trip.patientPhoneNumber || '-'}</td> : null}
+                      {showPickupTimeColumn ? renderInlineConfirmationTimeCell(trip, 'pickup', getTripDisplayPickupTime(trip)) : null}
                       {showPickupAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.address || '-'}</td> : null}
                       {showPickupZipColumn ? <td>{getTripPickupZipValue(trip)}</td> : null}
-                      {renderInlineConfirmationTimeCell(trip, 'dropoff', getTripDisplayDropoffTime(trip))}
+                      {showDropoffTimeColumn ? renderInlineConfirmationTimeCell(trip, 'dropoff', getTripDisplayDropoffTime(trip)) : null}
                       {showDropoffAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.destination || '-'}</td> : null}
                       {showDropoffZipColumn ? <td>{getTripDropoffZipValue(trip)}</td> : null}
-                      <td>{getTripMilesDisplay(trip)}</td>
-                      <td>{getTripLegFilterKey(trip)}</td>
-                      <td>{getTripTypeLabel(trip)}</td>
-                      <td>{isOptedOut ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>Blocked</Badge> : <Badge bg="success">Allowed</Badge>}</td>
-                      <td>
+                      {showMilesColumn ? <td>{getTripMilesDisplay(trip)}</td> : null}
+                      {showLegColumn ? <td>{getTripLegFilterKey(trip)}</td> : null}
+                      {showTypeColumn ? <td>{getTripTypeLabel(trip)}</td> : null}
+                      {showDoNotConfirmColumn ? <td>{isOptedOut ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>Blocked</Badge> : <Badge bg="success">Allowed</Badge>}</td> : null}
+                      {showHospitalRehabColumn ? <td>
                         {trip.hospitalStatus ? (
                           <div>
                             <Badge bg={isHospitalRehabActive(trip) ? 'warning' : 'secondary'} style={{ color: isHospitalRehabActive(trip) ? '#111827' : '#ffffff' }}>
@@ -2495,15 +2511,15 @@ const ConfirmationWorkspace = () => {
                             + Rehab Hospital
                           </Button>
                         )}
-                      </td>
-                      <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : confirmationStatus === 'Disconnected' ? <Badge style={DISCONNECTED_BADGE_STYLE}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}{trip.confirmation?.lastResponseCode ? <Badge bg="light" text="dark" className="ms-1">{trip.confirmation.lastResponseCode}</Badge> : null}</td>
-                      <td>{trip.safeRideStatus || trip.status || '-'}</td>
-                      <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td>
-                      <td>{trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td>
-                      <td>{trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-'}</td>
-                      <td style={{ maxWidth: 260, whiteSpace: 'normal' }} title={String(trip.notes || '').trim() || '-'}>
+                      </td> : null}
+                      {showConfirmationColumn ? <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : confirmationStatus === 'Disconnected' ? <Badge style={DISCONNECTED_BADGE_STYLE}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}{trip.confirmation?.lastResponseCode ? <Badge bg="light" text="dark" className="ms-1">{trip.confirmation.lastResponseCode}</Badge> : null}</td> : null}
+                      {showDispatchStatusColumn ? <td>{trip.safeRideStatus || trip.status || '-'}</td> : null}
+                      {showReplyColumn ? <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td> : null}
+                      {showSentColumn ? <td>{trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td> : null}
+                      {showRespondedColumn ? <td>{trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-'}</td> : null}
+                      {showInternalNotesColumn ? <td style={{ maxWidth: 260, whiteSpace: 'normal' }} title={String(trip.notes || '').trim() || '-'}>
                         {getTripNotesPreview(trip.notes)}
-                      </td>
+                      </td> : null}
                       <td>
                         <div className="d-flex gap-1 flex-column">
                           <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 96 }}>
