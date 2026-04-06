@@ -42,13 +42,16 @@ const useBrandingApi = () => {
 
   const refresh = async (options = {}) => {
     const force = options?.force === true;
+    const silent = options?.silent === true;
     if (hasLoadedBranding && !force) {
       setData({ branding: cachedBranding });
       setLoading(false);
       return cachedBranding;
     }
 
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     setError('');
     try {
       const branding = await fetchBranding();
@@ -95,6 +98,7 @@ const useBrandingApi = () => {
     if (hasLoadedBranding) {
       setData({ branding: cachedBranding });
       setLoading(false);
+      refresh({ force: true, silent: true }).catch(() => {});
     } else {
       refresh().catch(() => {});
     }
