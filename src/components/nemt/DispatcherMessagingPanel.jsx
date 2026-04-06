@@ -18,6 +18,10 @@ const greenToolbarButtonStyle = {
   backgroundColor: 'transparent'
 };
 
+const messagingStatusRowStyle = {
+  minHeight: 24
+};
+
 const buildMessagingSurfaceStyles = isDarkMode => ({
   shell: {
     background: isDarkMode ? 'linear-gradient(180deg, #0f172a 0%, #111827 100%)' : '#ffffff',
@@ -279,6 +283,8 @@ const DispatcherMessagingPanel = ({
   const notificationAudioRef = useRef(null);
   const seenIncomingMessageIdsRef = useRef(new Set());
   const seenAlertIdsRef = useRef(new Set());
+  const activeDriverIdRef = useRef(null);
+  const hasLoadedAlertsRef = useRef(false);
 
   const allDrivers = useMemo(() => [
     ...drivers,
@@ -341,6 +347,10 @@ const DispatcherMessagingPanel = ({
     const hasGps = driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2 && driver.position.every(value => Number.isFinite(Number(value))));
     return isOnline && hasGps;
   }).length, [allDrivers]);
+
+  useEffect(() => {
+    activeDriverIdRef.current = activeDriverId;
+  }, [activeDriverId]);
 
   const playIncomingTone = () => {
     if (typeof window === 'undefined') return;
@@ -454,8 +464,8 @@ const DispatcherMessagingPanel = ({
   useEffect(() => {
     let active = true;
 
-    const loadDriverAlerts = async () => {
-      if (active) setIsLoadingAlerts(true);
+    const loadDriverAlerts = async ({ silent = false } = {}) => {
+      if (active) setIsLoadingAlerts(!silent && !hasLoadedAlertsRef.current);
       try {
         const response = await fetch('/api/system-messages', { cache: 'no-store' });
         const payload = await readJsonResponse(response);
@@ -477,20 +487,22 @@ const DispatcherMessagingPanel = ({
           }] : [];
           upsertDispatchThreadMessage({
             driverId: message.driverId,
-            markIncomingRead: activeDriverId === message.driverId,
+            markIncomingRead: activeDriverIdRef.current === message.driverId,
             message: {
               id: message.id,
               direction: 'incoming',
               text: String(message?.body || '').trim(),
               timestamp: message.createdAt,
-              status: activeDriverId === message.driverId ? 'read' : 'sent',
+              status: activeDriverIdRef.current === message.driverId ? 'read' : 'sent',
               attachments: attachment
             }
           });
         });
+        hasLoadedAlertsRef.current = true;
         setAlertsError('');
       } catch (error) {
         if (!active) return;
+        hasLoadedAlertsRef.current = true;
         setAlertsError(error.message || 'Unable to load driver alerts.');
       } finally {
         if (active) setIsLoadingAlerts(false);
@@ -499,14 +511,14 @@ const DispatcherMessagingPanel = ({
 
     void loadDriverAlerts();
     const intervalId = window.setInterval(() => {
-      void loadDriverAlerts();
+      void loadDriverAlerts({ silent: true });
     }, MOBILE_ALERT_POLL_MS);
 
     return () => {
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [activeDriverId, upsertDispatchThreadMessage]);
+  }, [upsertDispatchThreadMessage]);
 
   const handleSendMessage = async (text, options = {}) => {
     const messageText = text.trim();
@@ -962,8 +974,11 @@ const DispatcherMessagingPanel = ({
           </div>
         </div>
         <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0, ...messagingSurfaceStyles.mainPane }}>
-          <div className="flex-grow-1 p-3" style={{ overflowY: 'auto', minHeight: 0, background: messagingSurfaceStyles.mainPaneGradient }}>
-            {isLoadingAlerts && activeDriverAlerts.length === 0 ? <div className="small text-muted mb-3">Loading driver alerts...</div> : null}
+          <div className="flex-grow-1 p-3 d-flex flex-column" style={{ overflowY: 'auto', minHeight: 0, background: messagingSurfaceStyles.mainPaneGradient }}>
+            <div className="mb-3" style={messagingStatusRowStyle}>
+              {alertsError ? <div className="small text-danger">{alertsError}</div> : null}
+              {!alertsError && isLoadingAlerts && activeDriverAlerts.length === 0 ? <div className="small text-muted">Loading driver alerts...</div> : null}
+            </div>
             {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') || smsStatus.toLowerCase().includes('failed') ? 'alert-warning' : smsStatus.toLowerCase().includes('sending') ? 'alert-info' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}
             {activeDriverAlerts.length > 0 ? <div className="d-flex flex-column gap-2 mb-3">
                 {activeDriverAlerts.map(alert => <div key={alert.id} className="border rounded p-3 shadow-sm" style={getAlertSurfaceStyle(alert, isDarkMode)}>
@@ -1000,52 +1015,54 @@ const DispatcherMessagingPanel = ({
                     </div>
                   </div>)}
               </div> : null}
-            {activeThread?.messages?.length ? activeThread.messages.map(message => (
-              <div key={message.id} className={`d-flex mb-3 ${message.direction === 'outgoing' ? 'justify-content-end' : 'justify-content-start'}`}>
-                <div
-                  className="rounded-3 px-3 py-2"
-                  style={{
-                    maxWidth: '80%',
-                    backgroundColor: message.direction === 'outgoing' ? selectedChatTheme.outgoingBubble : selectedChatTheme.incomingBubble,
-                    color: message.direction === 'outgoing' ? selectedChatTheme.outgoingText : selectedChatTheme.incomingText,
-                    border: message.direction === 'outgoing' ? '1px solid transparent' : `1px solid ${selectedChatTheme.incomingBorder}`,
-                    boxShadow: message.direction === 'outgoing' ? '0 10px 22px rgba(15,23,42,0.12)' : 'none'
-                  }}
-                >
-                  <div>{message.text}</div>
-                  {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
-                    <div className="mt-2 d-flex flex-column gap-2">
-                      {message.attachments.map(attachment => (
-                        <div key={attachment.id} className="small">
-                          {attachment.kind === 'photo' ? (
-                            <div className="d-inline-flex flex-column gap-1">
-                              <button type="button" onClick={() => setPreviewImage({ name: attachment.name, dataUrl: attachment.dataUrl, messageId: message.id })} className="d-inline-flex flex-column text-reset text-decoration-none border-0 p-0 bg-transparent text-start">
-                                <img src={attachment.dataUrl} alt={attachment.name} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
-                                <span className="mt-1">{attachment.name}</span>
-                              </button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                onClick={() => openDeleteConfirmation(message)}
-                                disabled={deletingMessageId === message.id}
-                                className="align-self-start rounded-pill px-3 d-inline-flex align-items-center gap-2"
-                                style={{ backgroundColor: '#b91c1c', borderColor: '#b91c1c', fontWeight: 600 }}
-                              >
-                                <IconifyIcon icon="iconoir:trash" />
-                                {deletingMessageId === message.id ? 'Deleting...' : 'Delete photo'}
-                              </Button>
-                            </div>
-                          ) : (
-                            <a href={attachment.dataUrl} download={attachment.name} className="text-reset">Document: {attachment.name}</a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status === 'sending' ? 'sending...' : message.status}` : ''}</div>
+            <div className="d-flex flex-column flex-grow-1" style={{ minHeight: 220 }}>
+              {activeThread?.messages?.length ? activeThread.messages.map(message => (
+                <div key={message.id} className={`d-flex mb-3 ${message.direction === 'outgoing' ? 'justify-content-end' : 'justify-content-start'}`}>
+                  <div
+                    className="rounded-3 px-3 py-2"
+                    style={{
+                      maxWidth: '80%',
+                      backgroundColor: message.direction === 'outgoing' ? selectedChatTheme.outgoingBubble : selectedChatTheme.incomingBubble,
+                      color: message.direction === 'outgoing' ? selectedChatTheme.outgoingText : selectedChatTheme.incomingText,
+                      border: message.direction === 'outgoing' ? '1px solid transparent' : `1px solid ${selectedChatTheme.incomingBorder}`,
+                      boxShadow: message.direction === 'outgoing' ? '0 10px 22px rgba(15,23,42,0.12)' : 'none'
+                    }}
+                  >
+                    <div>{message.text}</div>
+                    {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
+                      <div className="mt-2 d-flex flex-column gap-2">
+                        {message.attachments.map(attachment => (
+                          <div key={attachment.id} className="small">
+                            {attachment.kind === 'photo' ? (
+                              <div className="d-inline-flex flex-column gap-1">
+                                <button type="button" onClick={() => setPreviewImage({ name: attachment.name, dataUrl: attachment.dataUrl, messageId: message.id })} className="d-inline-flex flex-column text-reset text-decoration-none border-0 p-0 bg-transparent text-start">
+                                  <img src={attachment.dataUrl} alt={attachment.name} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
+                                  <span className="mt-1">{attachment.name}</span>
+                                </button>
+                                <Button
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() => openDeleteConfirmation(message)}
+                                  disabled={deletingMessageId === message.id}
+                                  className="align-self-start rounded-pill px-3 d-inline-flex align-items-center gap-2"
+                                  style={{ backgroundColor: '#b91c1c', borderColor: '#b91c1c', fontWeight: 600 }}
+                                >
+                                  <IconifyIcon icon="iconoir:trash" />
+                                  {deletingMessageId === message.id ? 'Deleting...' : 'Delete photo'}
+                                </Button>
+                              </div>
+                            ) : (
+                              <a href={attachment.dataUrl} download={attachment.name} className="text-reset">Document: {attachment.name}</a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status === 'sending' ? 'sending...' : message.status}` : ''}</div>
+                  </div>
                 </div>
-              </div>
-            )) : <div className="text-center py-5" style={{ color: messagingSurfaceStyles.secondaryText }}>No messages yet for this driver.</div>}
+              )) : <div className="d-flex align-items-center justify-content-center flex-grow-1 text-center px-3" style={{ color: messagingSurfaceStyles.secondaryText }}>No messages yet for this driver.</div>}
+            </div>
           </div>
           <div className="p-3 border-top" style={messagingSurfaceStyles.footer}>
             <input ref={photoInputRef} type="file" accept="image/*" className="d-none" onChange={event => {
