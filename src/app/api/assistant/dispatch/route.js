@@ -78,6 +78,10 @@ const buildPersonalizedLead = session => {
   return `${firstName}, `;
 };
 
+const isGreetingPrompt = prompt => /^(hola|saludos|buenos dias|buenas tardes|buenas noches|hey|hi|hello)\b/.test(prompt) || /\b(como estas|como esta|que tal|todo bien|como va)\b/.test(prompt);
+
+const isExplicitMemoryLookupPrompt = prompt => /\b(phone|cell|tel|numero|address|direccion|domicilio|location|where|donde|who is|quien es|what is|cual es|que es|recuerdas|remember|knowledge|document|documents|manual|pdf|memoria|diccionario|archivo|book|libro)\b/.test(prompt);
+
 const trySolveSimpleMathSafe = message => {
   const normalized = String(message || '')
     .toLowerCase()
@@ -1314,6 +1318,7 @@ const buildDispatchSnapshot = async session => {
 
 const buildFallbackReply = (message, snapshot, pathname = '', history = [], session = null, integrationsState = null) => {
   const prompt = String(message || '').toLowerCase();
+  const normalizedPrompt = normalizeLookupValue(message);
   const es = detectLanguage(message) === 'es';
   const myName = snapshot?.integrations?.assistantName || 'Balby';
   const personalizedLead = buildPersonalizedLead(session);
@@ -1321,31 +1326,33 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
   const mathReply = trySolveSimpleMathSafe(message);
   if (mathReply) return mathReply;
 
-  const learnedFactReply = findLearnedFactReply(message, history, integrationsState, snapshot);
-  if (learnedFactReply) return learnedFactReply;
-
-  const knowledgeReply = findKnowledgeReply(message, snapshot);
-  if (knowledgeReply) return knowledgeReply;
-
-  if (/cual es tu nombre|como te llamas|tu nombre|what.*your name|who are you/.test(prompt)) {
+  if (/cual es tu nombre|como te llamas|tu nombre|what.*your name|who are you/.test(normalizedPrompt)) {
     return es ? `Soy ${myName}, tu asistente de despacho.` : `I'm ${myName}, your dispatch assistant.`;
   }
-  if (/who am i|my name|what.*my name/.test(prompt)) {
+  if (/who am i|my name|what.*my name/.test(normalizedPrompt)) {
     const firstName = getSessionFirstName(session);
     return es ? `${personalizedLead}tu nombre es ${firstName}.` : `${personalizedLead}your name is ${firstName}.`;
   }
-  if (/hola|buenos dias|buenas tardes|buenas noches|hey|hi\b/.test(prompt)) {
+  if (isGreetingPrompt(normalizedPrompt)) {
     const firstName = getSessionFirstName(session);
     return es
-      ? `Hola ${firstName}, soy ${myName}. Puedo crear rutas, confirmar viajes, mandar mensajes a choferes, buscar pacientes y responder preguntas de despacho. ¿En que te ayudo?`
-      : `Hi ${firstName}, I'm ${myName}. I can create routes, confirm trips, send messages to drivers, search for patients and answer dispatch questions. How can I help?`;
+      ? `Hola ${firstName}, soy ${myName}. Estoy bien y listo para ayudarte. Puedo crear rutas, confirmar viajes, mandar mensajes a choferes y buscar datos de despacho. ¿Que necesitas?`
+      : `Hi ${firstName}, I'm ${myName}. I'm ready to help. I can create routes, confirm trips, message drivers, and look up dispatch data. What do you need?`;
   }
-  if (/what can you do|que puedes hacer|que sabes|como me ayudas|ayuda|help/.test(prompt)) {
+  if (/what can you do|que puedes hacer|que sabes|como me ayudas|ayuda|help/.test(normalizedPrompt)) {
     return es
-      ? `Soy ${myName} y puedo: crear rutas, confirmar viajes, mandar mensajes a choferes, buscar info de pacientes y viajes, navegar a cualquier modulo, y recordar cosas que me digas. Solo pregunta.`
-      : `I'm ${myName} and I can: create routes for the day, confirm trips, send messages to drivers, look up patient and trip info, navigate to any module, and remember things you tell me. Just ask.`;
+      ? `Soy ${myName} y puedo: crear rutas, confirmar viajes, mandar mensajes a choferes, buscar info de pacientes y viajes, navegar a modulos y responder preguntas de despacho. Si quieres una respuesta exacta, pide algo concreto.`
+      : `I'm ${myName} and I can: create routes, confirm trips, send driver messages, look up patient and trip info, navigate to modules, and answer dispatch questions. For precise answers, ask something specific.`;
   }
-  if (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(prompt)) {
+
+  if (isExplicitMemoryLookupPrompt(normalizedPrompt)) {
+    const learnedFactReply = findLearnedFactReply(message, history, integrationsState, snapshot);
+    if (learnedFactReply) return learnedFactReply;
+
+    const knowledgeReply = findKnowledgeReply(message, snapshot);
+    if (knowledgeReply) return knowledgeReply;
+  }
+  if (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(normalizedPrompt)) {
     return es ? `${personalizedLead}cerrando tu sesion ahora.` : `${personalizedLead}signing you out now.`;
   }
 
@@ -1367,88 +1374,88 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
   const tripReply = findTripReply(message, snapshot);
   if (tripReply) return tripReply;
 
-  if (/(chofer|driver)/.test(prompt) && /(mas|mayor|peor|worst)/.test(prompt) && /(tarde|late|retras)/.test(prompt)) {
+  if (/(chofer|driver)/.test(normalizedPrompt) && /(mas|mayor|peor|worst)/.test(normalizedPrompt) && /(tarde|late|retras)/.test(normalizedPrompt)) {
     return buildWorstDriverDelayReply(snapshot);
   }
-  if (/(paciente|patient|rider|member)/.test(prompt) && /(llegaron|llego|fueron|estan|estuvieron)?\s*(tarde|late|retras)/.test(prompt)) {
+  if (/(paciente|patient|rider|member)/.test(normalizedPrompt) && /(llegaron|llego|fueron|estan|estuvieron)?\s*(tarde|late|retras)/.test(normalizedPrompt)) {
     return buildLatePatientsReply(snapshot);
   }
-  if (/chofer|driver/.test(prompt) && /tarde|late|retras/.test(prompt)) {
+  if (/chofer|driver/.test(normalizedPrompt) && /tarde|late|retras/.test(normalizedPrompt)) {
     return buildDriverDelayReply(snapshot);
   }
-  if (/phone|cell|tel/.test(prompt)) {
+  if (/phone|cell|tel/.test(normalizedPrompt)) {
     return es
       ? "Puedo buscar un numero de telefono. Dame el nombre del paciente, o di: telefono de [nombre] es [numero]."
       : "I can look up a phone number. Tell me the patient's name or say: phone for [name] is [number].";
   }
-  if (/address|location|where/.test(prompt)) {
+  if (/address|location|where/.test(normalizedPrompt)) {
     return es
       ? "Puedo buscar direcciones. Dame el nombre del paciente, o di: direccion de [nombre] es [direccion]."
       : "I can look up addresses. Tell me the patient name, or say: address for [name] is [address].";
   }
-  if (/cuantos|cuantas|cantidad|total|how many/.test(prompt) && /viajes|trips/.test(prompt)) {
+  if (/cuantos|cuantas|cantidad|total|how many/.test(normalizedPrompt) && /viajes|trips/.test(normalizedPrompt)) {
     return es
       ? `${personalizedLead}hay ${snapshot.totals.trips} viajes cargados y ${snapshot.totals.unassignedTrips} sin asignar.`
       : `${personalizedLead}there are currently ${snapshot.totals.trips} trips loaded and ${snapshot.totals.unassignedTrips} are still unassigned.`;
   }
-  if (/rutas?|route/.test(prompt)) {
+  if (/rutas?|route/.test(normalizedPrompt)) {
     const routeCount = Array.isArray(snapshot?.routePlans) ? snapshot.routePlans.length : 0;
     return es
       ? `Hay ${routeCount} plan${routeCount !== 1 ? 'es' : ''} de ruta guardado${routeCount !== 1 ? 's' : ''}. Para crear uno nuevo di: crea ruta para manana, o crea ruta para [nombre del chofer].`
       : `There are ${routeCount} route plan${routeCount !== 1 ? 's' : ''} saved. To create a new one say: create route for tomorrow, or create route for [driver name].`;
   }
-  if (/paciente|rider|member|trip|viaje|ride/.test(prompt)) {
+  if (/paciente|rider|member|trip|viaje|ride/.test(normalizedPrompt)) {
     return es
       ? "Puedo buscar datos de viajes, pero necesito el nombre del paciente o el ride ID. Intenta: busca viaje de [nombre]."
       : "I can look up trip data, but I need the patient's name or ride ID to find it. Try: find trip for [name].";
   }
-  if (prompt.includes('sin asign') || prompt.includes('unassigned')) {
+  if (normalizedPrompt.includes('sin asign') || normalizedPrompt.includes('unassigned')) {
     return es
       ? `Hay ${snapshot.totals.unassignedTrips} viajes sin asignar en este momento.`
       : `There are currently ${snapshot.totals.unassignedTrips} unassigned trips.`;
   }
-  if (prompt.includes('cancel')) {
+  if (normalizedPrompt.includes('cancel')) {
     return es
       ? `Hay ${snapshot.totals.cancelledTrips} viajes cancelados en este momento.`
       : `There are currently ${snapshot.totals.cancelledTrips} cancelled trips.`;
   }
-  if (/offline|online|en linea|en l.nea/.test(prompt) && /chofer|driver/.test(prompt)) {
+  if (/offline|online|en linea|en linea/.test(normalizedPrompt) && /chofer|driver/.test(normalizedPrompt)) {
     return es
       ? `El estado online/offline de un chofer solo indica si tiene el GPS activo en la app Android. No afecta la asignacion de viajes ni la creacion de rutas. Puedes asignar viajes y crear rutas para cualquier chofer sin importar su estado.`
       : `A driver's online/offline status only shows whether they have GPS active in the Android app. It does not affect trip assignment or route creation. You can assign trips and create routes for any driver regardless of their status.`;
   }
-  if (prompt.includes('driver') || prompt.includes('chofer')) {
+  if (normalizedPrompt.includes('driver') || normalizedPrompt.includes('chofer')) {
     return es
       ? `${personalizedLead}hay ${snapshot.totals.drivers} choferes en el roster. ${snapshot.totals.onlineDrivers} tienen GPS activo ahora. Los choferes offline igual pueden recibir viajes y rutas — offline solo significa que tienen la app cerrada.`
       : `${personalizedLead}there are ${snapshot.totals.drivers} drivers in the roster. ${snapshot.totals.onlineDrivers} have GPS active now. Offline drivers can still receive trips and routes — offline just means they have the app closed.`;
   }
-  if (prompt.includes('trip') || prompt.includes('viaje')) {
+  if (normalizedPrompt.includes('trip') || normalizedPrompt.includes('viaje')) {
     return es
       ? `${personalizedLead}hay ${snapshot.totals.trips} viajes cargados y ${snapshot.totals.unassignedTrips} siguen abiertos.`
       : `${personalizedLead}there are ${snapshot.totals.trips} trips loaded and ${snapshot.totals.unassignedTrips} are still open.`;
   }
-  if (prompt.includes('modul') || prompt.includes('screen') || prompt.includes('page')) {
+  if (normalizedPrompt.includes('modul') || normalizedPrompt.includes('screen') || normalizedPrompt.includes('page')) {
     const moduleLabels = snapshot.modules.map(module => module.label).join(', ');
     return es
       ? `La app tiene estos modulos principales: ${moduleLabels}. Pagina actual: ${pathname || 'desconocida'}.`
       : `This app includes these main modules: ${moduleLabels}. Current page: ${pathname || 'unknown'}.`;
   }
-  if (prompt.includes('user') || prompt.includes('user management')) {
+  if (normalizedPrompt.includes('user') || normalizedPrompt.includes('user management')) {
     return es
       ? `Hay ${snapshot.totals.users} usuarios del sistema: ${snapshot.totals.adminUsers} admin y ${snapshot.totals.driverUsers} choferes.`
       : `There are ${snapshot.totals.users} system users: ${snapshot.totals.adminUsers} admin and ${snapshot.totals.driverUsers} drivers.`;
   }
-  if (prompt.includes('integr') || prompt.includes('sms') || prompt.includes('uber')) {
+  if (normalizedPrompt.includes('integr') || normalizedPrompt.includes('sms') || normalizedPrompt.includes('uber')) {
     return es
       ? `Resumen de integraciones: Uber ${snapshot.integrations.uberConfigured ? 'configurado' : 'no configurado'}. IA ${snapshot.integrations.aiConfigured ? `configurada, usando ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no configurada'}. Proveedores SMS activos: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'ninguno'}.`
       : `Integration summary: Uber configured ${snapshot.integrations.uberConfigured ? 'yes' : 'no'}. AI configured ${snapshot.integrations.aiConfigured ? `yes, using ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no'}. Active SMS providers: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'none'}.`;
   }
-  if (/document|pdf|manual|libro|diccionario|knowledge|memoria/.test(prompt)) {
+  if (/document|pdf|manual|libro|diccionario|knowledge|memoria/.test(normalizedPrompt)) {
     return es
       ? `La memoria documental tiene ${snapshot?.knowledge?.totalDocuments || 0} documento${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'} cargado${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'}. Puedes preguntarme por el contenido y buscare en ellos.`
       : `The document memory currently has ${snapshot?.knowledge?.totalDocuments || 0} uploaded document${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'}. You can ask me about their contents and I will search them.`;
   }
-  if (/remember|learn|save|recuerda|aprende|guarda/.test(prompt)) {
+  if (/remember|learn|save|recuerda|aprende|guarda/.test(normalizedPrompt)) {
     return es ? `Listo. Lo recordare para la proxima vez.` : `Got it. I'll save that and remember it next time.`;
   }
   return es
