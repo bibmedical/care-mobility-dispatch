@@ -11,7 +11,7 @@ import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { openWhatsAppConversation } from '@/utils/whatsapp';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 
 const buildSurfaceStyles = isLight => ({
@@ -420,6 +420,7 @@ const ConfirmationWorkspace = () => {
   const [showOutputColumnPicker, setShowOutputColumnPicker] = useState(false);
   const [outputColumns, setOutputColumns] = useState([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
   const [showRehabBlacklistPanel, setShowRehabBlacklistPanel] = useState(false);
+  const resultsSectionRef = useRef(null);
 
   const optOutList = useMemo(() => (Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : EMPTY_ARRAY), [smsData?.sms?.optOutList]);
   const blacklistEntries = useMemo(() => (Array.isArray(blacklistData?.entries) ? blacklistData.entries : EMPTY_ARRAY), [blacklistData?.entries]);
@@ -461,6 +462,14 @@ const ConfirmationWorkspace = () => {
     blacklisted: blacklistEntries.filter(entry => entry.status === 'Active').length,
     clones: trips.filter(trip => Boolean(trip?.clonedFromTripId)).length
   }), [blacklistEntries, tripBlockingMap, trips]);
+
+  const handleSummaryCardClick = nextStatusFilter => {
+    setResultViewMode('trips');
+    setStatusFilter(nextStatusFilter);
+    window.setTimeout(() => {
+      resultsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 40);
+  };
 
   const patientHistoryRows = useMemo(() => {
     const term = patientSearch.trim().toLowerCase();
@@ -1912,25 +1921,25 @@ const ConfirmationWorkspace = () => {
 
       <Row className="g-3 mb-3">
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Trips</div><h4 className="mb-0">{summary.total}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('all')} title="Show all trips in results"><CardBody><div className="text-secondary small mb-1">Trips</div><h4 className="mb-0">{summary.total}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Pending</div><h4 className="mb-0">{summary.pending}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Pending')} title="Filter results to Pending"><CardBody><div className="text-secondary small mb-1">Pending</div><h4 className="mb-0">{summary.pending}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Confirmed</div><h4 className="mb-0">{summary.confirmed}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Confirmed')} title="Filter results to Confirmed"><CardBody><div className="text-secondary small mb-1">Confirmed</div><h4 className="mb-0">{summary.confirmed}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Cancelled</div><h4 className="mb-0">{summary.cancelled}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Cancelled')} title="Filter results to Cancelled"><CardBody><div className="text-secondary small mb-1">Cancelled</div><h4 className="mb-0">{summary.cancelled}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Needs Call</div><h4 className="mb-0">{summary.needsCall}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Needs Call')} title="Filter results to Needs Call"><CardBody><div className="text-secondary small mb-1">Needs Call</div><h4 className="mb-0">{summary.needsCall}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Not Sent</div><h4 className="mb-0">{summary.notSent}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Not Sent')} title="Filter results to Not Sent"><CardBody><div className="text-secondary small mb-1">Not Sent</div><h4 className="mb-0">{summary.notSent}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Opted Out</div><h4 className="mb-0">{summary.optedOut}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Opted Out')} title="Filter results to Opted Out"><CardBody><div className="text-secondary small mb-1">Opted Out</div><h4 className="mb-0">{summary.optedOut}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
           <Card
@@ -2208,7 +2217,7 @@ const ConfirmationWorkspace = () => {
         </CardBody>
       </Card>
 
-      <Card style={surfaceStyles.card} className="border">
+      <Card ref={resultsSectionRef} style={surfaceStyles.card} className="border">
         <CardBody>
           <div className="border rounded-3 p-3 mb-3" style={surfaceStyles.input}>
             <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-3">
