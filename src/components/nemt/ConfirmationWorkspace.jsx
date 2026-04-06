@@ -399,6 +399,7 @@ const ConfirmationWorkspace = () => {
   const [confirmationLegScope, setConfirmationLegScope] = useState('single');
   const [confirmationSourceTrip, setConfirmationSourceTrip] = useState(null);
   const [tripUpdateModal, setTripUpdateModal] = useState(null);
+  const [tripUpdateLegScope, setTripUpdateLegScope] = useState('single');
   const [tripUpdateConfirmMethod, setTripUpdateConfirmMethod] = useState('call');
   const [tripUpdatePickupTime, setTripUpdatePickupTime] = useState('');
   const [tripUpdateDropoffTime, setTripUpdateDropoffTime] = useState('');
@@ -1543,6 +1544,7 @@ const ConfirmationWorkspace = () => {
   const handleOpenTripUpdateModal = trip => {
     const profile = getRiderProfile(trip);
     setTripUpdateModal(trip);
+    setTripUpdateLegScope('single');
     setTripUpdateConfirmMethod('call');
     setTripUpdatePickupTime(normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || ''));
     setTripUpdateDropoffTime(normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || ''));
@@ -1550,6 +1552,9 @@ const ConfirmationWorkspace = () => {
     setTripUpdateCompanionNote(String(profile?.companion || ''));
     setTripUpdateMobilityNote(String(profile?.mobility || ''));
   };
+
+  const tripUpdateSiblingTrips = useMemo(() => tripUpdateModal ? getSiblingLegTrips(tripUpdateModal, trips) : EMPTY_ARRAY, [tripUpdateModal, trips]);
+  const tripUpdateSupportsBothLegs = tripUpdateSiblingTrips.length > 0;
 
   const isInlineConfirmationTimeEditing = (tripId, columnKey) => inlineTimeEditCell?.tripId === tripId && inlineTimeEditCell?.columnKey === columnKey;
 
@@ -1699,57 +1704,70 @@ const ConfirmationWorkspace = () => {
     if (tripUpdateMobilityNote.trim()) detailLines.push(`[MOBILITY NOTE] ${tripUpdateMobilityNote.trim()}`);
     if (tripUpdateNote.trim()) detailLines.push(`[DISPATCH NOTE] ${tripUpdateNote.trim()}`);
 
-    const mergedNotes = [String(tripUpdateModal.notes || '').trim(), detailLines.join('\n')].filter(Boolean).join('\n');
+    const targetTrips = tripUpdateLegScope === 'both' ? [tripUpdateModal, ...tripUpdateSiblingTrips] : [tripUpdateModal];
 
-    updateTripRecord(tripUpdateModal.id, {
-      status: isCancelledByPatient ? 'Cancelled' : tripUpdateModal.status,
-      pickup: effectivePickup,
-      scheduledPickup: effectivePickup,
-      pickupSortValue: buildConfirmationTimeSortValue(tripUpdateModal, effectivePickup, 'pickupSortValue'),
-      dropoff: effectiveDropoff,
-      scheduledDropoff: effectiveDropoff,
-      dropoffSortValue: buildConfirmationTimeSortValue(tripUpdateModal, effectiveDropoff, 'dropoffSortValue'),
-      notes: mergedNotes,
-      confirmation: {
-        ...(tripUpdateModal.confirmation || {}),
-        status: isCancelledByPatient ? 'Cancelled' : isDisconnected ? 'Disconnected' : isSmsLeftUnconfirmed || isCallLeftMessage ? 'Needs Call' : 'Confirmed',
-        provider: tripUpdateConfirmMethod,
-        respondedAt: isCancelledByPatient ? '' : nowIso,
-        lastResponseText: isCancelledByPatient ? 'Cancelled by patient.' : isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : isCallLeftMessage ? 'Called and left message.' : isDisconnected ? 'Disconnected.' : `Confirmed via ${methodLabel}`,
-        lastResponseCode: getMethodCode(tripUpdateConfirmMethod)
-      },
-      scheduleChange: pickupChanged || dropoffChanged ? {
-        oldPickup,
-        newPickup: effectivePickup,
-        oldDropoff,
-        newDropoff: effectiveDropoff,
-        changedAt: nowIso,
-        updatedById: confirmationActor.id,
-        updatedByName: confirmationActor.name,
-        marker: 'NEW'
-      } : tripUpdateModal.scheduleChange || null,
-      passengerProfile: {
-        ...(tripUpdateModal.passengerProfile || {}),
-        companion: tripUpdateCompanionNote.trim(),
-        mobility: tripUpdateMobilityNote.trim(),
-        updatedAt: nowIso
-      }
-    }, {
-      action: pickupChanged || dropoffChanged ? 'trip-confirmation-schedule-update' : 'trip-confirmation-update',
-      source: 'confirmation-workspace',
-      actorId: confirmationActor.id,
-      actorName: confirmationActor.name,
-      summary: pickupChanged || dropoffChanged ? `${confirmationActor.name} updated confirmation and changed the schedule for trip ${String(tripUpdateModal.id || '').trim()}` : `${confirmationActor.name} updated confirmation for trip ${String(tripUpdateModal.id || '').trim()}`,
-      metadata: {
-        tripId: String(tripUpdateModal.id || '').trim(),
-        method: tripUpdateConfirmMethod,
-        oldPickup,
-        newPickup: effectivePickup,
-        oldDropoff,
-        newDropoff: effectiveDropoff,
-        pickupChanged,
-        dropoffChanged
-      }
+    targetTrips.forEach(targetTrip => {
+      const targetOldPickup = normalizeTripTimeDisplay(targetTrip?.scheduledPickup || targetTrip?.pickup || '');
+      const targetOldDropoff = normalizeTripTimeDisplay(targetTrip?.scheduledDropoff || targetTrip?.dropoff || '');
+      const isPrimaryTrip = String(targetTrip?.id || '') === String(tripUpdateModal?.id || '');
+      const targetPickup = isPrimaryTrip ? effectivePickup : targetOldPickup;
+      const targetDropoff = isPrimaryTrip ? effectiveDropoff : targetOldDropoff;
+      const targetPickupChanged = isPrimaryTrip && pickupChanged;
+      const targetDropoffChanged = isPrimaryTrip && dropoffChanged;
+      const targetDetailLines = [...detailLines];
+      const targetMergedNotes = [String(targetTrip?.notes || '').trim(), targetDetailLines.join('\n')].filter(Boolean).join('\n');
+
+      updateTripRecord(targetTrip.id, {
+        status: isCancelledByPatient ? 'Cancelled' : targetTrip.status,
+        pickup: targetPickup,
+        scheduledPickup: targetPickup,
+        pickupSortValue: buildConfirmationTimeSortValue(targetTrip, targetPickup, 'pickupSortValue'),
+        dropoff: targetDropoff,
+        scheduledDropoff: targetDropoff,
+        dropoffSortValue: buildConfirmationTimeSortValue(targetTrip, targetDropoff, 'dropoffSortValue'),
+        notes: targetMergedNotes,
+        confirmation: {
+          ...(targetTrip.confirmation || {}),
+          status: isCancelledByPatient ? 'Cancelled' : isDisconnected ? 'Disconnected' : isSmsLeftUnconfirmed || isCallLeftMessage ? 'Needs Call' : 'Confirmed',
+          provider: tripUpdateConfirmMethod,
+          respondedAt: isCancelledByPatient ? '' : nowIso,
+          lastResponseText: isCancelledByPatient ? 'Cancelled by patient.' : isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : isCallLeftMessage ? 'Called and left message.' : isDisconnected ? 'Disconnected.' : `Confirmed via ${methodLabel}`,
+          lastResponseCode: getMethodCode(tripUpdateConfirmMethod)
+        },
+        scheduleChange: targetPickupChanged || targetDropoffChanged ? {
+          oldPickup: targetOldPickup,
+          newPickup: targetPickup,
+          oldDropoff: targetOldDropoff,
+          newDropoff: targetDropoff,
+          changedAt: nowIso,
+          updatedById: confirmationActor.id,
+          updatedByName: confirmationActor.name,
+          marker: 'NEW'
+        } : targetTrip.scheduleChange || null,
+        passengerProfile: {
+          ...(targetTrip.passengerProfile || {}),
+          companion: tripUpdateCompanionNote.trim(),
+          mobility: tripUpdateMobilityNote.trim(),
+          updatedAt: nowIso
+        }
+      }, {
+        action: targetPickupChanged || targetDropoffChanged ? 'trip-confirmation-schedule-update' : 'trip-confirmation-update',
+        source: 'confirmation-workspace',
+        actorId: confirmationActor.id,
+        actorName: confirmationActor.name,
+        summary: targetPickupChanged || targetDropoffChanged ? `${confirmationActor.name} updated confirmation and changed the schedule for trip ${String(targetTrip.id || '').trim()}` : `${confirmationActor.name} updated confirmation for trip ${String(targetTrip.id || '').trim()}`,
+        metadata: {
+          tripId: String(targetTrip.id || '').trim(),
+          method: tripUpdateConfirmMethod,
+          oldPickup: targetOldPickup,
+          newPickup: targetPickup,
+          oldDropoff: targetOldDropoff,
+          newDropoff: targetDropoff,
+          pickupChanged: targetPickupChanged,
+          dropoffChanged: targetDropoffChanged,
+          legScope: tripUpdateLegScope
+        }
+      });
     });
 
     const riderProfileKey = getRiderProfileKey(tripUpdateModal);
@@ -1770,8 +1788,9 @@ const ConfirmationWorkspace = () => {
       });
     }
 
-    setCustomStatus(`Trip ${tripUpdateModal.id} updated by ${confirmationActor.name}. Method: ${methodLabel}${pickupChanged || dropoffChanged ? ' | Schedule marked NEW' : ''}.`);
+    setCustomStatus(`${targetTrips.length} trip(s) updated by ${confirmationActor.name}. Method: ${methodLabel}${pickupChanged || dropoffChanged ? ' | Schedule marked NEW' : ''}.`);
     setTripUpdateModal(null);
+    setTripUpdateLegScope('single');
   };
 
   const confirmationSiblingTrips = useMemo(() => confirmationSourceTrip ? getSiblingLegTrips(confirmationSourceTrip, trips) : EMPTY_ARRAY, [confirmationSourceTrip, trips]);
@@ -2619,6 +2638,14 @@ const ConfirmationWorkspace = () => {
               <Form.Label className="small text-uppercase text-muted fw-semibold">Dropoff Time (New)</Form.Label>
               <Form.Control value={tripUpdateDropoffTime} onChange={event => setTripUpdateDropoffTime(event.target.value)} placeholder="e.g. 08:15 AM" />
             </Col>
+            {tripUpdateSupportsBothLegs ? <Col md={12}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Apply Confirmation To</Form.Label>
+                <Form.Select value={tripUpdateLegScope} onChange={event => setTripUpdateLegScope(event.target.value)}>
+                  <option value="single">Only this leg ({tripUpdateModal?.id})</option>
+                  <option value="both">Both legs (A and B)</option>
+                </Form.Select>
+                <div className="small text-muted mt-1">Confirmation and notes can be applied to both legs. Time changes stay only on the current leg.</div>
+              </Col> : null}
             <Col md={12}>
               <div className="small text-muted">Current pickup: {normalizeTripTimeDisplay(tripUpdateModal?.scheduledPickup || tripUpdateModal?.pickup || '') || '-'} | Current dropoff: {normalizeTripTimeDisplay(tripUpdateModal?.scheduledDropoff || tripUpdateModal?.dropoff || '') || '-'}</div>
             </Col>
