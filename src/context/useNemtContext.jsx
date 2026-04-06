@@ -154,7 +154,8 @@ export const useNemtContext = () => {
 };
 
 export const NemtProvider = ({
-  children
+  children,
+  syncEnabled = true
 }) => {
   const { data: session } = useSession();
   const [state, setState] = useLocalStorage('__CARE_MOBILITY_NEMT__', createInitialState());
@@ -286,6 +287,11 @@ export const NemtProvider = ({
   }, [setState, state]);
 
   useEffect(() => {
+    if (!syncEnabled) {
+      setIsDispatchLoaded(false);
+      return undefined;
+    }
+
     let active = true;
 
     const loadDispatchState = async () => {
@@ -304,10 +310,10 @@ export const NemtProvider = ({
       active = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [syncEnabled]);
 
   useEffect(() => {
-    if (!isDispatchLoaded || !state) return;
+    if (!syncEnabled || !isDispatchLoaded || !state) return;
     const snapshot = JSON.stringify(createPersistedSnapshot(state));
     if (snapshot === lastPersistedSnapshotRef.current) return;
 
@@ -324,7 +330,7 @@ export const NemtProvider = ({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [isDispatchLoaded, state]);
+  }, [isDispatchLoaded, state, syncEnabled]);
 
   useEffect(() => {
     let active = true;
@@ -382,6 +388,8 @@ export const NemtProvider = ({
   };
 
   useEffect(() => {
+    if (!syncEnabled) return undefined;
+
     syncDriversFromServer();
 
     const handleAdminUpdate = () => {
@@ -395,10 +403,10 @@ export const NemtProvider = ({
       window.removeEventListener('nemt-admin-updated', handleAdminUpdate);
       window.removeEventListener('focus', handleAdminUpdate);
     };
-  }, []);
+  }, [syncEnabled]);
 
   useEffect(() => {
-    if (!isDispatchLoaded) return;
+    if (!syncEnabled || !isDispatchLoaded) return;
 
     let active = true;
 
@@ -431,7 +439,7 @@ export const NemtProvider = ({
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, [isDispatchLoaded]);
+  }, [isDispatchLoaded, syncEnabled]);
 
   const updateState = (updater, options = {}) => {
     const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;

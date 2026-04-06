@@ -19,36 +19,42 @@ const AppProvidersWrapper = ({
   children
 }) => {
   const pathname = usePathname();
-  const isAuthRoute = pathname.startsWith('/auth/');
-  const isAvatarRoute = pathname.startsWith('/avatar');
-  const isOfficeRoute = pathname.startsWith('/settings/office');
-  const isPreferencesRoute = pathname.startsWith('/preferences');
-  const shouldUseDispatchShell = !(isAuthRoute || isAvatarRoute || isOfficeRoute || isPreferencesRoute);
-  const showAssistantWidget = shouldUseDispatchShell && pathname !== '/dispatcher';
-  const content = shouldUseDispatchShell ? <NemtProvider>
+  const currentPathname = typeof pathname === 'string' ? pathname : '';
+  const isAuthRoute = currentPathname.startsWith('/auth/');
+  const isAvatarRoute = currentPathname.startsWith('/avatar');
+  const isOfficeRoute = currentPathname.startsWith('/settings/office');
+  const isPreferencesRoute = currentPathname.startsWith('/preferences');
+  const shouldSyncDispatchState = !(isAuthRoute || isAvatarRoute || isOfficeRoute || isPreferencesRoute);
+  const showAssistantWidget = shouldSyncDispatchState && currentPathname !== '/dispatcher';
+
+  const content = <NemtProvider syncEnabled={shouldSyncDispatchState}>
       {children}
       {showAssistantWidget ? <DispatchAssistantWidget /> : null}
       <Toaster richColors />
-    </NemtProvider> : <>
-      {children}
-      <Toaster richColors />
-    </>;
+    </NemtProvider>;
 
   useEffect(() => {
-    if (document) {
-      const e = document.querySelector('#__next_splash');
-      if (e?.hasChildNodes()) {
-        document.querySelector('#splash-screen')?.classList.add('remove');
-      }
-      e?.addEventListener('DOMNodeInserted', () => {
-        document.querySelector('#splash-screen')?.classList.add('remove');
-      });
+    if (typeof document === 'undefined') return undefined;
+
+    const splashRoot = document.querySelector('#__next_splash');
+    const removeSplash = () => {
+      document.querySelector('#splash-screen')?.classList.add('remove');
+    };
+
+    if (splashRoot?.hasChildNodes()) {
+      removeSplash();
     }
+
+    splashRoot?.addEventListener('DOMNodeInserted', removeSplash);
+
+    return () => {
+      splashRoot?.removeEventListener('DOMNodeInserted', removeSplash);
+    };
   }, []);
   return <SessionProvider>
       <LayoutProvider>
         <NotificationProvider>
-          {shouldUseDispatchShell ? <InactivityLogoutWrapper>{content}</InactivityLogoutWrapper> : content}
+          <InactivityLogoutWrapper enabled={!isAuthRoute}>{content}</InactivityLogoutWrapper>
         </NotificationProvider>
       </LayoutProvider>
     </SessionProvider>;

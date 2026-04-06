@@ -9,7 +9,7 @@ import { useNotificationContext } from '@/context/useNotificationContext';
  * Shows warning 2 minutes before logout.
  * Tracks mouse, keyboard, touch events and resets timer on activity.
  */
-const useInactivityLogout = () => {
+const useInactivityLogout = ({ enabled = true } = {}) => {
   const { data: session, status } = useSession();
   const { showNotification } = useNotificationContext();
   const timeoutRef = useRef(null);
@@ -18,6 +18,7 @@ const useInactivityLogout = () => {
   const [showWarning, setShowWarning] = useState(false);
 
   const resetInactivityTimer = useCallback(() => {
+    if (!enabled) return;
     if (!session?.user?.id) return;
 
     // Clear existing timeouts
@@ -62,9 +63,22 @@ const useInactivityLogout = () => {
       
       signOut({ redirect: true, callbackUrl: '/auth/login' });
     }, timeoutMs);
-  }, [session?.user?.id, session?.user?.inactivityTimeoutMinutes, showWarning, showNotification]);
+  }, [enabled, session?.user?.id, session?.user?.inactivityTimeoutMinutes, showWarning, showNotification]);
 
   useEffect(() => {
+    if (!enabled) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (warningTimeoutRef.current) {
+        clearTimeout(warningTimeoutRef.current);
+      }
+      if (showWarning) {
+        setShowWarning(false);
+      }
+      return undefined;
+    }
+
     if (status !== 'authenticated' || !session?.user?.id) return;
 
     // Event listeners for user activity
@@ -92,7 +106,7 @@ const useInactivityLogout = () => {
         clearTimeout(warningTimeoutRef.current);
       }
     };
-  }, [status, session?.user?.id, resetInactivityTimer]);
+  }, [enabled, status, session?.user?.id, resetInactivityTimer, showWarning]);
 };
 
 export default useInactivityLogout;
