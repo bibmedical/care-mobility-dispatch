@@ -2,7 +2,9 @@
 
 import { getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
+import { normalizeUserPreferences } from '@/helpers/user-preferences';
 import useLocalStorage from '@/hooks/useLocalStorage';
+import { useSession } from 'next-auth/react';
 import { createContext, startTransition, use, useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_VERSION = 5;
@@ -87,9 +89,60 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => normalizeTri
   updatedAt: Number(currentTrip?.updatedAt) || Number(importedTrip?.updatedAt) || 0
 });
 
+const dedupeImportedTripBatch = trips => {
+  const dedupedTrips = [];
+  const lookupToTripIndex = new Map();
+
+  (Array.isArray(trips) ? trips : []).forEach(importedTrip => {
+    const lookupKeys = getTripLookupKeys(importedTrip);
+    const existingIndex = lookupKeys.map(key => lookupToTripIndex.get(key)).find(index => Number.isInteger(index));
+
+    if (!Number.isInteger(existingIndex)) {
+      const nextIndex = dedupedTrips.length;
+      dedupedTrips.push(importedTrip);
+      lookupKeys.forEach(key => {
+        if (key) lookupToTripIndex.set(key, nextIndex);
+      });
+      return;
+    }
+
+    const mergedDuplicate = normalizeTripRecord({
+      ...dedupedTrips[existingIndex],
+      ...importedTrip,
+      id: dedupedTrips[existingIndex]?.id || importedTrip?.id
+    });
+    dedupedTrips[existingIndex] = mergedDuplicate;
+    getTripLookupKeys(mergedDuplicate).forEach(key => {
+      if (key) lookupToTripIndex.set(key, existingIndex);
+    });
+  });
+
+  return dedupedTrips;
+};
+
 const appendAuditEntry = (currentState, entry) => {
   const nextEntry = normalizeDispatchAuditRecord(entry);
   return [...(Array.isArray(currentState?.auditLog) ? currentState.auditLog : []), nextEntry].slice(-MAX_AUDIT_LOG_ENTRIES);
+};
+
+const getActorIdentity = session => {
+  const displayName = String(session?.user?.name || session?.user?.username || session?.user?.email || 'Dispatcher').trim() || 'Dispatcher';
+  const initialsSource = displayName
+    .replace(/@.*/, '')
+    .split(/[^A-Za-z0-9]+/)
+    .map(part => part.trim())
+    .filter(Boolean);
+  const initials = (initialsSource.length > 1
+    ? initialsSource.slice(0, 3).map(part => part.charAt(0))
+    : String(initialsSource[0] || '').slice(0, 3).split(''))
+    .join('')
+    .toUpperCase()
+    .trim();
+
+  return {
+    name: displayName,
+    initials: initials || 'DSP'
+  };
 };
 
 export const useNemtContext = () => {
@@ -101,28 +154,45 @@ export const useNemtContext = () => {
 };
 
 export const NemtProvider = ({
-  children
+  children,
+  syncEnabled = true
 }) => {
+  const { data: session } = useSession();
   const [state, setState] = useLocalStorage('__CARE_MOBILITY_NEMT__', createInitialState());
+  const [userUiPreferences, setUserUiPreferences] = useState(normalizeNemtUiPreferences(null));
+  const [hasLoadedUserUiPreferences, setHasLoadedUserUiPreferences] = useState(false);
   const [isDispatchLoaded, setIsDispatchLoaded] = useState(false);
   const lastPersistedSnapshotRef = useRef('');
   const hasLocalDispatchChangesRef = useRef(false);
   const persistInFlightRef = useRef(false);
+  const liveSyncInFlightRef = useRef(false);
   const pendingPersistSnapshotRef = useRef('');
+  const allowTripShrinkNextPersistRef = useRef(false);
+  const pendingAllowTripShrinkRef = useRef(false);
+  const allowTripShrinkReasonNextPersistRef = useRef('');
+  const pendingAllowTripShrinkReasonRef = useRef('');
 
   const flushPersistQueue = async () => {
     if (persistInFlightRef.current) return;
     const nextSnapshot = pendingPersistSnapshotRef.current;
     if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return;
+    const allowTripShrink = pendingAllowTripShrinkRef.current;
+    const allowTripShrinkReason = pendingAllowTripShrinkReasonRef.current;
+    const actorName = String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim();
 
     persistInFlightRef.current = true;
     pendingPersistSnapshotRef.current = '';
+    pendingAllowTripShrinkRef.current = false;
+    pendingAllowTripShrinkReasonRef.current = '';
 
     try {
       const response = await fetch('/api/nemt/dispatch', {
         method: 'PUT',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-dispatch-allow-trip-shrink': allowTripShrink ? '1' : '0',
+          'x-dispatch-shrink-reason': allowTripShrink ? allowTripShrinkReason || 'manual-admin-delete' : '',
+          'x-dispatch-actor-name': allowTripShrink ? actorName : ''
         },
         body: nextSnapshot
       });
@@ -217,6 +287,11 @@ export const NemtProvider = ({
   }, [setState, state]);
 
   useEffect(() => {
+    if (!syncEnabled) {
+      setIsDispatchLoaded(false);
+      return undefined;
+    }
+
     let active = true;
 
     const loadDispatchState = async () => {
@@ -235,14 +310,18 @@ export const NemtProvider = ({
       active = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [syncEnabled]);
 
   useEffect(() => {
-    if (!isDispatchLoaded || !state) return;
+    if (!syncEnabled || !isDispatchLoaded || !state) return;
     const snapshot = JSON.stringify(createPersistedSnapshot(state));
     if (snapshot === lastPersistedSnapshotRef.current) return;
 
     pendingPersistSnapshotRef.current = snapshot;
+    pendingAllowTripShrinkRef.current = allowTripShrinkNextPersistRef.current;
+    pendingAllowTripShrinkReasonRef.current = allowTripShrinkReasonNextPersistRef.current;
+    allowTripShrinkNextPersistRef.current = false;
+    allowTripShrinkReasonNextPersistRef.current = '';
 
     const timeoutId = window.setTimeout(async () => {
       await flushPersistQueue();
@@ -251,9 +330,66 @@ export const NemtProvider = ({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [isDispatchLoaded, state]);
+  }, [isDispatchLoaded, state, syncEnabled]);
 
   useEffect(() => {
+    let active = true;
+
+    const loadUserUiPreferences = async () => {
+      if (!session?.user?.id) {
+        if (active) {
+          setUserUiPreferences(normalizeNemtUiPreferences(null));
+          setHasLoadedUserUiPreferences(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/user-preferences', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Unable to load user preferences');
+        const nextPreferences = normalizeUserPreferences(payload?.preferences);
+        if (active) {
+          setUserUiPreferences(normalizeNemtUiPreferences(nextPreferences.nemtUiPreferences));
+          setHasLoadedUserUiPreferences(true);
+        }
+      } catch {
+        if (active) {
+          setUserUiPreferences(normalizeNemtUiPreferences(state?.uiPreferences));
+          setHasLoadedUserUiPreferences(true);
+        }
+      }
+    };
+
+    loadUserUiPreferences();
+
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id, state?.uiPreferences]);
+
+  const persistUserUiPreferences = async nextPreferences => {
+    if (!session?.user?.id) return;
+    try {
+      await fetch('/api/user-preferences', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          preferences: {
+            nemtUiPreferences: nextPreferences
+          }
+        })
+      });
+    } catch {
+      // Keep local in-memory preferences if the user preference API is temporarily unavailable.
+    }
+  };
+
+  useEffect(() => {
+    if (!syncEnabled) return undefined;
+
     syncDriversFromServer();
 
     const handleAdminUpdate = () => {
@@ -267,19 +403,25 @@ export const NemtProvider = ({
       window.removeEventListener('nemt-admin-updated', handleAdminUpdate);
       window.removeEventListener('focus', handleAdminUpdate);
     };
-  }, []);
+  }, [syncEnabled]);
 
   useEffect(() => {
-    if (!isDispatchLoaded) return;
+    if (!syncEnabled || !isDispatchLoaded) return;
 
     let active = true;
 
     const syncLiveState = async () => {
-      if (!active) return;
-      await Promise.allSettled([syncDriversFromServer(), syncDispatchFromServer()]);
+      if (!active || liveSyncInFlightRef.current) return;
+      liveSyncInFlightRef.current = true;
+      try {
+        await Promise.allSettled([syncDriversFromServer(), syncDispatchFromServer()]);
+      } finally {
+        liveSyncInFlightRef.current = false;
+      }
     };
 
     const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
       void syncLiveState();
     }, DISPATCH_SYNC_POLL_MS);
 
@@ -297,15 +439,21 @@ export const NemtProvider = ({
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, [isDispatchLoaded]);
+  }, [isDispatchLoaded, syncEnabled]);
 
   const updateState = (updater, options = {}) => {
     const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;
+    const shouldAllowTripShrink = options.allowTripShrink ?? false;
+    const allowTripShrinkReason = String(options.allowTripShrinkReason || '').trim();
     const buildAuditEntry = typeof options.buildAuditEntry === 'function' ? options.buildAuditEntry : null;
     setState(currentState => {
       const baseState = currentState ?? createInitialState();
       if (shouldMarkDispatchDirty) {
         hasLocalDispatchChangesRef.current = true;
+        if (shouldAllowTripShrink) {
+          allowTripShrinkNextPersistRef.current = true;
+          allowTripShrinkReasonNextPersistRef.current = allowTripShrinkReason || 'manual-admin-delete';
+        }
       }
       const nextState = updater(baseState);
       if (!buildAuditEntry || !shouldMarkDispatchDirty) return nextState;
@@ -326,10 +474,15 @@ export const NemtProvider = ({
     const nextThreads = existingThreads.some(thread => thread.driverId === normalizedDriverId)
       ? existingThreads.map(thread => thread.driverId === normalizedDriverId ? {
         ...thread,
-        messages: [...thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
-          ...currentMessage,
-          status: 'read'
-        } : currentMessage), normalizedMessage]
+        messages: thread.messages.some(currentMessage => String(currentMessage?.id || '').trim() === normalizedMessage.id)
+          ? thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
+            ...currentMessage,
+            status: 'read'
+          } : currentMessage)
+          : [...thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
+            ...currentMessage,
+            status: 'read'
+          } : currentMessage), normalizedMessage]
       } : thread)
       : [...existingThreads, normalizeDispatchThreadRecord({ driverId: normalizedDriverId, messages: [normalizedMessage] })];
     return {
@@ -365,6 +518,44 @@ export const NemtProvider = ({
       } : thread)
     };
   }, { markDispatchDirty: true });
+
+  const removeDispatchThreadMessageMedia = messageId => updateState(currentState => {
+    const normalizedMessageId = String(messageId || '').trim();
+    if (!normalizedMessageId) return currentState;
+
+    return {
+      ...currentState,
+      dispatchThreads: (Array.isArray(currentState.dispatchThreads) ? currentState.dispatchThreads : []).map(thread => normalizeDispatchThreadRecord({
+        ...thread,
+        messages: (Array.isArray(thread?.messages) ? thread.messages : []).map(message => {
+          if (String(message?.id || '').trim() !== normalizedMessageId) return message;
+          return {
+            ...message,
+            attachments: []
+          };
+        })
+      }))
+    };
+  }, {
+    markDispatchDirty: true,
+    buildAuditEntry: currentState => {
+      const targetThread = (Array.isArray(currentState.dispatchThreads) ? currentState.dispatchThreads : []).find(thread => {
+        return (Array.isArray(thread?.messages) ? thread.messages : []).some(message => String(message?.id || '').trim() === String(messageId || '').trim());
+      });
+
+      return {
+        action: 'message-media-remove',
+        entityType: 'dispatch-thread',
+        entityId: String(targetThread?.driverId || '').trim(),
+        source: 'dispatcher-messaging',
+        summary: `Removed media from dispatch message ${String(messageId || '').trim()}`,
+        metadata: {
+          messageId: String(messageId || '').trim(),
+          driverId: String(targetThread?.driverId || '').trim()
+        }
+      };
+    }
+  });
 
   const addDailyDriver = payload => updateState(currentState => {
     const nextDriver = normalizeDailyDriverRecord(payload);
@@ -769,16 +960,19 @@ export const NemtProvider = ({
     selectedTripIds: [],
     selectedRouteId: null,
     selectedDriverId: null
-  }), { markDispatchDirty: true });
+  }), {
+    markDispatchDirty: true,
+    allowTripShrink: true,
+    allowTripShrinkReason: 'replace-trips'
+  });
 
   const upsertImportedTrips = trips => updateState(currentState => {
     const currentTrips = normalizeTripRecords(currentState.trips);
-    const importedTrips = normalizeTripRecords(trips);
-    const importedServiceDateKeys = new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean));
-    const currentTripsForImportedDays = currentTrips.filter(trip => importedServiceDateKeys.has(getTripServiceDateKey(trip)));
+    const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
     const currentTripLookup = new Map();
+    const consumedCurrentTripIds = new Set();
 
-    currentTripsForImportedDays.forEach(trip => {
+    currentTrips.forEach(trip => {
       getTripLookupKeys(trip).forEach(key => {
         if (key && !currentTripLookup.has(key)) {
           currentTripLookup.set(key, trip);
@@ -791,11 +985,12 @@ export const NemtProvider = ({
       if (!currentTrip) {
         return importedTrip;
       }
+      consumedCurrentTripIds.add(String(currentTrip.id || '').trim());
       return mergeImportedTripWithCurrent(currentTrip, importedTrip);
     });
 
-    const remainingTrips = currentTrips.filter(trip => !importedServiceDateKeys.has(getTripServiceDateKey(trip)));
-    const nextTrips = normalizeTripRecords([...remainingTrips, ...mergedImportedTrips]);
+    const untouchedCurrentTrips = currentTrips.filter(trip => !consumedCurrentTripIds.has(String(trip.id || '').trim()));
+    const nextTrips = normalizeTripRecords([...untouchedCurrentTrips, ...mergedImportedTrips]);
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
 
     return {
@@ -820,7 +1015,11 @@ export const NemtProvider = ({
       selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(tripId)),
       selectedRouteId: currentState.selectedRouteId && currentState.routePlans.some(routePlan => routePlan.id === currentState.selectedRouteId && routePlan.tripIds.some(tripId => nextTripIds.has(tripId))) ? currentState.selectedRouteId : null
     };
-  }, { markDispatchDirty: true });
+  }, {
+    markDispatchDirty: true,
+    allowTripShrink: true,
+    allowTripShrinkReason: 'clear-trips-by-service-date'
+  });
 
   const clearTrips = () => updateState(currentState => ({
     ...currentState,
@@ -829,7 +1028,11 @@ export const NemtProvider = ({
     selectedTripIds: [],
     selectedRouteId: null,
     selectedDriverId: null
-  }), { markDispatchDirty: true });
+  }), {
+    markDispatchDirty: true,
+    allowTripShrink: true,
+    allowTripShrinkReason: 'clear-all-trips'
+  });
 
   const updateTripNotes = (tripId, notes) => updateState(currentState => {
     const normalizedTripId = String(tripId || '').trim();
@@ -854,7 +1057,7 @@ export const NemtProvider = ({
     })
   });
 
-  const updateTripRecord = (tripId, updates) => updateState(currentState => {
+  const updateTripRecord = (tripId, updates, auditOptions = {}) => updateState(currentState => {
     const normalizedTripId = String(tripId || '').trim();
     if (!normalizedTripId) return currentState;
     const updatedAt = getMutationTimestamp();
@@ -869,12 +1072,14 @@ export const NemtProvider = ({
   }, {
     markDispatchDirty: true,
     buildAuditEntry: () => ({
-      action: 'trip-record-update',
+      action: String(auditOptions?.action || 'trip-record-update').trim() || 'trip-record-update',
       entityType: 'trip',
       entityId: String(tripId || '').trim(),
-      source: 'dispatcher',
-      summary: `Updated trip ${String(tripId || '').trim()}`,
-      metadata: updates || {}
+      actorId: String(auditOptions?.actorId || session?.user?.id || '').trim(),
+      actorName: String(auditOptions?.actorName || getActorIdentity(session).name).trim(),
+      source: String(auditOptions?.source || 'dispatcher').trim() || 'dispatcher',
+      summary: String(auditOptions?.summary || `Updated trip ${String(tripId || '').trim()}`).trim(),
+      metadata: auditOptions?.metadata && typeof auditOptions.metadata === 'object' ? auditOptions.metadata : updates || {}
     })
   });
 
@@ -970,32 +1175,35 @@ export const NemtProvider = ({
     });
   };
 
-  const setDispatcherVisibleTripColumns = columnKeys => updateState(currentState => ({
-    ...currentState,
-    uiPreferences: {
-      ...currentState.uiPreferences,
+  const setDispatcherVisibleTripColumns = columnKeys => {
+    const nextPreferences = normalizeNemtUiPreferences({
+      ...userUiPreferences,
       dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(columnKeys)
-    }
-  }), { markDispatchDirty: true });
+    });
+    setUserUiPreferences(nextPreferences);
+    void persistUserUiPreferences(nextPreferences);
+  };
 
-  const setMapProvider = provider => updateState(currentState => ({
-    ...currentState,
-    uiPreferences: {
-      ...currentState.uiPreferences,
+  const setMapProvider = provider => {
+    const nextPreferences = normalizeNemtUiPreferences({
+      ...userUiPreferences,
       mapProvider: normalizeMapProviderPreference(provider)
-    }
-  }), { markDispatchDirty: true });
+    });
+    setUserUiPreferences(nextPreferences);
+    void persistUserUiPreferences(nextPreferences);
+  };
 
-  const setPrintSetup = updates => updateState(currentState => ({
-    ...currentState,
-    uiPreferences: {
-      ...currentState.uiPreferences,
+  const setPrintSetup = updates => {
+    const nextPreferences = normalizeNemtUiPreferences({
+      ...userUiPreferences,
       printSetup: normalizePrintSetup({
-        ...currentState.uiPreferences?.printSetup,
+        ...userUiPreferences?.printSetup,
         ...(updates || {})
       })
-    }
-  }), { markDispatchDirty: true });
+    });
+    setUserUiPreferences(nextPreferences);
+    void persistUserUiPreferences(nextPreferences);
+  };
 
   const resetNemtState = () => {
     startTransition(() => {
@@ -1008,8 +1216,11 @@ export const NemtProvider = ({
     return driver ? driver.name : 'Unassigned';
   };
 
+  const resolvedUiPreferences = hasLoadedUserUiPreferences ? userUiPreferences : normalizeNemtUiPreferences(state?.uiPreferences);
+
   return <NemtContext.Provider value={useMemo(() => ({
     ...state,
+    uiPreferences: resolvedUiPreferences,
     setSelectedTripIds,
     setSelectedDriverId,
     setSelectedRouteId,
@@ -1035,6 +1246,7 @@ export const NemtProvider = ({
     deleteTripRecord,
     upsertDispatchThreadMessage,
     markDispatchThreadRead,
+    removeDispatchThreadMessageMedia,
     addDailyDriver,
     removeDailyDriver,
     setDispatcherVisibleTripColumns,
@@ -1044,7 +1256,7 @@ export const NemtProvider = ({
     getDriverName,
     refreshDrivers: syncDriversFromServer,
     refreshDispatchState: syncDispatchFromServer
-  }), [state])}>
+  }), [resolvedUiPreferences, session, state])}>
       {children}
     </NemtContext.Provider>;
 };

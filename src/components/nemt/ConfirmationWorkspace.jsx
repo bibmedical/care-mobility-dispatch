@@ -7,9 +7,11 @@ import { getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dis
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { openWhatsAppConversation } from '@/utils/whatsapp';
 import { useRouter } from 'next/navigation';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 
 const buildSurfaceStyles = isLight => ({
@@ -33,10 +35,24 @@ const buildSurfaceStyles = isLight => ({
 const STATUS_VARIANTS = {
   Confirmed: 'success',
   Cancelled: 'danger',
+  Disconnected: 'secondary',
   'Needs Call': 'warning',
   Pending: 'primary',
   'Not Sent': 'secondary',
   'Opted Out': 'dark'
+};
+
+const DISCONNECTED_BADGE_STYLE = {
+  backgroundColor: '#6f42c1',
+  color: '#ffffff'
+};
+
+const INLINE_CONFIRMATION_TIME_COLUMNS = new Set(['pickup', 'dropoff']);
+
+const buildConfirmationActor = session => {
+  const id = String(session?.user?.id || '').trim();
+  const name = String(session?.user?.name || session?.user?.username || session?.user?.email || 'Dispatcher').trim() || 'Dispatcher';
+  return { id, name };
 };
 
 const BLOCK_REASON_OPTIONS = [
@@ -70,7 +86,8 @@ const CONFIRMATION_OUTPUT_COLUMN_OPTIONS = [
   { key: 'dispatchStatus', label: 'Dispatch Status' },
   { key: 'reply', label: 'Reply' },
   { key: 'sent', label: 'Sent' },
-  { key: 'responded', label: 'Responded' }
+  { key: 'responded', label: 'Responded' },
+  { key: 'internalNotes', label: 'Notes (Print only)' }
 ];
 const DEFAULT_CONFIRMATION_OUTPUT_COLUMNS = ['tripId', 'rider', 'phone', 'pickupTime', 'pickupAddress', 'dropoffAddress', 'miles', 'leg', 'type', 'confirmation', 'dispatchStatus', 'reply'];
 
@@ -79,6 +96,18 @@ const normalizeConfirmationOutputColumns = value => {
   const cleaned = Array.isArray(value) ? value.filter(key => allowedKeys.has(key)) : [];
   const unique = Array.from(new Set(cleaned));
   return unique.length > 0 ? unique : [...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS];
+};
+
+const getConfirmationSortDirection = (sortOrder, columnKey) => {
+  if (sortOrder === `${columnKey}-asc`) return 'asc';
+  if (sortOrder === `${columnKey}-desc`) return 'desc';
+  return null;
+};
+
+const compareConfirmationText = (leftValue, rightValue, direction) => {
+  const leftText = String(leftValue || '');
+  const rightText = String(rightValue || '');
+  return direction === 'asc' ? leftText.localeCompare(rightText) : rightText.localeCompare(leftText);
 };
 
 const escapeHtml = value => String(value ?? '')
@@ -119,6 +148,13 @@ const formatAddressForPrint = value => {
   const hasMore = words.join(' ').length > clamped.join(' ').length;
   if (hasMore && clamped.length > 0) clamped[clamped.length - 1] = `${clamped[clamped.length - 1]} ...`;
   return clamped.join('\n');
+};
+
+const getTripNotesPreview = (value, maxLength = 120) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '-';
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trimEnd()}...`;
 };
 
 const getTripTypeLabel = trip => {
@@ -199,6 +235,35 @@ const normalizeTripTimeDisplay = value => {
   return text;
 };
 
+const getInlineConfirmationTimeValue = (trip, columnKey) => {
+  if (columnKey === 'pickup') return String(trip?.scheduledPickup || trip?.pickup || '').trim();
+  if (columnKey === 'dropoff') return String(trip?.scheduledDropoff || trip?.dropoff || '').trim();
+  return '';
+};
+
+const buildConfirmationTimeSortValue = (trip, timeText, fallbackKey) => {
+  const parsedMinutes = parseTripClockMinutes(timeText);
+  if (parsedMinutes == null) return Number.isFinite(Number(trip?.[fallbackKey])) ? Number(trip[fallbackKey]) : Number.MAX_SAFE_INTEGER;
+  const serviceDateKey = getTripServiceDateKey(trip) || new Date().toISOString().slice(0, 10);
+  const [year, month, day] = String(serviceDateKey || '').split('-').map(Number);
+  if (!year || !month || !day) return Number.isFinite(Number(trip?.[fallbackKey])) ? Number(trip[fallbackKey]) : Number.MAX_SAFE_INTEGER;
+  const hours = Math.floor(parsedMinutes / 60);
+  const minutes = parsedMinutes % 60;
+  return new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
+};
+
+const buildScheduleChangeNoteLine = ({ actorName, oldPickup, newPickup, oldDropoff, newDropoff }) => {
+  const details = [];
+  if (String(oldPickup || '').trim() !== String(newPickup || '').trim()) {
+    details.push(`Pickup: ${oldPickup || '-'} -> ${newPickup || '-'}`);
+  }
+  if (String(oldDropoff || '').trim() !== String(newDropoff || '').trim()) {
+    details.push(`Dropoff: ${oldDropoff || '-'} -> ${newDropoff || '-'}`);
+  }
+  if (details.length === 0) return '';
+  return `[SCHEDULE CHANGE] ${new Date().toLocaleString()}: ${actorName} changed ${details.join(' | ')}`;
+};
+
 const parseSpreadsheetTimeMinutes = value => {
   if (value == null) return null;
   const raw = typeof value === 'number' ? value : Number(String(value).trim());
@@ -277,9 +342,11 @@ const ConfirmationWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const router = useRouter();
-  const { trips, refreshDispatchState, updateTripRecord } = useNemtContext();
+  const { data: session } = useSession();
+  const { trips, refreshDispatchState, updateTripRecord, deleteTripRecord } = useNemtContext();
   const { data: smsData, saveData: saveSmsData } = useSmsIntegrationApi();
   const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
+  const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selectedTripIds, setSelectedTripIds] = useState([]);
@@ -289,6 +356,8 @@ const ConfirmationWorkspace = () => {
   const [legFilter, setLegFilter] = useState('all');
   const [rideTypeFilter, setRideTypeFilter] = useState('all');
   const [confirmationSending, setConfirmationSending] = useState(false);
+  const [inlineTimeEditCell, setInlineTimeEditCell] = useState(null);
+  const [inlineTimeEditValue, setInlineTimeEditValue] = useState('');
   
   // New states for date, time, and manual confirmation
   const [confirmationDate, setConfirmationDate] = useState(() => {
@@ -309,7 +378,7 @@ const ConfirmationWorkspace = () => {
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
   const [cancelLegScope, setCancelLegScope] = useState('single');
   const [blockReasonModalTrip, setBlockReasonModalTrip] = useState(null);
-  const [blockReasonType, setBlockReasonType] = useState('hospital-rehab');
+  const [blockReasonType, setBlockReasonType] = useState('other');
   const [blockReasonNote, setBlockReasonNote] = useState('');
   
   // Hospital/Rehab states
@@ -330,6 +399,7 @@ const ConfirmationWorkspace = () => {
   const [confirmationLegScope, setConfirmationLegScope] = useState('single');
   const [confirmationSourceTrip, setConfirmationSourceTrip] = useState(null);
   const [tripUpdateModal, setTripUpdateModal] = useState(null);
+  const [tripUpdateLegScope, setTripUpdateLegScope] = useState('single');
   const [tripUpdateConfirmMethod, setTripUpdateConfirmMethod] = useState('call');
   const [tripUpdatePickupTime, setTripUpdatePickupTime] = useState('');
   const [tripUpdateDropoffTime, setTripUpdateDropoffTime] = useState('');
@@ -338,6 +408,7 @@ const ConfirmationWorkspace = () => {
   const [tripUpdateNote, setTripUpdateNote] = useState('');
   const [tripUpdateCompanionNote, setTripUpdateCompanionNote] = useState('');
   const [tripUpdateMobilityNote, setTripUpdateMobilityNote] = useState('');
+  const confirmationActor = useMemo(() => buildConfirmationActor(session), [session]);
   const [patientSearch, setPatientSearch] = useState('');
   const [patientFromDate, setPatientFromDate] = useState('');
   const [patientToDate, setPatientToDate] = useState('');
@@ -350,6 +421,8 @@ const ConfirmationWorkspace = () => {
   const [patientStatusSourceNote, setPatientStatusSourceNote] = useState('');
   const [showOutputColumnPicker, setShowOutputColumnPicker] = useState(false);
   const [outputColumns, setOutputColumns] = useState([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
+  const [showRehabBlacklistPanel, setShowRehabBlacklistPanel] = useState(false);
+  const resultsSectionRef = useRef(null);
 
   const optOutList = useMemo(() => (Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : EMPTY_ARRAY), [smsData?.sms?.optOutList]);
   const blacklistEntries = useMemo(() => (Array.isArray(blacklistData?.entries) ? blacklistData.entries : EMPTY_ARRAY), [blacklistData?.entries]);
@@ -370,7 +443,8 @@ const ConfirmationWorkspace = () => {
     trip,
     optOutList,
     blacklistEntries,
-    defaultCountryCode: smsData?.sms?.defaultCountryCode
+    defaultCountryCode: smsData?.sms?.defaultCountryCode,
+    tripDateKey: getTripServiceDateKey(trip)
   })])), [blacklistEntries, optOutList, smsData?.sms?.defaultCountryCode, trips]);
   const activeGroupTemplate = useMemo(() => {
     if (legFilter !== 'all' && groupTemplates[legFilter]) return groupTemplates[legFilter];
@@ -385,8 +459,19 @@ const ConfirmationWorkspace = () => {
     cancelled: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Cancelled').length,
     needsCall: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Needs Call').length,
     notSent: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Not Sent').length,
-    optedOut: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length
-  }), [tripBlockingMap, trips]);
+    optedOut: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length,
+    rehabHospital: trips.filter(trip => Boolean(trip?.hospitalStatus)).length,
+    blacklisted: blacklistEntries.filter(entry => entry.status === 'Active').length,
+    clones: trips.filter(trip => Boolean(trip?.clonedFromTripId)).length
+  }), [blacklistEntries, tripBlockingMap, trips]);
+
+  const handleSummaryCardClick = nextStatusFilter => {
+    setResultViewMode('trips');
+    setStatusFilter(nextStatusFilter);
+    window.setTimeout(() => {
+      resultsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 40);
+  };
 
   const patientHistoryRows = useMemo(() => {
     const term = patientSearch.trim().toLowerCase();
@@ -452,7 +537,7 @@ const ConfirmationWorkspace = () => {
         id: trip.id,
         dateKey,
         pickup: formatMinutesAsClock(getTripTimeMinutesForFilter(trip)) || trip.scheduledPickup || trip.pickup || '-',
-        dropoff: trip.scheduledDropoff || trip.dropoff || '-',
+        dropoff: normalizeTripTimeDisplay(trip.scheduledDropoff || trip.dropoff || '') || '-',
         status,
         completion: isTripCompleted(trip) ? 'Completed' : 'Open',
         confirmationStatus,
@@ -472,6 +557,12 @@ const ConfirmationWorkspace = () => {
       if (selectedPatientKey) setSelectedPatientKey('');
       return;
     }
+
+    if (!selectedPatientKey && patientHistoryRows.length === 1) {
+      setSelectedPatientKey(patientHistoryRows[0].key);
+      return;
+    }
+
     const exists = patientHistoryRows.some(row => row.key === selectedPatientKey);
     if (!exists && selectedPatientKey) setSelectedPatientKey('');
   }, [patientHistoryRows, selectedPatientKey]);
@@ -483,20 +574,29 @@ const ConfirmationWorkspace = () => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (userPreferencesLoading) return;
     try {
-      const raw = window.localStorage.getItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
+      const parsed = userPreferences?.confirmation?.outputColumns?.length ? userPreferences.confirmation.outputColumns : JSON.parse(window.localStorage.getItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY) || 'null');
+      if (!parsed) return;
       setOutputColumns(normalizeConfirmationOutputColumns(parsed));
     } catch {
       setOutputColumns([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
     }
-  }, []);
+  }, [userPreferences?.confirmation?.outputColumns, userPreferencesLoading]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY, JSON.stringify(outputColumns));
-  }, [outputColumns]);
+    if (!userPreferencesLoading) {
+      void saveUserPreferences({
+        ...userPreferences,
+        confirmation: {
+          ...userPreferences?.confirmation,
+          outputColumns
+        }
+      });
+    }
+  }, [outputColumns, saveUserPreferences, userPreferences, userPreferencesLoading]);
 
   const detectedMaxMilesForWindow = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -505,7 +605,8 @@ const ConfirmationWorkspace = () => {
     const toMinutes = applyTimeFilter && timeToFilter ? parseTripClockMinutes(timeToFilter) : null;
 
     const candidateMiles = trips.filter(trip => {
-      const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+      const blockingState = tripBlockingMap.get(trip.id);
+      const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
       if (statusFilter !== 'all' && confirmationStatus !== statusFilter) return false;
       if (legFilter !== 'all' && getTripLegFilterKey(trip) !== legFilter) return false;
       if (rideTypeFilter !== 'all' && getTripTypeLabel(trip) !== rideTypeFilter) return false;
@@ -547,16 +648,17 @@ const ConfirmationWorkspace = () => {
     const matchedTrips = trips.filter(trip => {
       // Check if trip is in hospital/rehab (should be excluded from normal confirmation)
       const isInHospitalRehab = trip.hospitalStatus && trip.hospitalStatus.startDate <= today && today <= trip.hospitalStatus.endDate;
-      
-      const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+
+      const blockingState = tripBlockingMap.get(trip.id);
+      const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
       if (statusFilter !== 'all' && confirmationStatus !== statusFilter) return false;
       if (legFilter !== 'all' && getTripLegFilterKey(trip) !== legFilter) return false;
       if (rideTypeFilter !== 'all' && getTripTypeLabel(trip) !== rideTypeFilter) return false;
-      
+
       // Optionally hide trips in active hospital/rehab status from normal confirmation view
       // Uncomment below if you want to hide them automatically:
       // if (isInHospitalRehab) return false;
-      
+
       // Filter by date
       const tripDateKey = getTripServiceDateKey(trip);
       if (confirmationDate !== 'all') {
@@ -564,8 +666,9 @@ const ConfirmationWorkspace = () => {
       }
 
       const riderProfile = getPatientProfileForTrip(trip);
-      if (isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
-      
+      const hasActiveBlacklistBlock = blockingState?.source === 'blacklist';
+      if (!hasActiveBlacklistBlock && isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
+
       if (!normalizedSearch) return true;
       const haystack = [trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(normalizedSearch);
@@ -647,6 +750,11 @@ const ConfirmationWorkspace = () => {
       const rightMiles = getTripMilesValue(rightTrip);
       const leftValue = leftMiles == null ? Number.NEGATIVE_INFINITY : leftMiles;
       const rightValue = rightMiles == null ? Number.NEGATIVE_INFINITY : rightMiles;
+      const phoneDirection = getConfirmationSortDirection(milesSortOrder, 'phone');
+      const pickupDirection = getConfirmationSortDirection(milesSortOrder, 'pickup');
+      const dropoffDirection = getConfirmationSortDirection(milesSortOrder, 'dropoff');
+      const legDirection = getConfirmationSortDirection(milesSortOrder, 'leg');
+      const typeDirection = getConfirmationSortDirection(milesSortOrder, 'type');
 
       if (milesSortOrder === 'miles-asc') return leftValue - rightValue;
       if (milesSortOrder === 'miles-desc') return rightValue - leftValue;
@@ -654,6 +762,33 @@ const ConfirmationWorkspace = () => {
       if (milesSortOrder === 'rider-desc') return String(rightTrip.rider || '').localeCompare(String(leftTrip.rider || ''));
       if (milesSortOrder === 'trip-asc') return String(leftTrip.id || '').localeCompare(String(rightTrip.id || ''));
       if (milesSortOrder === 'trip-desc') return String(rightTrip.id || '').localeCompare(String(leftTrip.id || ''));
+      if (phoneDirection) return compareConfirmationText(leftTrip.patientPhoneNumber, rightTrip.patientPhoneNumber, phoneDirection);
+      if (pickupDirection) {
+        const leftPickupMinutes = getTripTimeMinutesForFilter(leftTrip);
+        const rightPickupMinutes = getTripTimeMinutesForFilter(rightTrip);
+        const normalizedLeftMinutes = leftPickupMinutes == null ? Number.MAX_SAFE_INTEGER : leftPickupMinutes;
+        const normalizedRightMinutes = rightPickupMinutes == null ? Number.MAX_SAFE_INTEGER : rightPickupMinutes;
+        if (normalizedLeftMinutes !== normalizedRightMinutes) {
+          return pickupDirection === 'asc' ? normalizedLeftMinutes - normalizedRightMinutes : normalizedRightMinutes - normalizedLeftMinutes;
+        }
+        const leftPickupLabel = formatMinutesAsClock(leftPickupMinutes) || leftTrip?.scheduledPickup || leftTrip?.pickup || '-';
+        const rightPickupLabel = formatMinutesAsClock(rightPickupMinutes) || rightTrip?.scheduledPickup || rightTrip?.pickup || '-';
+        return compareConfirmationText(leftPickupLabel, rightPickupLabel, pickupDirection);
+      }
+      if (dropoffDirection) {
+        const leftDropoffLabel = normalizeTripTimeDisplay(leftTrip?.scheduledDropoff || leftTrip?.dropoff || '-');
+        const rightDropoffLabel = normalizeTripTimeDisplay(rightTrip?.scheduledDropoff || rightTrip?.dropoff || '-');
+        const leftDropoffMinutes = parseTripClockMinutes(leftDropoffLabel);
+        const rightDropoffMinutes = parseTripClockMinutes(rightDropoffLabel);
+        const normalizedLeftMinutes = leftDropoffMinutes == null ? Number.MAX_SAFE_INTEGER : leftDropoffMinutes;
+        const normalizedRightMinutes = rightDropoffMinutes == null ? Number.MAX_SAFE_INTEGER : rightDropoffMinutes;
+        if (normalizedLeftMinutes !== normalizedRightMinutes) {
+          return dropoffDirection === 'asc' ? normalizedLeftMinutes - normalizedRightMinutes : normalizedRightMinutes - normalizedLeftMinutes;
+        }
+        return compareConfirmationText(leftDropoffLabel, rightDropoffLabel, dropoffDirection);
+      }
+      if (legDirection) return compareConfirmationText(getTripLegFilterKey(leftTrip), getTripLegFilterKey(rightTrip), legDirection);
+      if (typeDirection) return compareConfirmationText(getTripTypeLabel(leftTrip), getTripTypeLabel(rightTrip), typeDirection);
       return rightValue - leftValue;
     });
   }, [baseFilteredTrips, milesSortOrder, milesRangeMatchedTripIds, primaryFilterMode, timeWindowMatchedTripIds]);
@@ -670,6 +805,20 @@ const ConfirmationWorkspace = () => {
 
   const toggleTripSelection = tripId => {
     setSelectedTripIds(current => current.includes(tripId) ? current.filter(id => id !== tripId) : [...current, tripId]);
+  };
+
+  const handleConfirmationTableSort = columnKey => {
+    setMilesSortOrder(currentSort => getConfirmationSortDirection(currentSort, columnKey) === 'asc' ? `${columnKey}-desc` : `${columnKey}-asc`);
+  };
+
+  const renderSortableConfirmationHeader = (columnKey, label) => {
+    const direction = getConfirmationSortDirection(milesSortOrder, columnKey);
+    return <th>
+        <button type="button" onClick={() => handleConfirmationTableSort(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
+          <span>{label}</span>
+          <span className="small">{direction === 'asc' ? '↑' : direction === 'desc' ? '↓' : '↕'}</span>
+        </button>
+      </th>;
   };
 
   const handleToggleAllVisible = checked => {
@@ -724,13 +873,14 @@ const ConfirmationWorkspace = () => {
     }
 
     setBlockReasonModalTrip(trip);
-    setBlockReasonType('hospital-rehab');
+    setBlockReasonType('other');
     setBlockReasonNote('');
   };
 
   const handleConfirmBlockReason = async () => {
     if (!blockReasonModalTrip) return;
     const trip = blockReasonModalTrip;
+    const patientKey = buildPatientProfileKey(trip);
     const reasonLabel = BLOCK_REASON_OPTIONS.find(option => option.value === blockReasonType)?.label || 'Other reason';
     const details = blockReasonNote.trim();
     const reasonText = details ? `${reasonLabel}: ${details}` : reasonLabel;
@@ -774,6 +924,18 @@ const ConfirmationWorkspace = () => {
 
     const cleanedOptOutList = optOutList.filter(entry => !isSamePatient(entry));
 
+    const nextRiderProfiles = {
+      ...riderProfiles
+    };
+    if (patientKey && nextRiderProfiles[patientKey]) {
+      const nextProfile = {
+        ...nextRiderProfiles[patientKey],
+        updatedAt: nowIso
+      };
+      delete nextProfile.exclusion;
+      nextRiderProfiles[patientKey] = nextProfile;
+    }
+
     await Promise.all([
       saveBlacklistData({
         version: blacklistData?.version ?? 1,
@@ -782,7 +944,8 @@ const ConfirmationWorkspace = () => {
       saveSmsData({
         sms: {
           ...(smsData?.sms || {}),
-          optOutList: cleanedOptOutList
+          optOutList: cleanedOptOutList,
+          riderProfiles: nextRiderProfiles
         }
       })
     ]);
@@ -809,9 +972,9 @@ const ConfirmationWorkspace = () => {
     });
 
     setBlockReasonModalTrip(null);
-    setBlockReasonType('hospital-rehab');
+    setBlockReasonType('other');
     setBlockReasonNote('');
-    setCustomStatus('Patient blocked and persisted in Black List until manually removed.');
+    setCustomStatus('Patient blocked in Black List. Future trips will stay visible, but confirmation remains blocked until manually removed.');
   };
 
   const handleSendCustomMessage = async () => {
@@ -924,16 +1087,18 @@ const ConfirmationWorkspace = () => {
         return trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-';
       case 'responded':
         return trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-';
+      case 'internalNotes':
+        return String(trip.notes || '').trim() || '-';
       default:
         return '-';
     }
   };
 
-  const buildTripOutputLine = trip => selectedOutputColumnOptions.map(option => `${option.label}: ${getOutputColumnValue(trip, option.key)}`).join(' | ');
+  const buildTripOutputLine = trip => selectedOutputColumnOptions.filter(option => option.key !== 'internalNotes').map(option => `${option.label}: ${getOutputColumnValue(trip, option.key)}`).join(' | ');
 
   const getOutputCellHtml = (trip, columnKey) => {
     const value = getOutputColumnValue(trip, columnKey);
-    if (columnKey === 'pickupAddress' || columnKey === 'dropoffAddress') {
+    if (columnKey === 'pickupAddress' || columnKey === 'dropoffAddress' || columnKey === 'internalNotes') {
       return escapeHtml(formatAddressForPrint(value)).replace(/\n/g, '<br/>');
     }
     return escapeHtml(value);
@@ -1034,6 +1199,12 @@ const ConfirmationWorkspace = () => {
               white-space: normal;
               line-height: 1.2;
             }
+            th.col-internalNotes, td.col-internalNotes {
+              min-width: 220px;
+              max-width: 280px;
+              white-space: normal;
+              line-height: 1.2;
+            }
             @media print {
               @page { size: A4 landscape; margin: 10mm; }
               body { margin: 0; }
@@ -1086,20 +1257,120 @@ const ConfirmationWorkspace = () => {
     }
   };
 
-  const handleSaveHospitalRehab = () => {
+  const handleSaveHospitalRehab = async () => {
     if (!hospitalRehabModal) return;
-    
-    updateTripRecord(hospitalRehabModal.id, {
-      hospitalStatus: {
-        type: hospitalRehabType,
-        startDate: hospitalRehabStartDate,
-        endDate: hospitalRehabEndDate,
-        notes: hospitalRehabNotes,
-        createdAt: new Date().toISOString()
-      }
+    if (!hospitalRehabStartDate || !hospitalRehabEndDate) {
+      setCustomStatus('Selecciona fecha de inicio y fin para Hospital/Rehab.');
+      return;
+    }
+    if (hospitalRehabEndDate < hospitalRehabStartDate) {
+      setCustomStatus('La fecha final no puede ser menor que la fecha inicial.');
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const patientKey = buildPatientProfileKey(hospitalRehabModal);
+    const normalizedTripPhone = String(hospitalRehabModal.patientPhoneNumber || '').replace(/\D/g, '');
+    const normalizedRider = String(hospitalRehabModal.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const isSamePatient = entry => {
+      const entryPhone = String(entry?.phone || '').replace(/\D/g, '');
+      const entryName = String(entry?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (entryPhone && normalizedTripPhone && entryPhone === normalizedTripPhone) return true;
+      if (entryName && normalizedRider && entryName === normalizedRider) return true;
+      return false;
+    };
+
+    if (patientKey) {
+      const existingProfile = riderProfiles[patientKey] || {};
+      await saveSmsData({
+        sms: {
+          ...(smsData?.sms || {}),
+          riderProfiles: {
+            ...riderProfiles,
+            [patientKey]: {
+              ...existingProfile,
+              exclusion: {
+                mode: 'range',
+                startDate: hospitalRehabStartDate,
+                endDate: hospitalRehabEndDate,
+                reason: `${hospitalRehabType} stay`,
+                sourceNote: hospitalRehabNotes,
+                updatedAt: nowIso
+              },
+              updatedAt: nowIso
+            }
+          }
+        }
+      });
+    }
+
+    const matchingBlacklistIndex = blacklistEntries.findIndex(entry => isSamePatient(entry));
+    const nextBlacklistEntries = matchingBlacklistIndex >= 0 ? blacklistEntries.map((entry, index) => {
+      if (index !== matchingBlacklistIndex) return entry;
+      const mergedNote = [String(entry.notes || '').trim(), `[${hospitalRehabType.toUpperCase()}] ${hospitalRehabNotes}`].filter(Boolean).join(' | ');
+      return {
+        ...entry,
+        category: 'Medical Hold',
+        status: 'Active',
+        holdUntil: hospitalRehabEndDate,
+        notes: mergedNote,
+        source: 'Confirmation Hospital/Rehab',
+        updatedAt: nowIso
+      };
+    }) : [{
+      id: `bl-${Date.now()}`,
+      name: hospitalRehabModal.rider || '',
+      phone: hospitalRehabModal.patientPhoneNumber || '',
+      category: 'Medical Hold',
+      status: 'Active',
+      holdUntil: hospitalRehabEndDate,
+      notes: `[${hospitalRehabType.toUpperCase()}] ${hospitalRehabNotes}`.trim(),
+      source: 'Confirmation Hospital/Rehab',
+      createdAt: nowIso,
+      updatedAt: nowIso
+    }, ...blacklistEntries];
+
+    await saveBlacklistData({
+      version: blacklistData?.version ?? 1,
+      entries: nextBlacklistEntries
     });
-    
-    setCustomStatus(`Trip ${hospitalRehabModal.id} marcado como ${hospitalRehabType} hasta ${hospitalRehabEndDate}. Será excluido de confirmaciones hasta esa fecha.`);
+
+    const siblingTrips = getSiblingLegTrips(hospitalRehabModal, trips);
+    const matchingTrips = trips.filter(trip => {
+      if (patientKey && buildPatientProfileKey(trip) === patientKey) {
+        const serviceDate = getTripServiceDateKey(trip);
+        return Boolean(serviceDate) && serviceDate >= hospitalRehabStartDate && serviceDate <= hospitalRehabEndDate;
+      }
+      return isSamePatient({
+        name: trip.rider,
+        phone: trip.patientPhoneNumber
+      });
+    });
+
+    const targetTrips = Array.from(new Map([hospitalRehabModal, ...siblingTrips, ...matchingTrips].map(trip => [String(trip.id || ''), trip])).values()).filter(Boolean);
+    targetTrips.forEach(trip => {
+      updateTripRecord(trip.id, {
+        status: 'Cancelled',
+        hospitalStatus: {
+          type: hospitalRehabType,
+          startDate: hospitalRehabStartDate,
+          endDate: hospitalRehabEndDate,
+          notes: hospitalRehabNotes,
+          createdAt: nowIso
+        },
+        confirmation: {
+          ...(trip.confirmation || {}),
+          status: 'Cancelled',
+          provider: 'hospital-rehab',
+          respondedAt: nowIso,
+          lastResponseText: `${hospitalRehabType} until ${hospitalRehabEndDate}`,
+          lastResponseCode: 'HR'
+        },
+        notes: [String(trip.notes || '').trim(), `[AUTO-CANCEL ${hospitalRehabType.toUpperCase()}] ${new Date().toLocaleString()}: until ${hospitalRehabEndDate}. ${hospitalRehabNotes}`.trim()].filter(Boolean).join('\n')
+      });
+    });
+
+    setCustomStatus(`${targetTrips.length} trip(s) marked ${hospitalRehabType} for ${hospitalRehabModal.rider || 'patient'} through ${hospitalRehabEndDate}, including both legs when they exist. New trips in that range will be auto-hidden unless you filter Cancelled.`);
     setHospitalRehabModal(null);
   };
 
@@ -1121,10 +1392,20 @@ const ConfirmationWorkspace = () => {
     setConfirmationMethod('whatsapp');
   };
 
+  const handleCloseConfirmationMethod = () => {
+    setConfirmationMethodModal(null);
+    setConfirmationSourceTrip(null);
+    setConfirmationLegScope('single');
+  };
+
   const getMethodCode = method => {
     if (method === 'whatsapp') return 'W';
     if (method === 'sms') return 'S';
     if (method === 'call') return 'C';
+    if (method === 'call-left-message') return 'CL';
+    if (method === 'cancelled-by-patient') return 'CP';
+    if (method === 'disconnected') return 'DC';
+    if (method === 'sms-left-unconfirmed') return 'SL';
     return 'M';
   };
 
@@ -1132,6 +1413,10 @@ const ConfirmationWorkspace = () => {
     if (method === 'whatsapp') return 'WhatsApp';
     if (method === 'sms') return 'SMS';
     if (method === 'call') return 'Call';
+    if (method === 'call-left-message') return 'Called and left message';
+    if (method === 'cancelled-by-patient') return 'Cancelled by patient';
+    if (method === 'disconnected') return 'Disconnected';
+    if (method === 'sms-left-unconfirmed') return 'Could not confirm, SMS left (English)';
     return 'Manual';
   };
 
@@ -1181,6 +1466,11 @@ const ConfirmationWorkspace = () => {
     const formatted = formatMinutesAsClock(getTripTimeMinutesForFilter(trip));
     if (formatted) return formatted;
     return trip?.scheduledPickup || trip?.pickup || '-';
+  };
+
+  const getTripDisplayDropoffTime = trip => {
+    if (trip?.scheduleChange?.newDropoff) return `${trip.scheduleChange.newDropoff} (NEW)`;
+    return normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || '') || '-';
   };
 
   const getRiderProfileKey = trip => {
@@ -1271,6 +1561,7 @@ const ConfirmationWorkspace = () => {
   const handleOpenTripUpdateModal = trip => {
     const profile = getRiderProfile(trip);
     setTripUpdateModal(trip);
+    setTripUpdateLegScope('single');
     setTripUpdateConfirmMethod('call');
     setTripUpdatePickupTime(normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || ''));
     setTripUpdateDropoffTime(normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || ''));
@@ -1281,10 +1572,123 @@ const ConfirmationWorkspace = () => {
     setTripUpdateMobilityNote(String(profile?.mobility || ''));
   };
 
+  const tripUpdateSiblingTrips = useMemo(() => tripUpdateModal ? getSiblingLegTrips(tripUpdateModal, trips) : EMPTY_ARRAY, [tripUpdateModal, trips]);
+  const tripUpdateSupportsBothLegs = tripUpdateSiblingTrips.length > 0;
+
+  const isInlineConfirmationTimeEditing = (tripId, columnKey) => inlineTimeEditCell?.tripId === tripId && inlineTimeEditCell?.columnKey === columnKey;
+
+  const handleStartInlineConfirmationTimeEdit = (trip, columnKey) => {
+    if (!trip || !INLINE_CONFIRMATION_TIME_COLUMNS.has(columnKey)) return;
+    setInlineTimeEditCell({ tripId: trip.id, columnKey });
+    setInlineTimeEditValue(getInlineConfirmationTimeValue(trip, columnKey));
+  };
+
+  const handleCancelInlineConfirmationTimeEdit = () => {
+    setInlineTimeEditCell(null);
+    setInlineTimeEditValue('');
+  };
+
+  const handleSaveInlineConfirmationTimeEdit = trip => {
+    if (!trip || !inlineTimeEditCell?.columnKey) return;
+
+    const columnKey = inlineTimeEditCell.columnKey;
+    const currentValue = String(getInlineConfirmationTimeValue(trip, columnKey) || '').trim();
+    const nextValue = String(inlineTimeEditValue || '').trim();
+
+    if (!nextValue || nextValue === currentValue) {
+      handleCancelInlineConfirmationTimeEdit();
+      return;
+    }
+
+    const oldPickup = normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || '');
+    const oldDropoff = normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || '');
+    const newPickup = columnKey === 'pickup' ? nextValue : oldPickup;
+    const newDropoff = columnKey === 'dropoff' ? nextValue : oldDropoff;
+    const nowIso = new Date().toISOString();
+    const noteLine = buildScheduleChangeNoteLine({
+      actorName: confirmationActor.name,
+      oldPickup,
+      newPickup,
+      oldDropoff,
+      newDropoff
+    });
+    const mergedNotes = [String(trip?.notes || '').trim(), noteLine].filter(Boolean).join('\n');
+
+    updateTripRecord(trip.id, {
+      notes: mergedNotes,
+      ...(columnKey === 'pickup' ? {
+        pickup: nextValue,
+        scheduledPickup: nextValue,
+        pickupSortValue: buildConfirmationTimeSortValue(trip, nextValue, 'pickupSortValue')
+      } : {
+        dropoff: nextValue,
+        scheduledDropoff: nextValue,
+        dropoffSortValue: buildConfirmationTimeSortValue(trip, nextValue, 'dropoffSortValue')
+      }),
+      scheduleChange: {
+        oldPickup,
+        newPickup,
+        oldDropoff,
+        newDropoff,
+        changedAt: nowIso,
+        updatedById: confirmationActor.id,
+        updatedByName: confirmationActor.name,
+        marker: 'NEW'
+      }
+    }, {
+      action: 'trip-schedule-inline-update',
+      source: 'confirmation-workspace',
+      actorId: confirmationActor.id,
+      actorName: confirmationActor.name,
+      summary: `${confirmationActor.name} changed ${columnKey} time on trip ${String(trip.id || '').trim()}`,
+      metadata: {
+        tripId: String(trip.id || '').trim(),
+        field: columnKey,
+        oldValue: currentValue,
+        newValue: nextValue
+      }
+    });
+
+    setCustomStatus(`Time updated on trip ${String(trip.id || '').trim()} by ${confirmationActor.name}.`);
+    handleCancelInlineConfirmationTimeEdit();
+  };
+
+  const renderInlineConfirmationTimeCell = (trip, columnKey, displayValue) => {
+    const isEditing = isInlineConfirmationTimeEditing(trip.id, columnKey);
+    const changedBy = String(trip?.scheduleChange?.updatedByName || '').trim();
+    return <td style={{ cursor: 'text' }} onDoubleClick={() => handleStartInlineConfirmationTimeEdit(trip, columnKey)} title="Double-click to edit time">
+        {isEditing ? <Form.Control
+          size="sm"
+          autoFocus
+          value={inlineTimeEditValue}
+          placeholder="e.g. 07:30 AM"
+          onChange={event => setInlineTimeEditValue(event.target.value)}
+          onBlur={() => handleSaveInlineConfirmationTimeEdit(trip)}
+          onKeyDown={event => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            handleSaveInlineConfirmationTimeEdit(trip);
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            handleCancelInlineConfirmationTimeEdit();
+          }
+        }}
+        /> : <>
+            <span style={{ borderBottom: '1px dashed rgba(107, 114, 128, 0.5)', display: 'inline-block' }}>{displayValue || '-'}</span>
+            {changedBy ? <div className="small text-muted mt-1">Changed by {changedBy}</div> : null}
+          </>}
+      </td>;
+  };
+
   const handleSaveTripUpdate = async () => {
     if (!tripUpdateModal) return;
     const nowIso = new Date().toISOString();
     const methodLabel = getMethodLabel(tripUpdateConfirmMethod);
+    const isSmsLeftUnconfirmed = tripUpdateConfirmMethod === 'sms-left-unconfirmed';
+    const isCallLeftMessage = tripUpdateConfirmMethod === 'call-left-message';
+    const isCancelledByPatient = tripUpdateConfirmMethod === 'cancelled-by-patient';
+    const isDisconnected = tripUpdateConfirmMethod === 'disconnected';
     const oldPickup = normalizeTripTimeDisplay(tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '');
     const oldDropoff = normalizeTripTimeDisplay(tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '');
     const newPickup = String(tripUpdatePickupTime || '').trim();
@@ -1295,11 +1699,29 @@ const ConfirmationWorkspace = () => {
     const newDropoffAddress = String(tripUpdateDropoffAddress || '').trim();
     const pickupAddressChanged = newPickupAddress !== String(tripUpdateModal.address || '').trim();
     const dropoffAddressChanged = newDropoffAddress !== String(tripUpdateModal.destination || '').trim();
+    const effectivePickup = newPickup || oldPickup;
+    const effectiveDropoff = newDropoff || oldDropoff;
 
     const detailLines = [];
-    detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
+    if (isSmsLeftUnconfirmed) {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Could not confirm by phone. English SMS was left for follow-up.`);
+    } else if (isCallLeftMessage) {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Called patient and left a message.`);
+    } else if (isCancelledByPatient) {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Trip cancelled by patient.`);
+    } else if (isDisconnected) {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Phone disconnected.`);
+    } else {
+      detailLines.push(`[CONFIRMATION] ${new Date().toLocaleString()}: Confirmed via ${methodLabel}.`);
+    }
     if (pickupChanged || dropoffChanged) {
-      detailLines.push(`[SCHEDULE NEW] Pickup: ${oldPickup || '-'} -> ${newPickup || oldPickup || '-'} | Dropoff: ${oldDropoff || '-'} -> ${newDropoff || oldDropoff || '-'}`);
+      detailLines.push(buildScheduleChangeNoteLine({
+        actorName: confirmationActor.name,
+        oldPickup,
+        newPickup: effectivePickup,
+        oldDropoff,
+        newDropoff: effectiveDropoff
+      }));
     }
     if (pickupAddressChanged) detailLines.push(`[ADDRESS UPDATE] PU: ${tripUpdateModal.address || '-'} -> ${newPickupAddress || '-'}`);
     if (dropoffAddressChanged) detailLines.push(`[ADDRESS UPDATE] DO: ${tripUpdateModal.destination || '-'} -> ${newDropoffAddress || '-'}`);
@@ -1307,36 +1729,72 @@ const ConfirmationWorkspace = () => {
     if (tripUpdateMobilityNote.trim()) detailLines.push(`[MOBILITY NOTE] ${tripUpdateMobilityNote.trim()}`);
     if (tripUpdateNote.trim()) detailLines.push(`[DISPATCH NOTE] ${tripUpdateNote.trim()}`);
 
-    const mergedNotes = [String(tripUpdateModal.notes || '').trim(), detailLines.join('\n')].filter(Boolean).join('\n');
+    const targetTrips = tripUpdateLegScope === 'both' ? [tripUpdateModal, ...tripUpdateSiblingTrips] : [tripUpdateModal];
 
-    updateTripRecord(tripUpdateModal.id, {
-      scheduledPickup: newPickup || oldPickup,
-      scheduledDropoff: newDropoff || oldDropoff,
-      address: newPickupAddress || tripUpdateModal.address || '',
-      destination: newDropoffAddress || tripUpdateModal.destination || '',
-      notes: mergedNotes,
-      confirmation: {
-        ...(tripUpdateModal.confirmation || {}),
-        status: 'Confirmed',
-        provider: tripUpdateConfirmMethod,
-        respondedAt: nowIso,
-        lastResponseText: `Confirmed via ${methodLabel}`,
-        lastResponseCode: getMethodCode(tripUpdateConfirmMethod)
-      },
-      scheduleChange: pickupChanged || dropoffChanged ? {
-        oldPickup,
-        newPickup: newPickup || oldPickup,
-        oldDropoff,
-        newDropoff: newDropoff || oldDropoff,
-        changedAt: nowIso,
-        marker: 'NEW'
-      } : tripUpdateModal.scheduleChange || null,
-      passengerProfile: {
-        ...(tripUpdateModal.passengerProfile || {}),
-        companion: tripUpdateCompanionNote.trim(),
-        mobility: tripUpdateMobilityNote.trim(),
-        updatedAt: nowIso
-      }
+    targetTrips.forEach(targetTrip => {
+      const targetOldPickup = normalizeTripTimeDisplay(targetTrip?.scheduledPickup || targetTrip?.pickup || '');
+      const targetOldDropoff = normalizeTripTimeDisplay(targetTrip?.scheduledDropoff || targetTrip?.dropoff || '');
+      const isPrimaryTrip = String(targetTrip?.id || '') === String(tripUpdateModal?.id || '');
+      const targetPickup = isPrimaryTrip ? effectivePickup : targetOldPickup;
+      const targetDropoff = isPrimaryTrip ? effectiveDropoff : targetOldDropoff;
+      const targetPickupChanged = isPrimaryTrip && pickupChanged;
+      const targetDropoffChanged = isPrimaryTrip && dropoffChanged;
+      const targetDetailLines = [...detailLines];
+      const targetMergedNotes = [String(targetTrip?.notes || '').trim(), targetDetailLines.join('\n')].filter(Boolean).join('\n');
+
+      updateTripRecord(targetTrip.id, {
+        status: isCancelledByPatient ? 'Cancelled' : targetTrip.status,
+        pickup: targetPickup,
+        scheduledPickup: targetPickup,
+        pickupSortValue: buildConfirmationTimeSortValue(targetTrip, targetPickup, 'pickupSortValue'),
+        dropoff: targetDropoff,
+        scheduledDropoff: targetDropoff,
+        dropoffSortValue: buildConfirmationTimeSortValue(targetTrip, targetDropoff, 'dropoffSortValue'),
+        address: newPickupAddress || targetTrip.address || '',
+        destination: newDropoffAddress || targetTrip.destination || '',
+        notes: targetMergedNotes,
+        confirmation: {
+          ...(targetTrip.confirmation || {}),
+          status: isCancelledByPatient ? 'Cancelled' : isDisconnected ? 'Disconnected' : isSmsLeftUnconfirmed || isCallLeftMessage ? 'Needs Call' : 'Confirmed',
+          provider: tripUpdateConfirmMethod,
+          respondedAt: isCancelledByPatient ? '' : nowIso,
+          lastResponseText: isCancelledByPatient ? 'Cancelled by patient.' : isSmsLeftUnconfirmed ? 'Could not confirm, English SMS left.' : isCallLeftMessage ? 'Called and left message.' : isDisconnected ? 'Disconnected.' : `Confirmed via ${methodLabel}`,
+          lastResponseCode: getMethodCode(tripUpdateConfirmMethod)
+        },
+        scheduleChange: targetPickupChanged || targetDropoffChanged ? {
+          oldPickup: targetOldPickup,
+          newPickup: targetPickup,
+          oldDropoff: targetOldDropoff,
+          newDropoff: targetDropoff,
+          changedAt: nowIso,
+          updatedById: confirmationActor.id,
+          updatedByName: confirmationActor.name,
+          marker: 'NEW'
+        } : targetTrip.scheduleChange || null,
+        passengerProfile: {
+          ...(targetTrip.passengerProfile || {}),
+          companion: tripUpdateCompanionNote.trim(),
+          mobility: tripUpdateMobilityNote.trim(),
+          updatedAt: nowIso
+        }
+      }, {
+        action: targetPickupChanged || targetDropoffChanged ? 'trip-confirmation-schedule-update' : 'trip-confirmation-update',
+        source: 'confirmation-workspace',
+        actorId: confirmationActor.id,
+        actorName: confirmationActor.name,
+        summary: targetPickupChanged || targetDropoffChanged ? `${confirmationActor.name} updated confirmation and changed the schedule for trip ${String(targetTrip.id || '').trim()}` : `${confirmationActor.name} updated confirmation for trip ${String(targetTrip.id || '').trim()}`,
+        metadata: {
+          tripId: String(targetTrip.id || '').trim(),
+          method: tripUpdateConfirmMethod,
+          oldPickup: targetOldPickup,
+          newPickup: targetPickup,
+          oldDropoff: targetOldDropoff,
+          newDropoff: targetDropoff,
+          pickupChanged: targetPickupChanged,
+          dropoffChanged: targetDropoffChanged,
+          legScope: tripUpdateLegScope
+        }
+      });
     });
 
     const riderProfileKey = getRiderProfileKey(tripUpdateModal);
@@ -1357,9 +1815,13 @@ const ConfirmationWorkspace = () => {
       });
     }
 
-    setCustomStatus(`Trip ${tripUpdateModal.id} updated. Method: ${methodLabel}${pickupChanged || dropoffChanged ? ' | Schedule marked NEW' : ''}.`);
+    setCustomStatus(`${targetTrips.length} trip(s) updated by ${confirmationActor.name}. Method: ${methodLabel}${pickupChanged || dropoffChanged ? ' | Schedule marked NEW' : ''}.`);
     setTripUpdateModal(null);
+    setTripUpdateLegScope('single');
   };
+
+  const confirmationSiblingTrips = useMemo(() => confirmationSourceTrip ? getSiblingLegTrips(confirmationSourceTrip, trips) : EMPTY_ARRAY, [confirmationSourceTrip, trips]);
+  const confirmationRequiresLegChoice = Boolean(confirmationSourceTrip && confirmationSiblingTrips.length > 0);
 
   const handleSendConfirmation = async () => {
     if (!confirmationMethodModal || confirmationMethodModal.length === 0) {
@@ -1367,7 +1829,12 @@ const ConfirmationWorkspace = () => {
       return;
     }
 
-    const siblingTrips = confirmationSourceTrip ? getSiblingLegTrips(confirmationSourceTrip, trips) : [];
+    if (confirmationRequiresLegChoice && !confirmationLegScope) {
+      setCustomStatus('Choose whether to confirm only this leg or both legs before sending.');
+      return;
+    }
+
+    const siblingTrips = confirmationSiblingTrips;
     const targetTrips = confirmationSourceTrip && confirmationLegScope === 'both' ? Array.from(new Map([confirmationSourceTrip, ...siblingTrips].map(item => [item.id, item])).values()) : confirmationMethodModal;
     if (selectedOutputColumnOptions.length === 0) {
       setCustomStatus('Selecciona al menos una columna para enviar.');
@@ -1453,9 +1920,7 @@ const ConfirmationWorkspace = () => {
       }
       
       await refreshDispatchState({ forceServer: true });
-      setConfirmationMethodModal(null);
-      setConfirmationSourceTrip(null);
-      setConfirmationLegScope('single');
+      handleCloseConfirmationMethod();
     } catch (error) {
       setCustomStatus(`Error sending confirmation: ${error.message}`);
     } finally {
@@ -1468,27 +1933,185 @@ const ConfirmationWorkspace = () => {
 
       <Row className="g-3 mb-3">
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Trips</div><h4 className="mb-0">{summary.total}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('all')} title="Show all trips in results"><CardBody><div className="text-secondary small mb-1">Trips</div><h4 className="mb-0">{summary.total}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Pending</div><h4 className="mb-0">{summary.pending}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Pending')} title="Filter results to Pending"><CardBody><div className="text-secondary small mb-1">Pending</div><h4 className="mb-0">{summary.pending}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Confirmed</div><h4 className="mb-0">{summary.confirmed}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Confirmed')} title="Filter results to Confirmed"><CardBody><div className="text-secondary small mb-1">Confirmed</div><h4 className="mb-0">{summary.confirmed}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Cancelled</div><h4 className="mb-0">{summary.cancelled}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Cancelled')} title="Filter results to Cancelled"><CardBody><div className="text-secondary small mb-1">Cancelled</div><h4 className="mb-0">{summary.cancelled}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Needs Call</div><h4 className="mb-0">{summary.needsCall}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Needs Call')} title="Filter results to Needs Call"><CardBody><div className="text-secondary small mb-1">Needs Call</div><h4 className="mb-0">{summary.needsCall}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Not Sent</div><h4 className="mb-0">{summary.notSent}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Not Sent')} title="Filter results to Not Sent"><CardBody><div className="text-secondary small mb-1">Not Sent</div><h4 className="mb-0">{summary.notSent}</h4></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
-          <Card style={surfaceStyles.card} className="h-100 border"><CardBody><div className="text-secondary small mb-1">Opted Out</div><h4 className="mb-0">{summary.optedOut}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Opted Out')} title="Filter results to Opted Out"><CardBody><div className="text-secondary small mb-1">Opted Out</div><h4 className="mb-0">{summary.optedOut}</h4></CardBody></Card>
+        </Col>
+        <Col md={6} xl={2}>
+          <Card
+            style={{ ...surfaceStyles.card, cursor: 'pointer', borderColor: summary.rehabHospital > 0 ? '#f59e0b' : undefined }}
+            className="h-100 border"
+            onClick={() => setShowRehabBlacklistPanel(true)}
+            title="Click to see Rehab/Hospital patients and Blacklist"
+          >
+            <CardBody>
+              <div className="text-warning small mb-1 fw-semibold">Rehab / Hospital</div>
+              <h4 className="mb-0 text-warning">{summary.rehabHospital}</h4>
+              <div className="small text-muted mt-1">Blacklist: {summary.blacklisted} · Copies: {summary.clones}</div>
+            </CardBody>
+          </Card>
         </Col>
       </Row>
+
+      {/* ── Rehab / Blacklist / Clones panel ─────────────────────────────── */}
+      <Modal show={showRehabBlacklistPanel} onHide={() => setShowRehabBlacklistPanel(false)} size="xl" centered scrollable>
+        <Modal.Header closeButton>
+          <Modal.Title>Rehab / Hospital · Blacklist · Cloned Trips</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {/* Rehab / Hospital section */}
+          <h6 className="text-uppercase text-warning fw-bold mb-2">Rehab / Hospital <span className="badge bg-warning text-dark ms-1">{summary.rehabHospital}</span></h6>
+          {trips.filter(trip => Boolean(trip?.hospitalStatus)).length > 0 ? (
+            <div className="table-responsive mb-4">
+              <table className="table table-sm table-bordered mb-0" style={{ fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th>Trip ID</th>
+                    <th>Rider</th>
+                    <th>Phone</th>
+                    <th>Type</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Notes</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trips.filter(trip => Boolean(trip?.hospitalStatus)).map(trip => (
+                    <tr key={trip.id}>
+                      <td className="fw-semibold">
+                        <div>{trip.id}</div>
+                        {trip.clonedFromTripId ? (
+                          <div className="mt-1">
+                            <Badge bg="info" text="dark">CLONED from {trip.clonedFromTripId}</Badge>
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>{trip.rider || '-'}</td>
+                      <td>{trip.patientPhoneNumber || '-'}</td>
+                      <td><span className="badge bg-warning text-dark">{trip.hospitalStatus?.type || 'Hospital'}</span></td>
+                      <td>{trip.hospitalStatus?.startDate || '-'}</td>
+                      <td>{trip.hospitalStatus?.endDate || '-'}</td>
+                      <td style={{ maxWidth: 200, whiteSpace: 'normal' }}>{trip.hospitalStatus?.notes || '-'}</td>
+                      <td>
+                        <div className="d-flex flex-column gap-1">
+                          <Button size="sm" variant="outline-warning" onClick={() => { setShowRehabBlacklistPanel(false); handleRemoveHospitalRehab(trip); }}>Remove RH</Button>
+                          <Button size="sm" variant="outline-danger" onClick={() => { if (window.confirm(`DELETE trip ${trip.id}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}>Delete</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="text-muted small mb-4">No trips in Rehab/Hospital status right now.</p>}
+
+          {/* Blacklist section */}
+          <h6 className="text-uppercase text-danger fw-bold mb-2">Blacklist <span className="badge bg-danger ms-1">{summary.blacklisted}</span></h6>
+          {blacklistEntries.filter(entry => entry.status === 'Active').length > 0 ? (
+            <div className="table-responsive mb-4">
+              <table className="table table-sm table-bordered mb-0" style={{ fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Phone</th>
+                    <th>Category</th>
+                    <th>Hold Until</th>
+                    <th>Notes</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {blacklistEntries.filter(entry => entry.status === 'Active').map(entry => (
+                    <tr key={entry.id}>
+                      <td className="fw-semibold">{entry.name || '-'}</td>
+                      <td>{entry.phone || '-'}</td>
+                      <td><span className="badge bg-danger">{entry.category || 'Blacklist'}</span></td>
+                      <td>{entry.holdUntil || 'Indefinite'}</td>
+                      <td style={{ maxWidth: 200, whiteSpace: 'normal' }}>{entry.notes || '-'}</td>
+                      <td>
+                        <Button
+                          size="sm"
+                          variant="outline-secondary"
+                          onClick={async () => {
+                            if (!window.confirm(`Remove ${entry.name || 'this entry'} from blacklist?`)) return;
+                            const nextEntries = blacklistEntries.map(e => e.id === entry.id ? { ...e, status: 'Removed', updatedAt: new Date().toISOString() } : e);
+                            await saveBlacklistData({ version: blacklistData?.version ?? 1, entries: nextEntries });
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="text-muted small mb-4">No active blacklist entries.</p>}
+
+          {/* Cloned trips section */}
+          <h6 className="text-uppercase text-info fw-bold mb-2">Cloned Trips <span className="badge bg-info text-dark ms-1">{summary.clones}</span></h6>
+          {trips.filter(trip => Boolean(trip?.clonedFromTripId)).length > 0 ? (
+            <div className="table-responsive">
+              <table className="table table-sm table-bordered mb-0" style={{ fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th>Copy ID</th>
+                    <th>Original Trip</th>
+                    <th>Rider</th>
+                    <th>Phone</th>
+                    <th>Pickup</th>
+                    <th>Status</th>
+                    <th>Cloned By</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trips.filter(trip => Boolean(trip?.clonedFromTripId)).map(trip => (
+                    <tr key={trip.id} style={{ backgroundColor: 'rgba(6,182,212,0.05)' }}>
+                      <td className="fw-semibold text-info">{trip.id}</td>
+                      <td>{trip.clonedFromTripId}</td>
+                      <td>{trip.rider || '-'}</td>
+                      <td>{trip.patientPhoneNumber || '-'}</td>
+                      <td>{trip.scheduledPickup || trip.pickup || '-'}</td>
+                      <td>{trip.status || '-'}</td>
+                      <td>{trip.clonedBy || '-'}</td>
+                      <td>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => { if (window.confirm(`DELETE COPY ${trip.id}\nOriginal: ${trip.clonedFromTripId}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}
+                        >
+                          🗑 Delete Copy
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p className="text-muted small">No cloned trips found.</p>}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowRehabBlacklistPanel(false)}>Close</Button>
+        </Modal.Footer>
+      </Modal>
 
       <Card style={surfaceStyles.card} className="border mb-3">
         <CardBody>
@@ -1535,7 +2158,7 @@ const ConfirmationWorkspace = () => {
                   {patientHistoryRows.map(row => <option key={row.key} value={row.key}>{row.rider || 'Unknown'} {row.phone ? `• ${row.phone}` : ''} • {row.totalTrips} trip(s)</option>)}
                 </Form.Select>
                 <Button style={surfaceStyles.button} onClick={() => setSelectedPatientKey('')}>
-                  No Patient Selected
+                  Clear Selected Patient
                 </Button>
                 <Button style={surfaceStyles.button} onClick={handleOpenPatientStatusModal} disabled={!selectedPatientHistory}>
                   Set Patient Rule
@@ -1606,7 +2229,7 @@ const ConfirmationWorkspace = () => {
         </CardBody>
       </Card>
 
-      <Card style={surfaceStyles.card} className="border">
+      <Card ref={resultsSectionRef} style={surfaceStyles.card} className="border">
         <CardBody>
           <div className="border rounded-3 p-3 mb-3" style={surfaceStyles.input}>
             <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-3">
@@ -1657,6 +2280,14 @@ const ConfirmationWorkspace = () => {
                 <option value="rider-desc">Rider: Z to A</option>
                 <option value="trip-asc">Trip ID: A to Z</option>
                 <option value="trip-desc">Trip ID: Z to A</option>
+                <option value="phone-asc">Phone: A to Z</option>
+                <option value="phone-desc">Phone: Z to A</option>
+                <option value="pickup-asc">Pickup Time: Early to Late</option>
+                <option value="pickup-desc">Pickup Time: Late to Early</option>
+                <option value="leg-asc">Leg: A to Z</option>
+                <option value="leg-desc">Leg: Z to A</option>
+                <option value="type-asc">Type: A to Z</option>
+                <option value="type-desc">Type: Z to A</option>
               </Form.Select>
               <Button style={surfaceStyles.button} onClick={() => {
                 setTimeFromFilter('');
@@ -1680,6 +2311,7 @@ const ConfirmationWorkspace = () => {
                 <option value="Pending">Pending</option>
                 <option value="Confirmed">Confirmed</option>
                 <option value="Cancelled">Cancelled</option>
+                <option value="Disconnected">Disconnected</option>
                 <option value="Needs Call">Needs Call</option>
                 <option value="Opted Out">Opted Out</option>
               </Form.Select>
@@ -1715,8 +2347,8 @@ const ConfirmationWorkspace = () => {
               </div>
               <Button style={surfaceStyles.button} onClick={handleSendGroupConfirmation} disabled={confirmationSending}>{confirmationSending ? 'Sending...' : 'Send Confirmation'}</Button>
               <Button style={surfaceStyles.button} onClick={exportToPDF} title="Export visible trips to PDF/Print">Export PDF</Button>
+              <Form.Control value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => event.stopPropagation()} placeholder="Search trip, rider, phone or reply" style={{ ...surfaceStyles.input, width: 280, maxWidth: '100%' }} />
             </div>
-            <Form.Control value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => event.stopPropagation()} placeholder="Search trip, rider, phone or reply" style={{ ...surfaceStyles.input, width: 320, maxWidth: '100%' }} />
           </div>
 
           {resultViewMode === 'miles' ? <div className="border rounded-3 p-3" style={surfaceStyles.input}>
@@ -1765,15 +2397,14 @@ const ConfirmationWorkspace = () => {
                       title="Select all visible"
                     />
                   </th>
-                  <th>Trip ID</th>
-                  <th>Rider</th>
-                  <th>Phone</th>
-                  <th>Pickup Time</th>
-                  <th>PU Address</th>
-                  <th>DO Address</th>
-                  <th>Miles</th>
-                  <th>Leg</th>
-                  <th>Type</th>
+                  {renderSortableConfirmationHeader('trip', 'Trip ID')}
+                  {renderSortableConfirmationHeader('rider', 'Rider')}
+                  {renderSortableConfirmationHeader('phone', 'Phone')}
+                  {renderSortableConfirmationHeader('pickup', 'Pickup Time')}
+                  {renderSortableConfirmationHeader('dropoff', 'Dropoff Time')}
+                  {renderSortableConfirmationHeader('miles', 'Miles')}
+                  {renderSortableConfirmationHeader('leg', 'Leg')}
+                  {renderSortableConfirmationHeader('type', 'Type')}
                   <th>Do Not Confirm</th>
                   <th>Hospital/Rehab</th>
                   <th>Confirmation</th>
@@ -1781,6 +2412,7 @@ const ConfirmationWorkspace = () => {
                   <th>Reply</th>
                   <th>Sent</th>
                   <th>Responded</th>
+                  <th style={{ minWidth: 220 }}>Notes</th>
                   <th style={{ width: 160 }}>Action</th>
                 </tr>
               </thead>
@@ -1806,9 +2438,8 @@ const ConfirmationWorkspace = () => {
                         {riderProfile?.mobility ? <div className="small text-warning">Mobility: {riderProfile.mobility}</div> : null}
                       </td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
-                      <td>{getTripDisplayPickupTime(trip)}</td>
-                      <td style={{ maxWidth: 200, whiteSpace: 'normal', fontSize: '0.85em' }}>{trip.address || '-'}</td>
-                      <td style={{ maxWidth: 200, whiteSpace: 'normal', fontSize: '0.85em' }}>{trip.destination || '-'}</td>
+                      {renderInlineConfirmationTimeCell(trip, 'pickup', getTripDisplayPickupTime(trip))}
+                      {renderInlineConfirmationTimeCell(trip, 'dropoff', getTripDisplayDropoffTime(trip))}
                       <td>{getTripMilesDisplay(trip)}</td>
                       <td>{getTripLegFilterKey(trip)}</td>
                       <td>{getTripTypeLabel(trip)}</td>
@@ -1831,11 +2462,14 @@ const ConfirmationWorkspace = () => {
                           </Button>
                         )}
                       </td>
-                      <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}{trip.confirmation?.lastResponseCode ? <Badge bg="light" text="dark" className="ms-1">{trip.confirmation.lastResponseCode}</Badge> : null}</td>
+                      <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : confirmationStatus === 'Disconnected' ? <Badge style={DISCONNECTED_BADGE_STYLE}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}{trip.confirmation?.lastResponseCode ? <Badge bg="light" text="dark" className="ms-1">{trip.confirmation.lastResponseCode}</Badge> : null}</td>
                       <td>{trip.safeRideStatus || trip.status || '-'}</td>
                       <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td>
                       <td>{trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td>
                       <td>{trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-'}</td>
+                      <td style={{ maxWidth: 260, whiteSpace: 'normal' }} title={String(trip.notes || '').trim() || '-'}>
+                        {getTripNotesPreview(trip.notes)}
+                      </td>
                       <td>
                         <div className="d-flex gap-1 flex-column">
                           <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 96 }}>
@@ -1853,6 +2487,20 @@ const ConfirmationWorkspace = () => {
                               Remove RH
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant={trip.clonedFromTripId ? 'danger' : 'outline-danger'}
+                            title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
+                            style={{ minWidth: 110, fontWeight: trip.clonedFromTripId ? 700 : undefined }}
+                            onClick={() => {
+                              const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
+                              if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
+                                deleteTripRecord(trip.id);
+                              }
+                            }}
+                          >
+                            {trip.clonedFromTripId ? 'Delete Cloned' : 'Delete'}
+                          </Button>
                         </div>
                       </td>
                     </tr>;
@@ -1909,7 +2557,7 @@ const ConfirmationWorkspace = () => {
         </Modal.Footer>
       </Modal>
 
-      <Modal show={Boolean(confirmationMethodModal)} onHide={() => setConfirmationMethodModal(null)} centered>
+      <Modal show={Boolean(confirmationMethodModal)} onHide={handleCloseConfirmationMethod} centered>
         <Modal.Header closeButton>
           <Modal.Title>Send Confirmation</Modal.Title>
         </Modal.Header>
@@ -1926,9 +2574,13 @@ const ConfirmationWorkspace = () => {
             )}
           </div>
 
-          {confirmationSourceTrip && getSiblingLegTrips(confirmationSourceTrip, trips).length > 0 ? <>
+          {confirmationRequiresLegChoice ? <>
+              <div className="alert alert-warning small">
+                This trip has another leg. Choose if you want to confirm only this leg or both legs.
+              </div>
               <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Leg Scope</Form.Label>
               <Form.Select className="mb-3" value={confirmationLegScope} onChange={event => setConfirmationLegScope(event.target.value)}>
+                <option value="">Choose one option</option>
                 <option value="single">Only this leg ({confirmationSourceTrip.id})</option>
                 <option value="both">Both legs (A and B)</option>
               </Form.Select>
@@ -1979,8 +2631,8 @@ const ConfirmationWorkspace = () => {
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setConfirmationMethodModal(null)} disabled={isSendingConfirmation}>Close</Button>
-          <Button variant="primary" onClick={handleSendConfirmation} disabled={isSendingConfirmation}>
+          <Button variant="secondary" onClick={handleCloseConfirmationMethod} disabled={isSendingConfirmation}>Close</Button>
+          <Button variant="primary" onClick={handleSendConfirmation} disabled={isSendingConfirmation || (confirmationRequiresLegChoice && !confirmationLegScope)}>
             {isSendingConfirmation ? 'Sending...' : `Send via ${confirmationMethod === 'whatsapp' ? 'WhatsApp' : confirmationMethod === 'sms' ? 'SMS' : 'Call'}`}
           </Button>
         </Modal.Footer>
@@ -1997,8 +2649,12 @@ const ConfirmationWorkspace = () => {
               <Form.Label className="small text-uppercase text-muted fw-semibold">Confirmed Via</Form.Label>
               <Form.Select value={tripUpdateConfirmMethod} onChange={event => setTripUpdateConfirmMethod(event.target.value)}>
                 <option value="call">Call</option>
+                <option value="call-left-message">Called and left message</option>
+                <option value="cancelled-by-patient">Cancelled by patient</option>
+                <option value="disconnected">Disconnected</option>
                 <option value="sms">SMS</option>
                 <option value="whatsapp">WhatsApp</option>
+                <option value="sms-left-unconfirmed">Could not confirm, SMS left (English)</option>
               </Form.Select>
             </Col>
             <Col md={4}>
@@ -2009,6 +2665,14 @@ const ConfirmationWorkspace = () => {
               <Form.Label className="small text-uppercase text-muted fw-semibold">Dropoff Time (New)</Form.Label>
               <Form.Control value={tripUpdateDropoffTime} onChange={event => setTripUpdateDropoffTime(event.target.value)} placeholder="e.g. 08:15 AM" />
             </Col>
+            {tripUpdateSupportsBothLegs ? <Col md={12}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Apply Confirmation To</Form.Label>
+                <Form.Select value={tripUpdateLegScope} onChange={event => setTripUpdateLegScope(event.target.value)}>
+                  <option value="single">Only this leg ({tripUpdateModal?.id})</option>
+                  <option value="both">Both legs (A and B)</option>
+                </Form.Select>
+                <div className="small text-muted mt-1">Confirmation and notes can be applied to both legs. Time changes stay only on the current leg.</div>
+              </Col> : null}
             <Col md={12}>
               <div className="small text-muted">Current pickup: {normalizeTripTimeDisplay(tripUpdateModal?.scheduledPickup || tripUpdateModal?.pickup || '') || '-'} | Current dropoff: {normalizeTripTimeDisplay(tripUpdateModal?.scheduledDropoff || tripUpdateModal?.dropoff || '') || '-'}</div>
             </Col>
@@ -2029,6 +2693,11 @@ const ConfirmationWorkspace = () => {
               <Form.Control value={tripUpdateMobilityNote} onChange={event => setTripUpdateMobilityNote(event.target.value)} placeholder="Motorized wheelchair / equipment" />
             </Col>
             <Col md={12}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Saved Notes</Form.Label>
+              <div className="border rounded p-2 small mb-3" style={{ minHeight: 78, whiteSpace: 'pre-wrap', background: '#f8fafc' }}>
+                {String(tripUpdateModal?.notes || '').trim() || 'No saved notes yet for this trip.'}
+              </div>
+
               <Form.Label className="small text-uppercase text-muted fw-semibold">Dispatch Note</Form.Label>
               <Form.Control as="textarea" rows={4} value={tripUpdateNote} onChange={event => setTripUpdateNote(event.target.value)} placeholder="Add new note (shown in Dispatcher and related views)" />
             </Col>
@@ -2080,6 +2749,7 @@ const ConfirmationWorkspace = () => {
         </Modal.Header>
         <Modal.Body>
           <div className="small text-muted mb-3">Trip: {hospitalRehabModal?.id} | Rider: {hospitalRehabModal?.rider}</div>
+          <div className="small text-muted mb-3">Cuando este viaje tenga dos patas, las dos se marcaran como Rehab/Hospital automaticamente.</div>
           
           <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Type</Form.Label>
           <Form.Select value={hospitalRehabType} onChange={event => setHospitalRehabType(event.target.value)} className="mb-3">
