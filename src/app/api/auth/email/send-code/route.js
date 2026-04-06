@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sendEmailAuthCode } from '@/server/email-auth-store';
-import { readSystemUsersPayload } from '@/server/system-users-store';
+import { findPersistedSystemUserByEmail } from '@/server/system-users-store';
 
 export const POST = async req => {
   try {
@@ -11,8 +11,7 @@ export const POST = async req => {
     }
 
     const normalizedEmail = String(email).toLowerCase().trim();
-    const state = await readSystemUsersPayload();
-    const user = state.users.find(entry => String(entry.email || '').toLowerCase().trim() === normalizedEmail);
+    const user = await findPersistedSystemUserByEmail(normalizedEmail);
 
     if (!user) {
       return NextResponse.json({ error: 'User with this email not found' }, { status: 404 });

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyEmailAuthCode } from '@/server/email-auth-store';
-import { authorizeSystemUser } from '@/helpers/system-users';
-import { readSystemUsersPayload } from '@/server/system-users-store';
+import { findPersistedSystemUserByEmail } from '@/server/system-users-store';
 
 export const POST = async req => {
   try {
@@ -17,13 +16,7 @@ export const POST = async req => {
     // Verify the code
     await verifyEmailAuthCode(email, code);
 
-    // Find user by email
-    const state = await readSystemUsersPayload();
-    const user = state.users.find(u => {
-      const userEmail = String(u.email || '').toLowerCase().trim();
-      const checkEmail = String(email).toLowerCase().trim();
-      return userEmail === checkEmail && userEmail !== '';
-    });
+    const user = await findPersistedSystemUserByEmail(email);
 
     if (!user) {
       return NextResponse.json(

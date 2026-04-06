@@ -360,12 +360,40 @@ export const readSystemUsersPayload = async () => {
   return buildUsersPayload(state);
 };
 
-export const findPersistedSystemUserByEmail = async email => {
+const findPersistedSystemUserByEmailInPayload = async (payload, email) => {
   const normalizedEmail = normalizeAuthValue(email);
   if (!normalizedEmail) return null;
 
+  const users = Array.isArray(payload?.users) ? payload.users : [];
+  const directMatch = users.find(user => normalizeAuthValue(user.email) === normalizedEmail);
+  if (directMatch) return directMatch;
+
+  const adminState = await readNemtAdminState();
+  const linkedDriver = (Array.isArray(adminState?.drivers) ? adminState.drivers : []).find(driver => {
+    const driverEmail = normalizeAuthValue(driver?.email);
+    const portalEmail = normalizeAuthValue(driver?.portalEmail);
+    return driverEmail === normalizedEmail || portalEmail === normalizedEmail;
+  });
+
+  if (!linkedDriver) return null;
+
+  const linkedUserId = String(linkedDriver?.authUserId || '').trim();
+  const linkedUsername = normalizeAuthValue(linkedDriver?.username || linkedDriver?.portalUsername);
+  const linkedUserEmail = normalizeAuthValue(linkedDriver?.email || linkedDriver?.portalEmail);
+
+  return users.find(user => {
+    const userId = String(user?.id || '').trim();
+    const username = normalizeAuthValue(user?.username);
+    const userEmail = normalizeAuthValue(user?.email);
+    if (linkedUserId && userId === linkedUserId) return true;
+    if (linkedUsername && username === linkedUsername) return true;
+    return Boolean(linkedUserEmail) && userEmail === linkedUserEmail;
+  }) || null;
+};
+
+export const findPersistedSystemUserByEmail = async email => {
   const payload = await readSystemUsersPayload();
-  return payload.users.find(user => normalizeAuthValue(user.email) === normalizedEmail) || null;
+  return findPersistedSystemUserByEmailInPayload(payload, email);
 };
 
 export const writeSystemUsersState = async nextState => {
@@ -395,7 +423,7 @@ export const updatePersistedSystemUserPasswordByEmail = async (email, password) 
 
   const currentState = await readSystemUsersState();
   const payload = await buildUsersPayload(currentState);
-  const matchedUser = payload.users.find(user => normalizeAuthValue(user.email) === normalizedEmail);
+  const matchedUser = await findPersistedSystemUserByEmailInPayload(payload, normalizedEmail);
 
   if (!matchedUser) {
     throw new Error('User with this email not found');
