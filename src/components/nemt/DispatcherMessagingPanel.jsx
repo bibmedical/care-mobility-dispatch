@@ -1015,54 +1015,52 @@ const DispatcherMessagingPanel = ({
                     </div>
                   </div>)}
               </div> : null}
-            <div className="d-flex flex-column flex-grow-1" style={{ minHeight: 220 }}>
-              {activeThread?.messages?.length ? activeThread.messages.map(message => (
-                <div key={message.id} className={`d-flex mb-3 ${message.direction === 'outgoing' ? 'justify-content-end' : 'justify-content-start'}`}>
-                  <div
-                    className="rounded-3 px-3 py-2"
-                    style={{
-                      maxWidth: '80%',
-                      backgroundColor: message.direction === 'outgoing' ? selectedChatTheme.outgoingBubble : selectedChatTheme.incomingBubble,
-                      color: message.direction === 'outgoing' ? selectedChatTheme.outgoingText : selectedChatTheme.incomingText,
-                      border: message.direction === 'outgoing' ? '1px solid transparent' : `1px solid ${selectedChatTheme.incomingBorder}`,
-                      boxShadow: message.direction === 'outgoing' ? '0 10px 22px rgba(15,23,42,0.12)' : 'none'
-                    }}
-                  >
-                    <div>{message.text}</div>
-                    {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
-                      <div className="mt-2 d-flex flex-column gap-2">
-                        {message.attachments.map(attachment => (
-                          <div key={attachment.id} className="small">
-                            {attachment.kind === 'photo' ? (
-                              <div className="d-inline-flex flex-column gap-1">
-                                <button type="button" onClick={() => setPreviewImage({ name: attachment.name, dataUrl: attachment.dataUrl, messageId: message.id })} className="d-inline-flex flex-column text-reset text-decoration-none border-0 p-0 bg-transparent text-start">
-                                  <img src={attachment.dataUrl} alt={attachment.name} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
-                                  <span className="mt-1">{attachment.name}</span>
-                                </button>
-                                <Button
-                                  size="sm"
-                                  variant="danger"
-                                  onClick={() => openDeleteConfirmation(message)}
-                                  disabled={deletingMessageId === message.id}
-                                  className="align-self-start rounded-pill px-3 d-inline-flex align-items-center gap-2"
-                                  style={{ backgroundColor: '#b91c1c', borderColor: '#b91c1c', fontWeight: 600 }}
-                                >
-                                  <IconifyIcon icon="iconoir:trash" />
-                                  {deletingMessageId === message.id ? 'Deleting...' : 'Delete photo'}
-                                </Button>
-                              </div>
-                            ) : (
-                              <a href={attachment.dataUrl} download={attachment.name} className="text-reset">Document: {attachment.name}</a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                    <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status === 'sending' ? 'sending...' : message.status}` : ''}</div>
-                  </div>
+            {activeThread?.messages?.length ? activeThread.messages.map(message => (
+              <div key={message.id} className={`d-flex mb-3 ${message.direction === 'outgoing' ? 'justify-content-end' : 'justify-content-start'}`}>
+                <div
+                  className="rounded-3 px-3 py-2"
+                  style={{
+                    maxWidth: '80%',
+                    backgroundColor: message.direction === 'outgoing' ? selectedChatTheme.outgoingBubble : selectedChatTheme.incomingBubble,
+                    color: message.direction === 'outgoing' ? selectedChatTheme.outgoingText : selectedChatTheme.incomingText,
+                    border: message.direction === 'outgoing' ? '1px solid transparent' : `1px solid ${selectedChatTheme.incomingBorder}`,
+                    boxShadow: message.direction === 'outgoing' ? '0 10px 22px rgba(15,23,42,0.12)' : 'none'
+                  }}
+                >
+                  <div>{message.text}</div>
+                  {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
+                    <div className="mt-2 d-flex flex-column gap-2">
+                      {message.attachments.map(attachment => (
+                        <div key={attachment.id} className="small">
+                          {attachment.kind === 'photo' ? (
+                            <div className="d-inline-flex flex-column gap-1">
+                              <button type="button" onClick={() => setPreviewImage({ name: attachment.name, dataUrl: attachment.dataUrl, messageId: message.id })} className="d-inline-flex flex-column text-reset text-decoration-none border-0 p-0 bg-transparent text-start">
+                                <img src={attachment.dataUrl} alt={attachment.name} style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)' }} />
+                                <span className="mt-1">{attachment.name}</span>
+                              </button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => openDeleteConfirmation(message)}
+                                disabled={deletingMessageId === message.id}
+                                className="align-self-start rounded-pill px-3 d-inline-flex align-items-center gap-2"
+                                style={{ backgroundColor: '#b91c1c', borderColor: '#b91c1c', fontWeight: 600 }}
+                              >
+                                <IconifyIcon icon="iconoir:trash" />
+                                {deletingMessageId === message.id ? 'Deleting...' : 'Delete photo'}
+                              </Button>
+                            </div>
+                          ) : (
+                            <a href={attachment.dataUrl} download={attachment.name} className="text-reset">Document: {attachment.name}</a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status === 'sending' ? 'sending...' : message.status}` : ''}</div>
                 </div>
-              )) : <div className="d-flex align-items-center justify-content-center flex-grow-1 text-center px-3" style={{ color: messagingSurfaceStyles.secondaryText }}>No messages yet for this driver.</div>}
-            </div>
+              </div>
+            )) : <div className="text-center py-5" style={{ color: messagingSurfaceStyles.secondaryText }}>No messages yet for this driver.</div>}
           </div>
           <div className="p-3 border-top" style={messagingSurfaceStyles.footer}>
             <input ref={photoInputRef} type="file" accept="image/*" className="d-none" onChange={event => {
