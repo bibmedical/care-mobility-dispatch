@@ -27,11 +27,11 @@ export const BRANDING_PAGE_OPTIONS = [{
   group: 'Auth'
 }, {
   key: BRANDING_PAGE_KEYS.authPortalMark,
-  label: 'Portal mark',
+  label: 'Portal mark icon',
   group: 'Auth'
 }, {
   key: BRANDING_PAGE_KEYS.portalSidebar,
-  label: 'Sidebar logo',
+  label: 'Top-left sidebar logo',
   group: 'Portal'
 }, {
   key: BRANDING_PAGE_KEYS.error404,

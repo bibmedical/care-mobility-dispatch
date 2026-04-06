@@ -58,6 +58,11 @@ const createCombinationId = () => `combo-${Date.now()}`;
 const getSafeActiveCombinationId = draft => draft.combinations.some(item => item.id === draft.activeCombinationId) ? draft.activeCombinationId : 'default';
 
 const getPreviewImage = (draft, localPreviews, pageKey) => String(localPreviews?.[pageKey] || draft?.pages?.[pageKey] || DEFAULT_BRANDING_PAGES[pageKey] || '').trim();
+const GROUP_ORDER = ['Portal', 'Auth', 'Errors'];
+const PAGE_HELP_TEXT = {
+  portalSidebar: 'This controls the top-left logo in the sidebar.',
+  authPortalMark: 'This controls the portal icon shown on auth screens.'
+};
 
 const PreferencesWorkspace = () => {
   const { themeMode } = useLayoutContext();
@@ -73,11 +78,21 @@ const PreferencesWorkspace = () => {
     setDraft(createDraft(data?.branding || DEFAULT_BRANDING_SETTINGS));
   }, [data?.branding]);
 
-  const groupedPages = useMemo(() => BRANDING_PAGE_OPTIONS.reduce((accumulator, option) => {
-    accumulator[option.group] = accumulator[option.group] || [];
-    accumulator[option.group].push(option);
-    return accumulator;
-  }, {}), []);
+  const groupedPages = useMemo(() => {
+    const grouped = BRANDING_PAGE_OPTIONS.reduce((accumulator, option) => {
+      accumulator[option.group] = accumulator[option.group] || [];
+      accumulator[option.group].push(option);
+      return accumulator;
+    }, {});
+
+    return Object.fromEntries(Object.entries(grouped).sort((left, right) => {
+      const leftIndex = GROUP_ORDER.indexOf(left[0]);
+      const rightIndex = GROUP_ORDER.indexOf(right[0]);
+      const normalizedLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
+      const normalizedRight = rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex;
+      return normalizedLeft - normalizedRight;
+    }));
+  }, []);
 
   const applyCombination = combinationId => {
     const combination = draft.combinations.find(item => item.id === combinationId);
@@ -323,7 +338,7 @@ const PreferencesWorkspace = () => {
                             <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
                               <div>
                                 <div className="fw-semibold">{option.label}</div>
-                                <div className="small text-secondary">Choose the image for this page.</div>
+                                <div className="small text-secondary">{PAGE_HELP_TEXT[option.key] || 'Choose the image for this page.'}</div>
                               </div>
                               <Badge bg="secondary-subtle" text="secondary">{option.group}</Badge>
                             </div>
