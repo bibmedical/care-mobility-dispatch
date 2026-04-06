@@ -12,9 +12,12 @@ const ensureTable = async () => {
       email TEXT PRIMARY KEY,
       code TEXT NOT NULL DEFAULT '',
       attempts INTEGER NOT NULL DEFAULT 0,
-      created_at BIGINT NOT NULL DEFAULT 0
+      expires_at BIGINT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  await query(`ALTER TABLE email_auth_codes ADD COLUMN IF NOT EXISTS expires_at BIGINT NOT NULL DEFAULT 0`);
 };
 
 /**
@@ -28,14 +31,14 @@ export const generateEmailAuthCode = async email => {
   }
 
   await ensureTable();
-  // Clean up expired codes
-  await query(`DELETE FROM email_auth_codes WHERE created_at < $1`, [Date.now() - CODE_EXPIRY_MS]);
+  const expiresAt = Date.now() + CODE_EXPIRY_MS;
+  await query(`DELETE FROM email_auth_codes WHERE expires_at < $1`, [Date.now()]);
 
   const code = generateCode();
   await query(
-    `INSERT INTO email_auth_codes (email, code, attempts, created_at) VALUES ($1,$2,0,$3)
-     ON CONFLICT (email) DO UPDATE SET code=$2, attempts=0, created_at=$3`,
-    [normalizedEmail, code, Date.now()]
+    `INSERT INTO email_auth_codes (email, code, attempts, expires_at) VALUES ($1,$2,0,$3)
+     ON CONFLICT (email) DO UPDATE SET code=$2, attempts=0, expires_at=$3`,
+    [normalizedEmail, code, expiresAt]
   );
 
   
@@ -54,14 +57,14 @@ export const verifyEmailAuthCode = async (email, submittedCode) => {
   }
 
   await ensureTable();
-  await query(`DELETE FROM email_auth_codes WHERE created_at < $1`, [Date.now() - CODE_EXPIRY_MS]);
+  await query(`DELETE FROM email_auth_codes WHERE expires_at < $1`, [Date.now()]);
   const authRecord = await queryOne(`SELECT * FROM email_auth_codes WHERE email = $1`, [normalizedEmail]);
 
   if (!authRecord) {
     throw new Error('No verification code found. Request a new code.');
   }
 
-  if (Date.now() - authRecord.created_at > CODE_EXPIRY_MS) {
+  if (Number(authRecord.expires_at || 0) < Date.now()) {
     await query(`DELETE FROM email_auth_codes WHERE email = $1`, [normalizedEmail]);
     throw new Error('Verification code expired. Request a new code.');
   }

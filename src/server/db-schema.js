@@ -174,6 +174,17 @@ export const runMigrations = async () => {
     )
   `);
 
+  // ─── PASSWORD RESET CODES ───────────────────────────────────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS password_reset_codes (
+      email        TEXT PRIMARY KEY,
+      code         TEXT NOT NULL,
+      attempts     INTEGER NOT NULL DEFAULT 0,
+      expires_at   BIGINT NOT NULL,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS email_templates (

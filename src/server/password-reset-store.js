@@ -12,13 +12,16 @@ const ensureTable = async () => {
       email TEXT PRIMARY KEY,
       code TEXT NOT NULL DEFAULT '',
       attempts INTEGER NOT NULL DEFAULT 0,
-      created_at BIGINT NOT NULL DEFAULT 0
+      expires_at BIGINT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  await query(`ALTER TABLE password_reset_codes ADD COLUMN IF NOT EXISTS expires_at BIGINT NOT NULL DEFAULT 0`);
 };
 
 const cleanupExpiredCodes = async () => {
-  await query(`DELETE FROM password_reset_codes WHERE created_at < $1`, [Date.now() - CODE_EXPIRY_MS]);
+  await query(`DELETE FROM password_reset_codes WHERE expires_at < $1`, [Date.now()]);
 };
 
 export const generatePasswordResetCode = async email => {
@@ -32,10 +35,11 @@ export const generatePasswordResetCode = async email => {
   await cleanupExpiredCodes();
 
   const code = generateCode();
+  const expiresAt = Date.now() + CODE_EXPIRY_MS;
   await query(
-    `INSERT INTO password_reset_codes (email, code, attempts, created_at) VALUES ($1,$2,0,$3)
-     ON CONFLICT (email) DO UPDATE SET code = $2, attempts = 0, created_at = $3`,
-    [normalizedEmail, code, Date.now()]
+    `INSERT INTO password_reset_codes (email, code, attempts, expires_at) VALUES ($1,$2,0,$3)
+     ON CONFLICT (email) DO UPDATE SET code = $2, attempts = 0, expires_at = $3`,
+    [normalizedEmail, code, expiresAt]
   );
 
   return { email: normalizedEmail, code, expiresIn: CODE_EXPIRY_MS };
@@ -58,7 +62,7 @@ export const verifyPasswordResetCode = async (email, submittedCode) => {
     throw new Error('No password reset code found. Request a new code.');
   }
 
-  if (Date.now() - resetRecord.created_at > CODE_EXPIRY_MS) {
+  if (Number(resetRecord.expires_at || 0) < Date.now()) {
     await query(`DELETE FROM password_reset_codes WHERE email = $1`, [normalizedEmail]);
     throw new Error('Password reset code expired. Request a new code.');
   }
