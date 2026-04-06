@@ -878,6 +878,98 @@ export const NemtProvider = ({
     })
   });
 
+  const cloneTripRecord = tripId => {
+    const normalizedTripId = String(tripId || '').trim();
+    const sourceTrip = (Array.isArray(state?.trips) ? state.trips : []).find(trip => String(trip?.id || '').trim() === normalizedTripId);
+    if (!sourceTrip) return null;
+
+    const clonedAt = getMutationTimestamp();
+    const cloneToken = String(clonedAt).slice(-6);
+    const nextTripId = `${normalizedTripId}-copy-${clonedAt}`;
+    const actor = getActorIdentity(session);
+
+    updateState(currentState => ({
+      ...currentState,
+      trips: normalizeTripRecords([normalizeTripRecord({
+        ...sourceTrip,
+        id: nextTripId,
+        rideId: sourceTrip?.rideId ? `${String(sourceTrip.rideId).trim()}-COPY-${cloneToken}` : nextTripId,
+        brokerTripId: sourceTrip?.brokerTripId ? `${String(sourceTrip.brokerTripId).trim()}-COPY-${cloneToken}` : String(sourceTrip?.brokerTripId || '').trim(),
+        driverId: null,
+        secondaryDriverId: null,
+        routeId: null,
+        status: 'Unassigned',
+        actualPickup: '',
+        actualDropoff: '',
+        confirmation: {
+          status: 'Not Sent',
+          provider: '',
+          requestId: '',
+          code: '',
+          sentAt: '',
+          respondedAt: '',
+          lastMessageId: '',
+          lastResponseText: '',
+          lastResponseCode: '',
+          lastPhone: '',
+          lastError: ''
+        },
+        clonedFromTripId: normalizedTripId,
+        clonedAt,
+        addedBy: actor.name,
+        addedByInitials: actor.initials,
+        createdBy: actor.name,
+        createdByInitials: actor.initials,
+        createdAt: clonedAt,
+        clonedBy: actor.name,
+        clonedByInitials: actor.initials,
+        updatedAt: clonedAt
+      }), ...currentState.trips])
+    }), {
+      markDispatchDirty: true,
+      buildAuditEntry: () => ({
+        action: 'trip-clone',
+        entityType: 'trip',
+        entityId: nextTripId,
+        source: 'dispatcher',
+        summary: `Cloned trip ${normalizedTripId} into ${nextTripId}`,
+        metadata: {
+          sourceTripId: normalizedTripId,
+          clonedTripId: nextTripId,
+          actorName: actor.name,
+          actorInitials: actor.initials
+        }
+      })
+    });
+
+    return nextTripId;
+  };
+
+  const deleteTripRecord = (tripId) => {
+    const normalizedTripId = String(tripId || '').trim();
+    if (!normalizedTripId) return;
+    updateState(currentState => ({
+      ...currentState,
+      selectedTripIds: currentState.selectedTripIds.filter(id => id !== normalizedTripId),
+      routePlans: currentState.routePlans.map(routePlan => ({
+        ...routePlan,
+        tripIds: routePlan.tripIds.filter(id => id !== normalizedTripId)
+      })).filter(routePlan => routePlan.tripIds.length > 0),
+      trips: currentState.trips.filter(trip => String(trip?.id || '').trim() !== normalizedTripId)
+    }), {
+      markDispatchDirty: true,
+      allowTripShrink: true,
+      allowTripShrinkReason: 'manual-admin-delete',
+      buildAuditEntry: () => ({
+        action: 'delete-trip',
+        entityType: 'trip',
+        entityId: normalizedTripId,
+        source: 'confirmation',
+        summary: `Deleted trip ${normalizedTripId}`
+      })
+    });
+  };
+
   const setDispatcherVisibleTripColumns = columnKeys => updateState(currentState => ({
     ...currentState,
     uiPreferences: {
@@ -939,6 +1031,8 @@ export const NemtProvider = ({
     clearTrips,
     updateTripNotes,
     updateTripRecord,
+    cloneTripRecord,
+    deleteTripRecord,
     upsertDispatchThreadMessage,
     markDispatchThreadRead,
     addDailyDriver,

@@ -540,6 +540,8 @@ const TripDashboardWorkspace = () => {
     getDriverName,
     updateTripNotes,
     updateTripRecord,
+    cloneTripRecord,
+    deleteTripRecord,
     uiPreferences,
     setDispatcherVisibleTripColumns,
     setMapProvider
@@ -1603,6 +1605,19 @@ const TripDashboardWorkspace = () => {
     });
     setStatusMessage(`Puntualidad y nota guardadas para ${getDisplayTripId(noteModalTrip)}.`);
     handleCloseTripNote();
+  };
+
+  const handleCloneTrip = trip => {
+    if (!trip) return;
+    const clonedTripId = cloneTripRecord(trip.id);
+    if (!clonedTripId) {
+      setStatusMessage(`Unable to clone ${getDisplayTripId(trip)}.`);
+      return;
+    }
+    setSelectedTripIds([clonedTripId]);
+    setSelectedDriverId(null);
+    setSelectedRouteId(null);
+    setStatusMessage(`Trip ${getDisplayTripId(trip)} cloned as ${clonedTripId}.`);
   };
 
   const isInlineTripCellEditing = (tripId, columnKey) => inlineTripEditCell?.tripId === tripId && inlineTripEditCell?.columnKey === columnKey;
@@ -3144,10 +3159,23 @@ const TripDashboardWorkspace = () => {
                         }}>ACT</Button>
                           </div>
                         </td>
-                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                        <td style={{ width: 80, minWidth: 80, whiteSpace: 'nowrap' }}>
+                          <div className="d-flex align-items-center gap-1">
                           <Button variant="outline-secondary" size="sm" onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent' }}>
                             N
                           </Button>
+                          <Button variant="outline-info" size="sm" onClick={() => handleCloneTrip(row.trip)} title="Clone trip" style={{ minWidth: 34, borderColor: '#38bdf8', color: '#38bdf8', backgroundColor: 'transparent' }}>
+                            C
+                          </Button>
+                          {row.trip.clonedFromTripId ? <Button variant="outline-danger" size="sm" onClick={() => {
+                            if (window.confirm(`DELETE COPY ${row.trip.id}\nOriginal: ${row.trip.clonedFromTripId}\nRider: ${row.trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
+                              deleteTripRecord(row.trip.id);
+                              setStatusMessage(`Cloned trip ${row.trip.id} deleted.`);
+                            }
+                          }} title={`Delete cloned copy ${row.trip.id}`} style={{ minWidth: 34, borderColor: '#ef4444', color: '#ef4444', backgroundColor: 'transparent', fontWeight: 700 }}>
+                            D
+                          </Button> : null}
+                          </div>
                         </td>
                         {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
                             <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
@@ -3407,6 +3435,10 @@ const TripDashboardWorkspace = () => {
             </Row>
           </Modal.Body>
           <Modal.Footer>
+            <Button variant="outline-info" onClick={() => {
+              handleCloneTrip(noteModalTrip);
+              handleCloseTripNote();
+            }}>Clone Trip</Button>
             <Button variant="secondary" onClick={handleCloseTripNote}>Close</Button>
             <Button variant="primary" onClick={handleSaveTripNote}>Save Trip</Button>
           </Modal.Footer>
