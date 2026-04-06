@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start --keepAliveTimeout 120000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "merge:backups:sql": "node scripts/merge-backups-to-sql.mjs --from=20260403"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.15",
