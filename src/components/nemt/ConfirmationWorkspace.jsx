@@ -150,6 +150,20 @@ const formatAddressForPrint = value => {
   return clamped.join('\n');
 };
 
+const ZIP_CODE_PATTERN = /\b\d{5}(?:-\d{4})?\b/;
+
+const extractZipCode = (...values) => {
+  for (const value of values) {
+    const text = String(value || '');
+    const match = text.match(ZIP_CODE_PATTERN);
+    if (match?.[0]) return match[0];
+  }
+  return '';
+};
+
+const getTripPickupZipValue = trip => trip?.pickupZip || trip?.puZip || extractZipCode(trip?.address) || '-';
+const getTripDropoffZipValue = trip => trip?.dropoffZip || trip?.doZip || extractZipCode(trip?.destination) || '-';
+
 const getTripNotesPreview = (value, maxLength = 120) => {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return '-';
@@ -1045,6 +1059,11 @@ const ConfirmationWorkspace = () => {
   };
 
   const selectedOutputColumnOptions = useMemo(() => CONFIRMATION_OUTPUT_COLUMN_OPTIONS.filter(option => outputColumns.includes(option.key)), [outputColumns]);
+  const showPickupAddressColumn = outputColumns.includes('pickupAddress');
+  const showPickupZipColumn = outputColumns.includes('puZip');
+  const showDropoffAddressColumn = outputColumns.includes('dropoffAddress');
+  const showDropoffZipColumn = outputColumns.includes('doZip');
+  const confirmationTableColumnCount = 18 + (showPickupAddressColumn ? 1 : 0) + (showPickupZipColumn ? 1 : 0) + (showDropoffAddressColumn ? 1 : 0) + (showDropoffZipColumn ? 1 : 0);
 
   const handleToggleOutputColumn = columnKey => {
     setOutputColumns(current => {
@@ -1069,11 +1088,11 @@ const ConfirmationWorkspace = () => {
       case 'pickupAddress':
         return trip.address || '-';
       case 'puZip':
-        return trip.pickupZip || trip.puZip || '-';
+        return getTripPickupZipValue(trip);
       case 'dropoffAddress':
         return trip.destination || '-';
       case 'doZip':
-        return trip.dropoffZip || trip.doZip || '-';
+        return getTripDropoffZipValue(trip);
       case 'miles':
         return getTripMilesDisplay(trip);
       case 'leg':
@@ -2408,7 +2427,11 @@ const ConfirmationWorkspace = () => {
                   {renderSortableConfirmationHeader('rider', 'Rider')}
                   {renderSortableConfirmationHeader('phone', 'Phone')}
                   {renderSortableConfirmationHeader('pickup', 'Pickup Time')}
+                  {showPickupAddressColumn ? <th style={{ minWidth: 220 }}>PU Address</th> : null}
+                  {showPickupZipColumn ? <th style={{ minWidth: 110 }}>PU ZIP</th> : null}
                   {renderSortableConfirmationHeader('dropoff', 'Dropoff Time')}
+                  {showDropoffAddressColumn ? <th style={{ minWidth: 220 }}>DO Address</th> : null}
+                  {showDropoffZipColumn ? <th style={{ minWidth: 110 }}>DO ZIP</th> : null}
                   {renderSortableConfirmationHeader('miles', 'Miles')}
                   {renderSortableConfirmationHeader('leg', 'Leg')}
                   {renderSortableConfirmationHeader('type', 'Type')}
@@ -2446,7 +2469,11 @@ const ConfirmationWorkspace = () => {
                       </td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
                       {renderInlineConfirmationTimeCell(trip, 'pickup', getTripDisplayPickupTime(trip))}
+                      {showPickupAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.address || '-'}</td> : null}
+                      {showPickupZipColumn ? <td>{getTripPickupZipValue(trip)}</td> : null}
                       {renderInlineConfirmationTimeCell(trip, 'dropoff', getTripDisplayDropoffTime(trip))}
+                      {showDropoffAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.destination || '-'}</td> : null}
+                      {showDropoffZipColumn ? <td>{getTripDropoffZipValue(trip)}</td> : null}
                       <td>{getTripMilesDisplay(trip)}</td>
                       <td>{getTripLegFilterKey(trip)}</td>
                       <td>{getTripTypeLabel(trip)}</td>
@@ -2512,7 +2539,7 @@ const ConfirmationWorkspace = () => {
                       </td>
                     </tr>;
                 }) : <tr>
-                    <td colSpan={17} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
+                    <td colSpan={confirmationTableColumnCount} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
                   </tr>}
               </tbody>
             </Table>
