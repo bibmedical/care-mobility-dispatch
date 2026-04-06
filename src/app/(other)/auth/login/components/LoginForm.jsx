@@ -2,9 +2,23 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
-import { Alert, Button, Col, Form, FormControl, FormGroup, FormLabel } from 'react-bootstrap';
+import PortalMark from './PortalMark';
+import { Alert, Button, Card, CardBody, Col, Form, FormControl, FormGroup, FormLabel } from 'react-bootstrap';
 import { useState } from 'react';
 import useSignIn, { PAGE_OPTIONS } from '../useSignIn';
+
+const shellStyles = {
+  border: '1px solid rgba(19, 28, 45, 0.12)',
+  borderRadius: 20,
+  boxShadow: '0 20px 60px rgba(15, 23, 42, 0.08)',
+  backgroundColor: '#ffffff'
+};
+
+const headerStyles = {
+  admin: {
+    background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'
+  }
+};
 
 const LoginForm = () => {
   const {
