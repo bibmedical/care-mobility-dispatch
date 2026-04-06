@@ -1452,7 +1452,7 @@ const ConfirmationWorkspace = () => {
 
   const getTripDisplayDropoffTime = trip => {
     if (trip?.scheduleChange?.newDropoff) return `${trip.scheduleChange.newDropoff} (NEW)`;
-    return trip?.scheduledDropoff || trip?.dropoff || '-';
+    return normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || '') || '-';
   };
 
   const getRiderProfileKey = trip => {
