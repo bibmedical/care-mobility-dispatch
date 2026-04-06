@@ -12,6 +12,11 @@ import { NotificationProvider } from '@/context/useNotificationContext';
 import { NemtProvider } from '@/context/useNemtContext';
 import DispatchAssistantWidget from '@/components/nemt/DispatchAssistantWidget';
 import InactivityLogoutWrapper from '@/components/wrappers/InactivityLogoutWrapper';
+
+const DISPATCH_STATE_ROUTE_PREFIXES = ['/dispatcher', '/trip-dashboard', '/drivers', '/route-control', '/confirmation', '/rates', '/trip-analytics', '/forms-safe-ride-import', '/settings/office/print-setup', '/map-screen'];
+
+const matchesRoutePrefix = (pathname, prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`);
+
 const LayoutProvider = dynamic(() => import('@/context/useLayoutContext').then(mod => mod.LayoutProvider), {
   ssr: false
 });
@@ -21,17 +26,17 @@ const AppProvidersWrapper = ({
   const pathname = usePathname();
   const currentPathname = typeof pathname === 'string' ? pathname : '';
   const isAuthRoute = currentPathname.startsWith('/auth/');
-  const isAvatarRoute = currentPathname.startsWith('/avatar');
-  const isOfficeRoute = currentPathname.startsWith('/settings/office');
-  const isPreferencesRoute = currentPathname.startsWith('/preferences');
-  const shouldSyncDispatchState = !(isAuthRoute || isAvatarRoute || isOfficeRoute || isPreferencesRoute);
-  const showAssistantWidget = shouldSyncDispatchState && currentPathname !== '/dispatcher';
+  const shouldUseDispatchState = !isAuthRoute && DISPATCH_STATE_ROUTE_PREFIXES.some(prefix => matchesRoutePrefix(currentPathname, prefix));
+  const showAssistantWidget = shouldUseDispatchState && currentPathname !== '/dispatcher';
 
-  const content = <NemtProvider syncEnabled={shouldSyncDispatchState}>
+  const content = shouldUseDispatchState ? <NemtProvider syncEnabled>
       {children}
       {showAssistantWidget ? <DispatchAssistantWidget /> : null}
       <Toaster richColors />
-    </NemtProvider>;
+    </NemtProvider> : <>
+      {children}
+      <Toaster richColors />
+    </>;
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;

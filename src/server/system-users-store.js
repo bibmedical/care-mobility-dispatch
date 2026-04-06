@@ -1,14 +1,7 @@
 import { buildStableDriverId, createBlankDriver, getFullName } from '@/helpers/nemt-admin-model';
 import { DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED, authorizeSystemUser, buildPasswordForUser, enrichSystemUser, getUserSyncStatus, isAdminRole, isDriverRole, isProtectedSystemUser, normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
-import { getStorageFilePath } from '@/server/storage-paths';
 import { query } from '@/server/db';
-import fs from 'fs';
-
-const parseJsonSafe = raw => {
-  const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
-  return JSON.parse(normalized);
-};
 
 const normalizeUserRecord = user => ({
   id: user?.id || `user-${Date.now()}`,
@@ -63,69 +56,6 @@ const normalizeUsersState = value => {
     version: 6,
     protectedUserIds: normalizeProtectedIds(value?.protectedUserIds, users),
     users
-  };
-};
-
-const readLegacyUsersState = async () => {
-  try {
-    const legacyPath = getStorageFilePath('system-users.json');
-    const raw = await fs.promises.readFile(legacyPath, 'utf8');
-    return normalizeUsersState(parseJsonSafe(raw));
-  } catch {
-    return null;
-  }
-};
-
-const mergeLegacyCredentials = (state, legacyState) => {
-  if (!legacyState?.users?.length) return {
-    state,
-    changed: false
-  };
-
-  const legacyById = new Map(legacyState.users.map(user => [String(user.id || '').trim(), user]));
-  const legacyByUsername = new Map(legacyState.users.map(user => [normalizeAuthValue(user.username), user]));
-  const legacyByEmail = new Map(legacyState.users.map(user => [normalizeAuthValue(user.email), user]));
-
-  const findLegacyUser = currentUser => {
-    const byId = legacyById.get(String(currentUser.id || '').trim());
-    if (byId) return byId;
-    const usernameKey = normalizeAuthValue(currentUser.username);
-    if (usernameKey && legacyByUsername.has(usernameKey)) return legacyByUsername.get(usernameKey);
-    const emailKey = normalizeAuthValue(currentUser.email);
-    if (emailKey && legacyByEmail.has(emailKey)) return legacyByEmail.get(emailKey);
-    return null;
-  };
-
-  let changed = false;
-  const mergedUsers = state.users.map(user => {
-    const legacyUser = findLegacyUser(user);
-    if (!legacyUser) return user;
-
-    const legacyPassword = String(legacyUser.password || '').trim();
-    const nextPassword = legacyPassword || String(user.password || '').trim() || buildPasswordForUser(user);
-    const nextWebAccess = typeof legacyUser.webAccess === 'boolean' ? legacyUser.webAccess : user.webAccess;
-    const nextAndroidAccess = typeof legacyUser.androidAccess === 'boolean' ? legacyUser.androidAccess : user.androidAccess;
-
-    if (nextPassword !== user.password || nextWebAccess !== user.webAccess || nextAndroidAccess !== user.androidAccess) {
-      changed = true;
-      return {
-        ...user,
-        password: nextPassword,
-        webAccess: nextWebAccess,
-        androidAccess: nextAndroidAccess
-      };
-    }
-
-    return user;
-  });
-
-  return {
-    state: {
-      ...state,
-      users: mergedUsers,
-      protectedUserIds: normalizeProtectedIds(state.protectedUserIds, mergedUsers)
-    },
-    changed
   };
 };
 
@@ -271,21 +201,11 @@ export const readSystemUsersState = async () => {
   await ensureTable();
   const result = await query(`SELECT version, protected_user_ids, users FROM system_users_state WHERE id = 'singleton'`);
   const row = result.rows[0];
-  const normalizedState = normalizeUsersState({
+  const effectiveState = normalizeUsersState({
     version: row?.version,
     protectedUserIds: row?.protected_user_ids,
     users: row?.users
   });
-
-  const legacyState = await readLegacyUsersState();
-  const legacyMerged = mergeLegacyCredentials(normalizedState, legacyState);
-  if (legacyMerged.changed) {
-    await query(
-      `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
-      [6, JSON.stringify(legacyMerged.state.protectedUserIds), JSON.stringify(legacyMerged.state.users)]
-    );
-  }
-  const effectiveState = legacyMerged.state;
 
   if (effectiveState.users.length === 0) {
     const seedUsers = USER_SEED.map(normalizeUserRecord);
@@ -324,7 +244,7 @@ export const readSystemUsersState = async () => {
       }
     });
 
-    const recoveredProtected = normalizeProtectedIds(normalizedState.protectedUserIds, recoveredUsers);
+    const recoveredProtected = normalizeProtectedIds(effectiveState.protectedUserIds, recoveredUsers);
 
     await query(
       `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,

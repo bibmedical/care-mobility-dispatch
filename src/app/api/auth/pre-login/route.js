@@ -1,12 +1,8 @@
 import { authorizePersistedSystemUser } from '@/server/system-users-store';
 import { is2FAEnabled } from '@/server/2fa-store';
 import { getRecentFailures, logLoginFailure } from '@/server/login-failures-store';
+import { createTemp2FASession } from '@/server/temp-2fa-session-store';
 import { randomBytes } from 'crypto';
-import { writeFile, mkdir } from 'fs/promises';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-
-const STORAGE_DIR = getStorageRoot();
-const TEMP_2FA_FILE = getStorageFilePath('temp-2fa-sessions.json');
 const MAX_LOGIN_FAILURES = parseInt(process.env.LOGIN_MAX_FAILURES || '5', 10);
 const LOGIN_LOCK_WINDOW_MINUTES = parseInt(process.env.LOGIN_LOCK_WINDOW_MINUTES || '15', 10);
 
@@ -50,25 +46,6 @@ const getLockRemainingMs = failures => {
 
   const lockWindowMs = LOGIN_LOCK_WINDOW_MINUTES * 60 * 1000;
   return lockAnchor.timestamp + lockWindowMs - Date.now();
-};
-
-const writeTempSession = async (sessions) => {
-  try {
-    await mkdir(STORAGE_DIR, { recursive: true });
-    await writeFile(TEMP_2FA_FILE, JSON.stringify(sessions, null, 2), 'utf8');
-  } catch (error) {
-    console.error('Error writing temp 2FA session:', error);
-  }
-};
-
-const readTempSessions = async () => {
-  try {
-    const fs = await import('fs/promises');
-    const content = await fs.readFile(TEMP_2FA_FILE, 'utf8');
-    return JSON.parse(content) || {};
-  } catch {
-    return {};
-  }
 };
 
 export async function POST(req) {
@@ -138,25 +115,13 @@ export async function POST(req) {
       if (twoFAEnabled) {
         // Generate temporary token for 2FA verification
         const tempToken = randomBytes(32).toString('hex');
-        
-        // Store temp session with expiration (5 minutes)
-        const sessions = await readTempSessions();
-        sessions[tempToken] = {
+
+        await createTemp2FASession({
+          token: tempToken,
           userId: user.id,
           email: user.email,
           username: user.username,
-          createdAt: Date.now(),
-          expiresAt: Date.now() + 5 * 60 * 1000
-        };
-        
-        // Clean up expired sessions
-        Object.keys(sessions).forEach(key => {
-          if (sessions[key].expiresAt < Date.now()) {
-            delete sessions[key];
-          }
         });
-
-        await writeTempSession(sessions);
 
         return new Response(JSON.stringify({
           requires2FA: true,
