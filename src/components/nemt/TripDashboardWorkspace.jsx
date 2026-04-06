@@ -707,11 +707,12 @@ const TripDashboardWorkspace = () => {
   const activeTripDateLabel = useMemo(() => formatTripDateLabel(tripDateFilter), [tripDateFilter]);
 
   useEffect(() => {
-    setTripDateFilter('all');
+    if (!todayDateKey) return;
+    setTripDateFilter(todayDateKey);
     setSelectedTripIds([]);
     setSelectedDriverId(null);
     setSelectedRouteId(null);
-  }, []);
+  }, [todayDateKey]);
 
   useEffect(() => {
     try {
