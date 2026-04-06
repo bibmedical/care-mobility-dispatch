@@ -117,7 +117,7 @@ const mergeRoutePlans = ({ currentPlans, backupPlans, backupTs }) => {
   return Array.from(byId.values()).map(entry => entry.plan);
 };
 
-const buildMergePreview = async ({ fromDate = 20260403 }) => {
+const buildMergePreview = async ({ fromDate = 20260403, maxSnapshots = 0 }) => {
   const storageRoot = getStorageRoot();
   const dispatchBackupDir = path.join(storageRoot, 'backups', 'nemt-dispatch');
   const sources = {
@@ -163,14 +163,16 @@ const buildMergePreview = async ({ fromDate = 20260403 }) => {
 
   try {
     const fileNames = await readdir(dispatchBackupDir);
-    const snapshotFiles = fileNames
+    const allSnapshotFiles = fileNames
       .filter(fileName => /^(\d{8})-(\d{4})\.json$/i.test(fileName))
       .map(fileName => ({ fileName, ts: parseSnapshotTimestamp(fileName) }))
       .filter(item => item.ts > 0 && Number(String(item.ts).slice(0, 8)) >= Number(fromDate))
       .sort((left, right) => left.ts - right.ts);
 
-    snapshotsScanned = snapshotFiles.length;
-    sources.dispatchSnapshots.scanned = snapshotFiles.length;
+    const snapshotFiles = maxSnapshots > 0 ? allSnapshotFiles.slice(-maxSnapshots) : allSnapshotFiles;
+
+    snapshotsScanned = allSnapshotFiles.length;
+    sources.dispatchSnapshots.scanned = allSnapshotFiles.length;
 
     for (const snapshot of snapshotFiles) {
       const snapshotPath = path.join(dispatchBackupDir, snapshot.fileName);
@@ -438,7 +440,7 @@ const requireAdmin = async () => {
 };
 
 const applyMergedData = async ({ fromDate, fromDateRaw, session }) => {
-  const preview = await buildMergePreview({ fromDate });
+  const preview = await buildMergePreview({ fromDate, maxSnapshots: 8 });
 
   await withTransaction(async client => {
     await acquireAdvisoryLock(client, 'dispatch-state-update');
@@ -464,59 +466,73 @@ const applyMergedData = async ({ fromDate, fromDateRaw, session }) => {
 };
 
 export async function GET(request) {
-  const session = await requireAdmin();
-  if (!session) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
-
-  const url = new URL(request.url);
-  const fromDateParam = String(url.searchParams.get('fromDate') || '20260403').trim();
-  const fromDate = Number(fromDateParam);
-
-  if (!Number.isFinite(fromDate) || fromDateParam.length !== 8) {
-    return NextResponse.json({ error: 'fromDate must be YYYYMMDD' }, { status: 400 });
-  }
-
-  const apply = url.searchParams.get('apply') === '1';
-  const confirm = url.searchParams.get('confirm') === 'yes';
-
-  if (apply) {
-    if (!confirm) {
-      return NextResponse.json({ error: 'Add confirm=yes to apply merge via GET' }, { status: 400 });
+  try {
+    const session = await requireAdmin();
+    if (!session) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
-    const applied = await applyMergedData({ fromDate, fromDateRaw: fromDateParam, session });
-    return NextResponse.json({ ok: true, mode: 'applied', ...applied.summary });
-  }
 
-  const preview = await buildMergePreview({ fromDate });
-  return NextResponse.json({ ok: true, mode: 'preview', ...preview.summary });
+    const url = new URL(request.url);
+    const fromDateParam = String(url.searchParams.get('fromDate') || '20260403').trim();
+    const fromDate = Number(fromDateParam);
+    const maxSnapshotsParam = String(url.searchParams.get('maxSnapshots') || '').trim();
+    const maxSnapshots = maxSnapshotsParam ? Number(maxSnapshotsParam) : 0;
+
+    if (!Number.isFinite(fromDate) || fromDateParam.length !== 8) {
+      return NextResponse.json({ error: 'fromDate must be YYYYMMDD' }, { status: 400 });
+    }
+
+    if (maxSnapshotsParam && (!Number.isFinite(maxSnapshots) || maxSnapshots < 0)) {
+      return NextResponse.json({ error: 'maxSnapshots must be a positive number' }, { status: 400 });
+    }
+
+    const apply = url.searchParams.get('apply') === '1';
+    const confirm = url.searchParams.get('confirm') === 'yes';
+
+    if (apply) {
+      if (!confirm) {
+        return NextResponse.json({ error: 'Add confirm=yes to apply merge via GET' }, { status: 400 });
+      }
+      const applied = await applyMergedData({ fromDate, fromDateRaw: fromDateParam, session });
+      return NextResponse.json({ ok: true, mode: 'applied', ...applied.summary });
+    }
+
+    const preview = await buildMergePreview({ fromDate, maxSnapshots: maxSnapshots > 0 ? maxSnapshots : 0 });
+    return NextResponse.json({ ok: true, mode: 'preview', ...preview.summary });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: 'merge-preview-failed', message: String(error?.message || 'unknown-error') }, { status: 500 });
+  }
 }
 
 export async function POST(request) {
-  const session = await requireAdmin();
-  if (!session) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
-
-  let body;
   try {
-    body = await request.json();
-  } catch {
-    body = {};
+    const session = await requireAdmin();
+    if (!session) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
+
+    const confirm = Boolean(body?.confirm);
+    const fromDateRaw = String(body?.fromDate || '20260403').trim();
+    const fromDate = Number(fromDateRaw);
+
+    if (!confirm) {
+      return NextResponse.json({ error: 'Send { confirm: true } to apply merge' }, { status: 400 });
+    }
+
+    if (!Number.isFinite(fromDate) || fromDateRaw.length !== 8) {
+      return NextResponse.json({ error: 'fromDate must be YYYYMMDD' }, { status: 400 });
+    }
+
+    const applied = await applyMergedData({ fromDate, fromDateRaw, session });
+    return NextResponse.json({ ok: true, mode: 'applied', ...applied.summary });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: 'merge-apply-failed', message: String(error?.message || 'unknown-error') }, { status: 500 });
   }
-
-  const confirm = Boolean(body?.confirm);
-  const fromDateRaw = String(body?.fromDate || '20260403').trim();
-  const fromDate = Number(fromDateRaw);
-
-  if (!confirm) {
-    return NextResponse.json({ error: 'Send { confirm: true } to apply merge' }, { status: 400 });
-  }
-
-  if (!Number.isFinite(fromDate) || fromDateRaw.length !== 8) {
-    return NextResponse.json({ error: 'fromDate must be YYYYMMDD' }, { status: 400 });
-  }
-
-  const applied = await applyMergedData({ fromDate, fromDateRaw, session });
-  return NextResponse.json({ ok: true, mode: 'applied', ...applied.summary });
 }
