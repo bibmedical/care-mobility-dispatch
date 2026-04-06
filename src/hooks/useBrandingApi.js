@@ -9,6 +9,19 @@ let hasLoadedBranding = false;
 let brandingRequestPromise = null;
 const brandingSubscribers = new Set();
 
+const parseApiResponse = async response => {
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  const normalizedText = String(text || '').trim();
+  return {
+    error: normalizedText.startsWith('<') ? `Server returned HTML instead of JSON (${response.status}).` : normalizedText || `Request failed with status ${response.status}.`
+  };
+};
+
 const broadcastBranding = branding => {
   cachedBranding = normalizeBrandingSettings(branding);
   hasLoadedBranding = true;
@@ -24,7 +37,7 @@ const fetchBranding = async () => {
 
   brandingRequestPromise = (async () => {
     const response = await fetch('/api/branding', { cache: 'no-store' });
-    const payload = await response.json();
+    const payload = await parseApiResponse(response);
     if (!response.ok) throw new Error(payload?.error || 'Unable to load branding settings');
     return broadcastBranding(payload?.branding);
   })().finally(() => {
@@ -74,7 +87,7 @@ const useBrandingApi = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nextBranding)
       });
-      const payload = await response.json();
+      const payload = await parseApiResponse(response);
       if (!response.ok) throw new Error(payload?.error || 'Unable to save branding settings');
       const normalized = broadcastBranding(payload?.branding);
       setData({ branding: normalized });

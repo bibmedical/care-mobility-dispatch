@@ -19,9 +19,10 @@ const ProfileDropdown = () => {
     // Log logout event
     try {
       if (session?.user?.id) {
-        await fetch('/api/auth/logout', {
+        void fetch('/api/auth/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
           body: JSON.stringify({ userId: session.user.id })
         }).catch(err => console.error('Failed to log logout:', err));
       }

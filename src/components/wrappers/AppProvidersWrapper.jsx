@@ -19,7 +19,20 @@ const AppProvidersWrapper = ({
   children
 }) => {
   const pathname = usePathname();
-  const showAssistantWidget = pathname !== '/dispatcher';
+  const isAuthRoute = pathname.startsWith('/auth/');
+  const isAvatarRoute = pathname.startsWith('/avatar');
+  const isOfficeRoute = pathname.startsWith('/settings/office');
+  const isPreferencesRoute = pathname.startsWith('/preferences');
+  const shouldUseDispatchShell = !(isAuthRoute || isAvatarRoute || isOfficeRoute || isPreferencesRoute);
+  const showAssistantWidget = shouldUseDispatchShell && pathname !== '/dispatcher';
+  const content = shouldUseDispatchShell ? <NemtProvider>
+      {children}
+      {showAssistantWidget ? <DispatchAssistantWidget /> : null}
+      <Toaster richColors />
+    </NemtProvider> : <>
+      {children}
+      <Toaster richColors />
+    </>;
 
   useEffect(() => {
     if (document) {
@@ -35,13 +48,7 @@ const AppProvidersWrapper = ({
   return <SessionProvider>
       <LayoutProvider>
         <NotificationProvider>
-          <InactivityLogoutWrapper>
-            <NemtProvider>
-              {children}
-              {showAssistantWidget ? <DispatchAssistantWidget /> : null}
-              <Toaster richColors />
-            </NemtProvider>
-          </InactivityLogoutWrapper>
+          {shouldUseDispatchShell ? <InactivityLogoutWrapper>{content}</InactivityLogoutWrapper> : content}
         </NotificationProvider>
       </LayoutProvider>
     </SessionProvider>;
