@@ -1084,7 +1084,6 @@ const ConfirmationWorkspace = () => {
   const handleToggleOutputColumn = columnKey => {
     setOutputColumns(current => {
       const hasColumn = current.includes(columnKey);
-      if (hasColumn && current.length === 1) return current;
       return hasColumn ? current.filter(key => key !== columnKey) : [...current, columnKey];
     });
   };
