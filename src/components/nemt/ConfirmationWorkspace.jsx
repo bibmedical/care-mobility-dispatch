@@ -150,6 +150,13 @@ const formatAddressForPrint = value => {
   return clamped.join('\n');
 };
 
+const getTripNotesPreview = (value, maxLength = 120) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '-';
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trimEnd()}...`;
+};
+
 const getTripTypeLabel = trip => {
   const source = `${trip?.vehicleType || ''} ${trip?.assistanceNeeds || ''} ${trip?.tripType || ''}`.toLowerCase();
   if (source.includes('stretcher') || source.includes('str')) return 'STR';
@@ -2359,6 +2366,7 @@ const ConfirmationWorkspace = () => {
                   <th>Reply</th>
                   <th>Sent</th>
                   <th>Responded</th>
+                  <th style={{ minWidth: 220 }}>Notes</th>
                   <th style={{ width: 160 }}>Action</th>
                 </tr>
               </thead>
@@ -2413,6 +2421,9 @@ const ConfirmationWorkspace = () => {
                       <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td>
                       <td>{trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td>
                       <td>{trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-'}</td>
+                      <td style={{ maxWidth: 260, whiteSpace: 'normal' }} title={String(trip.notes || '').trim() || '-'}>
+                        {getTripNotesPreview(trip.notes)}
+                      </td>
                       <td>
                         <div className="d-flex gap-1 flex-column">
                           <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 96 }}>
@@ -2448,7 +2459,7 @@ const ConfirmationWorkspace = () => {
                       </td>
                     </tr>;
                 }) : <tr>
-                    <td colSpan={16} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
+                    <td colSpan={17} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
                   </tr>}
               </tbody>
             </Table>
@@ -2620,6 +2631,11 @@ const ConfirmationWorkspace = () => {
               <Form.Control value={tripUpdateMobilityNote} onChange={event => setTripUpdateMobilityNote(event.target.value)} placeholder="Motorized wheelchair / equipment" />
             </Col>
             <Col md={12}>
+              <Form.Label className="small text-uppercase text-muted fw-semibold">Saved Notes</Form.Label>
+              <div className="border rounded p-2 small mb-3" style={{ minHeight: 78, whiteSpace: 'pre-wrap', background: '#f8fafc' }}>
+                {String(tripUpdateModal?.notes || '').trim() || 'No saved notes yet for this trip.'}
+              </div>
+
               <Form.Label className="small text-uppercase text-muted fw-semibold">Dispatch Note</Form.Label>
               <Form.Control as="textarea" rows={4} value={tripUpdateNote} onChange={event => setTripUpdateNote(event.target.value)} placeholder="Add new note (shown in Dispatcher and related views)" />
             </Col>
