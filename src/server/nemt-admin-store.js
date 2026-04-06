@@ -1,33 +1,15 @@
-import { buildInitialAdminData, buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
-import { acquireAdvisoryLock, query, withTransaction } from '@/server/db';
+import { readFile } from 'fs/promises';
+import { buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
+import { acquireAdvisoryLock, query, queryOne, withTransaction } from '@/server/db';
+import { getStorageFilePath } from '@/server/storage-paths';
 
-const ADMIN_STATE_LOCK_KEY = 'admin-state-singleton';
-const runQuery = async (queryExecutor, text, params) => (queryExecutor ? queryExecutor.query(text, params) : query(text, params));
+const ROW_ID = 'singleton';
+const LEGACY_JSON_FILE = getStorageFilePath('nemt-admin.json');
 
-const VEHICLE_IMAGE_FALLBACK_URL = 'https://loremflickr.com/640/360/fleet,vehicle?lock=9001';
-
-const buildVehicleImageUrl = (vehicle, index = 0) => {
-  const label = String(vehicle?.label || '').toLowerCase();
-  const type = String(vehicle?.type || '').toLowerCase();
-
-  if (label.includes('ford') && label.includes('transit')) return `https://loremflickr.com/640/360/ford,transit?lock=${1100 + index}`;
-  if (label.includes('toyota') && label.includes('sienna')) return `https://loremflickr.com/640/360/toyota,sienna?lock=${1200 + index}`;
-  if (label.includes('dodge') && (label.includes('caravan') || label.includes('gran'))) return `https://loremflickr.com/640/360/dodge,caravan?lock=${1300 + index}`;
-  if (label.includes('toyota') && label.includes('corolla')) return `https://loremflickr.com/640/360/toyota,corolla?lock=${1400 + index}`;
-  if (type.includes('ambulance')) return `https://loremflickr.com/640/360/ambulance,vehicle?lock=${1500 + index}`;
-  if (type.includes('van')) return `https://loremflickr.com/640/360/van,vehicle?lock=${1600 + index}`;
-  if (type.includes('sedan')) return `https://loremflickr.com/640/360/sedan,car?lock=${1700 + index}`;
-
-  return `${VEHICLE_IMAGE_FALLBACK_URL}&i=${index}`;
+const parseJsonSafe = raw => {
+  const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
+  return JSON.parse(normalized);
 };
-
-const normalizeVehiclesWithImages = vehicles => (Array.isArray(vehicles) ? vehicles : []).map((vehicle, index) => {
-  const imageUrl = String(vehicle?.imageUrl || vehicle?.image || '').trim() || buildVehicleImageUrl(vehicle, index);
-  return {
-    ...vehicle,
-    imageUrl
-  };
-});
 
 const isMeaningfulDocumentValue = value => {
   if (!value) return false;
@@ -60,26 +42,15 @@ const mergeDriverDocuments = (currentDriver, nextDriver) => {
   };
 };
 
-const mergePreservedDriverData = (currentState, nextState, options = {}) => {
-  const allowFullClear = options?.allowFullClear === true;
+const mergePreservedDriverData = (currentState, nextState) => {
   const currentDrivers = Array.isArray(currentState?.drivers) ? currentState.drivers : [];
-  const nextDriversCandidate = Array.isArray(nextState?.drivers) ? nextState.drivers : currentDrivers;
-  const nextVehiclesCandidate = Array.isArray(nextState?.vehicles) ? nextState.vehicles : Array.isArray(currentState?.vehicles) ? currentState.vehicles : [];
-  const nextAttendantsCandidate = Array.isArray(nextState?.attendants) ? nextState.attendants : Array.isArray(currentState?.attendants) ? currentState.attendants : [];
-  const nextGroupingsCandidate = Array.isArray(nextState?.groupings) ? nextState.groupings : Array.isArray(currentState?.groupings) ? currentState.groupings : [];
-
-  const nextDrivers = !allowFullClear && currentDrivers.length > 0 && nextDriversCandidate.length === 0 ? currentDrivers : nextDriversCandidate;
-  const currentVehicles = Array.isArray(currentState?.vehicles) ? currentState.vehicles : [];
-  const nextVehicles = !allowFullClear && currentVehicles.length > 0 && nextVehiclesCandidate.length === 0 ? currentVehicles : nextVehiclesCandidate;
+  const nextDrivers = Array.isArray(nextState?.drivers) ? nextState.drivers : [];
 
   const currentDriversById = new Map(currentDrivers.map(driver => [String(driver?.id || '').trim(), driver]));
   const currentDriversByStableId = new Map(currentDrivers.map(driver => [buildStableDriverId(driver), driver]));
 
   return {
     ...nextState,
-    attendants: nextAttendantsCandidate,
-    vehicles: nextVehicles,
-    groupings: nextGroupingsCandidate,
     drivers: nextDrivers.map(nextDriver => {
       const currentById = currentDriversById.get(String(nextDriver?.id || '').trim());
       const currentByStableId = currentDriversByStableId.get(buildStableDriverId(nextDriver));
@@ -114,101 +85,42 @@ const normalizeState = value => ({
   groupings: Array.isArray(value?.groupings) ? value.groupings : []
 });
 
-const ensureTable = async queryExecutor => {
-  await runQuery(queryExecutor, `
-    CREATE TABLE IF NOT EXISTS admin_state (
-      id TEXT PRIMARY KEY DEFAULT 'singleton',
-      version INTEGER NOT NULL DEFAULT 2,
-      data JSONB NOT NULL DEFAULT '{}'::jsonb,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  const initial = buildInitialAdminData();
-  await runQuery(
-    queryExecutor,
-    `INSERT INTO admin_state (id, version, data) VALUES ('singleton', 2, $1) ON CONFLICT (id) DO NOTHING`,
-    [JSON.stringify(initial)]
-  );
-};
-
-const readNormalizedAdminState = async queryExecutor => {
-  await ensureTable(queryExecutor);
-  const result = await runQuery(queryExecutor, `SELECT data FROM admin_state WHERE id = 'singleton'`);
-  const raw = result.rows[0]?.data ?? {};
-  const normalized = normalizeState(raw);
-  const hasVehicles = Array.isArray(normalized.vehicles) && normalized.vehicles.length > 0;
-  const restoredVehicles = hasVehicles ? normalizeVehiclesWithImages(normalized.vehicles) : normalizeVehiclesWithImages(buildInitialAdminData().vehicles);
-  const needsPersist = !hasVehicles || restoredVehicles.some((vehicle, index) => String(normalized.vehicles?.[index]?.imageUrl || '').trim() !== String(vehicle?.imageUrl || '').trim());
-
-  if (needsPersist) {
-    const nextState = {
-      ...normalized,
-      vehicles: restoredVehicles
-    };
-    await runQuery(queryExecutor, `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`, [JSON.stringify(nextState)]);
-    return nextState;
+// One-time migration: if SQL is empty, seed from legacy JSON file (for existing deployments)
+let _seeded = false;
+const ensureSeeded = async () => {
+  if (_seeded) return;
+  _seeded = true;
+  try {
+    const row = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ROW_ID]);
+    const data = row?.data ?? {};
+    const hasData = Array.isArray(data?.drivers) && data.drivers.length > 0;
+    if (hasData) return;
+    const raw = await readFile(LEGACY_JSON_FILE, 'utf8');
+    const parsed = parseJsonSafe(raw);
+    const normalized = normalizeState(parsed);
+    if (Array.isArray(normalized?.drivers) && normalized.drivers.length > 0) {
+      await query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [normalized, ROW_ID]);
+      console.log('[admin-store] Migrated admin_state from legacy JSON file.');
+    }
+  } catch {
+    // JSON file doesn't exist or is invalid — start fresh from SQL
   }
-
-  return normalized;
 };
 
 export const readNemtAdminState = async () => {
-  return readNormalizedAdminState();
+  await ensureSeeded();
+  const row = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ROW_ID]);
+  return normalizeState(row?.data ?? {});
 };
 
-export const writeNemtAdminState = async (nextState, options = {}) => {
-  return withTransaction(async client => {
-    await acquireAdvisoryLock(client, ADMIN_STATE_LOCK_KEY);
-    const currentState = await readNormalizedAdminState(client);
-    const mergedState = mergePreservedDriverData(currentState, nextState, options);
-    const normalized = normalizeState(mergedState);
-    await runQuery(client, `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`, [JSON.stringify(normalized)]);
-    return normalized;
-  });
+export const writeNemtAdminState = async nextState => {
+  await ensureSeeded();
+  const currentState = await readNemtAdminState();
+  const mergedState = mergePreservedDriverData(currentState, nextState);
+  const normalized = normalizeState(mergedState);
+  await query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [normalized, ROW_ID]);
+  return normalized;
 };
-
-export const updateDriverLocation = async ({
-  driverId,
-  latitude,
-  longitude,
-  heading = null,
-  speed = null,
-  accuracy = null,
-  city = '',
-  checkpoint = '',
-  trackingLastSeen
-}) => withTransaction(async client => {
-  await acquireAdvisoryLock(client, ADMIN_STATE_LOCK_KEY);
-  const currentState = await readNormalizedAdminState(client);
-  const normalizedDriverId = String(driverId || '').trim();
-  const normalizedTrackingLastSeen = String(trackingLastSeen || new Date().toISOString()).trim() || new Date().toISOString();
-  const currentDrivers = Array.isArray(currentState?.drivers) ? currentState.drivers : [];
-  const currentDriver = currentDrivers.find(driver => String(driver?.id || '').trim() === normalizedDriverId);
-
-  if (!currentDriver) {
-    return null;
-  }
-
-  const nextDrivers = currentDrivers.map(driver => String(driver?.id || '').trim() === normalizedDriverId ? {
-    ...driver,
-    position: [latitude, longitude],
-    trackingSource: 'android',
-    trackingLastSeen: normalizedTrackingLastSeen,
-    checkpoint,
-    city,
-    heading,
-    speed,
-    accuracy
-  } : driver);
-
-  const normalized = normalizeState({
-    ...currentState,
-    drivers: nextDrivers
-  });
-
-  await runQuery(client, `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`, [JSON.stringify(normalized)]);
-  return currentDriver;
-});
 
 export const readNemtAdminPayload = async () => {
   const state = await readNemtAdminState();
@@ -216,4 +128,42 @@ export const readNemtAdminPayload = async () => {
     ...state,
     dispatchDrivers: mapAdminDataToDispatchDrivers(state)
   };
+};
+
+export const updateDriverLocation = async ({
+  driverId,
+  latitude,
+  longitude,
+  heading,
+  speed,
+  accuracy,
+  city,
+  checkpoint,
+  trackingLastSeen
+}) => {
+  return withTransaction(async client => {
+    await acquireAdvisoryLock(client, 'admin-state-update');
+    const result = await client.query(`SELECT data FROM admin_state WHERE id = $1`, [ROW_ID]);
+    const currentState = normalizeState(result.rows[0]?.data ?? {});
+    const drivers = Array.isArray(currentState?.drivers) ? currentState.drivers : [];
+    const driverIndex = drivers.findIndex(driver => String(driver?.id || '').trim() === String(driverId || '').trim());
+    if (driverIndex === -1) return;
+    const updatedDrivers = [...drivers];
+    updatedDrivers[driverIndex] = {
+      ...drivers[driverIndex],
+      tracking: {
+        ...(drivers[driverIndex]?.tracking || {}),
+        latitude,
+        longitude,
+        heading: heading ?? null,
+        speed: speed ?? null,
+        accuracy: accuracy ?? null,
+        city: city || '',
+        checkpoint: checkpoint || '',
+        lastSeen: trackingLastSeen
+      }
+    };
+    const normalized = normalizeState({ ...currentState, drivers: updatedDrivers });
+    await client.query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [normalized, ROW_ID]);
+  });
 };
