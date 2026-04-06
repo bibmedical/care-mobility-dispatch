@@ -421,6 +421,7 @@ const ConfirmationWorkspace = () => {
   const [patientStatusSourceNote, setPatientStatusSourceNote] = useState('');
   const [showOutputColumnPicker, setShowOutputColumnPicker] = useState(false);
   const [outputColumns, setOutputColumns] = useState([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
+  const outputColumnsHydratedRef = useRef(false);
   const [showRehabBlacklistPanel, setShowRehabBlacklistPanel] = useState(false);
   const resultsSectionRef = useRef(null);
 
@@ -575,12 +576,18 @@ const ConfirmationWorkspace = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (userPreferencesLoading) return;
+    if (outputColumnsHydratedRef.current) return;
     try {
       const parsed = userPreferences?.confirmation?.outputColumns?.length ? userPreferences.confirmation.outputColumns : JSON.parse(window.localStorage.getItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY) || 'null');
-      if (!parsed) return;
+      if (!parsed) {
+        outputColumnsHydratedRef.current = true;
+        return;
+      }
       setOutputColumns(normalizeConfirmationOutputColumns(parsed));
+      outputColumnsHydratedRef.current = true;
     } catch {
       setOutputColumns([...DEFAULT_CONFIRMATION_OUTPUT_COLUMNS]);
+      outputColumnsHydratedRef.current = true;
     }
   }, [userPreferences?.confirmation?.outputColumns, userPreferencesLoading]);
 
