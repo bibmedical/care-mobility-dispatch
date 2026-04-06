@@ -27,7 +27,7 @@ const AppProvidersWrapper = ({
   const currentPathname = typeof pathname === 'string' ? pathname : '';
   const isAuthRoute = currentPathname.startsWith('/auth/');
   const shouldUseDispatchState = !isAuthRoute && DISPATCH_STATE_ROUTE_PREFIXES.some(prefix => matchesRoutePrefix(currentPathname, prefix));
-  const showAssistantWidget = shouldUseDispatchState && currentPathname !== '/dispatcher';
+  const showAssistantWidget = !isAuthRoute && currentPathname !== '/map-screen';
 
   const content = shouldUseDispatchState ? <NemtProvider syncEnabled>
       {children}
@@ -35,6 +35,9 @@ const AppProvidersWrapper = ({
       <Toaster richColors />
     </NemtProvider> : <>
       {children}
+      {showAssistantWidget ? <NemtProvider syncEnabled={false}>
+          <DispatchAssistantWidget />
+        </NemtProvider> : null}
       <Toaster richColors />
     </>;
 

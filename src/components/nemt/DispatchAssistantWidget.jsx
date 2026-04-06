@@ -75,6 +75,12 @@ const widgetStyles = {
     pointerEvents: 'auto',
     marginLeft: 'auto'
   },
+  launcherLabel: {
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: '0.08em',
+    color: 'rgba(255,255,255,0.72)'
+  },
   avatarFrame: {
     width: 72,
     height: 78,
@@ -117,6 +123,19 @@ const widgetStyles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 7
+  },
+  toolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    flexWrap: 'wrap'
+  },
+  toolbarGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap'
   },
   statusPill: {
     borderRadius: 999,
@@ -590,6 +609,27 @@ const DispatchAssistantWidget = () => {
     }
   };
 
+  const handleToggleHidden = () => {
+    stopSpeaking();
+    setStoredAssistantState(currentState => currentState?.open ? {
+      ...buildInitialState(assistantName),
+      ...currentState,
+      open: false
+    } : currentState);
+    setWidgetHidden(true);
+  };
+
+  const handleToggleVoiceReplies = () => {
+    const nextVoiceEnabled = !voiceEnabledRef.current;
+    setVoiceEnabled(nextVoiceEnabled);
+    if (!nextVoiceEnabled) {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setIsSpeaking(false);
+    }
+  };
+
   function stopSpeaking() {
     setListeningMode(false);
     recognitionRef.current?.stop?.();
@@ -811,6 +851,40 @@ const DispatchAssistantWidget = () => {
           </div>
 
           <div style={widgetStyles.body}>
+            <div style={widgetStyles.toolbar}>
+              <div style={widgetStyles.toolbarGroup}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={voiceEnabled ? 'light' : 'outline-light'}
+                  onClick={handleToggleVoiceReplies}
+                  style={{ ...widgetStyles.miniButton, minHeight: 24 }}
+                  aria-label={voiceEnabled ? 'Desactivar voz del asistente' : 'Activar voz del asistente'}
+                >
+                  {voiceEnabled ? 'Voz on' : 'Voz off'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline-light"
+                  onClick={handleToggleHidden}
+                  style={{ ...widgetStyles.miniButton, minHeight: 24 }}
+                  aria-label="Ocultar asistente"
+                >
+                  Ocultar
+                </Button>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline-light"
+                onClick={handleClearMemory}
+                style={{ ...widgetStyles.miniButton, minHeight: 24 }}
+              >
+                Limpiar
+              </Button>
+            </div>
+
             {/* Chat messages */}
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, minHeight: 80 }}>
               {messages.map(msg => (
@@ -906,6 +980,7 @@ const DispatchAssistantWidget = () => {
       <div style={widgetStyles.dock}>
         <button type="button" aria-label="Open dispatch assistant" onClick={toggleOpen} style={widgetStyles.launcher}>
           {showPhotoAvatar ? renderPhotoAvatar(widgetStyles.avatarFrame) : null}
+          <span style={widgetStyles.launcherLabel}>{open ? 'ABIERTO' : 'IA'}</span>
         </button>
       </div>
     </div>;
