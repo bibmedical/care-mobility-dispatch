@@ -2273,7 +2273,7 @@ const DispatcherWorkspace = () => {
   const workspaceHeight = 'calc(100dvh - 12px)';
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
-  const actionsPanelVisible = dispatcherLayout.actionsVisible && routeTrips.length > 0;
+  const actionsPanelVisible = dispatcherLayout.actionsVisible;
   const hasLeftColumn = dispatcherLayout.mapVisible || dispatcherLayout.messagingVisible;
   const hasRightColumn = dispatcherLayout.tripsVisible || actionsPanelVisible;
   const hasTopRow = dispatcherLayout.mapVisible || dispatcherLayout.tripsVisible;
