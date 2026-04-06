@@ -1,6 +1,5 @@
 'use client';
 
-import AvatarSettingsWorkspace from '@/components/nemt/AvatarSettingsWorkspace';
 import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { BRANDING_PAGE_OPTIONS, DEFAULT_BRANDING_PAGES, DEFAULT_BRANDING_SETTINGS, normalizeBrandingSettings } from '@/helpers/branding';
@@ -348,9 +347,6 @@ const PreferencesWorkspace = () => {
         </CardBody>
       </Card>
 
-              <div className="mt-4">
-                <AvatarSettingsWorkspace embedded settingsPathLabel="Settings > Preferences > Avatar" />
-              </div>
     </>;
 };
 
