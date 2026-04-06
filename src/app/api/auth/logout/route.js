@@ -11,8 +11,8 @@ export async function POST(req) {
       );
     }
 
-    const logEntry = await logLogoutEvent(userId);
-    return Response.json({ success: true, logEntry });
+    void logLogoutEvent(userId);
+    return Response.json({ success: true });
   } catch (error) {
     console.error('Error logging logout:', error);
     return Response.json(

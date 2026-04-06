@@ -1,8 +1,12 @@
 import { query } from '@/server/db';
 
 const STALE_OPEN_SESSION_MS = 18 * 60 * 60 * 1000;
+let ensureTablePromise = null;
 
 const ensureTable = async () => {
+  if (ensureTablePromise) return ensureTablePromise;
+
+  ensureTablePromise = (async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS activity_logs (
       id TEXT PRIMARY KEY,
@@ -22,6 +26,12 @@ const ensureTable = async () => {
   `);
   await query(`CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs(timestamp DESC)`);
+  })().catch(error => {
+    ensureTablePromise = null;
+    throw error;
+  });
+
+  return ensureTablePromise;
 };
 
 const buildBaseLogEntry = ({ userId, userName, userRole, userEmail, ipAddress = '', eventType, eventLabel = '', metadata = null, target = '' }) => {

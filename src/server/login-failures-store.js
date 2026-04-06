@@ -2,8 +2,12 @@ import { query } from '@/server/db';
 
 const MAX_FAILURES_KEPT = 1000;
 const FAILURE_LOG_RETENTION_DAYS = 30;
+let ensureTablePromise = null;
 
 const ensureTable = async () => {
+  if (ensureTablePromise) return ensureTablePromise;
+
+  ensureTablePromise = (async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS login_failures (
       id SERIAL PRIMARY KEY,
@@ -17,6 +21,12 @@ const ensureTable = async () => {
   `);
   await query(`CREATE INDEX IF NOT EXISTS idx_login_failures_identifier ON login_failures (identifier)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_login_failures_timestamp ON login_failures (timestamp)`);
+  })().catch(error => {
+    ensureTablePromise = null;
+    throw error;
+  });
+
+  return ensureTablePromise;
 };
 
 /**

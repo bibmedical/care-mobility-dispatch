@@ -238,7 +238,12 @@ const syncUsersToAdminState = async (users, previousUsers = []) => {
   });
 };
 
+let ensureTablePromise = null;
+
 const ensureTable = async () => {
+  if (ensureTablePromise) return ensureTablePromise;
+
+  ensureTablePromise = (async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS system_users_state (
       id TEXT PRIMARY KEY DEFAULT 'singleton',
@@ -254,6 +259,12 @@ const ensureTable = async () => {
     `INSERT INTO system_users_state (id, version, protected_user_ids, users) VALUES ('singleton', 6, $1, $2) ON CONFLICT (id) DO NOTHING`,
     [JSON.stringify(seedProtected), JSON.stringify(seedUsers)]
   );
+  })().catch(error => {
+    ensureTablePromise = null;
+    throw error;
+  });
+
+  return ensureTablePromise;
 };
 
 export const readSystemUsersState = async () => {

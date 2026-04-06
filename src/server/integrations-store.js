@@ -221,7 +221,12 @@ const normalizeState = value => ({
   sms: normalizeSmsState(value?.sms)
 });
 
+let ensureTablePromise = null;
+
 const ensureTable = async () => {
+  if (ensureTablePromise) return ensureTablePromise;
+
+  ensureTablePromise = (async () => {
   await query(`
     CREATE TABLE IF NOT EXISTS integrations_state (
       id TEXT PRIMARY KEY DEFAULT 'singleton',
@@ -232,6 +237,12 @@ const ensureTable = async () => {
     `INSERT INTO integrations_state (id, data) VALUES ('singleton',$1) ON CONFLICT (id) DO NOTHING`,
     [JSON.stringify(DEFAULT_STATE)]
   );
+  })().catch(error => {
+    ensureTablePromise = null;
+    throw error;
+  });
+
+  return ensureTablePromise;
 };
 
 export const readIntegrationsState = async () => {

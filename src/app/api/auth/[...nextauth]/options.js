@@ -48,7 +48,7 @@ export const options = {
 
         if (!result) {
           // Log failed attempt
-          await logLoginFailure({
+          void logLoginFailure({
             identifier: credentials?.identifier,
             reason: 'Invalid credentials',
             clientType: credentials?.clientType ?? 'web',
@@ -62,7 +62,7 @@ export const options = {
         } : null;
       } catch (error) {
         // Log failed attempt on error
-        await logLoginFailure({
+        void logLoginFailure({
           identifier: credentials?.identifier,
           reason: error.message || 'Authentication error',
           clientType: credentials?.clientType ?? 'web',
@@ -95,7 +95,7 @@ export const options = {
         const user = JSON.parse(credentials?.user || '{}');
         if (!user.id || !user.email) {
           // Log failed attempt
-          await logLoginFailure({
+          void logLoginFailure({
             identifier: credentials?.email,
             reason: 'Invalid user data from email verification',
             clientType: credentials?.clientType ?? 'web',
@@ -109,7 +109,7 @@ export const options = {
         };
       } catch (error) {
         // Log failed attempt
-        await logLoginFailure({
+        void logLoginFailure({
           identifier: credentials?.email,
           reason: error.message || 'Email auth error',
           clientType: credentials?.clientType ?? 'web',
@@ -133,7 +133,7 @@ export const options = {
     }) {
       // Log successful login
       if (user && user.id) {
-        await logLoginEvent(
+        void logLoginEvent(
           user.id,
           user.username || user.email,
           user.role || 'unknown',
