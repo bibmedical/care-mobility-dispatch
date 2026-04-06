@@ -1,9 +1,8 @@
 'use client';
 
 import { buildAttendantsRows, buildDriversRows, buildGroupingRows, buildVehiclesRows, createBlankAttendant, createBlankDriver, createBlankGrouping, createBlankVehicle, getDocumentAlerts, getFullName, validateAttendant, validateDriver, validateGrouping, validateVehicle } from '@/helpers/nemt-admin-model';
-import { formatMinutesAsHours, getTripServiceMinutes } from '@/helpers/nemt-billing';
+import { formatMinutesAsHours } from '@/helpers/nemt-billing';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
-import { useNemtContext } from '@/context/useNemtContext';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import Link from 'next/link';
@@ -66,6 +65,12 @@ const defaultState = {
   groupings: []
 };
 
+const defaultDriverTripMetrics = {
+  serviceMinutes: 0,
+  totalTrips: 0,
+  activeTrips: 0
+};
+
 const readFileAsDataUrl = file => new Promise((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve(reader.result);
@@ -110,12 +115,25 @@ const resolveDocumentAsset = value => {
 
 const isImageAsset = asset => Boolean(asset?.dataUrl) && !String(asset.dataUrl).toLowerCase().endsWith('.pdf');
 
+const fetchOperationalAlerts = async () => {
+  const response = await fetch('/api/nemt/driver-discipline', { cache: 'no-store' });
+  if (!response.ok) throw new Error('Unable to load operational alerts');
+  const payload = await response.json();
+  return (Array.isArray(payload?.events) ? payload.events : []).filter(event => OPERATIONAL_ALERT_TYPES.has(String(event?.eventType || '').trim()));
+};
+
+const fetchDriverTripMetrics = async () => {
+  const response = await fetch('/api/nemt/driver-metrics', { cache: 'no-store' });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload?.error || 'Unable to load driver metrics');
+  return payload?.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
+};
+
 const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const { themeMode } = useLayoutContext();
   const shellStyles = useMemo(() => buildShellStyles(themeMode === 'light'), [themeMode]);
   const pathname = usePathname();
   const { data, loading, saving, error, refresh, saveData } = useNemtAdminApi();
-  const { trips } = useNemtContext();
   const [search, setSearch] = useState('');
   const [selectedRowId, setSelectedRowId] = useState(null);
   const [pageIndex, setPageIndex] = useState(0);
@@ -126,6 +144,8 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const [validationErrors, setValidationErrors] = useState([]);
   const [operationalAlerts, setOperationalAlerts] = useState([]);
   const [operationalAlertsLoading, setOperationalAlertsLoading] = useState(true);
+  const [driverTripMetricsState, setDriverTripMetricsState] = useState({});
+  const [driverTripMetricsLoading, setDriverTripMetricsLoading] = useState(true);
 
   const state = useMemo(() => ({
     drivers: data?.drivers ?? defaultState.drivers,
@@ -135,14 +155,17 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   }), [data]);
 
   useEffect(() => {
+    if (activeTab !== 'drivers') {
+      setOperationalAlerts([]);
+      setOperationalAlertsLoading(false);
+      return undefined;
+    }
+
     let isMounted = true;
 
     const loadOperationalAlerts = async () => {
       try {
-        const response = await fetch('/api/nemt/driver-discipline', { cache: 'no-store' });
-        if (!response.ok) throw new Error('Unable to load operational alerts');
-        const payload = await response.json();
-        const nextAlerts = (Array.isArray(payload?.events) ? payload.events : []).filter(event => OPERATIONAL_ALERT_TYPES.has(String(event?.eventType || '').trim()));
+        const nextAlerts = await fetchOperationalAlerts();
         if (isMounted) setOperationalAlerts(nextAlerts);
       } catch {
         if (isMounted) setOperationalAlerts([]);
@@ -152,13 +175,42 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
     };
 
     loadOperationalAlerts();
-    const intervalId = window.setInterval(loadOperationalAlerts, 30000);
+    const intervalId = window.setInterval(loadOperationalAlerts, 60000);
 
     return () => {
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'drivers') {
+      setDriverTripMetricsState({});
+      setDriverTripMetricsLoading(false);
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    const loadDriverTripMetrics = async () => {
+      try {
+        const nextMetrics = await fetchDriverTripMetrics();
+        if (isMounted) setDriverTripMetricsState(nextMetrics);
+      } catch {
+        if (isMounted) setDriverTripMetricsState({});
+      } finally {
+        if (isMounted) setDriverTripMetricsLoading(false);
+      }
+    };
+
+    loadDriverTripMetrics();
+    const intervalId = window.setInterval(loadDriverTripMetrics, 60000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab]);
 
   const config = useMemo(() => {
     if (activeTab === 'drivers') return { rows: buildDriversRows(state), pageSize: 14, columns: ['№', 'Ctrl', 'Info', 'Vehicle Assignment', 'Hours', 'Trips', 'Discipline', 'Notes'], title: 'Users' };
@@ -202,15 +254,56 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   }, [operationalAlerts, state.drivers]);
 
   const driverTripMetrics = useMemo(() => new Map(state.drivers.map(driver => {
-    const driverTrips = trips.filter(trip => trip.driverId === driver.id);
-    const serviceMinutes = driverTrips.reduce((sum, trip) => sum + getTripServiceMinutes(trip), 0);
-    const activeTrips = driverTrips.filter(trip => ['assigned', 'in progress'].includes(String(trip.status || '').toLowerCase())).length;
+    const metrics = driverTripMetricsState?.[driver.id];
     return [driver.id, {
-      serviceMinutes,
-      totalTrips: driverTrips.length,
-      activeTrips
+      serviceMinutes: Number(metrics?.serviceMinutes) || 0,
+      totalTrips: Number(metrics?.totalTrips) || 0,
+      activeTrips: Number(metrics?.activeTrips) || 0
     }];
-  })), [state.drivers, trips]);
+  })), [driverTripMetricsState, state.drivers]);
+
+  const handleRefresh = async () => {
+    if (activeTab !== 'drivers') {
+      await refresh();
+      return;
+    }
+
+    setOperationalAlertsLoading(true);
+    setDriverTripMetricsLoading(true);
+
+    const [adminResult, alertsResult, metricsResult] = await Promise.allSettled([
+      refresh(),
+      fetchOperationalAlerts(),
+      fetchDriverTripMetrics()
+    ]);
+
+    if (alertsResult.status === 'fulfilled') {
+      setOperationalAlerts(alertsResult.value);
+    } else {
+      setOperationalAlerts([]);
+    }
+
+    if (metricsResult.status === 'fulfilled') {
+      setDriverTripMetricsState(metricsResult.value);
+    } else {
+      setDriverTripMetricsState({});
+    }
+
+    setOperationalAlertsLoading(false);
+    setDriverTripMetricsLoading(false);
+
+    if (adminResult.status === 'rejected') {
+      setMessage(adminResult.reason?.message || 'Unable to refresh driver records.');
+      return;
+    }
+
+    if (alertsResult.status === 'rejected' || metricsResult.status === 'rejected') {
+      setMessage('Driver records refreshed. Some operational metrics could not be updated.');
+      return;
+    }
+
+    setMessage('Driver records and metrics refreshed.');
+  };
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -385,11 +478,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
 
   const renderRowCells = row => {
     if (activeTab === 'drivers') {
-      const metrics = driverTripMetrics.get(row.raw.id) ?? {
-        serviceMinutes: 0,
-        totalTrips: 0,
-        activeTrips: 0
-      };
+      const metrics = driverTripMetrics.get(row.raw.id) ?? defaultDriverTripMetrics;
       const operations = driverOperationsMetrics.get(row.raw.id) ?? {
         activeFaults: 0,
         faultsToday: 0,
@@ -552,7 +641,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
         <CardBody className="p-2" style={shellStyles.body}>
           <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-2">
             <div className="d-flex flex-wrap align-items-center gap-2">
-              <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={refresh} disabled={loading || saving}><IconifyIcon icon="iconoir:refresh-double" /></Button>
+              <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={handleRefresh} disabled={loading || saving || operationalAlertsLoading || driverTripMetricsLoading}><IconifyIcon icon="iconoir:refresh-double" /></Button>
               <div className="vr text-secondary" />
               {TABS.map(tab => <Link key={tab.key} href={tab.href} className="btn rounded-pill" onClick={() => {
                 setSearch('');
@@ -576,7 +665,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
             </div>
           </div>
 
-          <div className="small text-secondary mb-3 d-flex align-items-center gap-2 flex-wrap">{saving ? <><Spinner animation="border" size="sm" /> Saving...</> : message}</div>
+          <div className="small text-secondary mb-3 d-flex align-items-center gap-2 flex-wrap">{saving ? <><Spinner animation="border" size="sm" /> Saving...</> : operationalAlertsLoading || driverTripMetricsLoading ? <><Spinner animation="border" size="sm" /> Refreshing driver metrics...</> : message}</div>
           {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
 
           <div className="border overflow-hidden rounded-2" style={shellStyles.tableShell}>

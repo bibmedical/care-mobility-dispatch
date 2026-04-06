@@ -13,7 +13,7 @@ import { NemtProvider } from '@/context/useNemtContext';
 import DispatchAssistantWidget from '@/components/nemt/DispatchAssistantWidget';
 import InactivityLogoutWrapper from '@/components/wrappers/InactivityLogoutWrapper';
 
-const DISPATCH_STATE_ROUTE_PREFIXES = ['/dispatcher', '/trip-dashboard', '/drivers', '/route-control', '/confirmation', '/rates', '/trip-analytics', '/forms-safe-ride-import', '/settings/office/print-setup', '/map-screen'];
+const DISPATCH_STATE_ROUTE_PREFIXES = ['/dispatcher', '/trip-dashboard', '/route-control', '/confirmation', '/rates', '/trip-analytics', '/forms-safe-ride-import', '/settings/office/print-setup', '/map-screen'];
 
 const matchesRoutePrefix = (pathname, prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`);
 
