@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isDriverRole } from '@/helpers/system-users';
 import { resolveDriverForSession } from '@/server/driver-portal';
-import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
+import { updateTripStatusForDriver } from '@/server/nemt-dispatch-store';
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
@@ -73,33 +73,25 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: 'tripId and action are required.' }, { status: 400 });
   }
 
-  const dispatchState = await readNemtDispatchState();
-  const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
-  const currentTrip = trips.find(trip => String(trip?.id || '').trim() === tripId);
-
-  if (!currentTrip) {
-    return NextResponse.json({ ok: false, error: 'Trip not found.' }, { status: 404 });
-  }
-
-  if (String(currentTrip?.driverId || '').trim() !== String(driver.id || '').trim()) {
-    return NextResponse.json({ ok: false, error: 'Trip is not assigned to this driver.' }, { status: 403 });
-  }
-
   const timestamp = Date.now();
-  const patch = buildTripActionPatch(currentTrip, action, timestamp);
+  const patch = buildTripActionPatch({}, action, timestamp);
   if (!patch) {
     return NextResponse.json({ ok: false, error: 'Unsupported action.' }, { status: 400 });
   }
 
-  const nextTrips = trips.map(trip => String(trip?.id || '').trim() === tripId ? {
-    ...trip,
-    ...patch
-  } : trip);
-
-  await writeNemtDispatchState({
-    ...dispatchState,
-    trips: nextTrips
+  const result = await updateTripStatusForDriver({
+    driverId: driver.id,
+    tripId,
+    patch
   });
+
+  if (!result.ok && result.reason === 'not-found') {
+    return NextResponse.json({ ok: false, error: 'Trip not found.' }, { status: 404 });
+  }
+
+  if (!result.ok && result.reason === 'forbidden') {
+    return NextResponse.json({ ok: false, error: 'Trip is not assigned to this driver.' }, { status: 403 });
+  }
 
   return NextResponse.json({ ok: true, tripId, action, updatedAt: timestamp });
   } catch (error) {

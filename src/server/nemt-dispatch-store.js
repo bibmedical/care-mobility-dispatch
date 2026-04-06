@@ -1,9 +1,12 @@
 import { normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState } from '@/server/dispatch-history-store';
-import { query } from '@/server/db';
+import { acquireAdvisoryLock, query, withTransaction } from '@/server/db';
 
-const ensureTable = async () => {
-  await query(`
+const DISPATCH_STATE_LOCK_KEY = 'dispatch-state-singleton';
+const runQuery = async (queryExecutor, text, params) => (queryExecutor ? queryExecutor.query(text, params) : query(text, params));
+
+const ensureTable = async queryExecutor => {
+  await runQuery(queryExecutor, `
     CREATE TABLE IF NOT EXISTS dispatch_state (
       id TEXT PRIMARY KEY DEFAULT 'singleton',
       version INTEGER NOT NULL DEFAULT 1,
@@ -11,12 +14,12 @@ const ensureTable = async () => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await query(`
+  await runQuery(queryExecutor, `
     INSERT INTO dispatch_state (id, version, data)
     VALUES ('singleton', 1, '{}'::jsonb)
     ON CONFLICT (id) DO NOTHING
   `);
-  await query(`
+  await runQuery(queryExecutor, `
     CREATE TABLE IF NOT EXISTS dispatch_state_history (
       id BIGSERIAL PRIMARY KEY,
       snapshot JSONB NOT NULL,
@@ -27,54 +30,51 @@ const ensureTable = async () => {
   `);
 };
 
-export const readNemtDispatchState = async () => {
-  await ensureTable();
-  const result = await query(`SELECT data FROM dispatch_state WHERE id = 'singleton'`);
-  const raw = result.rows[0]?.data ?? {};
-  const currentState = normalizePersistentDispatchState(raw);
-  const archiveResult = await archiveDispatchState(currentState);
+const readDispatchStateRow = async queryExecutor => {
+  await ensureTable(queryExecutor);
+  const result = await runQuery(queryExecutor, `SELECT data FROM dispatch_state WHERE id = 'singleton'`);
+  return normalizePersistentDispatchState(result.rows[0]?.data ?? {});
+};
+
+const persistArchivedDispatchState = async (currentState, queryExecutor, reasonPrefix) => {
+  const archiveResult = await archiveDispatchState(currentState, { queryExecutor });
 
   if (archiveResult.archivedDates.length > 0) {
-    await query(
+    await runQuery(
+      queryExecutor,
       `INSERT INTO dispatch_state_history (snapshot, trip_count, reason)
        VALUES ($1, $2, $3)`,
-      [JSON.stringify(currentState), (Array.isArray(currentState?.trips) ? currentState.trips.length : 0), `auto-archive:${archiveResult.archivedDates.join(',')}`]
+      [JSON.stringify(currentState), (Array.isArray(currentState?.trips) ? currentState.trips.length : 0), `${reasonPrefix}:${archiveResult.archivedDates.join(',')}`]
     );
 
-    await query(
+    await runQuery(
+      queryExecutor,
       `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
       [JSON.stringify(archiveResult.nextState)]
     );
   }
 
+  return archiveResult;
+};
+
+export const readNemtDispatchState = async () => {
+  const currentState = await readDispatchStateRow();
+  const archiveResult = await persistArchivedDispatchState(currentState, null, 'auto-archive');
   return archiveResult.nextState;
 };
 
 export const runDispatchArchiveMaintenance = async () => {
-  await ensureTable();
-  const result = await query(`SELECT data FROM dispatch_state WHERE id = 'singleton'`);
-  const raw = result.rows[0]?.data ?? {};
-  const currentState = normalizePersistentDispatchState(raw);
-  const archiveResult = await archiveDispatchState(currentState);
+  return withTransaction(async client => {
+    await acquireAdvisoryLock(client, DISPATCH_STATE_LOCK_KEY);
+    const currentState = await readDispatchStateRow(client);
+    const archiveResult = await persistArchivedDispatchState(currentState, client, 'cron-archive');
 
-  if (archiveResult.archivedDates.length > 0) {
-    await query(
-      `INSERT INTO dispatch_state_history (snapshot, trip_count, reason)
-       VALUES ($1, $2, $3)`,
-      [JSON.stringify(currentState), (Array.isArray(currentState?.trips) ? currentState.trips.length : 0), `cron-archive:${archiveResult.archivedDates.join(',')}`]
-    );
-
-    await query(
-      `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
-      [JSON.stringify(archiveResult.nextState)]
-    );
-  }
-
-  return {
-    archivedDates: archiveResult.archivedDates,
-    archiveSummaries: archiveResult.archiveSummaries,
-    state: archiveResult.nextState
-  };
+    return {
+      archivedDates: archiveResult.archivedDates,
+      archiveSummaries: archiveResult.archiveSummaries,
+      state: archiveResult.nextState
+    };
+  });
 };
 
 const getTripUpdatedAt = trip => {
@@ -97,14 +97,20 @@ const mergeTripsByLatestUpdate = (currentTrips, incomingTrips) => {
 };
 
 export const writeNemtDispatchState = async (nextState, _options = {}) => {
+  return withTransaction(async client => {
+    await acquireAdvisoryLock(client, DISPATCH_STATE_LOCK_KEY);
+    const archivedCurrent = await persistArchivedDispatchState(await readDispatchStateRow(client), client, 'auto-archive');
+    return persistDispatchStateLocked(client, archivedCurrent.nextState, nextState, _options);
+  });
+};
+
+const persistDispatchStateLocked = async (queryExecutor, currentState, nextState, _options = {}) => {
   const allowTripShrink = _options?.allowTripShrink === true;
   const actorName = String(_options?.actorName || '').trim();
   const actorId = String(_options?.actorId || '').trim();
   const actorRole = String(_options?.actorRole || '').trim();
   const shrinkReason = String(_options?.shrinkReason || '').trim();
   const isAuthorizedShrink = allowTripShrink && Boolean(actorName || actorId);
-  await ensureTable();
-  const currentState = await readNemtDispatchState();
   const incomingNormalized = normalizePersistentDispatchState(nextState);
   const currentTrips = Array.isArray(currentState?.trips) ? currentState.trips : [];
   const incomingTrips = Array.isArray(incomingNormalized?.trips) ? incomingNormalized.trips : [];
@@ -114,18 +120,53 @@ export const writeNemtDispatchState = async (nextState, _options = {}) => {
     ...incomingNormalized,
     trips: nextTrips
   });
-  const archiveResult = await archiveDispatchState(normalized);
+  const archiveResult = await archiveDispatchState(normalized, { queryExecutor });
   const finalState = archiveResult.nextState;
 
-  await query(
+  await runQuery(
+    queryExecutor,
     `INSERT INTO dispatch_state_history (snapshot, trip_count, reason)
      VALUES ($1, $2, $3)`,
     [JSON.stringify(currentState), currentTrips.length, `${shouldProtectTripCount ? 'protected-shrink-blocked' : isAuthorizedShrink ? `admin-shrink:${shrinkReason || 'manual-delete'}:${actorName || actorId}${actorRole ? `:${actorRole}` : ''}` : 'auto-backup'}${archiveResult.archivedDates.length > 0 ? `|auto-archive:${archiveResult.archivedDates.join(',')}` : ''}`]
   );
 
-  await query(
-    `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
-    [JSON.stringify(finalState)]
-  );
+  await runQuery(queryExecutor, `UPDATE dispatch_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`, [JSON.stringify(finalState)]);
   return finalState;
 };
+
+export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => withTransaction(async client => {
+  await acquireAdvisoryLock(client, DISPATCH_STATE_LOCK_KEY);
+  const archivedCurrent = await persistArchivedDispatchState(await readDispatchStateRow(client), client, 'auto-archive');
+  const currentState = archivedCurrent.nextState;
+  const trips = Array.isArray(currentState?.trips) ? currentState.trips : [];
+  const currentTrip = trips.find(trip => String(trip?.id || '').trim() === String(tripId || '').trim());
+
+  if (!currentTrip) {
+    return { ok: false, reason: 'not-found' };
+  }
+
+  if (String(currentTrip?.driverId || '').trim() !== String(driverId || '').trim()) {
+    return { ok: false, reason: 'forbidden' };
+  }
+
+  const nextTrips = trips.map(trip => String(trip?.id || '').trim() === String(tripId || '').trim() ? {
+    ...trip,
+    ...patch
+  } : trip);
+
+  const finalState = await persistDispatchStateLocked(client, currentState, {
+    ...currentState,
+    trips: nextTrips
+  }, {
+    actorId: String(driverId || '').trim(),
+    actorName: String(driverId || '').trim(),
+    actorRole: 'driver'
+  });
+
+  const updatedTrip = (Array.isArray(finalState?.trips) ? finalState.trips : []).find(trip => String(trip?.id || '').trim() === String(tripId || '').trim()) || null;
+
+  return {
+    ok: true,
+    trip: updatedTrip
+  };
+});

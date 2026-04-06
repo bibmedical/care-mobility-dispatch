@@ -12,8 +12,10 @@ import {
 } from '@/helpers/nemt-dispatch-state';
 import { query } from '@/server/db';
 
-const ensureTable = async () => {
-  await query(`
+const runQuery = async (queryExecutor, text, params) => (queryExecutor ? queryExecutor.query(text, params) : query(text, params));
+
+const ensureTable = async queryExecutor => {
+  await runQuery(queryExecutor, `
     CREATE TABLE IF NOT EXISTS dispatch_daily_archives (
       archive_date   TEXT PRIMARY KEY,
       data           JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -26,7 +28,7 @@ const ensureTable = async () => {
       updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_daily_archives_archived_at ON dispatch_daily_archives(archived_at DESC)`);
+  await runQuery(queryExecutor, `CREATE INDEX IF NOT EXISTS idx_dispatch_daily_archives_archived_at ON dispatch_daily_archives(archived_at DESC)`);
 };
 
 const compareDateKeys = (left, right) => String(left || '').localeCompare(String(right || ''));
@@ -323,12 +325,13 @@ export const partitionDispatchStateForArchive = (state, options = {}) => {
 };
 
 export const archiveDispatchState = async (state, options = {}) => {
-  await ensureTable();
+  const queryExecutor = options?.queryExecutor;
+  await ensureTable(queryExecutor);
   const { archiveDays, nextState, todayDateKey } = partitionDispatchStateForArchive(state, options);
   const archiveSummaries = [];
 
   for (const archiveDay of archiveDays) {
-    const existingResult = await query(`SELECT data FROM dispatch_daily_archives WHERE archive_date = $1`, [archiveDay.dateKey]);
+    const existingResult = await runQuery(queryExecutor, `SELECT data FROM dispatch_daily_archives WHERE archive_date = $1`, [archiveDay.dateKey]);
     const existingData = existingResult.rows[0]?.data ?? {};
     const mergedArchive = mergeArchivePayload(existingData, archiveDay);
     const summary = buildArchiveSummary({
@@ -336,7 +339,8 @@ export const archiveDispatchState = async (state, options = {}) => {
       ...mergedArchive
     });
 
-    await query(
+    await runQuery(
+      queryExecutor,
       `INSERT INTO dispatch_daily_archives (
          archive_date,
          data,

@@ -1,5 +1,8 @@
 import { buildInitialAdminData, buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
-import { query } from '@/server/db';
+import { acquireAdvisoryLock, query, withTransaction } from '@/server/db';
+
+const ADMIN_STATE_LOCK_KEY = 'admin-state-singleton';
+const runQuery = async (queryExecutor, text, params) => (queryExecutor ? queryExecutor.query(text, params) : query(text, params));
 
 const VEHICLE_IMAGE_FALLBACK_URL = 'https://loremflickr.com/640/360/fleet,vehicle?lock=9001';
 
@@ -25,11 +28,6 @@ const normalizeVehiclesWithImages = vehicles => (Array.isArray(vehicles) ? vehic
     imageUrl
   };
 });
-
-const parseJsonSafe = raw => {
-  const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
-  return JSON.parse(normalized);
-};
 
 const isMeaningfulDocumentValue = value => {
   if (!value) return false;
@@ -116,8 +114,8 @@ const normalizeState = value => ({
   groupings: Array.isArray(value?.groupings) ? value.groupings : []
 });
 
-const ensureTable = async () => {
-  await query(`
+const ensureTable = async queryExecutor => {
+  await runQuery(queryExecutor, `
     CREATE TABLE IF NOT EXISTS admin_state (
       id TEXT PRIMARY KEY DEFAULT 'singleton',
       version INTEGER NOT NULL DEFAULT 2,
@@ -126,15 +124,16 @@ const ensureTable = async () => {
     )
   `);
   const initial = buildInitialAdminData();
-  await query(
+  await runQuery(
+    queryExecutor,
     `INSERT INTO admin_state (id, version, data) VALUES ('singleton', 2, $1) ON CONFLICT (id) DO NOTHING`,
     [JSON.stringify(initial)]
   );
 };
 
-export const readNemtAdminState = async () => {
-  await ensureTable();
-  const result = await query(`SELECT data FROM admin_state WHERE id = 'singleton'`);
+const readNormalizedAdminState = async queryExecutor => {
+  await ensureTable(queryExecutor);
+  const result = await runQuery(queryExecutor, `SELECT data FROM admin_state WHERE id = 'singleton'`);
   const raw = result.rows[0]?.data ?? {};
   const normalized = normalizeState(raw);
   const hasVehicles = Array.isArray(normalized.vehicles) && normalized.vehicles.length > 0;
@@ -146,27 +145,70 @@ export const readNemtAdminState = async () => {
       ...normalized,
       vehicles: restoredVehicles
     };
-    await query(
-      `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
-      [JSON.stringify(nextState)]
-    );
+    await runQuery(queryExecutor, `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`, [JSON.stringify(nextState)]);
     return nextState;
   }
 
   return normalized;
 };
 
-export const writeNemtAdminState = async (nextState, options = {}) => {
-  await ensureTable();
-  const currentState = await readNemtAdminState();
-  const mergedState = mergePreservedDriverData(currentState, nextState, options);
-  const normalized = normalizeState(mergedState);
-  await query(
-    `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
-    [JSON.stringify(normalized)]
-  );
-  return normalized;
+export const readNemtAdminState = async () => {
+  return readNormalizedAdminState();
 };
+
+export const writeNemtAdminState = async (nextState, options = {}) => {
+  return withTransaction(async client => {
+    await acquireAdvisoryLock(client, ADMIN_STATE_LOCK_KEY);
+    const currentState = await readNormalizedAdminState(client);
+    const mergedState = mergePreservedDriverData(currentState, nextState, options);
+    const normalized = normalizeState(mergedState);
+    await runQuery(client, `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`, [JSON.stringify(normalized)]);
+    return normalized;
+  });
+};
+
+export const updateDriverLocation = async ({
+  driverId,
+  latitude,
+  longitude,
+  heading = null,
+  speed = null,
+  accuracy = null,
+  city = '',
+  checkpoint = '',
+  trackingLastSeen
+}) => withTransaction(async client => {
+  await acquireAdvisoryLock(client, ADMIN_STATE_LOCK_KEY);
+  const currentState = await readNormalizedAdminState(client);
+  const normalizedDriverId = String(driverId || '').trim();
+  const normalizedTrackingLastSeen = String(trackingLastSeen || new Date().toISOString()).trim() || new Date().toISOString();
+  const currentDrivers = Array.isArray(currentState?.drivers) ? currentState.drivers : [];
+  const currentDriver = currentDrivers.find(driver => String(driver?.id || '').trim() === normalizedDriverId);
+
+  if (!currentDriver) {
+    return null;
+  }
+
+  const nextDrivers = currentDrivers.map(driver => String(driver?.id || '').trim() === normalizedDriverId ? {
+    ...driver,
+    position: [latitude, longitude],
+    trackingSource: 'android',
+    trackingLastSeen: normalizedTrackingLastSeen,
+    checkpoint,
+    city,
+    heading,
+    speed,
+    accuracy
+  } : driver);
+
+  const normalized = normalizeState({
+    ...currentState,
+    drivers: nextDrivers
+  });
+
+  await runQuery(client, `UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`, [JSON.stringify(normalized)]);
+  return currentDriver;
+});
 
 export const readNemtAdminPayload = async () => {
   const state = await readNemtAdminState();

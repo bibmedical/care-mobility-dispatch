@@ -44,3 +44,30 @@ export const queryRows = async (text, params) => {
   const result = await query(text, params);
   return result.rows;
 };
+
+export const withTransaction = async callback => {
+  const db = getDb();
+  const client = await db.connect();
+
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+export const acquireAdvisoryLock = async (client, lockKey) => {
+  if (!client) {
+    throw new Error('A database client is required to acquire an advisory lock.');
+  }
+
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [String(lockKey || 'singleton-lock')]);
+};

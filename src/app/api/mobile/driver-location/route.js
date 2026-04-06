@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
+import { readNemtAdminState, updateDriverLocation } from '@/server/nemt-admin-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
@@ -35,21 +35,16 @@ export async function POST(request) {
   }
 
   const trackingLastSeen = Number.isFinite(sourceTimestamp) ? new Date(sourceTimestamp).toISOString() : new Date().toISOString();
-  const nextDrivers = drivers.map(driver => String(driver?.id || '').trim() === driverId ? {
-    ...driver,
-    position: [latitude, longitude],
-    trackingSource: 'android',
-    trackingLastSeen,
-    checkpoint: body?.checkpoint || city || formatCheckpoint(latitude, longitude),
-    city,
+  await updateDriverLocation({
+    driverId,
+    latitude,
+    longitude,
     heading,
     speed,
-    accuracy
-  } : driver);
-
-  await writeNemtAdminState({
-    ...adminState,
-    drivers: nextDrivers
+    accuracy,
+    city,
+    checkpoint: body?.checkpoint || city || formatCheckpoint(latitude, longitude),
+    trackingLastSeen
   });
 
   return jsonWithMobileCors(request, { ok: true, driverId, trackingLastSeen });
