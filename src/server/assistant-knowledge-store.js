@@ -1,17 +1,20 @@
-import { mkdir, rm, writeFile } from 'fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { PDFParse } from 'pdf-parse';
-import { getStorageRoot } from '@/server/storage-paths';
-import { query as dbQuery, queryOne } from '@/server/db';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
+import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
 const STORAGE_DIR = getStorageRoot();
+const STORAGE_FILE = getStorageFilePath('assistant-knowledge.json');
 const KNOWLEDGE_FILES_DIR = path.join(STORAGE_DIR, 'assistant-knowledge', 'files');
 
-const normalizeText = value => String(value ?? '')
-  .replace(/\r/g, '')
-  .replace(/[ \t]+\n/g, '\n')
-  .replace(/\n{3,}/g, '\n\n')
-  .trim();
+const DEFAULT_STATE = {
+  version: 1,
+  documents: [],
+  chunks: []
+};
+
+const normalizeText = value => String(value ?? '').replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 
 const normalizeLookupValue = value => String(value || '')
   .normalize('NFD')
@@ -21,9 +24,7 @@ const normalizeLookupValue = value => String(value || '')
   .replace(/\s+/g, ' ')
   .trim();
 
-const tokenizeValue = value => normalizeLookupValue(value)
-  .split(' ')
-  .filter(token => token.length >= 2);
+const tokenizeValue = value => normalizeLookupValue(value).split(' ').filter(token => token.length >= 2);
 
 const normalizeDocument = value => ({
   id: String(value?.id || `doc-${Date.now()}`).trim(),
@@ -51,61 +52,28 @@ const normalizeChunk = value => ({
 
 const normalizeState = value => ({
   version: 1,
-  documents: Array.isArray(value?.documents)
-    ? value.documents.map(normalizeDocument).filter(document => document.id && document.fileName)
-    : [],
-  chunks: Array.isArray(value?.chunks)
-    ? value.chunks.map(normalizeChunk).filter(chunk => chunk.id && chunk.documentId && chunk.text)
-    : []
+  documents: Array.isArray(value?.documents) ? value.documents.map(normalizeDocument).filter(document => document.id && document.fileName) : [],
+  chunks: Array.isArray(value?.chunks) ? value.chunks.map(normalizeChunk).filter(chunk => chunk.id && chunk.documentId && chunk.text) : []
 });
 
 const ensureStorage = async () => {
-  await dbQuery(`
-    CREATE TABLE IF NOT EXISTS assistant_knowledge (
-      id TEXT PRIMARY KEY DEFAULT 'singleton',
-      documents JSONB NOT NULL DEFAULT '[]',
-      chunks JSONB NOT NULL DEFAULT '[]'
-    )
-  `);
-  await dbQuery(
-    `INSERT INTO assistant_knowledge (id, documents, chunks)
-     VALUES ('singleton', '[]'::jsonb, '[]'::jsonb)
-     ON CONFLICT (id) DO NOTHING`
-  );
+  await mkdir(STORAGE_DIR, { recursive: true });
   await mkdir(KNOWLEDGE_FILES_DIR, { recursive: true });
-};
-
-export const readAssistantKnowledgeState = async () => {
-  await ensureStorage();
-  const row = await queryOne(`SELECT documents, chunks FROM assistant_knowledge WHERE id = 'singleton'`);
-  return normalizeState({
-    documents: row?.documents || [],
-    chunks: row?.chunks || []
-  });
-};
-
-const writeAssistantKnowledgeState = async nextState => {
-  await ensureStorage();
-  const normalized = normalizeState(nextState);
-  await dbQuery(
-    `UPDATE assistant_knowledge SET documents=$1, chunks=$2 WHERE id='singleton'`,
-    [JSON.stringify(normalized.documents), JSON.stringify(normalized.chunks)]
-  );
-  return normalized;
+  try {
+    await readFile(STORAGE_FILE, 'utf8');
+  } catch {
+    await writeFile(STORAGE_FILE, JSON.stringify(DEFAULT_STATE, null, 2), 'utf8');
+  }
 };
 
 const getSafeExtension = (fileName, mimeType) => {
   const ext = path.extname(String(fileName || '').trim()).toLowerCase();
   if (ext) return ext;
-  const mime = String(mimeType || '').toLowerCase();
-  if (mime.includes('pdf')) return '.pdf';
-  if (mime.includes('json')) return '.json';
-  if (mime.includes('markdown')) return '.md';
-  if (mime.includes('plain')) return '.txt';
+  if (String(mimeType || '').toLowerCase().includes('pdf')) return '.pdf';
   return '.txt';
 };
 
-const buildStoredFileName = (documentId, extension) => `${documentId}${extension || '.txt'}`;
+const buildStoredFileName = (documentId, extension) => `${documentId}${extension}`;
 
 const extractTextFromBuffer = async ({ buffer, fileName, mimeType }) => {
   const extension = getSafeExtension(fileName, mimeType);
@@ -127,11 +95,7 @@ const buildSummary = text => {
 };
 
 const buildChunks = (documentId, text) => {
-  const paragraphs = normalizeText(text)
-    .split(/\n\n+/)
-    .map(paragraph => paragraph.trim())
-    .filter(Boolean);
-
+  const paragraphs = normalizeText(text).split(/\n\n+/).map(paragraph => paragraph.trim()).filter(Boolean);
   const chunks = [];
   let buffer = '';
 
@@ -161,15 +125,28 @@ const buildChunks = (documentId, text) => {
   return chunks;
 };
 
-const buildDocumentTitle = fileName => {
-  const base = path.basename(String(fileName || '').trim(), path.extname(String(fileName || '').trim()));
-  return base || 'Knowledge Document';
+const buildDocumentTitle = fileName => path.basename(String(fileName || '').trim(), path.extname(String(fileName || '').trim())) || 'Knowledge Document';
+
+export const readAssistantKnowledgeState = async () => {
+  await ensureStorage();
+  const fileContents = await readFile(STORAGE_FILE, 'utf8');
+  return normalizeState(JSON.parse(fileContents));
+};
+
+const writeAssistantKnowledgeState = async nextState => {
+  await ensureStorage();
+  const normalized = normalizeState(nextState);
+  await writeJsonFileWithSnapshots({
+    filePath: STORAGE_FILE,
+    nextValue: normalized,
+    backupName: 'assistant-knowledge'
+  });
+  return normalized;
 };
 
 export const readAssistantKnowledgeOverview = async () => {
   const state = await readAssistantKnowledgeState();
   const documents = [...state.documents].sort((left, right) => right.updatedAt - left.updatedAt);
-
   return {
     documents,
     totals: {
@@ -191,9 +168,8 @@ export const createAssistantKnowledgeDocument = async ({ fileName, mimeType, buf
   const documentId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const extension = getSafeExtension(fileName, mimeType);
   const storedFileName = buildStoredFileName(documentId, extension);
-  const absolutePath = path.join(KNOWLEDGE_FILES_DIR, storedFileName);
-  const relativePath = `assistant-knowledge/files/${storedFileName}`;
-
+  const storedFilePath = path.join(KNOWLEDGE_FILES_DIR, storedFileName);
+  const relativePath = path.join('storage', 'assistant-knowledge', 'files', storedFileName).replace(/\\/g, '/');
   const chunks = buildChunks(documentId, text);
   const document = normalizeDocument({
     id: documentId,
@@ -210,7 +186,7 @@ export const createAssistantKnowledgeDocument = async ({ fileName, mimeType, buf
     updatedAt: Date.now()
   });
 
-  await writeFile(absolutePath, buffer);
+  await writeFile(storedFilePath, buffer);
   await writeAssistantKnowledgeState({
     ...state,
     documents: [...state.documents, document],
@@ -233,8 +209,8 @@ export const deleteAssistantKnowledgeDocument = async documentId => {
   }
 
   if (document.relativePath) {
-    const fileName = path.basename(document.relativePath);
-    await rm(path.join(KNOWLEDGE_FILES_DIR, fileName), { force: true });
+    const absolutePath = path.join(process.cwd(), document.relativePath);
+    await rm(absolutePath, { force: true });
   }
 
   await writeAssistantKnowledgeState({
@@ -243,40 +219,47 @@ export const deleteAssistantKnowledgeDocument = async documentId => {
     chunks: state.chunks.filter(chunk => chunk.documentId !== normalizedDocumentId)
   });
 
-  return {
-    ok: true,
-    documentId: normalizedDocumentId
-  };
+  return document;
 };
 
-export const searchAssistantKnowledge = async ({ query, limit = 8 }) => {
-  const term = String(query || '').trim();
-  if (!term) return [];
+export const searchAssistantKnowledge = async (query, options = {}) => {
+  const normalizedQuery = String(query || '').trim();
+  if (!normalizedQuery) return [];
 
+  const limit = Math.max(1, Number(options.limit || 4));
   const state = await readAssistantKnowledgeState();
-  const queryTokens = tokenizeValue(term);
-  const normalizedQuery = normalizeLookupValue(term);
   const documentsById = new Map(state.documents.map(document => [document.id, document]));
+  const queryTokens = tokenizeValue(normalizedQuery);
+  const queryLookup = normalizeLookupValue(normalizedQuery);
 
-  const matches = state.chunks
-    .map(chunk => {
-      let score = 0;
-      if (chunk.searchText.includes(normalizedQuery)) score += 8;
-      queryTokens.forEach(token => {
-        if (chunk.searchText.includes(token)) score += 2;
-      });
-      if (score === 0) return null;
-      return {
-        id: chunk.id,
-        documentId: chunk.documentId,
-        text: chunk.text,
-        score,
-        document: documentsById.get(chunk.documentId) || null
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, Math.max(1, Number(limit) || 8));
+  const results = state.chunks.map(chunk => {
+    const document = documentsById.get(chunk.documentId);
+    if (!document) return null;
 
-  return matches;
+    let score = 0;
+    if (queryLookup && chunk.searchText.includes(queryLookup)) {
+      score += 12;
+    }
+
+    queryTokens.forEach(token => {
+      if (chunk.searchText.includes(token)) score += 2;
+      if (normalizeLookupValue(document.title).includes(token)) score += 3;
+      if (normalizeLookupValue(document.fileName).includes(token)) score += 1;
+    });
+
+    if (score <= 0) return null;
+
+    return {
+      documentId: document.id,
+      documentTitle: document.title,
+      fileName: document.fileName,
+      relativePath: document.relativePath,
+      summary: document.summary,
+      chunkId: chunk.id,
+      score,
+      text: chunk.text.length > 700 ? `${chunk.text.slice(0, 697)}...` : chunk.text
+    };
+  }).filter(Boolean);
+
+  return results.sort((left, right) => right.score - left.score || left.documentTitle.localeCompare(right.documentTitle)).slice(0, limit);
 };

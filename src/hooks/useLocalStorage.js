@@ -1,18 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-
-const parseStoredValue = (rawValue, fallbackValue) => {
-  if (rawValue == null || rawValue === '') return fallbackValue;
-
-  try {
-    return JSON.parse(rawValue);
-  } catch (error) {
-    console.error(error);
-    return fallbackValue;
-  }
-};
-
 export default function useLocalStorage(key, initialValue, override = false) {
   const [storedValue, setStoredValue] = useState(() => {
     if (override) return initialValue;
@@ -22,7 +10,7 @@ export default function useLocalStorage(key, initialValue, override = false) {
         item = window.localStorage.getItem(key);
       }
       if (!item) localStorage.setItem(key, JSON.stringify(initialValue));
-      return parseStoredValue(item, initialValue);
+      return item ? JSON.parse(item) : initialValue;
     } catch (error) {
       console.error(error);
       return initialValue;
@@ -30,18 +18,13 @@ export default function useLocalStorage(key, initialValue, override = false) {
   });
 
   const getStoredItem = useCallback(() => {
-    if (!key) return;
-
-    try {
+    if (key) {
       const item = window.localStorage.getItem(key);
       if (item) {
-        setStoredValue(parseStoredValue(item, initialValue));
+        setStoredValue(JSON.parse(item));
       }
-    } catch (error) {
-      console.error(error);
-      setStoredValue(initialValue);
     }
-  }, [initialValue, key]);
+  }, [key]);
 
   useEffect(() => {
     window.addEventListener('storage', getStoredItem, false);

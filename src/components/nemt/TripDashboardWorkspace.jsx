@@ -7,7 +7,6 @@ import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
-import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
@@ -99,39 +98,10 @@ const TRIP_DASHBOARD_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW2_BLOC
 const TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS = ['show-map', 'peek-panel', 'toolbar-edit', 'columns', 'map-screen', 'layout', 'panels', 'trip-order'];
 const TRIP_DASHBOARD_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW3_BLOCKS__';
 const TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS = ['driver-select', 'secondary-driver', 'zip-filter', 'route-filter', 'theme-toggle', 'metric-miles', 'metric-duration'];
-const TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TOOLBAR_VISIBILITY__';
 const MAP_SCREEN_DASHBOARD_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DASHBOARD_STATE__';
 const CLOSED_ROUTE_STATE_KEY = '__CARE_MOBILITY_CLOSED_ROUTE_STATE__';
 const TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH = 56;
 const TRIP_DASHBOARD_RIGHT_PANEL_EXPANDED_SPLIT = 50;
-
-const TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS = [...TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS, ...TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS, ...TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS];
-
-const TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS = {
-  'date-controls': 'Date controls',
-  'status-filter': 'Status filter',
-  'trip-search': 'Search',
-  'driver-assigned': 'Assigned',
-  'action-buttons': 'Actions',
-  'leg-buttons': 'Leg',
-  'type-buttons': 'Tipo',
-  'closed-route': 'Close route',
-  'show-map': 'Show map',
-  'peek-panel': 'Panel peek',
-  'toolbar-edit': 'Toolbar editor',
-  'columns': 'Columns',
-  'map-screen': 'Map screen',
-  'layout': 'Layout',
-  'panels': 'Panels',
-  'trip-order': 'Trip order',
-  'driver-select': 'Primary driver',
-  'secondary-driver': 'Secondary driver',
-  'zip-filter': 'ZIP filter',
-  'route-filter': 'Route filter',
-  'theme-toggle': 'Tema',
-  'metric-miles': 'Miles metric',
-  'metric-duration': 'Duration metric'
-};
 
 const TRIP_DASHBOARD_LAYOUTS = {
   normal: 'normal',
@@ -216,9 +186,9 @@ const estimateTripServiceMinutes = trip => {
 };
 
 const formatSlackLabel = minutes => {
-  if (!Number.isFinite(minutes)) return 'No estimate';
-  if (minutes >= 0) return `${minutes} min early`;
-  return `${Math.abs(minutes)} min late`;
+  if (!Number.isFinite(minutes)) return 'Sin calculo';
+  if (minutes >= 0) return `${minutes} min libres`;
+  return `${Math.abs(minutes)} min tarde`;
 };
 
 const formatMinutesToTimeInput = minutes => {
@@ -290,7 +260,7 @@ const parseAiPlannerRoutePairKey = pairKey => {
 };
 const formatAiPlannerRoutePairLabel = pairKey => {
   const { pickupCity, dropoffCity } = parseAiPlannerRoutePairKey(pairKey);
-  if (!pickupCity && !dropoffCity) return 'All routes';
+  if (!pickupCity && !dropoffCity) return 'Todas las rutas';
   return `${pickupCity || '?'} -> ${dropoffCity || '?'}`;
 };
 const normalizeTripId = tripId => String(tripId || '').trim();
@@ -326,9 +296,9 @@ const readJsonResponse = async response => {
   } catch {
     const contentType = String(response.headers.get('content-type') || '').toLowerCase();
     if (contentType.includes('text/html')) {
-      throw new Error('The server returned HTML instead of JSON. Check the API error on the server.');
+      throw new Error('El servidor devolvio una pagina en vez de JSON. Revisa el error del API en el servidor local.');
     }
-    throw new Error(rawText.slice(0, 220) || 'The server returned an invalid response.');
+    throw new Error(rawText.slice(0, 220) || 'El servidor devolvio una respuesta invalida.');
   }
 };
 
@@ -410,8 +380,6 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
       return Number(trip.miles) || 0;
     case 'vehicle':
       return trip.vehicleType;
-    case 'notes':
-      return trip.notes;
     case 'leg':
       return trip.legLabel;
     case 'punctuality':
@@ -556,7 +524,6 @@ const TripDashboardWorkspace = () => {
   const { changeTheme, themeMode } = useLayoutContext();
   const { data: smsData } = useSmsIntegrationApi();
   const { data: blacklistData } = useBlacklistApi();
-  const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const {
     drivers,
     trips,
@@ -573,8 +540,6 @@ const TripDashboardWorkspace = () => {
     getDriverName,
     updateTripNotes,
     updateTripRecord,
-    cloneTripRecord,
-    deleteTripRecord,
     uiPreferences,
     setDispatcherVisibleTripColumns,
     setMapProvider
@@ -591,7 +556,6 @@ const TripDashboardWorkspace = () => {
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
-  const [serviceAnimalOnly, setServiceAnimalOnly] = useState(false);
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
   const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
   const [pickupZipFilter, setPickupZipFilter] = useState('');
@@ -610,12 +574,10 @@ const TripDashboardWorkspace = () => {
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
-  const [showToolbarTools, setShowToolbarTools] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
   const [toolbarRow1Order, setToolbarRow1Order] = useState(TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS);
   const [toolbarRow2Order, setToolbarRow2Order] = useState(TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS);
   const [toolbarRow3Order, setToolbarRow3Order] = useState(TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS);
-  const [toolbarBlockVisibility, setToolbarBlockVisibility] = useState(() => Object.fromEntries(TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => [blockId, true])));
   const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
   const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
@@ -629,7 +591,7 @@ const TripDashboardWorkspace = () => {
     direction: 'asc'
   });
   const [columnWidths, setColumnWidths] = useState({});
-  const [statusMessage, setStatusMessage] = useState('Trip dashboard ready with bottom panels hidden.');
+  const [statusMessage, setStatusMessage] = useState('Trip dashboard listo con paneles inferiores cerrados.');
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
   const [columnSplit, setColumnSplit] = useState(58);
   const [rowSplit, setRowSplit] = useState(68);
@@ -656,7 +618,7 @@ const TripDashboardWorkspace = () => {
   const [aiPlannerLateToleranceMinutes, setAiPlannerLateToleranceMinutes] = useState('15');
   const [aiPlannerPreview, setAiPlannerPreview] = useState(null);
   const [aiPlannerLoading, setAiPlannerLoading] = useState(false);
-  const [aiPlannerCollapsed, setAiPlannerCollapsed] = useState(true);
+  const [aiPlannerCollapsed, setAiPlannerCollapsed] = useState(false);
   const workspaceRef = useRef(null);
   const tripTableTopScrollerRef = useRef(null);
   const tripTableBottomScrollerRef = useRef(null);
@@ -665,23 +627,16 @@ const TripDashboardWorkspace = () => {
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
   const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
-  const riderProfiles = useMemo(() => smsData?.sms?.riderProfiles || {}, [smsData?.sms?.riderProfiles]);
   const blacklistEntries = useMemo(() => Array.isArray(blacklistData?.entries) ? blacklistData.entries : [], [blacklistData?.entries]);
   const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
     trip,
     optOutList,
     blacklistEntries,
-    defaultCountryCode: smsData?.sms?.defaultCountryCode,
-    tripDateKey: getTripTimelineDateKey(trip, routePlans, trips)
-  })])), [blacklistEntries, optOutList, routePlans, smsData?.sms?.defaultCountryCode, trips]);
+    defaultCountryCode: smsData?.sms?.defaultCountryCode
+  })])), [blacklistEntries, optOutList, smsData?.sms?.defaultCountryCode, trips]);
 
   const toggleTripSelection = tripId => {
-    const normalizedTripId = normalizeTripId(tripId);
-    if (!normalizedTripId) return;
-    setSelectedTripIds(currentTripIds => {
-      const currentIds = currentTripIds.map(normalizeTripId).filter(Boolean);
-      return currentIds.includes(normalizedTripId) ? currentIds.filter(id => id !== normalizedTripId) : [...currentIds, normalizedTripId];
-    });
+    setSelectedTripIds(currentTripIds => currentTripIds.includes(tripId) ? currentTripIds.filter(id => id !== tripId) : [...currentTripIds, tripId]);
   };
 
   const syncTripTableScroll = source => {
@@ -709,7 +664,7 @@ const TripDashboardWorkspace = () => {
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const activeDateTripIdSet = useMemo(() => {
-    if (tripDateFilter === 'all') return null;
+    if (tripDateFilter === 'all') return new Set();
     return new Set(trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter).map(trip => String(trip?.id || '').trim()).filter(Boolean));
   }, [tripDateFilter, routePlans, trips]);
 
@@ -719,7 +674,7 @@ const TripDashboardWorkspace = () => {
       selectedTripIds,
       selectedDriverId,
       selectedRouteId,
-      activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
+      activeDateTripIds: Array.from(activeDateTripIdSet),
       capturedAt: Date.now()
     }));
   }, [activeDateTripIdSet, selectedDriverId, selectedRouteId, selectedTripIds, tripDateFilter]);
@@ -777,7 +732,6 @@ const TripDashboardWorkspace = () => {
   }, [closedRouteStateByKey]);
 
   useEffect(() => {
-    if (userPreferencesLoading) return;
     const loadToolbarOrder = (storageKey, defaultOrder) => {
       const storedValue = window.localStorage.getItem(storageKey);
       if (!storedValue) return defaultOrder;
@@ -790,53 +744,13 @@ const TripDashboardWorkspace = () => {
     };
 
     try {
-      setToolbarRow1Order(userPreferences?.tripDashboard?.row1?.length ? userPreferences.tripDashboard.row1 : loadToolbarOrder(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS));
-      setToolbarRow2Order(userPreferences?.tripDashboard?.row2?.length ? userPreferences.tripDashboard.row2 : loadToolbarOrder(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS));
-      setToolbarRow3Order(userPreferences?.tripDashboard?.row3?.length ? userPreferences.tripDashboard.row3 : loadToolbarOrder(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS));
+      setToolbarRow1Order(loadToolbarOrder(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS));
+      setToolbarRow2Order(loadToolbarOrder(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS));
+      setToolbarRow3Order(loadToolbarOrder(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS));
     } catch {
       // Ignore corrupted local toolbar layout preferences.
     }
-  }, [userPreferences?.tripDashboard?.row1, userPreferences?.tripDashboard?.row2, userPreferences?.tripDashboard?.row3, userPreferencesLoading]);
-
-  useEffect(() => {
-    if (userPreferencesLoading) return;
-    try {
-      const parsed = userPreferences?.tripDashboard?.toolbarVisibility && Object.keys(userPreferences.tripDashboard.toolbarVisibility).length > 0 ? userPreferences.tripDashboard.toolbarVisibility : JSON.parse(window.localStorage.getItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY) || '{}');
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
-      const normalized = Object.fromEntries(TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => [blockId, parsed[blockId] !== false]));
-      setToolbarBlockVisibility(normalized);
-    } catch {
-      // Ignore corrupted toolbar visibility preferences.
-    }
-  }, [userPreferences?.tripDashboard?.toolbarVisibility, userPreferencesLoading]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY, JSON.stringify(toolbarBlockVisibility));
-      if (!userPreferencesLoading) {
-        void saveUserPreferences({
-          ...userPreferences,
-          tripDashboard: {
-            ...userPreferences?.tripDashboard,
-            toolbarVisibility: toolbarBlockVisibility
-          }
-        });
-      }
-    } catch {
-      // Ignore localStorage write errors.
-    }
-  }, [saveUserPreferences, toolbarBlockVisibility, userPreferences, userPreferencesLoading]);
-
-  const isToolbarBlockEnabled = blockId => toolbarBlockVisibility[blockId] !== false;
-  const hasAnyVisibleToolbarBlock = TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.some(blockId => isToolbarBlockEnabled(blockId));
-  const shouldShowPinnedToolbarRecovery = !isToolbarBlockEnabled('toolbar-edit') || !hasAnyVisibleToolbarBlock;
-
-  const handleToggleToolbarBlockVisibility = (blockId, enabled) => {
-    setToolbarBlockVisibility(current => ({
-      ...current,
-      [blockId]: enabled
-    }));
-  };
+  }, []);
 
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
     if (!fromBlockId || !toBlockId || fromBlockId === toBlockId) return;
@@ -919,18 +833,9 @@ const TripDashboardWorkspace = () => {
       window.localStorage.setItem(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, JSON.stringify(toolbarRow1Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, JSON.stringify(toolbarRow2Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, JSON.stringify(toolbarRow3Order));
-      void saveUserPreferences({
-        ...userPreferences,
-        tripDashboard: {
-          ...userPreferences?.tripDashboard,
-          row1: toolbarRow1Order,
-          row2: toolbarRow2Order,
-          row3: toolbarRow3Order
-        }
-      });
-      setStatusMessage('Toolbar layout saved.');
+      setStatusMessage('Toolbar layout guardado.');
     } catch {
-      setStatusMessage('Could not save toolbar layout.');
+      setStatusMessage('No se pudo guardar el toolbar layout.');
     } finally {
       setIsToolbarEditMode(false);
       clearDraggingToolbarBlockIds();
@@ -941,32 +846,18 @@ const TripDashboardWorkspace = () => {
     const defaultRow1Order = [...TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS];
     const defaultRow2Order = [...TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS];
     const defaultRow3Order = [...TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS];
-    const defaultVisibility = Object.fromEntries(TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => [blockId, true]));
     setToolbarRow1Order(defaultRow1Order);
     setToolbarRow2Order(defaultRow2Order);
     setToolbarRow3Order(defaultRow3Order);
-    setToolbarBlockVisibility(defaultVisibility);
-    setShowToolbarTools(false);
     setIsToolbarEditMode(false);
     clearDraggingToolbarBlockIds();
     try {
       window.localStorage.setItem(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, JSON.stringify(defaultRow1Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, JSON.stringify(defaultRow2Order));
       window.localStorage.setItem(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, JSON.stringify(defaultRow3Order));
-      window.localStorage.setItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY, JSON.stringify(defaultVisibility));
-      void saveUserPreferences({
-        ...userPreferences,
-        tripDashboard: {
-          ...userPreferences?.tripDashboard,
-          row1: defaultRow1Order,
-          row2: defaultRow2Order,
-          row3: defaultRow3Order,
-          toolbarVisibility: defaultVisibility
-        }
-      });
-      setStatusMessage('Toolbar layout reset.');
+      setStatusMessage('Toolbar layout reseteado.');
     } catch {
-      setStatusMessage('Could not reset toolbar layout.');
+      setStatusMessage('No se pudo resetear el toolbar layout.');
     }
   };
 
@@ -974,32 +865,22 @@ const TripDashboardWorkspace = () => {
     switch (blockId) {
       case 'date-controls':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(-1)} title="Previous day">Previous</Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(-1)} title="Previous day">Prev</Button>
             <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || 'all')} style={{ width: 150 }} />
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => handleShiftTripDate(1)} title="Next day">Next</Button>
             <Button variant={tripDateFilter === todayDateKey ? 'dark' : 'outline-dark'} size="sm" style={tripDateFilter === todayDateKey ? undefined : greenToolbarButtonStyle} onClick={() => setTripDateFilter(todayDateKey)}>Today</Button>
           </div>;
       case 'status-filter':
-        return <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 150 }}>
-            <option value="all">All</option>
-            <option value="unassigned">Unassigned</option>
-            <option value="assigned">Assigned</option>
-            <option value="inprogress">In progress</option>
-            <option value="willcall">Will Call</option>
-            <option value="confirm">Confirmed</option>
-            <option value="unconfirm">Unconfirmed</option>
-            <option value="block">Blocked</option>
-            <option value="cancelled">Cancelled</option>
-          </Form.Select>;
+        return null;
       case 'trip-search':
-        return <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, patient, phone, address..." style={{ width: 260 }} />;
+        return <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, rider, phone, address..." style={{ width: 220 }} />;
       case 'driver-assigned':
         return selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null;
       case 'action-buttons':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
                 <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-                <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
+                <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign second driver">A2</Button>
                 <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
                 <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
               </>}
@@ -1007,9 +888,9 @@ const TripDashboardWorkspace = () => {
       case 'leg-buttons':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">Leg</span>
-            <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="First leg to appointment">AL</Button>
+            <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="Primer viaje a la cita">AL</Button>
             <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
-            <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Third or connector leg">CL</Button>
+            <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Tercer viaje o connector leg">CL</Button>
           </div>;
       case 'type-buttons':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
@@ -1017,13 +898,12 @@ const TripDashboardWorkspace = () => {
             <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
             <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
             <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
-            <Button variant={serviceAnimalOnly ? 'dark' : 'outline-dark'} size="sm" style={serviceAnimalOnly ? undefined : greenToolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
           </div>;
       case 'closed-route':
         return <Button variant={isActiveRouteClosed ? 'danger' : 'outline-dark'} size="sm" style={isActiveRouteClosed ? {
           fontWeight: 700
         } : greenToolbarButtonStyle} onClick={handleToggleClosedRoute} title="Lock route by driver/day. New trips added later will show who added them.">
-            {isActiveRouteClosed ? 'Route closed' : 'Close route'}
+            {isActiveRouteClosed ? 'Closed Route' : 'Close Route'}
           </Button>;
       default:
         return null;
@@ -1035,51 +915,35 @@ const TripDashboardWorkspace = () => {
       case 'show-map':
         return !showMapPane ? <Button variant="warning" size="sm" onClick={() => {
           setShowMapPane(true);
-          setStatusMessage('Map visible again in Trip Dashboard.');
+          setStatusMessage('Mapa visible otra vez en Trip Dashboard.');
         }} style={{
           color: '#5b3b00',
           borderColor: 'rgba(161, 98, 7, 0.48)',
           background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
           fontWeight: 800
         }}>
-            Show map
+            Show Map
           </Button> : null;
       case 'peek-panel':
         return isStandardLayout && showMapPane ? <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
           setRightPanelCollapsed(true);
           setColumnSplit(94);
-          setStatusMessage('Right panel minimized into tab mode.');
+          setStatusMessage('Panel derecho minimizado en pestaña.');
         }}>
-            Peek panel
+            Peek Panel
           </Button> : null;
       case 'toolbar-edit':
         return <>
-            {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)}>Edit toolbar</Button>}
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout}>Reset toolbar</Button>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-            setShowToolbarTools(current => !current);
-            setShowColumnPicker(false);
-          }}>Toolbar</Button>
-            {showToolbarTools ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 82, width: 300 }}>
-                <CardBody className="p-3 text-dark">
-                  <div className="fw-semibold mb-2">Toolbar</div>
-                  <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
-                  <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
-                    {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-${blockId}`} type="switch" id={`toolbar-tools-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
-                  </div>
-                </CardBody>
-              </Card> : null}
+            {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save Toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)}>Edit Toolbar</Button>}
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout}>Reset Toolbar</Button>
           </>;
       case 'columns':
         return <>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-            setShowColumnPicker(current => !current);
-            setShowToolbarTools(false);
-          }}>Columns</Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)}>Columns</Button>
             {showColumnPicker ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 80, width: 240 }}>
                 <CardBody className="p-3 text-dark">
-                  <div className="fw-semibold mb-2">Choose what to show</div>
-                  <div className="small text-muted mb-3">These changes are saved for next time.</div>
+                  <div className="fw-semibold mb-2">Escoge que quieres ver</div>
+                  <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
                   <div className="d-flex flex-column gap-2">
                     {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dashboard-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
                   </div>
@@ -1087,12 +951,12 @@ const TripDashboardWorkspace = () => {
               </Card> : null}
           </>;
       case 'map-screen':
-        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map screen' : 'Show map here'}</Button>;
+        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map Screen' : 'Show Map Here'}</Button>;
       case 'layout':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">Layout</span>
             <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Normal</Button>
-            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)}>Focus right</Button>
+            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)}>Focus Right</Button>
             <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.stacked)}>Stacked</Button>
             {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
           </div>;
@@ -1106,11 +970,11 @@ const TripDashboardWorkspace = () => {
               <option value="hidden">Hide</option>
             </Form.Select>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setPanelOrder(current => current === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? TRIP_DASHBOARD_PANEL_ORDERS.routesFirst : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst)}>
-              Switch
+              Swap
             </Button>
           </div>;
       case 'trip-order':
-        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Original order' : 'By time'}</Button>;
+        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}</Button>;
       default:
         return null;
     }
@@ -1125,36 +989,36 @@ const TripDashboardWorkspace = () => {
           </Form.Select>;
       case 'secondary-driver':
         return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 220 }}>
-            <option value="">Secondary driver</option>
+            <option value="">Second driver</option>
             {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
           </Form.Select>;
       case 'zip-filter':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">ZIP</span>
-            <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} style={{ width: 110 }} title="Pickup ZIP">
+            <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} style={{ width: 110 }} title="ZIP de origen">
               <option value="">PU ZIP</option>
               {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
             </Form.Select>
             <span className="text-muted small">→</span>
-            <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} style={{ width: 110 }} title="Dropoff ZIP">
+            <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} style={{ width: 110 }} title="ZIP de destino">
               <option value="">DO ZIP</option>
               {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
             </Form.Select>
-            <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" style={{ width: 92 }} title="Extra filter by any ZIP" />
+            <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
           </div>;
       case 'route-filter':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <span className="fw-semibold small">Route</span>
-            <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} style={{ width: 140 }} title="Pickup city">
-              <option value="">Origin</option>
+            <span className="fw-semibold small">Ruta</span>
+            <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} style={{ width: 140 }} title="Ciudad de recogida">
+              <option value="">Origen</option>
               {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
             </Form.Select>
             <span className="text-muted small">→</span>
-            <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} style={{ width: 140 }} title="Dropoff city">
-              <option value="">Destination</option>
+            <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} style={{ width: 140 }} title="Ciudad de destino">
+              <option value="">Destino</option>
               {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
             </Form.Select>
-            {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} title="Clear city/ZIP filters" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
+            {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
           </div>;
       case 'theme-toggle':
         return <Button
@@ -1162,8 +1026,8 @@ const TripDashboardWorkspace = () => {
           size="sm"
           style={greenToolbarButtonStyle}
           onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')}
-          title={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}
-          aria-label={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}
+          title={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
+          aria-label={themeMode === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'}
         >
             <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
           </Button>;
@@ -1176,20 +1040,9 @@ const TripDashboardWorkspace = () => {
     }
   };
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
-    const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
-    const profilePhoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
-    const profileRiderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
-    const profileKey = profilePhoneKey ? `phone:${profilePhoneKey}` : profileRiderKey ? `rider:${profileRiderKey}` : '';
-    const exclusion = profileKey ? riderProfiles?.[profileKey]?.exclusion : null;
-    const exclusionMode = String(exclusion?.mode || '').trim().toLowerCase();
-    const exclusionStart = String(exclusion?.startDate || '').trim();
-    const exclusionEnd = String(exclusion?.endDate || '').trim();
-    const blockingState = tripBlockingMap.get(trip.id);
-    const hasActiveBlacklistBlock = blockingState?.source === 'blacklist';
-    const isAutoCancelledByExclusion = !hasActiveBlacklistBlock && Boolean(tripDateKey) && (exclusionMode === 'always' || exclusionMode === 'single-day' && tripDateKey === exclusionStart || exclusionMode === 'range' && exclusionStart && exclusionEnd && tripDateKey >= exclusionStart && tripDateKey <= exclusionEnd);
-    const normalizedStatus = isAutoCancelledByExclusion ? 'cancelled' : String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
-    const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
-    if (tripStatusFilter === 'all') return !['cancelled', 'canceled'].includes(normalizedStatus);
+    const normalizedStatus = String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
+    const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
+    if (tripStatusFilter === 'all') return true;
     if (tripStatusFilter === 'unassigned') return !trip.driverId && !trip.secondaryDriverId && !['cancelled', 'canceled'].includes(normalizedStatus);
     if (tripStatusFilter === 'willcall') return normalizedStatus === 'willcall';
     if (tripStatusFilter === 'block') return confirmationStatus === 'Opted Out';
@@ -1197,7 +1050,11 @@ const TripDashboardWorkspace = () => {
     if (tripStatusFilter === 'unconfirm') return confirmationStatus === 'Not Sent' || String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase() === 'U';
     return normalizedStatus === tripStatusFilter;
   }).filter(trip => {
-    if (tripDateFilter === 'all') return true;
+    if (tripDateFilter === 'all') {
+      // With no date selected, only blocked patients should be visible.
+      if (tripStatusFilter === 'block') return true;
+      return false;
+    }
     return getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
@@ -1205,9 +1062,6 @@ const TripDashboardWorkspace = () => {
   }).filter(trip => {
     if (tripTypeFilter === 'all') return true;
     return getTripTypeLabel(trip) === tripTypeFilter;
-  }).filter(trip => {
-    if (!serviceAnimalOnly) return true;
-    return Boolean(trip?.hasServiceAnimal);
   }).filter(trip => {
     const searchValue = tripIdSearch.trim().toLowerCase();
     if (!searchValue) return true;
@@ -1226,7 +1080,7 @@ const TripDashboardWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, serviceAnimalOnly, todayDateKey, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -1290,13 +1144,12 @@ const TripDashboardWorkspace = () => {
       return cityMatches && zipMatches;
     });
   }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
-  const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
-  const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
+  const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIds.includes(trip.id)), [selectedTripIds, trips]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
-    const selectedVisibleTrips = sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))));
+    const selectedVisibleTrips = sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIds.includes(trip.id)));
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
     return sortTripsByPickupTime(filteredTrips).slice(0, 200);
-  }, [filteredTrips, selectedTripIdSet]);
+  }, [filteredTrips, selectedTripIds]);
   const aiPlannerCityOptions = useMemo(() => {
     const citySet = new Set();
     aiPlannerBaseScopeTrips.forEach(trip => {
@@ -1335,14 +1188,14 @@ const TripDashboardWorkspace = () => {
   }), [aiPlannerBaseScopeTrips, aiPlannerCityFilter, aiPlannerLegFilter, aiPlannerRoutePairMode, aiPlannerRoutePairSet, aiPlannerTypeFilter]);
   const aiPlannerAnchorTrip = useMemo(() => aiPlanningScopeTrips.find(trip => trip.id === aiPlannerAnchorTripId) ?? null, [aiPlanningScopeTrips, aiPlannerAnchorTripId]);
   const aiPlannerZipOptions = useMemo(() => Array.from(new Set(aiPlanningScopeTrips.flatMap(trip => [getPickupZip(trip), getDropoffZip(trip)]).filter(Boolean))).sort((left, right) => left.localeCompare(right)), [aiPlanningScopeTrips]);
-  const visibleTripIds = filteredTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean);
+  const visibleTripIds = filteredTrips.map(trip => trip.id);
   const filteredDrivers = useMemo(() => {
     const term = driverSearch.trim().toLowerCase();
     if (!term) return drivers;
     return drivers.filter(driver => [driver?.name, driver?.code, driver?.vehicle, driver?.attendant, driver?.live].some(value => String(value || '').toLowerCase().includes(term)));
   }, [driverSearch, drivers]);
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
-  const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIdSet]);
+  const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIds.includes(trip.id) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIds]);
   const selectedDriverWorkingTrips = useMemo(() => {
     if (!selectedDriver) return [];
     const relevantTrips = filteredTrips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id) || selectedDriverCandidateTripIds.has(trip.id));
@@ -1504,24 +1357,9 @@ const TripDashboardWorkspace = () => {
   };
 
   const getTripAddedByLabel = trip => {
+    if (!activeClosedRouteState) return '';
     const tripId = normalizeTripId(trip?.id);
     if (!tripId) return '';
-    const formatActorValue = (name, initials) => {
-      const normalizedName = String(name || '').trim();
-      const normalizedInitials = String(initials || '').trim().toUpperCase();
-      if (normalizedName && normalizedInitials && normalizedName.toUpperCase() !== normalizedInitials) {
-        return `${normalizedName} (${normalizedInitials})`;
-      }
-      return normalizedName || normalizedInitials;
-    };
-
-    const persistedCloneActor = formatActorValue(trip?.clonedBy, trip?.clonedByInitials);
-    if (persistedCloneActor) return `Cloned by ${persistedCloneActor}`;
-
-    const persistedCreateActor = formatActorValue(trip?.createdBy || trip?.addedBy, trip?.createdByInitials || trip?.addedByInitials);
-    if (persistedCreateActor) return `Created by ${persistedCreateActor}`;
-
-    if (!activeClosedRouteState) return '';
     const addedByTripId = activeClosedRouteState.addedByTripId && typeof activeClosedRouteState.addedByTripId === 'object' ? activeClosedRouteState.addedByTripId : {};
     const entry = addedByTripId[tripId];
     if (!entry) return '';
@@ -1535,7 +1373,7 @@ const TripDashboardWorkspace = () => {
       selectedTripIds,
       selectedDriverId,
       selectedRouteId,
-      activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
+      activeDateTripIds: Array.from(activeDateTripIdSet),
       routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
       capturedAt: Date.now()
     }));
@@ -1612,17 +1450,17 @@ const TripDashboardWorkspace = () => {
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
 
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
-  const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
-  const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
+  const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIds.includes(trip.id)) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
+  const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIds.includes(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
-    const preferredTrip = trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id));
+    const preferredTrip = trips.find(trip => selectedTripIds.includes(trip.id) && isTripAssignedToDriver(trip, selectedDriver.id));
     if (preferredTrip) return preferredTrip;
     const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id));
     if (routeTrip) return routeTrip;
     return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
-  }, [routeTrips, selectedDriver, selectedTripIdSet, trips]);
+  }, [routeTrips, selectedDriver, selectedTripIds, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
     const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip));
@@ -1671,9 +1509,9 @@ const TripDashboardWorkspace = () => {
   const routeTitle = useMemo(() => {
     if (selectedRoute?.name) return selectedRoute.name;
     if (routeName.trim()) return routeName.trim();
-    if (selectedDriver) return `${selectedDriver.name} Route`;
-    if (routeTrips.length > 0) return 'Current route';
-    return 'Unnamed route';
+    if (selectedDriver) return `Ruta de ${selectedDriver.name}`;
+    if (routeTrips.length > 0) return 'Ruta actual';
+    return 'Ruta sin nombre';
   }, [routeName, routeTrips.length, selectedDriver, selectedRoute]);
   const noteModalTrip = useMemo(() => noteModalTripId ? trips.find(trip => trip.id === noteModalTripId) ?? null : null, [noteModalTripId, trips]);
 
@@ -1763,21 +1601,8 @@ const TripDashboardWorkspace = () => {
       lateMinutes: tripEditDraft.delay,
       onTimeStatus: tripEditDraft.onTimeStatus
     });
-    setStatusMessage(`Punctuality and note saved for ${getDisplayTripId(noteModalTrip)}.`);
+    setStatusMessage(`Puntualidad y nota guardadas para ${getDisplayTripId(noteModalTrip)}.`);
     handleCloseTripNote();
-  };
-
-  const handleCloneTrip = trip => {
-    if (!trip) return;
-    const clonedTripId = cloneTripRecord(trip.id);
-    if (!clonedTripId) {
-      setStatusMessage(`Unable to clone ${getDisplayTripId(trip)}.`);
-      return;
-    }
-    setSelectedTripIds([clonedTripId]);
-    setSelectedDriverId(null);
-    setSelectedRouteId(null);
-    setStatusMessage(`Trip ${getDisplayTripId(trip)} cloned as ${clonedTripId}.`);
   };
 
   const isInlineTripCellEditing = (tripId, columnKey) => inlineTripEditCell?.tripId === tripId && inlineTripEditCell?.columnKey === columnKey;
@@ -1818,7 +1643,7 @@ const TripDashboardWorkspace = () => {
     }
 
     updateTripRecord(trip.id, updates);
-    setStatusMessage(`${getDisplayTripId(trip)} updated in ${inlineTripEditCell.columnKey}.`);
+    setStatusMessage(`${getDisplayTripId(trip)} actualizado en ${inlineTripEditCell.columnKey}.`);
     handleCancelInlineTripEdit();
   };
 
@@ -1830,7 +1655,7 @@ const TripDashboardWorkspace = () => {
         cursor: 'text'
       }}
       onDoubleClick={() => handleStartInlineTripEdit(trip, columnKey)}
-      title="Double-click to edit"
+      title="Doble clic para editar"
     >
       {isEditing ? <Form.Control
         size="sm"
@@ -1959,11 +1784,11 @@ const TripDashboardWorkspace = () => {
   const handleToggleTripColumn = columnKey => {
     const nextColumns = visibleTripColumns.includes(columnKey) ? visibleTripColumns.filter(item => item !== columnKey) : [...visibleTripColumns, columnKey];
     if (nextColumns.length === 0) {
-      setStatusMessage('At least one column must remain visible.');
+      setStatusMessage('Debe quedar al menos una columna visible.');
       return;
     }
     setDispatcherVisibleTripColumns(nextColumns);
-    setStatusMessage('Column view updated.');
+    setStatusMessage('Vista de columnas actualizada.');
   };
 
   const handleTripSelectionToggle = tripId => {
@@ -1972,24 +1797,24 @@ const TripDashboardWorkspace = () => {
 
   const handleAssignTrip = tripId => {
     if (!selectedDriverId) {
-      setStatusMessage('Select a driver first to assign this trip.');
+      setStatusMessage('Primero escoge un chofer para asignar este trip.');
       return;
     }
     assignTripsToDriver(selectedDriverId, [tripId]);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setSelectedTripIds([tripId]);
-    setStatusMessage(`Trip ${tripId} assigned.`);
+    setStatusMessage(`Trip ${tripId} asignado.`);
   };
 
   const handleUnassignTrip = tripId => {
     unassignTrips([tripId]);
     setSelectedTripIds(currentIds => currentIds.filter(id => id !== tripId));
-    setStatusMessage(`Trip ${tripId} unassigned.`);
+    setStatusMessage(`Trip ${tripId} desasignado.`);
   };
 
   const handleCancelTrip = tripId => {
     cancelTrips([tripId]);
-    setStatusMessage(`Trip ${tripId} cancelled.`);
+    setStatusMessage(`Trip ${tripId} cancelado.`);
   };
 
   const handleCancelSelectedTrips = () => {
@@ -1998,21 +1823,21 @@ const TripDashboardWorkspace = () => {
       return;
     }
     cancelTrips(selectedTripIds);
-    setStatusMessage(`${selectedTripIds.length} trip(s) cancelled.`);
+    setStatusMessage(`${selectedTripIds.length} trip(s) cancelados.`);
   };
 
   const handleReinstateTrip = tripId => {
     reinstateTrips([tripId]);
-    setStatusMessage(`Trip ${tripId} reinstated.`);
+    setStatusMessage(`Trip ${tripId} incorporado otra vez.`);
   };
 
   const handleReinstateSelectedTrips = () => {
     if (selectedTripIds.length === 0) {
-      setStatusMessage('Select at least one trip to reinstate.');
+      setStatusMessage('Select at least one trip to incorporate.');
       return;
     }
     reinstateTrips(selectedTripIds);
-    setStatusMessage(`${selectedTripIds.length} trip(s) reinstated.`);
+    setStatusMessage(`${selectedTripIds.length} trip(s) incorporados otra vez.`);
   };
 
   const handleTripSortChange = columnKey => {
@@ -2029,7 +1854,7 @@ const TripDashboardWorkspace = () => {
   const handleTripOrderModeToggle = () => {
     setTripOrderMode(currentMode => {
       const nextMode = currentMode === 'time' ? 'original' : 'time';
-      setStatusMessage(nextMode === 'time' ? 'Trips sorted by time.' : 'Trips in original order.');
+      setStatusMessage(nextMode === 'time' ? 'Trips ordenados por hora.' : 'Trips en el orden original.');
       return nextMode;
     });
   };
@@ -2064,23 +1889,9 @@ const TripDashboardWorkspace = () => {
     document.body.style.cursor = 'col-resize';
   };
 
-  const tripHeaderCellStyle = {
-    paddingTop: '0.4rem',
-    paddingBottom: '0.4rem',
-    lineHeight: 1,
-    fontSize: '0.82rem'
-  };
-
   const renderTripHeader = (columnKey, label, width) => {
     const resolvedWidth = columnWidths[columnKey] ?? width;
-    return <th style={resolvedWidth ? {
-      ...tripHeaderCellStyle,
-      width: resolvedWidth,
-      minWidth: resolvedWidth,
-      maxWidth: resolvedWidth,
-      position: 'relative'
-    } : {
-      ...tripHeaderCellStyle,
+    return <th style={resolvedWidth ? { width: resolvedWidth, minWidth: resolvedWidth, maxWidth: resolvedWidth, position: 'relative' } : {
       position: 'relative'
     }}>
       <button type="button" onClick={() => handleTripSortChange(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
@@ -2104,39 +1915,39 @@ const TripDashboardWorkspace = () => {
     setSelectedRouteId('');
 
     if (!nextDriverId) {
-      setStatusMessage('Showing all trips again.');
+      setStatusMessage('Mostrando todos los trips otra vez.');
       return;
     }
 
     const driver = drivers.find(item => item.id === nextDriverId);
     if (!driver) {
-      setStatusMessage('Driver not found.');
+      setStatusMessage('Chofer no encontrado.');
       return;
     }
 
     const assignedCount = trips.filter(trip => trip.driverId === nextDriverId || trip.secondaryDriverId === nextDriverId).length;
     const openCount = trips.filter(trip => !trip.driverId && !trip.secondaryDriverId).length;
-    setStatusMessage(`Viewing ${driver.name}: ${assignedCount} assigned and ${openCount} pending.`);
+    setStatusMessage(`Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.`);
   };
 
   const handleSelectAll = checked => {
     if (checked) {
-      setSelectedTripIds(currentIds => Array.from(new Set([...currentIds.map(normalizeTripId).filter(Boolean), ...visibleTripIds])));
-      setStatusMessage('Visible trips selected.');
+      setSelectedTripIds(Array.from(new Set([...selectedTripIds, ...visibleTripIds])));
+      setStatusMessage('Trips visibles seleccionados.');
       return;
     }
 
-    setSelectedTripIds(currentIds => currentIds.map(normalizeTripId).filter(id => id && !visibleTripIds.includes(id)));
-    setStatusMessage('Visible trips deselected.');
+    setSelectedTripIds(selectedTripIds.filter(id => !visibleTripIds.includes(id)));
+    setStatusMessage('Trips visibles deseleccionados.');
   };
 
   const handleCreateRoute = () => {
     if (!routeName.trim()) {
-      setStatusMessage('Enter a name for the route.');
+      setStatusMessage('Escribe un nombre para la ruta.');
       return;
     }
     if (!selectedDriverId) {
-      setStatusMessage('Select a driver for the route.');
+      setStatusMessage('Selecciona un chofer para la ruta.');
       return;
     }
     if (selectedTripIds.length === 0) {
@@ -2151,7 +1962,7 @@ const TripDashboardWorkspace = () => {
       notes: routeNotes.trim(),
       serviceDate: tripDateFilter
     });
-    setStatusMessage('Route created and synced with dispatcher.');
+    setStatusMessage('Ruta creada y sincronizada con dispatcher.');
     showNotification({
       message: 'Route created and synced with dispatcher.',
       variant: 'success'
@@ -2162,23 +1973,23 @@ const TripDashboardWorkspace = () => {
 
   const handlePreviewAiSmartRoute = async providerMode => {
     if (!selectedDriverId) {
-      setStatusMessage('Select a driver first.');
+      setStatusMessage('Selecciona una chofera o chofer primero.');
       return;
     }
     if (tripDateFilter === 'all') {
-      setStatusMessage('Select a specific work day first.');
+      setStatusMessage('Escoge un dia de trabajo especifico primero.');
       return;
     }
     if (!aiPlannerAnchorTripId) {
-      setStatusMessage('Select the anchor trip for the smart route.');
+      setStatusMessage('Escoge el viaje inicial para la ruta inteligente.');
       return;
     }
     if (!aiPlannerCutoffTime) {
-      setStatusMessage('Select the route cutoff time.');
+      setStatusMessage('Escoge la hora limite para cerrar la ruta.');
       return;
     }
     if (aiPlanningScopeTrips.length === 0) {
-      setStatusMessage('No trips are available in the pool with current filters.');
+      setStatusMessage('No hay viajes en el pool con los filtros actuales.');
       return;
     }
 
@@ -2210,20 +2021,20 @@ const TripDashboardWorkspace = () => {
         })
       });
       const payload = await readJsonResponse(response);
-      if (!response.ok) throw new Error(payload?.error || 'Could not build route preview.');
+      if (!response.ok) throw new Error(payload?.error || 'No se pudo crear el preview de la ruta.');
       setAiPlannerPreview(payload?.action || null);
       const previewTripIds = Array.isArray(payload?.action?.plan?.routes?.[0]?.tripIds) ? payload.action.plan.routes[0].tripIds : [];
       if (previewTripIds.length > 0) {
         setSelectedTripIds(previewTripIds);
         setShowRoute(true);
       }
-      setStatusMessage(String(payload?.reply || 'Smart route preview ready.'));
+      setStatusMessage(String(payload?.reply || 'Preview de ruta inteligente listo.'));
       showNotification({
-        message: String(payload?.reply || 'Smart route preview ready.'),
+        message: String(payload?.reply || 'Preview de ruta inteligente listo.'),
         variant: 'success'
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not build route preview.';
+      const message = error instanceof Error ? error.message : 'No se pudo crear el preview de la ruta.';
       setStatusMessage(message);
       showNotification({ message, variant: 'error' });
     } finally {
@@ -2235,12 +2046,12 @@ const TripDashboardWorkspace = () => {
     const pickupCity = aiPlannerRoutePairPickupCity.trim();
     const dropoffCity = aiPlannerRoutePairDropoffCity.trim();
     if (!pickupCity || !dropoffCity) {
-      setStatusMessage('Select an origin city and a destination city to add a route pair.');
+      setStatusMessage('Escoge ciudad de origen y ciudad de destino para agregar la ruta.');
       return;
     }
     const pairKey = buildAiPlannerRoutePairKey(pickupCity, dropoffCity);
     setAiPlannerRoutePairs(currentPairs => currentPairs.includes(pairKey) ? currentPairs : [...currentPairs, pairKey]);
-    setStatusMessage(`Route ${pickupCity} -> ${dropoffCity} added to planner.`);
+    setStatusMessage(`Ruta ${pickupCity} -> ${dropoffCity} agregada al planner.`);
   };
 
   const handleRemoveAiPlannerRoutePair = pairKey => {
@@ -2249,12 +2060,12 @@ const TripDashboardWorkspace = () => {
 
   const handleClearAiPlannerRoutePairs = () => {
     setAiPlannerRoutePairs([]);
-    setStatusMessage('Planner city pairs cleared.');
+    setStatusMessage('Se limpiaron los pares de ciudad del planner.');
   };
 
   const handleApplyAiSmartRoute = async () => {
     if (!aiPlannerPreview?.plan) {
-      setStatusMessage('Create a smart route preview first.');
+      setStatusMessage('Primero crea un preview de la ruta inteligente.');
       return;
     }
 
@@ -2276,7 +2087,7 @@ const TripDashboardWorkspace = () => {
         })
       });
       const payload = await readJsonResponse(response);
-      if (!response.ok) throw new Error(payload?.error || 'Could not apply smart route.');
+      if (!response.ok) throw new Error(payload?.error || 'No se pudo aplicar la ruta inteligente.');
 
       const appliedTripIds = Array.isArray(payload?.action?.plan?.routes?.[0]?.tripIds) ? payload.action.plan.routes[0].tripIds : [];
       await refreshDispatchState({ forceServer: true });
@@ -2285,13 +2096,13 @@ const TripDashboardWorkspace = () => {
       if (payload?.action?.focusDriverId) setSelectedDriverId(String(payload.action.focusDriverId));
       if (appliedTripIds.length > 0) setSelectedTripIds(appliedTripIds);
       window.dispatchEvent(new CustomEvent('nemt-assistant-action', { detail: payload.action }));
-      setStatusMessage(String(payload?.reply || 'Smart route applied.'));
+      setStatusMessage(String(payload?.reply || 'Ruta inteligente aplicada.'));
       showNotification({
-        message: String(payload?.reply || 'Smart route applied.'),
+        message: String(payload?.reply || 'Ruta inteligente aplicada.'),
         variant: 'success'
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not apply smart route.';
+      const message = error instanceof Error ? error.message : 'No se pudo aplicar la ruta inteligente.';
       setStatusMessage(message);
       showNotification({ message, variant: 'error' });
     } finally {
@@ -2301,31 +2112,31 @@ const TripDashboardWorkspace = () => {
 
   const handleClearAiPlannerPreview = () => {
     setAiPlannerPreview(null);
-    setStatusMessage('Smart route preview cleared.');
+    setStatusMessage('Preview de ruta inteligente limpiado.');
   };
 
   const handleAssign = driverId => {
     const targetTripIds = [...selectedTripIds];
     if (!driverId || targetTripIds.length === 0) {
-      setStatusMessage('Select a driver and at least one trip.');
+      setStatusMessage('Selecciona chofer y al menos un trip.');
       return;
     }
 
     assignTripsToDriver(driverId, targetTripIds);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
-    setStatusMessage('Trips assigned to selected driver.');
+    setStatusMessage('Trips asignados al chofer seleccionado.');
   };
 
   const handleAssignSecondary = driverId => {
     const targetTripIds = [...selectedTripIds];
     if (!driverId || targetTripIds.length === 0) {
-      setStatusMessage('Select a secondary driver and at least one trip.');
+      setStatusMessage('Escoge segundo chofer y al menos un trip.');
       return;
     }
 
     assignTripsToSecondaryDriver(driverId, targetTripIds);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
-    setStatusMessage('Trips updated with secondary driver.');
+    setStatusMessage('Trips actualizados con segundo chofer.');
   };
 
   const handleUnassign = () => {
@@ -2336,7 +2147,7 @@ const TripDashboardWorkspace = () => {
     }
 
     unassignTrips(targetTripIds);
-    setStatusMessage('Trips unassigned.');
+    setStatusMessage('Trips desasignados.');
   };
 
   const handleLoadRoute = routeId => {
@@ -2345,18 +2156,18 @@ const TripDashboardWorkspace = () => {
     setSelectedRouteId(routeId);
     setSelectedDriverId(route.driverId);
     setSelectedTripIds(route.tripIds);
-    setStatusMessage(`Route ${route.name} loaded.`);
+    setStatusMessage(`Ruta ${route.name} cargada.`);
   };
 
   const handlePrintRoute = () => {
     if (routeTrips.length === 0) {
-      setStatusMessage('No route available to print yet.');
+      setStatusMessage('No hay ruta para imprimir todavia.');
       return;
     }
 
     const printWindow = window.open('', '_blank', 'width=980,height=720');
     if (!printWindow) {
-      setStatusMessage('Could not open print window.');
+      setStatusMessage('No se pudo abrir la ventana de impresion.');
       return;
     }
 
@@ -2372,7 +2183,7 @@ const TripDashboardWorkspace = () => {
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();
-    setStatusMessage(`Printing ${routeTitle.toLowerCase()}.`);
+    setStatusMessage(`Imprimiendo ${routeTitle.toLowerCase()}.`);
   };
 
   const handleShareRouteWhatsapp = () => {
@@ -2384,11 +2195,11 @@ const TripDashboardWorkspace = () => {
     });
 
     if (!targetDriver) {
-      setStatusMessage('Select a driver before sending via WhatsApp.');
+      setStatusMessage('Selecciona un chofer antes de enviar por WhatsApp.');
       return;
     }
     if (routeTrips.length === 0) {
-      setStatusMessage('No route available to send via WhatsApp yet.');
+      setStatusMessage('No hay ruta para enviar por WhatsApp todavia.');
       return;
     }
 
@@ -2403,7 +2214,7 @@ const TripDashboardWorkspace = () => {
 
     if (!whatsappResult.ok) {
       if (whatsappResult.reason === 'missing-phone') {
-        setStatusMessage(`Driver ${targetDriver.name} does not have a valid WhatsApp number.`);
+        setStatusMessage(`El chofer ${targetDriver.name} no tiene un numero valido para WhatsApp.`);
         return;
       }
 
@@ -2412,11 +2223,11 @@ const TripDashboardWorkspace = () => {
         return;
       }
 
-      setStatusMessage('Could not open WhatsApp.');
+      setStatusMessage('No se pudo abrir WhatsApp.');
       return;
     }
 
-    setStatusMessage(`Opening WhatsApp in a new tab for ${targetDriver.name}.`);
+    setStatusMessage(`Abriendo WhatsApp en una nueva pestaña para ${targetDriver.name}.`);
   };
 
   useEffect(() => {
@@ -2492,7 +2303,7 @@ const TripDashboardWorkspace = () => {
   }, [dragMode]);
 
   useEffect(() => {
-    const storedLayout = userPreferences?.tripDashboard?.layoutMode || window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
+    const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
     if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
       setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
       setShowMapPane(true);
@@ -2510,58 +2321,31 @@ const TripDashboardWorkspace = () => {
     setShowMapPane(true);
     setRightPanelCollapsed(true);
     setColumnSplit(94);
-  }, [userPreferences?.tripDashboard?.layoutMode]);
+  }, []);
 
   useEffect(() => {
-    const storedPanelView = userPreferences?.tripDashboard?.panelView || window.localStorage.getItem(TRIP_DASHBOARD_PANEL_VIEW_KEY);
+    const storedPanelView = window.localStorage.getItem(TRIP_DASHBOARD_PANEL_VIEW_KEY);
     if (storedPanelView && Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(storedPanelView)) {
       setPanelView(storedPanelView);
     }
 
-    const storedPanelOrder = userPreferences?.tripDashboard?.panelOrder || window.localStorage.getItem(TRIP_DASHBOARD_PANEL_ORDER_KEY);
+    const storedPanelOrder = window.localStorage.getItem(TRIP_DASHBOARD_PANEL_ORDER_KEY);
     if (storedPanelOrder && Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(storedPanelOrder)) {
       setPanelOrder(storedPanelOrder);
     }
-  }, [userPreferences?.tripDashboard?.panelOrder, userPreferences?.tripDashboard?.panelView]);
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem(TRIP_DASHBOARD_LAYOUT_KEY, layoutMode);
-    if (!userPreferencesLoading) {
-      void saveUserPreferences({
-        ...userPreferences,
-        tripDashboard: {
-          ...userPreferences?.tripDashboard,
-          layoutMode
-        }
-      });
-    }
-  }, [layoutMode, saveUserPreferences, userPreferences, userPreferencesLoading]);
+  }, [layoutMode]);
 
   useEffect(() => {
     window.localStorage.setItem(TRIP_DASHBOARD_PANEL_VIEW_KEY, panelView);
-    if (!userPreferencesLoading) {
-      void saveUserPreferences({
-        ...userPreferences,
-        tripDashboard: {
-          ...userPreferences?.tripDashboard,
-          panelView
-        }
-      });
-    }
-  }, [panelView, saveUserPreferences, userPreferences, userPreferencesLoading]);
+  }, [panelView]);
 
   useEffect(() => {
     window.localStorage.setItem(TRIP_DASHBOARD_PANEL_ORDER_KEY, panelOrder);
-    if (!userPreferencesLoading) {
-      void saveUserPreferences({
-        ...userPreferences,
-        tripDashboard: {
-          ...userPreferences?.tripDashboard,
-          panelOrder
-        }
-      });
-    }
-  }, [panelOrder, saveUserPreferences, userPreferences, userPreferencesLoading]);
+  }, [panelOrder]);
 
   useEffect(() => {
     const updateTripTableScrollWidth = () => {
@@ -2641,7 +2425,7 @@ const TripDashboardWorkspace = () => {
       selectedTripIds,
       selectedDriverId,
       selectedRouteId,
-      activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
+      activeDateTripIds: Array.from(activeDateTripIdSet),
       routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
       capturedAt: Date.now()
     }));
@@ -2650,13 +2434,13 @@ const TripDashboardWorkspace = () => {
       popup.focus();
       setShowInlineMap(false);
       applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
-      setStatusMessage('Map opened on another screen.');
+      setStatusMessage('Mapa abierto en otra pantalla.');
       return;
     }
     window.open(mapUrl, '_blank', 'noopener,noreferrer');
     setShowInlineMap(false);
     applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
-    setStatusMessage('Map opened in another tab.');
+    setStatusMessage('Mapa abierto en otra pestana.');
   };
 
   const applyLayoutMode = nextLayoutMode => {
@@ -2668,7 +2452,7 @@ const TripDashboardWorkspace = () => {
       setRightPanelCollapsed(true);
       setColumnSplit(94);
       setRowSplit(68);
-      setStatusMessage('Normal layout restored with right panel in tab mode.');
+      setStatusMessage('Layout normal restaurado con panel derecho en pestaña.');
       return;
     }
 
@@ -2678,19 +2462,19 @@ const TripDashboardWorkspace = () => {
 
     if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight) {
       setColumnSplit(current => clamp(current, 28, 40));
-      setStatusMessage('Focus Right layout enabled in Trip Dashboard.');
+      setStatusMessage('Layout Focus Right activado en Trip Dashboard.');
       return;
     }
 
     setRowSplit(current => clamp(current, 48, 74));
-    setStatusMessage('Stacked layout enabled in Trip Dashboard.');
+    setStatusMessage('Layout apilado activado en Trip Dashboard.');
   };
 
   const handlePanelViewChange = nextView => {
     if (nextView === 'hidden') {
       setShowBottomPanels(false);
       setRightPanelCollapsed(true);
-      setStatusMessage('Bottom panels hidden.');
+      setStatusMessage('Paneles inferiores ocultos.');
       return;
     }
     setShowBottomPanels(true);
@@ -2699,7 +2483,7 @@ const TripDashboardWorkspace = () => {
       setRightPanelCollapsed(false);
       setColumnSplit(current => clamp(current, 38, 68));
     }
-    setStatusMessage(`Bottom panels mode: ${nextView}.`);
+    setStatusMessage(`Paneles inferiores en modo ${nextView}.`);
   };
 
   const driverPanelCard = <Card className="h-100 overflow-hidden">
@@ -2714,7 +2498,7 @@ const TripDashboardWorkspace = () => {
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
             refreshDrivers();
             router.push('/drivers');
-            setStatusMessage('Opening Drivers to manage the live roster.');
+            setStatusMessage('Abriendo Drivers para administrar el roster real.');
           }}>Manage Drivers</Button>
           </div>
         </div>
@@ -2759,7 +2543,7 @@ const TripDashboardWorkspace = () => {
                   <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.live}</td>
                 </tr>) : <tr>
-                  <td colSpan={9} className="text-center text-muted py-4">No drivers or vehicles loaded.</td>
+                  <td colSpan={9} className="text-center text-muted py-4">No hay choferes ni vehiculos cargados.</td>
                 </tr>}
             </tbody>
           </Table>
@@ -2789,10 +2573,10 @@ const TripDashboardWorkspace = () => {
               </tr>
             </thead>
             <tbody>
-              {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
+              {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIds.includes(trip.id) ? 'table-success' : ''}>
                   <td>
                     <div className="d-flex align-items-center gap-1">
-                      <Form.Check checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => toggleTripSelection(trip.id)} />
+                      <Form.Check checked={selectedTripIds.includes(trip.id)} onChange={() => toggleTripSelection(trip.id)} />
                       <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
                     </div>
                   </td>
@@ -2803,7 +2587,7 @@ const TripDashboardWorkspace = () => {
                   <td>{trip.rider}</td>
                   <td>{trip.patientPhoneNumber || '-'}</td>
                 </tr>) : <tr>
-                  <td colSpan={7} className="text-center text-muted py-4">Select a route, a driver, or trips to view the route menu.</td>
+                  <td colSpan={7} className="text-center text-muted py-4">Selecciona una ruta, un chofer o trips para ver el menu de ruta.</td>
                 </tr>}
             </tbody>
           </Table>
@@ -2835,11 +2619,12 @@ const TripDashboardWorkspace = () => {
               {showInlineMap ? <div className="position-relative h-100">
                 <Button variant="warning" type="button" onClick={() => {
                 setShowMapPane(false);
-                setStatusMessage('Map hidden in Trip Dashboard.');
+                setStatusMessage('Mapa escondido en Trip Dashboard.');
               }} style={yellowMapTabStyle}>
                   Hide Map
                 </Button>
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
+                  <Button variant="dark" size="sm" onClick={() => setShowRoute(current => !current)}>Route</Button>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
                   <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
                     <option value="">City</option>
@@ -2849,16 +2634,18 @@ const TripDashboardWorkspace = () => {
                     <option value="">ZIP Code</option>
                     {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
                   </Form.Select>
+                  <Button variant="dark" size="sm" onClick={() => setShowInfo(current => !current)}>{showInfo ? 'Hide Info' : 'Show Info'}</Button>
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
+                  <Button variant="dark" size="sm" onClick={() => router.push('/drivers/grouping')}>Grouping</Button>
                   <Button variant="dark" size="sm" onClick={() => {
                   if (showBottomPanels) {
                     setShowBottomPanels(false);
                     setRightPanelCollapsed(true);
-                    setStatusMessage('Bottom panels hidden.');
+                    setStatusMessage('Paneles inferiores ocultos.');
                     return;
                   }
 
@@ -2868,8 +2655,9 @@ const TripDashboardWorkspace = () => {
                     setRightPanelCollapsed(false);
                     setColumnSplit(current => clamp(current, 38, 68));
                   }
-                  setStatusMessage('Bottom panels visible.');
+                  setStatusMessage('Paneles inferiores visibles.');
                 }}>{showBottomPanels ? 'Hide Panel' : 'Panel'}</Button>
+                  <Button variant="dark" size="sm" onClick={() => setMapLocked(current => !current)}>{mapLocked ? 'Unlock' : 'Lock'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button>
                 </div>
                 {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
@@ -2922,8 +2710,8 @@ const TripDashboardWorkspace = () => {
                     </Marker>)}
                 </MapContainer>
               </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
-                  <div className="fw-semibold fs-5">Map moved to another screen</div>
-                  <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Open the map on the other screen and keep route, trip, and driver management here.</div>
+                  <div className="fw-semibold fs-5">Mapa movido a otra pantalla</div>
+                  <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Abre el mapa solo en la otra pantalla y deja aqui el manejo de rutas, viajes y choferes.</div>
                   <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
                     <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
                     <Button variant="outline-light" size="sm" onClick={handleOpenMapWindow}>Open Map Window Again</Button>
@@ -2969,23 +2757,6 @@ const TripDashboardWorkspace = () => {
             </Card> : <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
-                {shouldShowPinnedToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap">
-                    {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
-                    <Button variant="dark" size="sm" onClick={handleResetToolbarLayout}>Restore toolbar</Button>
-                    <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-                  setShowToolbarTools(current => !current);
-                  setShowColumnPicker(false);
-                }}>Toolbar</Button>
-                    {showToolbarTools ? <Card className="shadow position-absolute end-0 mt-5" style={{ zIndex: 82, width: 300 }}>
-                        <CardBody className="p-3 text-dark">
-                          <div className="fw-semibold mb-2">Toolbar</div>
-                          <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
-                          <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
-                            {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-fallback-${blockId}`} type="switch" id={`toolbar-tools-fallback-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
-                          </div>
-                        </CardBody>
-                      </Card> : null}
-                  </div> : null}
                 {/* Row 1: Date selection and trip filters */}
                 <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
@@ -3022,7 +2793,7 @@ const TripDashboardWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {(isToolbarEditMode || isToolbarBlockEnabled(blockId)) && (renderToolbarRow1Block(blockId) || isToolbarEditMode ? renderToolbarRow1Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null)}
+                      {renderToolbarRow1Block(blockId) || isToolbarEditMode ? renderToolbarRow1Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
                 </div>
                 
@@ -3062,7 +2833,7 @@ const TripDashboardWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {(isToolbarEditMode || isToolbarBlockEnabled(blockId)) && (renderToolbarRow2Block(blockId) || isToolbarEditMode ? renderToolbarRow2Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null)}
+                      {renderToolbarRow2Block(blockId) || isToolbarEditMode ? renderToolbarRow2Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
                 </div>
                 
@@ -3102,7 +2873,7 @@ const TripDashboardWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {(isToolbarEditMode || isToolbarBlockEnabled(blockId)) && (renderToolbarRow3Block(blockId) || isToolbarEditMode ? renderToolbarRow3Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null)}
+                      {renderToolbarRow3Block(blockId) || isToolbarEditMode ? renderToolbarRow3Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
                 </div>
               </div>
@@ -3128,59 +2899,59 @@ const TripDashboardWorkspace = () => {
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                     <div>
                       <div className="fw-semibold">AI Smart Route</div>
-                      <div className="small text-muted">Driver + anchor trip + ZIP + cutoff time. Then Local or GPT builds the route.</div>
+                      <div className="small text-muted">Chofer + viaje inicial + ZIP + hora limite. Luego Local o GPT arma la ruta.</div>
                     </div>
                     <div className="d-flex align-items-center gap-2">
                       <Badge bg={aiPlannerMode === 'openai' ? 'primary' : 'secondary'}>{aiPlannerMode === 'openai' ? 'GPT' : 'LOCAL'}</Badge>
-                      <Button variant="light" size="sm" onClick={() => setAiPlannerCollapsed(true)} style={{ minWidth: 38 }} title="Hide AI Smart Route">
+                      <Button variant="light" size="sm" onClick={() => setAiPlannerCollapsed(true)} style={{ minWidth: 38 }} title="Esconder AI Smart Route">
                         <IconifyIcon icon="iconoir:eye-closed" />
                       </Button>
                     </div>
                   </div>
 
-                  {!selectedDriverId || tripDateFilter === 'all' ? <div className="small text-muted">Select a driver and a specific day first.</div> : <div className="d-flex flex-column gap-2">
+                  {!selectedDriverId || tripDateFilter === 'all' ? <div className="small text-muted">Primero escoge una chofera o chofer y un dia especifico.</div> : <div className="d-flex flex-column gap-2">
                       <Form.Group>
-                    <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Driver</Form.Label>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Chofer</Form.Label>
                         <Form.Control value={selectedDriver?.name || 'No driver selected'} readOnly />
                       </Form.Group>
                       <Form.Group>
-                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Anchor trip</Form.Label>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Viaje inicial</Form.Label>
                         <Form.Select size="sm" value={aiPlannerAnchorTripId} onChange={event => setAiPlannerAnchorTripId(event.target.value)}>
-                          <option value="">Select anchor trip</option>
+                          <option value="">Escoge viaje inicial</option>
                           {aiPlanningScopeTrips.map(trip => <option key={`ai-anchor-${trip.id}`} value={trip.id}>{getPlannerTripLabel(trip)}</option>)}
                         </Form.Select>
                       </Form.Group>
                       <Form.Group>
-                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Start ZIP</Form.Label>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">ZIP de arranque</Form.Label>
                         <Form.Select size="sm" value={aiPlannerStartZip} onChange={event => setAiPlannerStartZip(event.target.value)}>
-                          <option value="">Use anchor trip ZIP</option>
+                          <option value="">Usar ZIP del viaje inicial</option>
                           {aiPlannerZipOptions.map(zip => <option key={`ai-zip-${zip}`} value={zip}>{zip}</option>)}
                         </Form.Select>
                       </Form.Group>
                       <Form.Group>
-                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">City</Form.Label>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Ciudad</Form.Label>
                         <Form.Select size="sm" value={aiPlannerCityFilter} onChange={event => setAiPlannerCityFilter(event.target.value)}>
-                          <option value="">All cities</option>
+                          <option value="">Todas las ciudades</option>
                           {aiPlannerCityOptions.map(city => <option key={`ai-city-${city}`} value={city}>{city}</option>)}
                         </Form.Select>
                       </Form.Group>
                       <div className="rounded-3 border p-2 bg-white" style={{ borderColor: 'rgba(15, 23, 42, 0.1)' }}>
-                        <div className="small text-uppercase text-muted fw-semibold mb-2">City route pairs</div>
+                        <div className="small text-uppercase text-muted fw-semibold mb-2">Rutas por ciudad</div>
                         <div className="row g-2">
                           <div className="col-6">
                             <Form.Group>
-                              <Form.Label className="small text-muted fw-semibold mb-1">Origin</Form.Label>
+                              <Form.Label className="small text-muted fw-semibold mb-1">Origen</Form.Label>
                               <Form.Select size="sm" value={aiPlannerRoutePairPickupCity} onChange={event => setAiPlannerRoutePairPickupCity(event.target.value)}>
-                                <option value="">Select origin</option>
+                                <option value="">Escoge origen</option>
                                 {aiPlannerRoutePairPickupOptions.map(city => <option key={`ai-route-pickup-${city}`} value={city}>{city}</option>)}
                               </Form.Select>
                             </Form.Group>
                           </div>
                           <div className="col-6">
                             <Form.Group>
-                              <Form.Label className="small text-muted fw-semibold mb-1">Destination</Form.Label>
+                              <Form.Label className="small text-muted fw-semibold mb-1">Destino</Form.Label>
                               <Form.Select size="sm" value={aiPlannerRoutePairDropoffCity} onChange={event => setAiPlannerRoutePairDropoffCity(event.target.value)}>
-                                <option value="">Select destination</option>
+                                <option value="">Escoge destino</option>
                                 {aiPlannerRoutePairDropoffOptions.map(city => <option key={`ai-route-dropoff-${city}`} value={city}>{city}</option>)}
                               </Form.Select>
                             </Form.Group>
@@ -3189,16 +2960,16 @@ const TripDashboardWorkspace = () => {
                         <div className="row g-2 mt-1">
                           <div className="col-7">
                             <Form.Group>
-                              <Form.Label className="small text-muted fw-semibold mb-1">Direction</Form.Label>
+                              <Form.Label className="small text-muted fw-semibold mb-1">Direccion</Form.Label>
                               <Form.Select size="sm" value={aiPlannerRoutePairMode} onChange={event => setAiPlannerRoutePairMode(event.target.value)}>
-                                <option value="exact">Exact direction only</option>
-                                <option value="both">Auto round-trip pairs</option>
+                                <option value="exact">Solo la direccion exacta</option>
+                                <option value="both">Ida y regreso automaticos</option>
                               </Form.Select>
                             </Form.Group>
                           </div>
                           <div className="col-5 d-flex align-items-end">
                             <Button variant="outline-dark" size="sm" className="w-100" onClick={handleAddAiPlannerRoutePair}>
-                              Add pair
+                              Agregar par
                             </Button>
                           </div>
                         </div>
@@ -3211,18 +2982,18 @@ const TripDashboardWorkspace = () => {
                             >
                               {formatAiPlannerRoutePairLabel(pairKey)} x
                             </button>)}
-                          </div> : <div className="small text-muted mt-2">If you do not add pairs, the planner uses any origin and destination in the pool.</div>}
+                          </div> : <div className="small text-muted mt-2">Si no agregas pares, el planner usa cualquier origen y destino del pool.</div>}
                         {aiPlannerRoutePairs.length > 0 ? <div className="d-flex justify-content-between align-items-center gap-2 mt-2">
-                            <div className="small text-muted">Mode: {aiPlannerRoutePairMode === 'both' ? 'auto round-trip pairs' : 'exact direction only'}.</div>
-                            <Button variant="light" size="sm" onClick={handleClearAiPlannerRoutePairs}>Clear pairs</Button>
+                            <div className="small text-muted">Modo: {aiPlannerRoutePairMode === 'both' ? 'ida y regreso automaticos' : 'solo direccion exacta'}.</div>
+                            <Button variant="light" size="sm" onClick={handleClearAiPlannerRoutePairs}>Limpiar pares</Button>
                           </div> : null}
                       </div>
                       <div className="row g-2">
                         <div className="col-6">
                           <Form.Group>
-                            <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Legs</Form.Label>
+                            <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Patas</Form.Label>
                             <Form.Select size="sm" value={aiPlannerLegFilter} onChange={event => setAiPlannerLegFilter(event.target.value)}>
-                              <option value="all">All</option>
+                              <option value="all">Todas</option>
                               <option value="AL">AL</option>
                               <option value="BL">BL</option>
                               <option value="CL">CL</option>
@@ -3231,9 +3002,9 @@ const TripDashboardWorkspace = () => {
                         </div>
                         <div className="col-6">
                           <Form.Group>
-                            <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Type</Form.Label>
+                            <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Tipo</Form.Label>
                             <Form.Select size="sm" value={aiPlannerTypeFilter} onChange={event => setAiPlannerTypeFilter(event.target.value)}>
-                              <option value="all">All</option>
+                              <option value="all">Todos</option>
                               <option value="A">A</option>
                               <option value="W">W</option>
                               <option value="STR">STR</option>
@@ -3242,41 +3013,41 @@ const TripDashboardWorkspace = () => {
                         </div>
                       </div>
                       <Form.Group>
-                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Max trips</Form.Label>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Cantidad maxima</Form.Label>
                         <Form.Control size="sm" type="number" min="1" max="200" value={aiPlannerMaxTrips} onChange={event => setAiPlannerMaxTrips(event.target.value)} />
                       </Form.Group>
                       <Form.Group>
-                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Max late minutes</Form.Label>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Tardanza maxima (min)</Form.Label>
                         <Form.Control size="sm" type="number" min="0" max="120" value={aiPlannerLateToleranceMinutes} onChange={event => setAiPlannerLateToleranceMinutes(event.target.value)} />
                       </Form.Group>
                       <Form.Group>
-                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Cutoff time</Form.Label>
+                        <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Hora limite</Form.Label>
                         <Form.Control size="sm" type="time" value={aiPlannerCutoffTime} onChange={event => setAiPlannerCutoffTime(event.target.value)} />
                       </Form.Group>
 
                       <div className="d-grid gap-2 mt-1">
                         <Button variant="outline-secondary" size="sm" disabled={aiPlannerLoading} onClick={() => void handlePreviewAiSmartRoute('local')}>
-                          {aiPlannerLoading && aiPlannerMode === 'local' ? 'Building local preview...' : 'Local Preview'}
+                          {aiPlannerLoading && aiPlannerMode === 'local' ? 'Creando preview local...' : 'Preview Local'}
                         </Button>
                         <Button variant="outline-primary" size="sm" disabled={aiPlannerLoading} onClick={() => void handlePreviewAiSmartRoute('openai')}>
-                          {aiPlannerLoading && aiPlannerMode === 'openai' ? 'Building GPT preview...' : 'GPT Preview'}
+                          {aiPlannerLoading && aiPlannerMode === 'openai' ? 'Creando preview GPT...' : 'Preview GPT'}
                         </Button>
                         <Button variant="success" size="sm" disabled={aiPlannerLoading || !aiPlannerPreview?.plan} onClick={() => void handleApplyAiSmartRoute()}>
-                          {aiPlannerLoading && aiPlannerPreview?.plan ? 'Applying route...' : 'Apply Preview'}
+                          {aiPlannerLoading && aiPlannerPreview?.plan ? 'Aplicando ruta...' : 'Aplicar Preview'}
                         </Button>
                         <Button variant="light" size="sm" disabled={!aiPlannerPreview?.plan || aiPlannerLoading} onClick={handleClearAiPlannerPreview}>
-                          Clear Preview
+                          Limpiar Preview
                         </Button>
                       </div>
 
                       <div className="small text-muted">
-                        {selectedTripIds.length > 0 ? `Using ${aiPlanningScopeTrips.length} selected trip(s) as pool.` : `Using ${aiPlanningScopeTrips.length} visible trips from this day as pool.`}
+                        {selectedTripIds.length > 0 ? `Usando ${aiPlanningScopeTrips.length} viaje(s) seleccionados como pool.` : `Usando ${aiPlanningScopeTrips.length} viaje(s) visibles del dia como pool.`}
                       </div>
                       {aiPlannerPreview?.plan?.routes?.[0] ? <div className="small text-muted">
-                          Current preview: {aiPlannerPreview.plan.routes[0].tripIds.length} trip(s).
+                          Preview actual: {aiPlannerPreview.plan.routes[0].tripIds.length} viaje(s).
                         </div> : null}
                       <div className="small text-muted">
-                        Active filters: {aiPlannerCityFilter || 'all cities'} / {aiPlannerRoutePairs.length > 0 ? aiPlannerRoutePairs.map(formatAiPlannerRoutePairLabel).join(', ') : 'no pairs'} / {aiPlannerRoutePairs.length > 0 ? aiPlannerRoutePairMode === 'both' ? 'round-trip' : 'exact direction' : 'any direction'} / {aiPlannerLegFilter === 'all' ? 'all legs' : aiPlannerLegFilter} / {aiPlannerTypeFilter === 'all' ? 'all types' : aiPlannerTypeFilter} / max {aiPlannerMaxTrips || 'no limit'} / late {aiPlannerLateToleranceMinutes || '0'} min.
+                        Filtros activos: {aiPlannerCityFilter || 'todas las ciudades'} / {aiPlannerRoutePairs.length > 0 ? aiPlannerRoutePairs.map(formatAiPlannerRoutePairLabel).join(', ') : 'sin pares'} / {aiPlannerRoutePairs.length > 0 ? aiPlannerRoutePairMode === 'both' ? 'ida y regreso' : 'direccion exacta' : 'cualquier direccion'} / {aiPlannerLegFilter === 'all' ? 'todas las patas' : aiPlannerLegFilter} / {aiPlannerTypeFilter === 'all' ? 'todos los tipos' : aiPlannerTypeFilter} / max {aiPlannerMaxTrips || 'sin limite'} / tarde {aiPlannerLateToleranceMinutes || '0'} min.
                       </div>
 
                       {aiPlannerPreview?.plan?.routes?.[0] ? <div className="rounded-3 border p-2 bg-white" style={{ borderColor: 'rgba(15, 23, 42, 0.1)' }}>
@@ -3292,7 +3063,7 @@ const TripDashboardWorkspace = () => {
                                   {stop.estimatedArrivalLabel || '--'}
                                   {' '}→{' '}
                                   {stop.pickup || '--'}
-                                  {Number.isFinite(stop.lateMinutes) && stop.lateMinutes > 0 ? ` (${stop.lateMinutes} min late)` : ' (on time)'}
+                                  {Number.isFinite(stop.lateMinutes) && stop.lateMinutes > 0 ? ` (${stop.lateMinutes} min tarde)` : ' (on time)'}
                                 </span>
                               </div>)}
                           </div>
@@ -3306,7 +3077,7 @@ const TripDashboardWorkspace = () => {
                 <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content' }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
-                      <th style={{ ...tripHeaderCellStyle, width: 48 }}>
+                      <th style={{ width: 48 }}>
                         <input
                           type="checkbox"
                           checked={allVisibleSelected}
@@ -3323,8 +3094,8 @@ const TripDashboardWorkspace = () => {
                         />
                         <div className="small fw-semibold mt-1" style={{ lineHeight: 1 }}>{selectedTripIds.length}</div>
                       </th>
-                      <th style={{ ...tripHeaderCellStyle, width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
-                      <th style={{ ...tripHeaderCellStyle, width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
+                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
+                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
                       {visibleTripColumns.includes('trip') ? renderTripHeader('trip', 'Trip / Ride') : null}
                       {visibleTripColumns.includes('status') ? renderTripHeader('status', 'Status') : null}
                       {visibleTripColumns.includes('driver') ? renderTripHeader('driver', 'Driver') : null}
@@ -3338,9 +3109,6 @@ const TripDashboardWorkspace = () => {
                       {visibleTripColumns.includes('doZip') ? renderTripHeader('doZip', 'DO ZIP') : null}
                       {visibleTripColumns.includes('phone') ? renderTripHeader('phone', 'Phone') : null}
                       {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
-                      {visibleTripColumns.includes('mobility') ? renderTripHeader('mobility', 'Mobility') : null}
-                      {visibleTripColumns.includes('assistLevel') ? renderTripHeader('assistLevel', 'Assist') : null}
-                      {visibleTripColumns.includes('serviceAnimal') ? renderTripHeader('serviceAnimal', 'Animal') : null}
                       {visibleTripColumns.includes('leg') ? renderTripHeader('leg', 'Leg') : null}
                       {visibleTripColumns.includes('punctuality') ? renderTripHeader('punctuality', 'Punctuality') : null}
                       {visibleTripColumns.includes('lateMinutes') ? renderTripHeader('lateMinutes', 'Late Min') : null}
@@ -3349,11 +3117,11 @@ const TripDashboardWorkspace = () => {
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'section' ? <tr key={row.key} className="table-light">
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
-                      </tr> : <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
+                      </tr> : <tr key={row.trip.id} className={selectedTripIds.includes(row.trip.id) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
                         <td>
                           <input
                             type="checkbox"
-                            checked={selectedTripIdSet.has(normalizeTripId(row.trip.id))}
+                            checked={selectedTripIds.includes(row.trip.id)}
                             onChange={() => handleTripSelectionToggle(row.trip.id)}
                             style={{
                               width: 16,
@@ -3377,28 +3145,13 @@ const TripDashboardWorkspace = () => {
                           </div>
                         </td>
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-                          <div className="d-flex align-items-center gap-1">
-                            <Button variant="outline-secondary" size="sm" onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent' }}>
-                              N
-                            </Button>
-                            <Button variant="outline-info" size="sm" onClick={() => handleCloneTrip(row.trip)} title="Clone trip" style={{ minWidth: 34, borderColor: '#38bdf8', color: '#38bdf8', backgroundColor: 'transparent' }}>
-                              C
-                            </Button>
-                            {row.trip.clonedFromTripId ? <Button variant="outline-danger" size="sm" onClick={() => {
-                          if (window.confirm(`DELETE COPY ${row.trip.id}\nOriginal: ${row.trip.clonedFromTripId}\nRider: ${row.trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
-                            deleteTripRecord(row.trip.id);
-                            setStatusMessage(`Cloned trip ${row.trip.id} deleted.`);
-                          }
-                        }} title={`Delete cloned copy ${row.trip.id}`} style={{ minWidth: 34, borderColor: '#ef4444', color: '#ef4444', backgroundColor: 'transparent', fontWeight: 700 }}>
-                                D
-                              </Button> : null}
-                          </div>
+                          <Button variant="outline-secondary" size="sm" onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent' }}>
+                            N
+                          </Button>
                         </td>
                         {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
                             <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
-                            {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1 me-1">{getLegBadge(row.trip).label}</Badge> : null}
-                            {row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
-                            {row.trip.mobilityType ? <Badge bg="light" text="dark" className="mt-1 border">{row.trip.mobilityType}</Badge> : null}
+                            {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1">{getLegBadge(row.trip).label}</Badge> : null}
                           </td> : null}
                         {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}{getTripAddedByLabel(row.trip) ? <div className="mt-1"><Badge bg="dark">{getTripAddedByLabel(row.trip)}</Badge></div> : null}{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
                         {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}><div>{getTripDriverDisplay(row.trip)}</div>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}</td> : null}
@@ -3497,15 +3250,11 @@ const TripDashboardWorkspace = () => {
                       },
                       placeholder: 'Ambulatory'
                     }) : null}
-                        {visibleTripColumns.includes('mobility') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.mobilityType || '-'}</td> : null}
-                        {visibleTripColumns.includes('assistLevel') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.assistLevel || '-'}</td> : null}
-                        {visibleTripColumns.includes('serviceAnimal') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark">🐕 Yes</Badge> : '-'}</td> : null}
-                        {visibleTripColumns.includes('notes') ? <td style={{ minWidth: 220, maxWidth: 320, whiteSpace: 'normal' }}>{getTripNoteText(row.trip) || '-'}</td> : null}
                         {visibleTripColumns.includes('leg') ? <td style={{ whiteSpace: 'nowrap' }}>{getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant}>{getLegBadge(row.trip).label}</Badge> : '-'}</td> : null}
                         {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
                         {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}
                       </tr>) : <tr>
-                        <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No activity found for that day. If a route was saved, check the same day in Trip Route to view related trips and drivers.</td>
+                        <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No encontre movimientos para ese dia. Si habia una ruta guardada, revisa ese mismo dia en Trip Route y te mostrara los trips y choferes ligados a esa fecha.</td>
                       </tr>}
                   </tbody>
                 </Table>
@@ -3658,10 +3407,6 @@ const TripDashboardWorkspace = () => {
             </Row>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="outline-info" onClick={() => {
-            handleCloneTrip(noteModalTrip);
-            handleCloseTripNote();
-          }}>Clone Trip</Button>
             <Button variant="secondary" onClick={handleCloseTripNote}>Close</Button>
             <Button variant="primary" onClick={handleSaveTripNote}>Save Trip</Button>
           </Modal.Footer>

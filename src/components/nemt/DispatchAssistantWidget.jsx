@@ -6,7 +6,6 @@ import useLocalStorage from '@/hooks/useLocalStorage';
 import { signOut, useSession } from 'next-auth/react';
 import { usePathname, useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Button } from 'react-bootstrap';
 
 const STORAGE_KEY = '__CARE_MOBILITY_AI_ASSISTANT__';
@@ -76,12 +75,6 @@ const widgetStyles = {
     pointerEvents: 'auto',
     marginLeft: 'auto'
   },
-  launcherLabel: {
-    fontSize: 10,
-    fontWeight: 800,
-    letterSpacing: '0.08em',
-    color: 'rgba(255,255,255,0.72)'
-  },
   avatarFrame: {
     width: 72,
     height: 78,
@@ -111,6 +104,40 @@ const widgetStyles = {
     zIndex: 3,
     transition: 'all 120ms ease'
   },
+  launcherModeRow: {
+    width: '100%',
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 4
+  },
+  launcherModeButton: {
+    minHeight: 22,
+    borderRadius: 999,
+    padding: '0 6px',
+    fontSize: 10,
+    fontWeight: 800,
+    lineHeight: 1.1,
+    color: '#f8fafc',
+    backgroundColor: 'rgba(15, 23, 42, 0.94)',
+    border: '1px solid rgba(148, 163, 184, 0.55)',
+    textShadow: '0 1px 0 rgba(0, 0, 0, 0.42)'
+  },
+  launcherStatus: {
+    minWidth: 42,
+    height: 20,
+    borderRadius: 999,
+    background: 'rgba(15, 23, 42, 0.95)',
+    border: '1px solid rgba(148, 163, 184, 0.65)',
+    color: '#f8fafc',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 8px',
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase'
+  },
   header: {
     padding: '10px 10px 8px',
     borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
@@ -125,19 +152,6 @@ const widgetStyles = {
     flexDirection: 'column',
     gap: 7
   },
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    flexWrap: 'wrap'
-  },
-  toolbarGroup: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap'
-  },
   statusPill: {
     borderRadius: 999,
     minHeight: 28,
@@ -147,6 +161,18 @@ const widgetStyles = {
     color: '#ffffff',
     fontSize: 11,
     lineHeight: 1.4,
+    textAlign: 'center'
+  },
+  providerPill: {
+    alignSelf: 'center',
+    borderRadius: 999,
+    minHeight: 22,
+    padding: '3px 8px',
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    color: '#dceeff',
+    fontSize: 10,
+    fontWeight: 700,
     textAlign: 'center'
   },
   smallGrid: {
@@ -160,6 +186,17 @@ const widgetStyles = {
     fontSize: 10,
     fontWeight: 700,
     padding: '4px 8px'
+  },
+  modeRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 8
+  },
+  noteLine: {
+    minHeight: 18,
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 10,
+    textAlign: 'center'
   },
   iaTab: {
     position: 'fixed',
@@ -216,7 +253,7 @@ const DispatchAssistantWidget = () => {
   });
   const [storedAssistantState, setStoredAssistantState] = useLocalStorage(STORAGE_KEY, buildInitialState(DEFAULT_ASSISTANT_AVATAR.name));
   const [clientId, setClientId] = useLocalStorage(CLIENT_KEY, `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
-  const [assistantMode, setAssistantMode] = useLocalStorage(MODE_KEY, 'hybrid');
+  const [assistantMode, setAssistantMode] = useLocalStorage(MODE_KEY, 'local');
   const [widgetHidden, setWidgetHidden] = useLocalStorage(WIDGET_HIDDEN_KEY, false);
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -224,7 +261,6 @@ const DispatchAssistantWidget = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [isHydrating, setIsHydrating] = useState(false);
   const [pendingRoutePlan, setPendingRoutePlan] = useState(null);
-  const [portalReady, setPortalReady] = useState(false);
   const recognitionRef = useRef(null);
   const recognitionRunningRef = useRef(false);
   const recognitionRestartTimeoutRef = useRef(null);
@@ -250,7 +286,7 @@ const DispatchAssistantWidget = () => {
 
   const open = Boolean(storedAssistantState?.open);
   const assistantName = avatarConfig?.name || DEFAULT_ASSISTANT_AVATAR.name;
-  const avatarImage = String(avatarConfig?.image || DEFAULT_ASSISTANT_AVATAR.image);
+  const avatarImage = avatarConfig?.image || DEFAULT_ASSISTANT_AVATAR.image;
   const assistantVisible = avatarConfig?.visible !== false;
   const messages = Array.isArray(storedAssistantState?.messages) && storedAssistantState.messages.length > 0 ? storedAssistantState.messages : buildInitialState(assistantName).messages;
   const speechRecognitionSupported = useMemo(() => Boolean(getSpeechRecognition()), []);
@@ -381,10 +417,6 @@ const DispatchAssistantWidget = () => {
       active = false;
     };
   }, [assistantName, clientId, session?.user?.id, setStoredAssistantState]);
-
-  useEffect(() => {
-    setPortalReady(typeof document !== 'undefined');
-  }, []);
 
   useEffect(() => {
     if (!speechRecognitionSupported) return undefined;
@@ -615,27 +647,6 @@ const DispatchAssistantWidget = () => {
     }
   };
 
-  const handleToggleHidden = () => {
-    stopSpeaking();
-    setStoredAssistantState(currentState => currentState?.open ? {
-      ...buildInitialState(assistantName),
-      ...currentState,
-      open: false
-    } : currentState);
-    setWidgetHidden(true);
-  };
-
-  const handleToggleVoiceReplies = () => {
-    const nextVoiceEnabled = !voiceEnabledRef.current;
-    setVoiceEnabled(nextVoiceEnabled);
-    if (!nextVoiceEnabled) {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-      setIsSpeaking(false);
-    }
-  };
-
   function stopSpeaking() {
     setListeningMode(false);
     recognitionRef.current?.stop?.();
@@ -844,11 +855,9 @@ const DispatchAssistantWidget = () => {
     }
   };
 
-  if (!portalReady || typeof document === 'undefined') {
-    return null;
-  }
+  const providerLabel = assistantMode === 'openai' ? 'GPT' : 'LOCAL';
 
-  return createPortal(<div style={widgetStyles.shell}>
+  return <div style={widgetStyles.shell}>
       {open ? <div style={widgetStyles.panel}>
           <div style={widgetStyles.header}>
             <div className="d-flex align-items-start justify-content-between gap-3">
@@ -861,39 +870,7 @@ const DispatchAssistantWidget = () => {
           </div>
 
           <div style={widgetStyles.body}>
-            <div style={widgetStyles.toolbar}>
-              <div style={widgetStyles.toolbarGroup}>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={voiceEnabled ? 'light' : 'outline-light'}
-                  onClick={handleToggleVoiceReplies}
-                  style={{ ...widgetStyles.miniButton, minHeight: 24 }}
-                  aria-label={voiceEnabled ? 'Desactivar voz del asistente' : 'Activar voz del asistente'}
-                >
-                  {voiceEnabled ? 'Voz on' : 'Voz off'}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline-light"
-                  onClick={handleToggleHidden}
-                  style={{ ...widgetStyles.miniButton, minHeight: 24 }}
-                  aria-label="Ocultar asistente"
-                >
-                  Ocultar
-                </Button>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline-light"
-                onClick={handleClearMemory}
-                style={{ ...widgetStyles.miniButton, minHeight: 24 }}
-              >
-                Limpiar
-              </Button>
-            </div>
+            <div style={widgetStyles.providerPill}>{lastProvider === 'openai-integrations' || lastProvider === 'openai' ? 'Respuesta: GPT' : 'Respuesta: IA local'}</div>
 
             {/* Chat messages */}
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 260, minHeight: 80 }}>
@@ -942,16 +919,6 @@ const DispatchAssistantWidget = () => {
 
             {/* Text input */}
             <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-              <Button
-                type="button"
-                variant={isListening ? 'danger' : 'outline-light'}
-                onClick={handleToggleListening}
-                disabled={!speechRecognitionSupported || isSending}
-                style={{ ...widgetStyles.miniButton, minWidth: 42, padding: '6px 8px' }}
-                aria-label={isListening ? 'Detener microfono' : 'Activar microfono'}
-              >
-                {isListening ? 'Mic' : 'Habla'}
-              </Button>
               <textarea
                 value={textInput}
                 onChange={e => setTextInput(e.target.value)}
@@ -984,16 +951,71 @@ const DispatchAssistantWidget = () => {
                 ➤
               </Button>
             </div>
+
+            <div style={widgetStyles.modeRow}>
+              <Button type="button" variant={assistantMode === 'openai' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('openai')} style={widgetStyles.miniButton}>
+                GPT
+              </Button>
+              <Button type="button" variant={assistantMode === 'local' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('local')} style={widgetStyles.miniButton}>
+                IA local
+              </Button>
+            </div>
+            <div style={widgetStyles.smallGrid}>
+              <Button type="button" variant={isListening ? 'danger' : 'light'} onClick={handleToggleListening} disabled={!speechRecognitionSupported || isSending} style={widgetStyles.miniButton}>
+                {listeningMode || isListening ? 'Escucha on' : 'Escucha off'}
+              </Button>
+              <Button type="button" variant={voiceEnabled ? 'light' : 'outline-light'} onClick={() => setVoiceEnabled(currentValue => !currentValue)} style={widgetStyles.miniButton}>
+                {voiceEnabled ? 'Voz on' : 'Voz off'}
+              </Button>
+              <Button type="button" variant="outline-light" onClick={handleClearMemory} style={widgetStyles.miniButton}>
+                Borrar
+              </Button>
+              <Button type="button" variant="outline-light" onClick={stopSpeaking} style={widgetStyles.miniButton}>
+                Callar
+              </Button>
+            </div>
+            <div style={widgetStyles.noteLine}>{assistantMode === 'local' ? 'Modo sin OpenAI' : `Modelo ${voiceEnabled ? 'con voz' : 'sin voz'}`}</div>
           </div>
         </div> : null}
 
       <div style={widgetStyles.dock}>
         <button type="button" aria-label="Open dispatch assistant" onClick={toggleOpen} style={widgetStyles.launcher}>
           {showPhotoAvatar ? renderPhotoAvatar(widgetStyles.avatarFrame) : null}
-          <span style={widgetStyles.launcherLabel}>{open ? 'ABIERTO' : 'IA'}</span>
+          <span style={widgetStyles.launcherStatus}>{providerLabel}</span>
         </button>
+        <div style={widgetStyles.launcherModeRow}>
+          <Button type="button" variant={assistantMode === 'openai' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('openai')} style={widgetStyles.launcherModeButton}>
+            GPT
+          </Button>
+          <Button type="button" variant={assistantMode === 'local' ? 'light' : 'outline-light'} onClick={() => setAssistantMode('local')} style={widgetStyles.launcherModeButton}>
+            Local
+          </Button>
+        </div>
+        <div style={widgetStyles.launcherModeRow}>
+          <Button type="button" variant={listeningMode || isListening ? 'danger' : 'light'} onClick={handleToggleListening} disabled={!speechRecognitionSupported || isSending} style={widgetStyles.launcherModeButton}>
+            {listeningMode || isListening ? 'On' : 'Off'}
+          </Button>
+          <Button type="button" variant={voiceEnabled ? 'light' : 'outline-light'} onClick={() => {
+          if (voiceEnabledRef.current) {
+            stopSpeaking();
+          }
+          setVoiceEnabled(currentValue => !currentValue);
+        }} style={widgetStyles.launcherModeButton}>
+            {voiceEnabled ? 'Voz on' : 'Voz off'}
+          </Button>
+        </div>
+        <div style={widgetStyles.launcherModeRow}>
+          <Button
+            type="button"
+            variant="outline-secondary"
+            onClick={() => setWidgetHidden(true)}
+            style={{ ...widgetStyles.launcherModeButton, gridColumn: '1 / -1', opacity: 0.7 }}
+          >
+            Esconder
+          </Button>
+        </div>
       </div>
-    </div>, document.body);
+    </div>;
 };
 
 export default DispatchAssistantWidget;

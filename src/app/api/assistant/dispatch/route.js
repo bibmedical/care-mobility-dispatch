@@ -75,12 +75,8 @@ const getSessionFirstName = session => String(session?.user?.firstName || sessio
 
 const buildPersonalizedLead = session => {
   const firstName = getSessionFirstName(session);
-  return `${firstName}, `;
+  return `Si ${firstName}, `;
 };
-
-const isGreetingPrompt = prompt => /^(hola|saludos|buenos dias|buenas tardes|buenas noches|hey|hi|hello)\b/.test(prompt) || /\b(como estas|como esta|que tal|todo bien|como va)\b/.test(prompt);
-
-const isExplicitMemoryLookupPrompt = prompt => /\b(phone|cell|tel|numero|address|direccion|domicilio|location|where|donde|who is|quien es|what is|cual es|que es|recuerdas|remember|knowledge|document|documents|manual|pdf|memoria|diccionario|archivo|book|libro)\b/.test(prompt);
 
 const trySolveSimpleMathSafe = message => {
   const normalized = String(message || '')
@@ -1141,20 +1137,6 @@ const getAssistantConfig = integrationsState => {
   };
 };
 
-const buildSnapshotSummary = snapshot => ({
-  totals: snapshot?.totals || {},
-  integrations: snapshot?.integrations || {},
-  knowledge: snapshot?.knowledge || {},
-  activePath: snapshot?.activePath || '',
-  modules: Array.isArray(snapshot?.modules) ? snapshot.modules.slice(0, 80).map(module => ({
-    label: module.label,
-    url: module.url
-  })) : [],
-  sampleDrivers: Array.isArray(snapshot?.sampleDrivers) ? snapshot.sampleDrivers.slice(0, 30) : [],
-  sampleTrips: Array.isArray(snapshot?.sampleTrips) ? snapshot.sampleTrips.slice(0, 40) : [],
-  routePlans: Array.isArray(snapshot?.routePlans) ? snapshot.routePlans.slice(0, 30) : []
-});
-
 const buildConversationKey = ({ session, clientId }) => {
   const userId = String(session?.user?.id || '').trim();
   if (userId) return `user:${userId}`;
@@ -1318,7 +1300,6 @@ const buildDispatchSnapshot = async session => {
 
 const buildFallbackReply = (message, snapshot, pathname = '', history = [], session = null, integrationsState = null) => {
   const prompt = String(message || '').toLowerCase();
-  const normalizedPrompt = normalizeLookupValue(message);
   const es = detectLanguage(message) === 'es';
   const myName = snapshot?.integrations?.assistantName || 'Balby';
   const personalizedLead = buildPersonalizedLead(session);
@@ -1326,33 +1307,31 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
   const mathReply = trySolveSimpleMathSafe(message);
   if (mathReply) return mathReply;
 
-  if (/cual es tu nombre|como te llamas|tu nombre|what.*your name|who are you/.test(normalizedPrompt)) {
+  const learnedFactReply = findLearnedFactReply(message, history, integrationsState, snapshot);
+  if (learnedFactReply) return learnedFactReply;
+
+  const knowledgeReply = findKnowledgeReply(message, snapshot);
+  if (knowledgeReply) return knowledgeReply;
+
+  if (/cual es tu nombre|como te llamas|tu nombre|what.*your name|who are you/.test(prompt)) {
     return es ? `Soy ${myName}, tu asistente de despacho.` : `I'm ${myName}, your dispatch assistant.`;
   }
-  if (/who am i|my name|what.*my name/.test(normalizedPrompt)) {
+  if (/who am i|my name|what.*my name/.test(prompt)) {
     const firstName = getSessionFirstName(session);
     return es ? `${personalizedLead}tu nombre es ${firstName}.` : `${personalizedLead}your name is ${firstName}.`;
   }
-  if (isGreetingPrompt(normalizedPrompt)) {
+  if (/hola|buenos dias|buenas tardes|buenas noches|hey|hi\b/.test(prompt)) {
     const firstName = getSessionFirstName(session);
     return es
-      ? `Hola ${firstName}, soy ${myName}. Estoy bien y listo para ayudarte. Puedo crear rutas, confirmar viajes, mandar mensajes a choferes y buscar datos de despacho. ¿Que necesitas?`
-      : `Hi ${firstName}, I'm ${myName}. I'm ready to help. I can create routes, confirm trips, message drivers, and look up dispatch data. What do you need?`;
+      ? `Hola ${firstName}, soy ${myName}. Puedo crear rutas, confirmar viajes, mandar mensajes a choferes, buscar pacientes y responder preguntas de despacho. ¿En que te ayudo?`
+      : `Hi ${firstName}, I'm ${myName}. I can create routes, confirm trips, send messages to drivers, search for patients and answer dispatch questions. How can I help?`;
   }
-  if (/what can you do|que puedes hacer|que sabes|como me ayudas|ayuda|help/.test(normalizedPrompt)) {
+  if (/what can you do|que puedes hacer|que sabes|como me ayudas|ayuda|help/.test(prompt)) {
     return es
-      ? `Soy ${myName} y puedo: crear rutas, confirmar viajes, mandar mensajes a choferes, buscar info de pacientes y viajes, navegar a modulos y responder preguntas de despacho. Si quieres una respuesta exacta, pide algo concreto.`
-      : `I'm ${myName} and I can: create routes, confirm trips, send driver messages, look up patient and trip info, navigate to modules, and answer dispatch questions. For precise answers, ask something specific.`;
+      ? `Soy ${myName} y puedo: crear rutas, confirmar viajes, mandar mensajes a choferes, buscar info de pacientes y viajes, navegar a cualquier modulo, y recordar cosas que me digas. Solo pregunta.`
+      : `I'm ${myName} and I can: create routes for the day, confirm trips, send messages to drivers, look up patient and trip info, navigate to any module, and remember things you tell me. Just ask.`;
   }
-
-  if (isExplicitMemoryLookupPrompt(normalizedPrompt)) {
-    const learnedFactReply = findLearnedFactReply(message, history, integrationsState, snapshot);
-    if (learnedFactReply) return learnedFactReply;
-
-    const knowledgeReply = findKnowledgeReply(message, snapshot);
-    if (knowledgeReply) return knowledgeReply;
-  }
-  if (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(normalizedPrompt)) {
+  if (/cerrar sesion|cierra sesion|sign out|logout|log out/.test(prompt)) {
     return es ? `${personalizedLead}cerrando tu sesion ahora.` : `${personalizedLead}signing you out now.`;
   }
 
@@ -1374,88 +1353,88 @@ const buildFallbackReply = (message, snapshot, pathname = '', history = [], sess
   const tripReply = findTripReply(message, snapshot);
   if (tripReply) return tripReply;
 
-  if (/(chofer|driver)/.test(normalizedPrompt) && /(mas|mayor|peor|worst)/.test(normalizedPrompt) && /(tarde|late|retras)/.test(normalizedPrompt)) {
+  if (/(chofer|driver)/.test(prompt) && /(mas|mayor|peor|worst)/.test(prompt) && /(tarde|late|retras)/.test(prompt)) {
     return buildWorstDriverDelayReply(snapshot);
   }
-  if (/(paciente|patient|rider|member)/.test(normalizedPrompt) && /(llegaron|llego|fueron|estan|estuvieron)?\s*(tarde|late|retras)/.test(normalizedPrompt)) {
+  if (/(paciente|patient|rider|member)/.test(prompt) && /(llegaron|llego|fueron|estan|estuvieron)?\s*(tarde|late|retras)/.test(prompt)) {
     return buildLatePatientsReply(snapshot);
   }
-  if (/chofer|driver/.test(normalizedPrompt) && /tarde|late|retras/.test(normalizedPrompt)) {
+  if (/chofer|driver/.test(prompt) && /tarde|late|retras/.test(prompt)) {
     return buildDriverDelayReply(snapshot);
   }
-  if (/phone|cell|tel/.test(normalizedPrompt)) {
+  if (/phone|cell|tel/.test(prompt)) {
     return es
       ? "Puedo buscar un numero de telefono. Dame el nombre del paciente, o di: telefono de [nombre] es [numero]."
       : "I can look up a phone number. Tell me the patient's name or say: phone for [name] is [number].";
   }
-  if (/address|location|where/.test(normalizedPrompt)) {
+  if (/address|location|where/.test(prompt)) {
     return es
       ? "Puedo buscar direcciones. Dame el nombre del paciente, o di: direccion de [nombre] es [direccion]."
       : "I can look up addresses. Tell me the patient name, or say: address for [name] is [address].";
   }
-  if (/cuantos|cuantas|cantidad|total|how many/.test(normalizedPrompt) && /viajes|trips/.test(normalizedPrompt)) {
+  if (/cuantos|cuantas|cantidad|total|how many/.test(prompt) && /viajes|trips/.test(prompt)) {
     return es
       ? `${personalizedLead}hay ${snapshot.totals.trips} viajes cargados y ${snapshot.totals.unassignedTrips} sin asignar.`
       : `${personalizedLead}there are currently ${snapshot.totals.trips} trips loaded and ${snapshot.totals.unassignedTrips} are still unassigned.`;
   }
-  if (/rutas?|route/.test(normalizedPrompt)) {
+  if (/rutas?|route/.test(prompt)) {
     const routeCount = Array.isArray(snapshot?.routePlans) ? snapshot.routePlans.length : 0;
     return es
       ? `Hay ${routeCount} plan${routeCount !== 1 ? 'es' : ''} de ruta guardado${routeCount !== 1 ? 's' : ''}. Para crear uno nuevo di: crea ruta para manana, o crea ruta para [nombre del chofer].`
       : `There are ${routeCount} route plan${routeCount !== 1 ? 's' : ''} saved. To create a new one say: create route for tomorrow, or create route for [driver name].`;
   }
-  if (/paciente|rider|member|trip|viaje|ride/.test(normalizedPrompt)) {
+  if (/paciente|rider|member|trip|viaje|ride/.test(prompt)) {
     return es
       ? "Puedo buscar datos de viajes, pero necesito el nombre del paciente o el ride ID. Intenta: busca viaje de [nombre]."
       : "I can look up trip data, but I need the patient's name or ride ID to find it. Try: find trip for [name].";
   }
-  if (normalizedPrompt.includes('sin asign') || normalizedPrompt.includes('unassigned')) {
+  if (prompt.includes('sin asign') || prompt.includes('unassigned')) {
     return es
       ? `Hay ${snapshot.totals.unassignedTrips} viajes sin asignar en este momento.`
       : `There are currently ${snapshot.totals.unassignedTrips} unassigned trips.`;
   }
-  if (normalizedPrompt.includes('cancel')) {
+  if (prompt.includes('cancel')) {
     return es
       ? `Hay ${snapshot.totals.cancelledTrips} viajes cancelados en este momento.`
       : `There are currently ${snapshot.totals.cancelledTrips} cancelled trips.`;
   }
-  if (/offline|online|en linea|en linea/.test(normalizedPrompt) && /chofer|driver/.test(normalizedPrompt)) {
+  if (/offline|online|en linea|en l.nea/.test(prompt) && /chofer|driver/.test(prompt)) {
     return es
       ? `El estado online/offline de un chofer solo indica si tiene el GPS activo en la app Android. No afecta la asignacion de viajes ni la creacion de rutas. Puedes asignar viajes y crear rutas para cualquier chofer sin importar su estado.`
       : `A driver's online/offline status only shows whether they have GPS active in the Android app. It does not affect trip assignment or route creation. You can assign trips and create routes for any driver regardless of their status.`;
   }
-  if (normalizedPrompt.includes('driver') || normalizedPrompt.includes('chofer')) {
+  if (prompt.includes('driver') || prompt.includes('chofer')) {
     return es
       ? `${personalizedLead}hay ${snapshot.totals.drivers} choferes en el roster. ${snapshot.totals.onlineDrivers} tienen GPS activo ahora. Los choferes offline igual pueden recibir viajes y rutas — offline solo significa que tienen la app cerrada.`
       : `${personalizedLead}there are ${snapshot.totals.drivers} drivers in the roster. ${snapshot.totals.onlineDrivers} have GPS active now. Offline drivers can still receive trips and routes — offline just means they have the app closed.`;
   }
-  if (normalizedPrompt.includes('trip') || normalizedPrompt.includes('viaje')) {
+  if (prompt.includes('trip') || prompt.includes('viaje')) {
     return es
       ? `${personalizedLead}hay ${snapshot.totals.trips} viajes cargados y ${snapshot.totals.unassignedTrips} siguen abiertos.`
       : `${personalizedLead}there are ${snapshot.totals.trips} trips loaded and ${snapshot.totals.unassignedTrips} are still open.`;
   }
-  if (normalizedPrompt.includes('modul') || normalizedPrompt.includes('screen') || normalizedPrompt.includes('page')) {
+  if (prompt.includes('modul') || prompt.includes('screen') || prompt.includes('page')) {
     const moduleLabels = snapshot.modules.map(module => module.label).join(', ');
     return es
       ? `La app tiene estos modulos principales: ${moduleLabels}. Pagina actual: ${pathname || 'desconocida'}.`
       : `This app includes these main modules: ${moduleLabels}. Current page: ${pathname || 'unknown'}.`;
   }
-  if (normalizedPrompt.includes('user') || normalizedPrompt.includes('user management')) {
+  if (prompt.includes('user') || prompt.includes('user management')) {
     return es
       ? `Hay ${snapshot.totals.users} usuarios del sistema: ${snapshot.totals.adminUsers} admin y ${snapshot.totals.driverUsers} choferes.`
       : `There are ${snapshot.totals.users} system users: ${snapshot.totals.adminUsers} admin and ${snapshot.totals.driverUsers} drivers.`;
   }
-  if (normalizedPrompt.includes('integr') || normalizedPrompt.includes('sms') || normalizedPrompt.includes('uber')) {
+  if (prompt.includes('integr') || prompt.includes('sms') || prompt.includes('uber')) {
     return es
       ? `Resumen de integraciones: Uber ${snapshot.integrations.uberConfigured ? 'configurado' : 'no configurado'}. IA ${snapshot.integrations.aiConfigured ? `configurada, usando ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no configurada'}. Proveedores SMS activos: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'ninguno'}.`
       : `Integration summary: Uber configured ${snapshot.integrations.uberConfigured ? 'yes' : 'no'}. AI configured ${snapshot.integrations.aiConfigured ? `yes, using ${snapshot.integrations.aiModel || DEFAULT_MODEL}` : 'no'}. Active SMS providers: ${snapshot.integrations.smsProvidersEnabled.join(', ') || 'none'}.`;
   }
-  if (/document|pdf|manual|libro|diccionario|knowledge|memoria/.test(normalizedPrompt)) {
+  if (/document|pdf|manual|libro|diccionario|knowledge|memoria/.test(prompt)) {
     return es
       ? `La memoria documental tiene ${snapshot?.knowledge?.totalDocuments || 0} documento${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'} cargado${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'}. Puedes preguntarme por el contenido y buscare en ellos.`
       : `The document memory currently has ${snapshot?.knowledge?.totalDocuments || 0} uploaded document${snapshot?.knowledge?.totalDocuments === 1 ? '' : 's'}. You can ask me about their contents and I will search them.`;
   }
-  if (/remember|learn|save|recuerda|aprende|guarda/.test(normalizedPrompt)) {
+  if (/remember|learn|save|recuerda|aprende|guarda/.test(prompt)) {
     return es ? `Listo. Lo recordare para la proxima vez.` : `Got it. I'll save that and remember it next time.`;
   }
   return es
@@ -1496,83 +1475,60 @@ const callOpenAI = async ({ message, history, snapshot, pathname, integrationsSt
     };
   }
 
-  const localFallbackReply = buildFallbackReply(message, snapshot, pathname, history, session, integrationsState);
-
   if (providerMode === 'local') {
     return {
-      reply: localFallbackReply,
+      reply: buildFallbackReply(message, snapshot, pathname, history, session, integrationsState),
       provider: 'local',
       action: directAction
     };
   }
-
   const assistantConfig = getAssistantConfig(integrationsState);
   if (!assistantConfig.apiKey) {
     return {
-      reply: localFallbackReply,
-      provider: providerMode === 'hybrid' ? 'hybrid-local' : 'fallback',
+      reply: buildFallbackReply(message, snapshot, pathname, history, session, integrationsState),
+      provider: 'fallback',
       action: directAction
     };
   }
 
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${assistantConfig.apiKey}`
-      },
-      body: JSON.stringify({
-        model: assistantConfig.model,
-        temperature: 0.45,
-        top_p: 0.9,
-        presence_penalty: 0.35,
-        frequency_penalty: 0.25,
-        messages: [{
-          role: 'system',
-          content: 'You are a natural, warm dispatch co-pilot for a NEMT operation. Reply in the same language as the user. Keep responses human, concise, and confident. No robotic phrasing. No markdown unless asked.'
-        }, {
-          role: 'system',
-          content: 'You must preserve operational facts exactly (names, counts, statuses, times, IDs, and route details). If the baseline answer already contains validated operational info, improve tone and clarity without changing facts.'
-        }, {
-          role: 'system',
-          content: `Current page: ${pathname || 'unknown'}. Snapshot summary: ${JSON.stringify(buildSnapshotSummary(snapshot))}`
-        }, ...(Array.isArray(snapshot?.knowledgeMatches) && snapshot.knowledgeMatches.length > 0 ? [{
-          role: 'system',
-          content: `Knowledge matches: ${JSON.stringify(snapshot.knowledgeMatches)}`
-        }] : []), {
-          role: 'system',
-          content: `Baseline validated answer: ${localFallbackReply}`
-        }, ...history.slice(-10).map(item => ({
-          role: item.role === 'assistant' ? 'assistant' : 'user',
-          content: item.text
-        })), {
-          role: 'user',
-          content: `Baseline validated facts to preserve: ${localFallbackReply}. Rewrite naturally and do not repeat lists unless directly requested.`
-        }]
-      })
-    });
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${assistantConfig.apiKey}`
+    },
+    body: JSON.stringify({
+      model: assistantConfig.model,
+      temperature: 0.3,
+      messages: [{
+        role: 'system',
+        content: 'You are a dispatch assistant for a NEMT operation and the Care Mobility web platform. Always respond in the SAME language the user writes in \u2014 if they write in Spanish respond in Spanish, if in English respond in English. You know modules, trips, drivers, routes, integrations, users and blacklist. You CAN execute operational actions: creating routes, assigning trips to drivers, confirming trips, and sending driver messages. When the user asks you to create a route or assign trips, execute it and confirm it was done. If you know the logged-in user\'s name, address them directly. Do not use markdown, asterisks, or bullet symbols unless the user requests them.'
+      }, {
+        role: 'system',
+        content: `Current page: ${pathname || 'unknown'}. App snapshot: ${JSON.stringify(snapshot)}`
+      }, ...(Array.isArray(snapshot?.knowledgeMatches) && snapshot.knowledgeMatches.length > 0 ? [{
+        role: 'system',
+        content: `Knowledge matches: ${JSON.stringify(snapshot.knowledgeMatches)}`
+      }] : []), ...history.slice(-10).map(item => ({
+        role: item.role === 'assistant' ? 'assistant' : 'user',
+        content: item.text
+      })), {
+        role: 'user',
+        content: message
+      }]
+    })
+  });
 
-    const payload = await response.json();
-    if (!response.ok) {
-      throw new Error(payload?.error?.message || 'OpenAI request failed.');
-    }
-
-    const rewrittenReply = stripRichText(payload?.choices?.[0]?.message?.content?.trim() || localFallbackReply);
-    return {
-      reply: rewrittenReply || localFallbackReply,
-      provider: providerMode === 'hybrid'
-        ? (assistantConfig.source === 'integrations' ? 'hybrid-openai-integrations' : 'hybrid-openai')
-        : (assistantConfig.source === 'integrations' ? 'openai-integrations' : 'openai'),
-      action: directAction
-    };
-  } catch {
-    return {
-      reply: localFallbackReply,
-      provider: providerMode === 'hybrid' ? 'hybrid-local-fallback' : 'fallback',
-      action: directAction
-    };
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || 'OpenAI request failed.');
   }
+
+  return {
+    reply: stripRichText(payload?.choices?.[0]?.message?.content?.trim() || buildFallbackReply(message, snapshot, pathname, history, session, integrationsState)),
+    provider: assistantConfig.source === 'integrations' ? 'openai-integrations' : 'openai',
+    action: directAction
+  };
 };
 
 const buildAppliedRoutesFromPlan = (plan, currentRoutePlans = []) => {
@@ -1688,10 +1644,7 @@ export async function POST(request) {
   const history = Array.isArray(body?.history) ? body.history : [];
   const clientId = String(body?.clientId || '').trim();
   const pathname = String(body?.pathname || '').trim();
-  const requestedProviderMode = String(body?.providerMode || 'hybrid').trim().toLowerCase();
-  const providerMode = requestedProviderMode === 'openai' || requestedProviderMode === 'local' || requestedProviderMode === 'hybrid'
-    ? requestedProviderMode
-    : 'hybrid';
+  const providerMode = String(body?.providerMode || 'local').trim().toLowerCase() === 'openai' ? 'openai' : 'local';
   const actionRequest = body?.actionRequest && typeof body.actionRequest === 'object' ? body.actionRequest : null;
   const session = await getServerSession(authOptions);
   const conversationKey = buildConversationKey({ session, clientId });

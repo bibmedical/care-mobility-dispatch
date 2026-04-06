@@ -212,93 +212,6 @@ const getDriverAlertChannelLabel = log => {
   return 'Internal';
 };
 
-const formatDateTime = value => {
-  const date = new Date(value || 0);
-  if (!Number.isFinite(date.getTime())) return '--';
-  return date.toLocaleString('en-US', {
-    month: '2-digit',
-    day: '2-digit',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  });
-};
-
-const getSmsStatusLabel = status => {
-  const normalizedStatus = String(status || '').trim().toLowerCase();
-  if (normalizedStatus === 'sent') return 'Sent';
-  if (normalizedStatus === 'failed') return 'Failed';
-  if (normalizedStatus === 'skipped') return 'Skipped';
-  return normalizedStatus || 'Queued';
-};
-
-const getSmsStatusClass = status => {
-  const normalizedStatus = String(status || '').trim().toLowerCase();
-  if (normalizedStatus === 'sent') return 'statusSent';
-  if (normalizedStatus === 'failed') return 'statusFailed';
-  if (normalizedStatus === 'skipped') return 'statusSkipped';
-  return 'statusQueued';
-};
-
-const getSeverityLabel = severity => {
-  const normalizedSeverity = String(severity || '').trim().toLowerCase();
-  if (normalizedSeverity === 'high') return 'High';
-  return normalizedSeverity ? normalizedSeverity.replace(/(^|-)(\w)/g, (_, separator, letter) => `${separator ? ' ' : ''}${letter.toUpperCase()}`) : 'Normal';
-};
-
-const getSeverityClass = severity => {
-  const normalizedSeverity = String(severity || '').trim().toLowerCase();
-  return normalizedSeverity === 'high' ? 'severityHigh' : 'severityNormal';
-};
-
-const getDisciplineStatusLabel = status => {
-  const normalizedStatus = String(status || '').trim().toLowerCase();
-  if (normalizedStatus === 'resolved') return 'Resolved';
-  if (normalizedStatus === 'active') return 'Active';
-  return normalizedStatus ? normalizedStatus.replace(/(^|-)(\w)/g, (_, separator, letter) => `${separator ? ' ' : ''}${letter.toUpperCase()}`) : 'Logged';
-};
-
-const getDisciplineStatusClass = status => {
-  const normalizedStatus = String(status || '').trim().toLowerCase();
-  if (normalizedStatus === 'resolved') return 'disciplineResolved';
-  if (normalizedStatus === 'active') return 'disciplineActive';
-  return 'disciplineLogged';
-};
-
-const getWorkflowActionLabel = action => {
-  const normalizedAction = String(action || '').trim().toLowerCase();
-  if (normalizedAction === 'en-route') return 'En Route';
-  if (normalizedAction === 'arrived') return 'Arrived';
-  if (normalizedAction === 'complete') return 'Complete';
-  return normalizedAction || 'Action';
-};
-
-const summarizeArrivalNotifications = summary => {
-  const results = Array.isArray(summary?.results) ? summary.results : [];
-  return {
-    patientSent: results.filter(result => result?.audience === 'patient' && result?.ok).length,
-    officeSent: results.filter(result => result?.audience === 'office' && result?.ok).length,
-    failed: results.filter(result => !result?.ok).length,
-    provider: summary?.provider || '--'
-  };
-};
-
-const buildWorkflowSummary = event => {
-  const summaryParts = [];
-  if (event?.compliance?.measured) {
-    summaryParts.push(event?.compliance?.isLate ? `Late ${Math.max(0, Number(event?.compliance?.lateByMinutes) || 0)} min` : 'On time');
-  } else {
-    summaryParts.push('Not measured');
-  }
-  if (event?.metadata?.locationRecorded || Number.isFinite(Number(event?.locationSnapshot?.latitude))) {
-    summaryParts.push('GPS captured');
-  }
-  if (event?.riderSignatureName) {
-    summaryParts.push(`Signed by ${event.riderSignatureName}`);
-  }
-  return summaryParts.join(' | ');
-};
-
 const buildDriverAlertSummary = log => {
   if (log?.metadata?.smsMessage) return String(log.metadata.smsMessage).trim();
   if (log?.metadata?.driverName && log?.metadata?.alertType) {
@@ -314,10 +227,6 @@ const SystemLogsWorkspace = () => {
   const [logs, setLogs] = useState([]);
   const [allLogs, setAllLogs] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]);
-  const [smsDeliveryLogs, setSmsDeliveryLogs] = useState([]);
-  const [tripArrivalEvents, setTripArrivalEvents] = useState([]);
-  const [driverDisciplineEvents, setDriverDisciplineEvents] = useState([]);
-  const [tripWorkflowEvents, setTripWorkflowEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalEvents: 0,
@@ -336,52 +245,27 @@ const SystemLogsWorkspace = () => {
     try {
       setLoading(true);
 
-      const [summaryRes, logsRes, usersRes, smsRes, arrivalsRes, disciplineRes, workflowRes] = await Promise.all([
-        fetch('/api/system-logs?summary=true', { cache: 'no-store' }),
-        fetch('/api/system-logs', { cache: 'no-store' }),
-        fetch('/api/system-users', { cache: 'no-store' }),
-        fetch('/api/nemt/sms-delivery-logs?limit=300', { cache: 'no-store' }),
-        fetch('/api/nemt/trip-arrival-events?limit=300', { cache: 'no-store' }),
-        fetch('/api/nemt/driver-discipline?limit=300', { cache: 'no-store' }),
-        fetch('/api/nemt/trip-workflow-events?limit=300', { cache: 'no-store' })
-      ]);
+      const summaryRes = await fetch('/api/system-logs?summary=true');
+      const summaryData = await summaryRes.json();
+      setStats(summaryData);
 
-      const [summaryData, logsData, usersData, smsData, arrivalsData, disciplineData, workflowData] = await Promise.all([
-        summaryRes.json(),
-        logsRes.json(),
-        usersRes.json(),
-        smsRes.json(),
-        arrivalsRes.json(),
-        disciplineRes.json(),
-        workflowRes.json()
-      ]);
+      const logsRes = await fetch('/api/system-logs');
+      const logsData = await logsRes.json();
 
-      setStats(summaryRes.ok ? summaryData : {
-        totalEvents: 0,
-        todayEvents: 0,
-        onlineUsers: []
-      });
+      const usersRes = await fetch('/api/system-users', { cache: 'no-store' });
+      const usersData = await usersRes.json();
 
-      if (logsData?.success) {
-        const nextAllLogs = Array.isArray(logsData.logs) ? logsData.logs : [];
-        setAllLogs(nextAllLogs);
-        setLogs(filterRole === 'all' ? nextAllLogs : nextAllLogs.filter(log => getRoleFilterKey(log.userRole) === filterRole));
-      } else {
-        setAllLogs([]);
-        setLogs([]);
+      if (logsData.success) {
+        setAllLogs(logsData.logs);
+        setLogs(filterRole === 'all' ? logsData.logs : logsData.logs.filter(log => getRoleFilterKey(log.userRole) === filterRole));
       }
 
       if (usersRes.ok) {
-        const nextUsers = Array.isArray(usersData?.users) ? usersData.users : [];
-        setSystemUsers(filterRole === 'all' ? nextUsers : nextUsers.filter(user => getRoleFilterKey(user?.role) === filterRole));
+        const allUsers = Array.isArray(usersData?.users) ? usersData.users : [];
+        setSystemUsers(filterRole === 'all' ? allUsers : allUsers.filter(user => getRoleFilterKey(user?.role) === filterRole));
       } else {
         setSystemUsers([]);
       }
-
-      setSmsDeliveryLogs(smsRes.ok && Array.isArray(smsData?.logs) ? smsData.logs : []);
-      setTripArrivalEvents(arrivalsRes.ok && Array.isArray(arrivalsData?.events) ? arrivalsData.events : []);
-      setDriverDisciplineEvents(disciplineRes.ok && Array.isArray(disciplineData?.events) ? disciplineData.events : []);
-      setTripWorkflowEvents(workflowRes.ok && Array.isArray(workflowData?.events) ? workflowData.events : []);
     } catch (error) {
       console.error('Error fetching logs:', error);
       showNotification({
@@ -410,6 +294,7 @@ const SystemLogsWorkspace = () => {
   const todayDateKey = useMemo(() => getTodayDateKey(clockTick), [clockTick]);
 
   const summaryLogs = useMemo(() => logs.filter(log => WORK_EVENT_TYPES.has(log.eventType)), [logs]);
+  const visibleLogs = useMemo(() => summaryLogs.slice(0, 300), [summaryLogs]);
 
   const workerSummaries = useMemo(() => {
     const summaryMap = new Map();
@@ -472,12 +357,14 @@ const SystemLogsWorkspace = () => {
     [workdayState]
   );
 
-  const driverAlertLogs = useMemo(() => allLogs.filter(log => {
-    if (!isDriverAlertActionLog(log)) return false;
-    if (filterRole !== 'all' && getRoleFilterKey(log.userRole) !== filterRole) return false;
-    if (alertActionFilter !== 'all' && getDriverAlertActionKey(log) !== alertActionFilter) return false;
-    return true;
-  }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)), [alertActionFilter, allLogs, filterRole]);
+  const driverAlertLogs = useMemo(() => {
+    return allLogs.filter(log => {
+      if (!isDriverAlertActionLog(log)) return false;
+      if (filterRole !== 'all' && getRoleFilterKey(log.userRole) !== filterRole) return false;
+      if (alertActionFilter !== 'all' && getDriverAlertActionKey(log) !== alertActionFilter) return false;
+      return true;
+    }).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [alertActionFilter, allLogs, filterRole]);
 
   const driverAlertStats = useMemo(() => {
     const statsAccumulator = {
@@ -508,95 +395,12 @@ const SystemLogsWorkspace = () => {
     };
   }, [driverAlertLogs]);
 
-  const smsDeliveryStats = useMemo(() => {
-    const tripIds = new Set();
-    let sent = 0;
-    let failed = 0;
-    let skipped = 0;
-    let arrival = 0;
-    smsDeliveryLogs.forEach(log => {
-      if (log?.tripId) tripIds.add(log.tripId);
-      const normalizedStatus = String(log?.status || '').trim().toLowerCase();
-      if (normalizedStatus === 'sent') sent += 1;
-      if (normalizedStatus === 'failed') failed += 1;
-      if (normalizedStatus === 'skipped') skipped += 1;
-      if (String(log?.eventType || '').trim().toLowerCase().startsWith('arrival')) arrival += 1;
-    });
-    return {
-      total: smsDeliveryLogs.length,
-      sent,
-      failed,
-      skipped,
-      arrival,
-      uniqueTrips: tripIds.size
-    };
-  }, [smsDeliveryLogs]);
-
-  const arrivalEventStats = useMemo(() => {
-    const drivers = new Set();
-    let patientSent = 0;
-    let officeSent = 0;
-    let failed = 0;
-    tripArrivalEvents.forEach(event => {
-      if (event?.driverId) drivers.add(event.driverId);
-      const summary = summarizeArrivalNotifications(event?.notificationSummary);
-      patientSent += summary.patientSent;
-      officeSent += summary.officeSent;
-      failed += summary.failed;
-    });
-    return {
-      total: tripArrivalEvents.length,
-      patientSent,
-      officeSent,
-      failed,
-      uniqueDrivers: drivers.size
-    };
-  }, [tripArrivalEvents]);
-
-  const disciplineStats = useMemo(() => {
-    const drivers = new Set();
-    let active = 0;
-    let resolved = 0;
-    let high = 0;
-    driverDisciplineEvents.forEach(event => {
-      if (event?.driverId) drivers.add(event.driverId);
-      if (String(event?.status || '').trim().toLowerCase() === 'resolved') resolved += 1;
-      else active += 1;
-      if (String(event?.severity || '').trim().toLowerCase() === 'high') high += 1;
-    });
-    return {
-      total: driverDisciplineEvents.length,
-      active,
-      resolved,
-      high,
-      uniqueDrivers: drivers.size
-    };
-  }, [driverDisciplineEvents]);
-
-  const workflowStats = useMemo(() => {
-    let enRoute = 0;
-    let arrived = 0;
-    let completed = 0;
-    let signed = 0;
-    tripWorkflowEvents.forEach(event => {
-      const action = String(event?.action || '').trim().toLowerCase();
-      if (action === 'en-route') enRoute += 1;
-      if (action === 'arrived') arrived += 1;
-      if (action === 'complete') completed += 1;
-      if (event?.riderSignatureName) signed += 1;
-    });
-    return {
-      total: tripWorkflowEvents.length,
-      enRoute,
-      arrived,
-      completed,
-      signed
-    };
-  }, [tripWorkflowEvents]);
-
   const todayLogs = useMemo(() => summaryLogs.filter(log => log.date === todayDateKey), [todayDateKey, summaryLogs]);
 
-  const activeUsersTodayCount = useMemo(() => workerSummaries.filter(worker => worker.todayActionCount > 0 || worker.todayWorkedMs > 0).length, [workerSummaries]);
+  const activeUsersTodayCount = useMemo(
+    () => workerSummaries.filter(worker => worker.todayActionCount > 0 || worker.todayWorkedMs > 0).length,
+    [workerSummaries]
+  );
 
   const todayWorkedMs = useMemo(() => {
     let total = 0;
@@ -614,11 +418,6 @@ const SystemLogsWorkspace = () => {
     setShowUserDetail(true);
   };
 
-  const handleActivityViewChange = event => {
-    setActivityView(event.target.value);
-    setShowUserDetail(false);
-  };
-
   const groupLogsByDate = sourceLogs => {
     const grouped = {};
     sourceLogs.forEach(log => {
@@ -628,8 +427,13 @@ const SystemLogsWorkspace = () => {
     return Object.entries(grouped).sort((a, b) => new Date(b[0]) - new Date(a[0]));
   };
 
-  const selectedUserActiveSession = selectedUser?.userId ? detailSessionState.activeSessionByUserId.get(selectedUser.userId) || null : null;
-  const selectedUserTodayWorkedMs = selectedUser?.userId ? detailWorkdayState.totalByUserDate.get(`${selectedUser.userId}::${todayDateKey}`) || 0 : 0;
+  const selectedUserActiveSession = selectedUser?.userId
+    ? detailSessionState.activeSessionByUserId.get(selectedUser.userId) || null
+    : null;
+
+  const selectedUserTodayWorkedMs = selectedUser?.userId
+    ? detailWorkdayState.totalByUserDate.get(`${selectedUser.userId}::${todayDateKey}`) || 0
+    : 0;
 
   const renderEventDetail = log => {
     if (isDriverAlertActionLog(log)) {
@@ -644,7 +448,7 @@ const SystemLogsWorkspace = () => {
       <div className={styles.header}>
         <div>
           <h1>System Logs</h1>
-          <p>Actividad diaria conectada y auditoria SQL de SMS, llegadas, disciplina y workflow del chofer.</p>
+          <p>Actividad diaria conectada: login, mensajes, rutas, will-calls y acciones operativas.</p>
         </div>
         <div className={styles.headerNote}>Cada evento suma trabajo del dia para el usuario.</div>
       </div>
@@ -673,32 +477,25 @@ const SystemLogsWorkspace = () => {
       </div>
 
       <div className={styles.controls}>
-        {activityView === 'workers' || activityView === 'driver-alerts' ? (
-          <div className={styles.filterGroup}>
-            <label>Filtrar por Rol:</label>
-            <select value={filterRole} onChange={event => setFilterRole(event.target.value)} className={styles.select}>
-              <option value="all">Todos</option>
-              <option value="admin">Administradores</option>
-              <option value="driver">Choferes</option>
-              <option value="attendant">Asistentes</option>
-            </select>
-          </div>
-        ) : null}
-
         <div className={styles.filterGroup}>
-          <label>Vista:</label>
-          <select value={activityView} onChange={handleActivityViewChange} className={styles.select}>
-            <option value="workers">Trabajadores</option>
-            <option value="driver-alerts">Escalaciones de Alertas</option>
-            <option value="sms-delivery">SMS Delivery</option>
-            <option value="trip-arrivals">Trip Arrivals</option>
-            <option value="driver-discipline">Driver Discipline</option>
-            <option value="trip-workflow">Trip Workflow</option>
+          <label>Filtrar por Rol:</label>
+          <select value={filterRole} onChange={event => setFilterRole(event.target.value)} className={styles.select}>
+            <option value="all">Todos</option>
+            <option value="admin">Administradores</option>
+            <option value="driver">Choferes</option>
+            <option value="attendant">Asistentes</option>
           </select>
         </div>
 
-        {activityView === 'driver-alerts' ? (
-          <div className={styles.filterGroup}>
+        <div className={styles.filterGroup}>
+          <label>Vista:</label>
+          <select value={activityView} onChange={event => setActivityView(event.target.value)} className={styles.select}>
+            <option value="workers">Trabajadores</option>
+            <option value="driver-alerts">Escalaciones de Alertas</option>
+          </select>
+        </div>
+
+        {activityView === 'driver-alerts' ? <div className={styles.filterGroup}>
             <label>Accion:</label>
             <select value={alertActionFilter} onChange={event => setAlertActionFilter(event.target.value)} className={styles.select}>
               <option value="all">Todas</option>
@@ -706,8 +503,7 @@ const SystemLogsWorkspace = () => {
               <option value="resolve-alert">Resueltas</option>
               <option value="use-as-draft">Draft</option>
             </select>
-          </div>
-        ) : null}
+          </div> : null}
 
         <div className={styles.controlsMeta}>
           <span>{stats.todayEvents} eventos hoy en todo el sistema</span>
@@ -717,8 +513,7 @@ const SystemLogsWorkspace = () => {
         </div>
       </div>
 
-      {activityView === 'driver-alerts' ? (
-        <div className={styles.statsContainer}>
+      {activityView === 'driver-alerts' ? <div className={styles.statsContainer}>
           <div className={styles.statCard}>
             <div className={styles.statLabel}>Escalaciones Totales</div>
             <div className={styles.statValue}>{driverAlertStats.total}</div>
@@ -739,108 +534,7 @@ const SystemLogsWorkspace = () => {
             <div className={styles.statValue}>{driverAlertStats.uniqueDrivers}</div>
             <div className={styles.statHint}>{driverAlertStats.uniqueDispatchers} dispatchers actuaron</div>
           </div>
-        </div>
-      ) : null}
-
-      {activityView === 'sms-delivery' ? (
-        <div className={styles.statsContainer}>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>SMS Totales</div>
-            <div className={styles.statValue}>{smsDeliveryStats.total}</div>
-            <div className={styles.statHint}>{smsDeliveryStats.uniqueTrips} trips auditados</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Sent</div>
-            <div className={styles.statValue}>{smsDeliveryStats.sent}</div>
-            <div className={styles.statHint}>Mensajes entregados al proveedor</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Failed</div>
-            <div className={styles.statValue}>{smsDeliveryStats.failed}</div>
-            <div className={styles.statHint}>Errores de envio</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Arrival SMS</div>
-            <div className={styles.statValue}>{smsDeliveryStats.arrival}</div>
-            <div className={styles.statHint}>{smsDeliveryStats.skipped} omitidos</div>
-          </div>
-        </div>
-      ) : null}
-
-      {activityView === 'trip-arrivals' ? (
-        <div className={styles.statsContainer}>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Llegadas Marcadas</div>
-            <div className={styles.statValue}>{arrivalEventStats.total}</div>
-            <div className={styles.statHint}>{arrivalEventStats.uniqueDrivers} choferes</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Paciente Notificado</div>
-            <div className={styles.statValue}>{arrivalEventStats.patientSent}</div>
-            <div className={styles.statHint}>SMS exitosos a pacientes</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Oficina Notificada</div>
-            <div className={styles.statValue}>{arrivalEventStats.officeSent}</div>
-            <div className={styles.statHint}>SMS exitosos a oficina</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Fallos</div>
-            <div className={styles.statValue}>{arrivalEventStats.failed}</div>
-            <div className={styles.statHint}>Destinatarios omitidos o con error</div>
-          </div>
-        </div>
-      ) : null}
-
-      {activityView === 'driver-discipline' ? (
-        <div className={styles.statsContainer}>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Eventos</div>
-            <div className={styles.statValue}>{disciplineStats.total}</div>
-            <div className={styles.statHint}>{disciplineStats.uniqueDrivers} choferes impactados</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Abiertos</div>
-            <div className={styles.statValue}>{disciplineStats.active}</div>
-            <div className={styles.statHint}>Aun visibles en historial activo</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Resueltos</div>
-            <div className={styles.statValue}>{disciplineStats.resolved}</div>
-            <div className={styles.statHint}>Eventos cerrados</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>High Severity</div>
-            <div className={styles.statValue}>{disciplineStats.high}</div>
-            <div className={styles.statHint}>Incidentes fuertes</div>
-          </div>
-        </div>
-      ) : null}
-
-      {activityView === 'trip-workflow' ? (
-        <div className={styles.statsContainer}>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Workflow Events</div>
-            <div className={styles.statValue}>{workflowStats.total}</div>
-            <div className={styles.statHint}>Historial SQL reciente</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>En Route</div>
-            <div className={styles.statValue}>{workflowStats.enRoute}</div>
-            <div className={styles.statHint}>Salidas marcadas</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Arrived</div>
-            <div className={styles.statValue}>{workflowStats.arrived}</div>
-            <div className={styles.statHint}>Llegadas marcadas</div>
-          </div>
-          <div className={styles.statCard}>
-            <div className={styles.statLabel}>Completed</div>
-            <div className={styles.statValue}>{workflowStats.completed}</div>
-            <div className={styles.statHint}>{workflowStats.signed} con firma</div>
-          </div>
-        </div>
-      ) : null}
+        </div> : null}
 
       {!showUserDetail && activityView === 'workers' ? (
         <div className={styles.logsTableContainer}>
@@ -872,33 +566,41 @@ const SystemLogsWorkspace = () => {
                 <tr>
                   <td colSpan="7" className={styles.noData}>No hay trabajadores disponibles</td>
                 </tr>
-              ) : workerSummaries.map((worker, index) => (
-                <tr key={`${worker.userId || 'user'}-${index}`} onClick={() => handleUserClick(worker)} className={styles.clickableRow}>
-                  <td className={styles.userNameCell}>{worker.userName}</td>
-                  <td>{worker.userId}</td>
-                  <td>
-                    <span className={`${styles.badge} ${styles[getRoleBadgeClass(worker.userRole)]}`}>
-                      {worker.userRole}
-                    </span>
-                  </td>
-                  <td>{worker.userEmail}</td>
-                  <td>
-                    <span className={`${styles.action} ${styles.actionACTION}`}>
-                      {worker.todayLastTime ? `${worker.todayLastAction} ${formatClock12(worker.todayLastTime)}` : 'Sin actividad hoy'}
-                    </span>
-                  </td>
-                  <td>{formatDurationMs(worker.todayWorkedMs)}</td>
-                  <td>
-                    <span className={`${styles.badge} ${worker.isOnline ? styles.statusOnline : styles.statusOffline}`}>
-                      {worker.isOnline ? 'En linea' : 'Offline'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              ) : (
+                workerSummaries.map((worker, index) => {
+                  return (
+                    <tr
+                      key={`${worker.userId || 'user'}-${index}`}
+                      onClick={() => handleUserClick(worker)}
+                      className={styles.clickableRow}
+                    >
+                      <td className={styles.userNameCell}>{worker.userName}</td>
+                      <td>{worker.userId}</td>
+                      <td>
+                        <span className={`${styles.badge} ${styles[getRoleBadgeClass(worker.userRole)]}`}>
+                          {worker.userRole}
+                        </span>
+                      </td>
+                      <td>{worker.userEmail}</td>
+                      <td>
+                        <span className={`${styles.action} ${styles.actionACTION}`}>
+                          {worker.todayLastTime ? `${worker.todayLastAction} ${formatClock12(worker.todayLastTime)}` : 'Sin actividad hoy'}
+                        </span>
+                      </td>
+                      <td>{formatDurationMs(worker.todayWorkedMs)}</td>
+                      <td>
+                        <span className={`${styles.badge} ${worker.isOnline ? styles.statusOnline : styles.statusOffline}`}>
+                          {worker.isOnline ? 'En linea' : 'Offline'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
-      ) : !showUserDetail && activityView === 'driver-alerts' ? (
+      ) : !showUserDetail ? (
         <div className={styles.logsTableContainer}>
           <div className={styles.tableHeader}>
             <div>
@@ -928,227 +630,27 @@ const SystemLogsWorkspace = () => {
                 <tr>
                   <td colSpan="7" className={styles.noData}>No hay escalaciones de alertas para este filtro</td>
                 </tr>
-              ) : driverAlertLogs.slice(0, 300).map((log, index) => (
-                <tr key={`${log.id || 'alert-log'}-${index}`}>
-                  <td>{log.date} {formatClock12(log.time)}</td>
-                  <td className={styles.userNameCell}>{log.userName || log.userId}</td>
-                  <td>{log.metadata?.driverName || log.metadata?.driverId || '-'}</td>
-                  <td>
-                    <span className={`${styles.badge} ${styles.alertTypeBadge}`}>
-                      {getDriverAlertTypeLabel(log.metadata?.alertType)}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`${styles.badge} ${styles[`alertAction${getDriverAlertActionKey(log).replace(/(^|-)(\w)/g, (_, separator, letter) => `${separator ? '' : ''}${letter.toUpperCase()}`)}`] || styles.alertActionDefault}`}>
-                      {getDriverAlertActionLabel(getDriverAlertActionKey(log))}
-                    </span>
-                  </td>
-                  <td>{getDriverAlertChannelLabel(log)}</td>
-                  <td className={styles.alertSummaryCell}>{buildDriverAlertSummary(log)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : !showUserDetail && activityView === 'sms-delivery' ? (
-        <div className={styles.logsTableContainer}>
-          <div className={styles.tableHeader}>
-            <div>
-              <h3>SMS Delivery Logs</h3>
-              <p>Bitacora SQL por mensaje enviado, fallado u omitido para pacientes y oficina.</p>
-            </div>
-            <div className={styles.tableBadge}>{smsDeliveryLogs.length} SMS</div>
-          </div>
-          <table className={styles.logsTable}>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Trip</th>
-                <th>Driver</th>
-                <th>Audience</th>
-                <th>Evento</th>
-                <th>Provider</th>
-                <th>Status</th>
-                <th>Resumen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="8" className={styles.loading}>Cargando...</td>
-                </tr>
-              ) : smsDeliveryLogs.length === 0 ? (
-                <tr>
-                  <td colSpan="8" className={styles.noData}>No hay SMS registrados todavia</td>
-                </tr>
-              ) : smsDeliveryLogs.map(log => (
-                <tr key={log.id}>
-                  <td>{formatDateTime(log.createdAt)}</td>
-                  <td>{log.tripId || '-'}</td>
-                  <td>{log.driverId || '-'}</td>
-                  <td>{log.audience || '-'}</td>
-                  <td>{log.eventType || '-'}</td>
-                  <td>{log.provider || '-'}</td>
-                  <td>
-                    <span className={`${styles.badge} ${styles[getSmsStatusClass(log.status)]}`}>
-                      {getSmsStatusLabel(log.status)}
-                    </span>
-                  </td>
-                  <td className={styles.alertSummaryCell}>
-                    {log.recipientName || '-'} {log.recipientPhone ? `| ${log.recipientPhone}` : ''}
-                    {log.error ? ` | ${log.error}` : ''}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : !showUserDetail && activityView === 'trip-arrivals' ? (
-        <div className={styles.logsTableContainer}>
-          <div className={styles.tableHeader}>
-            <div>
-              <h3>Trip Arrival Events</h3>
-              <p>Cada marca de llegada queda en SQL con el resumen de notificaciones que salieron.</p>
-            </div>
-            <div className={styles.tableBadge}>{tripArrivalEvents.length} llegadas</div>
-          </div>
-          <table className={styles.logsTable}>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Trip</th>
-                <th>Paciente</th>
-                <th>Driver</th>
-                <th>Pickup</th>
-                <th>Provider</th>
-                <th>Notificaciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="7" className={styles.loading}>Cargando...</td>
-                </tr>
-              ) : tripArrivalEvents.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className={styles.noData}>No hay llegadas registradas todavia</td>
-                </tr>
-              ) : tripArrivalEvents.map(event => {
-                const summary = summarizeArrivalNotifications(event.notificationSummary);
-                return (
-                  <tr key={event.id}>
-                    <td>{formatDateTime(event.arrivalTimestamp || event.createdAt)}</td>
-                    <td>{event.tripId || '-'}</td>
-                    <td className={styles.userNameCell}>{event.rider || '-'}</td>
-                    <td>{event.driverId || '-'}</td>
-                    <td className={styles.alertSummaryCell}>{event.pickupAddress || event.actualPickup || '-'}</td>
-                    <td>{summary.provider}</td>
-                    <td className={styles.alertSummaryCell}>{`Patient ${summary.patientSent} | Office ${summary.officeSent} | Failed ${summary.failed}`}</td>
+              ) : (
+                driverAlertLogs.slice(0, 300).map((log, index) => (
+                  <tr key={`${log.id || 'alert-log'}-${index}`}>
+                    <td>{log.date} {formatClock12(log.time)}</td>
+                    <td className={styles.userNameCell}>{log.userName || log.userId}</td>
+                    <td>{log.metadata?.driverName || log.metadata?.driverId || '-'}</td>
+                    <td>
+                      <span className={`${styles.badge} ${styles.alertTypeBadge}`}>
+                        {getDriverAlertTypeLabel(log.metadata?.alertType)}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`${styles.badge} ${styles[`alertAction${getDriverAlertActionKey(log).replace(/(^|-)\w/g, match => match.replace('-', '').toUpperCase())}`] || styles.alertActionDefault}`}>
+                        {getDriverAlertActionLabel(getDriverAlertActionKey(log))}
+                      </span>
+                    </td>
+                    <td>{getDriverAlertChannelLabel(log)}</td>
+                    <td className={styles.alertSummaryCell}>{buildDriverAlertSummary(log)}</td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : !showUserDetail && activityView === 'driver-discipline' ? (
-        <div className={styles.logsTableContainer}>
-          <div className={styles.tableHeader}>
-            <div>
-              <h3>Driver Discipline History</h3>
-              <p>Registro SQL de no-departure, late start, late pickup y late dropoff.</p>
-            </div>
-            <div className={styles.tableBadge}>{driverDisciplineEvents.length} eventos</div>
-          </div>
-          <table className={styles.logsTable}>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Driver</th>
-                <th>Trip</th>
-                <th>Evento</th>
-                <th>Severity</th>
-                <th>Status</th>
-                <th>Resumen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="7" className={styles.loading}>Cargando...</td>
-                </tr>
-              ) : driverDisciplineEvents.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className={styles.noData}>No hay disciplina registrada todavia</td>
-                </tr>
-              ) : driverDisciplineEvents.map(event => (
-                <tr key={event.id}>
-                  <td>{formatDateTime(event.occurredAt || event.createdAt)}</td>
-                  <td>{event.driverId || '-'}</td>
-                  <td>{event.tripId || '-'}</td>
-                  <td>{String(event.eventType || '').replace(/-/g, ' ') || '-'}</td>
-                  <td>
-                    <span className={`${styles.badge} ${styles[getSeverityClass(event.severity)]}`}>
-                      {getSeverityLabel(event.severity)}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`${styles.badge} ${styles[getDisciplineStatusClass(event.status)]}`}>
-                      {getDisciplineStatusLabel(event.status)}
-                    </span>
-                  </td>
-                  <td className={styles.alertSummaryCell}>{event.summary || event.body || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : !showUserDetail && activityView === 'trip-workflow' ? (
-        <div className={styles.logsTableContainer}>
-          <div className={styles.tableHeader}>
-            <div>
-              <h3>Trip Workflow Events</h3>
-              <p>Historial SQL de En Route, Arrived y Complete con GPS, cumplimiento y firma.</p>
-            </div>
-            <div className={styles.tableBadge}>{tripWorkflowEvents.length} eventos</div>
-          </div>
-          <table className={styles.logsTable}>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Trip</th>
-                <th>Driver</th>
-                <th>Action</th>
-                <th>Time Label</th>
-                <th>Compliance</th>
-                <th>Signature</th>
-                <th>Metadata</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="8" className={styles.loading}>Cargando...</td>
-                </tr>
-              ) : tripWorkflowEvents.length === 0 ? (
-                <tr>
-                  <td colSpan="8" className={styles.noData}>No hay workflow registrado todavia</td>
-                </tr>
-              ) : tripWorkflowEvents.map(event => (
-                <tr key={event.id}>
-                  <td>{formatDateTime(event.timestamp || event.createdAt)}</td>
-                  <td>{event.tripId || '-'}</td>
-                  <td>{event.driverId || '-'}</td>
-                  <td>
-                    <span className={`${styles.badge} ${styles.alertActionDefault}`}>
-                      {getWorkflowActionLabel(event.action)}
-                    </span>
-                  </td>
-                  <td>{event.timeLabel || '-'}</td>
-                  <td>{event.compliance?.measured ? (event.compliance?.isLate ? `${Math.max(0, Number(event.compliance?.lateByMinutes) || 0)} min late` : 'On time') : 'Not measured'}</td>
-                  <td>{event.riderSignatureName || '-'}</td>
-                  <td className={styles.alertSummaryCell}>{buildWorkflowSummary(event)}</td>
-                </tr>
-              ))}
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -1171,38 +673,40 @@ const SystemLogsWorkspace = () => {
           <div className={styles.activityTimeline}>
             {groupLogsByDate(userDetailLogs).length === 0 ? (
               <div className={styles.noActivity}>Sin actividad</div>
-            ) : groupLogsByDate(userDetailLogs).map(([date, dateLogs]) => {
-              const dateWorkedMs = detailWorkdayState.totalByUserDate.get(`${selectedUser?.userId}::${date}`) || 0;
-              return (
-                <div key={date} className={styles.dateGroup}>
-                  <div className={styles.dateHeaderRow}>
-                    <h3 className={styles.dateHeader}>{new Date(date).toLocaleDateString('es-ES', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}</h3>
-                    <span className={styles.dateWorkedBadge}>{formatDurationMs(dateWorkedMs)}</span>
-                  </div>
+            ) : (
+              groupLogsByDate(userDetailLogs).map(([date, dateLogs]) => {
+                const dateWorkedMs = detailWorkdayState.totalByUserDate.get(`${selectedUser?.userId}::${date}`) || 0;
+                return (
+                  <div key={date} className={styles.dateGroup}>
+                    <div className={styles.dateHeaderRow}>
+                      <h3 className={styles.dateHeader}>{new Date(date).toLocaleDateString('es-ES', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}</h3>
+                      <span className={styles.dateWorkedBadge}>{formatDurationMs(dateWorkedMs)}</span>
+                    </div>
 
-                  <div className={styles.timelineEvents}>
-                    {dateLogs.map((log, index) => (
-                      <div key={`${log.id || 'timeline'}-${log.userId || 'user'}-${log.timestamp || log.time || 'time'}-${index}`} className={styles.timelineEvent}>
-                        <div className={`${styles.eventDot} ${styles[`dot${log.eventType}`]}`}></div>
-                        <div className={styles.eventContent}>
-                          <span className={styles.eventTime}>{formatClock12(log.time)}</span>
-                          <span className={`${styles.eventType} ${styles[`type${log.eventType}`]}`}>
-                            {getActionLabel(log)}
-                          </span>
-                          {log.target ? <span className={styles.eventMeta}>Target: {log.target}</span> : null}
-                          {renderEventDetail(log) ? <span className={styles.eventMeta}>{renderEventDetail(log)}</span> : null}
+                    <div className={styles.timelineEvents}>
+                      {dateLogs.map((log, index) => (
+                        <div key={`${log.id || 'timeline'}-${log.userId || 'user'}-${log.timestamp || log.time || 'time'}-${index}`} className={styles.timelineEvent}>
+                          <div className={`${styles.eventDot} ${styles[`dot${log.eventType}`]}`}></div>
+                          <div className={styles.eventContent}>
+                            <span className={styles.eventTime}>{formatClock12(log.time)}</span>
+                            <span className={`${styles.eventType} ${styles[`type${log.eventType}`]}`}>
+                              {getActionLabel(log)}
+                            </span>
+                            {log.target ? <span className={styles.eventMeta}>Target: {log.target}</span> : null}
+                            {renderEventDetail(log) ? <span className={styles.eventMeta}>{renderEventDetail(log)}</span> : null}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -1216,14 +720,16 @@ const SystemLogsWorkspace = () => {
           <div className={styles.tableBadge}>{activeOnlineUsers.length} en linea</div>
         </div>
         <div className={styles.onlineUsersList}>
-          {activeOnlineUsers.length > 0 ? activeOnlineUsers.map((user, index) => (
-            <div key={`${user.userId || 'online-user'}-${user.timestamp || 'ts'}-${index}`} className={styles.onlineUser}>
-              <span className={styles.onlineDot}></span>
-              <span className={styles.onlineUserName}>{user.userName}</span>
-              <span className={styles.onlineUserRole}>{user.userRole}</span>
-              <span className={styles.onlineUserTime}>{formatDurationMs(user.totalMs)}</span>
-            </div>
-          )) : (
+          {activeOnlineUsers.length > 0 ? (
+            activeOnlineUsers.map((user, index) => (
+              <div key={`${user.userId || 'online-user'}-${user.timestamp || 'ts'}-${index}`} className={styles.onlineUser}>
+                <span className={styles.onlineDot}></span>
+                <span className={styles.onlineUserName}>{user.userName}</span>
+                <span className={styles.onlineUserRole}>{user.userRole}</span>
+                <span className={styles.onlineUserTime}>{formatDurationMs(user.totalMs)}</span>
+              </div>
+            ))
+          ) : (
             <div className={styles.noOnlineUsers}>Nadie conectado</div>
           )}
         </div>
