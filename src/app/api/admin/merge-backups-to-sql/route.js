@@ -439,6 +439,16 @@ const requireAdmin = async () => {
   return session;
 };
 
+const legacyJsonDisabledResponse = () =>
+  NextResponse.json(
+    {
+      ok: false,
+      error: 'legacy-json-disabled',
+      message: 'Legacy NEMT JSON merge tools are disabled. Use SQL-backed state and SQL-native backups only.'
+    },
+    { status: 410 }
+  );
+
 const applyMergedData = async ({ fromDate, fromDateRaw, session, maxSnapshots = 0 }) => {
   const preview = await buildMergePreview({ fromDate, maxSnapshots });
 
@@ -466,6 +476,7 @@ const applyMergedData = async ({ fromDate, fromDateRaw, session, maxSnapshots = 
 };
 
 export async function GET(request) {
+  return legacyJsonDisabledResponse();
   try {
     const session = await requireAdmin();
     if (!session) {
@@ -510,6 +521,7 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  return legacyJsonDisabledResponse();
   try {
     const session = await requireAdmin();
     if (!session) {

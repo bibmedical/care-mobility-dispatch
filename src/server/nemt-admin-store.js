@@ -1,15 +1,7 @@
-import { readFile } from 'fs/promises';
 import { buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { acquireAdvisoryLock, query, queryOne, withTransaction } from '@/server/db';
-import { getStorageFilePath } from '@/server/storage-paths';
 
 const ROW_ID = 'singleton';
-const LEGACY_JSON_FILE = getStorageFilePath('nemt-admin.json');
-
-const parseJsonSafe = raw => {
-  const normalized = String(raw ?? '').replace(/^\uFEFF/, '');
-  return JSON.parse(normalized);
-};
 
 const isMeaningfulDocumentValue = value => {
   if (!value) return false;
@@ -85,51 +77,28 @@ const normalizeState = value => ({
   groupings: Array.isArray(value?.groupings) ? value.groupings : []
 });
 
-// One-time migration: if SQL is empty, seed from legacy JSON file (for existing deployments)
-let _seeded = false;
-const ensureSeeded = async () => {
-  if (_seeded) return;
-  _seeded = true;
-  try {
-    const row = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ROW_ID]);
-    const data = row?.data ?? {};
-    const hasData = Array.isArray(data?.drivers) && data.drivers.length > 0;
-    if (hasData) return;
-    const raw = await readFile(LEGACY_JSON_FILE, 'utf8');
-    const parsed = parseJsonSafe(raw);
-    const normalized = normalizeState(parsed);
-    if (Array.isArray(normalized?.drivers) && normalized.drivers.length > 0) {
-      await query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [normalized, ROW_ID]);
-      console.log('[admin-store] Migrated admin_state from legacy JSON file.');
-    }
-  } catch {
-    // JSON file doesn't exist or is invalid — start fresh from SQL
-  }
+const upsertAdminState = async normalizedState => {
+  await query(
+    `
+      INSERT INTO admin_state (id, version, data, updated_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (id)
+      DO UPDATE SET version = EXCLUDED.version, data = EXCLUDED.data, updated_at = NOW()
+    `,
+    [ROW_ID, Number(normalizedState?.version || 2), normalizedState]
+  );
 };
 
 export const readNemtAdminState = async () => {
-  try {
-    await ensureSeeded();
-    const row = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ROW_ID]);
-    return normalizeState(row?.data ?? {});
-  } catch {
-    // DB unavailable — fall back to legacy JSON file
-    try {
-      const raw = await readFile(LEGACY_JSON_FILE, 'utf8');
-      const parsed = parseJsonSafe(raw);
-      return normalizeState(parsed);
-    } catch {
-      return normalizeState({});
-    }
-  }
+  const row = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ROW_ID]);
+  return normalizeState(row?.data ?? {});
 };
 
 export const writeNemtAdminState = async nextState => {
-  await ensureSeeded();
   const currentState = await readNemtAdminState();
   const mergedState = mergePreservedDriverData(currentState, nextState);
   const normalized = normalizeState(mergedState);
-  await query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [normalized, ROW_ID]);
+  await upsertAdminState(normalized);
   return normalized;
 };
 
@@ -175,7 +144,15 @@ export const updateDriverLocation = async ({
       }
     };
     const normalized = normalizeState({ ...currentState, drivers: updatedDrivers });
-    await client.query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [normalized, ROW_ID]);
+    await client.query(
+      `
+        INSERT INTO admin_state (id, version, data, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (id)
+        DO UPDATE SET version = EXCLUDED.version, data = EXCLUDED.data, updated_at = NOW()
+      `,
+      [ROW_ID, Number(normalized?.version || 2), normalized]
+    );
     return true;
   });
 };

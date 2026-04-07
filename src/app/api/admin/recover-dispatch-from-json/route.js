@@ -9,10 +9,21 @@ import { getStorageFilePath } from '@/server/storage-paths';
 
 const parseJsonSafe = raw => JSON.parse(String(raw ?? '').replace(/^\uFEFF/, ''));
 
+const legacyJsonDisabledResponse = () =>
+  NextResponse.json(
+    {
+      ok: false,
+      error: 'legacy-json-disabled',
+      message: 'Legacy NEMT JSON recovery is disabled. Use SQL-backed admin and dispatch state only.'
+    },
+    { status: 410 }
+  );
+
 // GET  — compare disk JSON vs SQL (no changes made)
 // POST — restore SQL from disk JSON (admin only, requires confirm=true in body)
 
 export async function GET() {
+  return legacyJsonDisabledResponse();
   const session = await getServerSession(options);
   if (!session?.user || !isAdminRole(session.user.role)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
@@ -74,6 +85,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  return legacyJsonDisabledResponse();
   const session = await getServerSession(options);
   if (!session?.user || !isAdminRole(session.user.role)) {
     return NextResponse.json({ error: 'Admin access required' }, { status: 403 });

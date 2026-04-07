@@ -47,6 +47,16 @@ const requireAdmin = async () => {
   return session;
 };
 
+const legacyJsonDisabledResponse = () =>
+  NextResponse.json(
+    {
+      ok: false,
+      error: 'legacy-json-disabled',
+      message: 'Restore from legacy NEMT JSON files is disabled. SQL is the only supported source of truth.'
+    },
+    { status: 410 }
+  );
+
 const buildPreview = async () => {
   const dispatchRow = await queryOne(`SELECT data FROM dispatch_state WHERE id = $1`, [DISPATCH_ROW_ID]);
   const adminRow = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ADMIN_ROW_ID]);
@@ -106,6 +116,7 @@ const applyLegacyToSql = async ({ session }) => {
 };
 
 export async function GET(request) {
+  return legacyJsonDisabledResponse();
   try {
     const session = await requireAdmin();
     if (!session) {
@@ -132,6 +143,7 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  return legacyJsonDisabledResponse();
   try {
     const session = await requireAdmin();
     if (!session) {
