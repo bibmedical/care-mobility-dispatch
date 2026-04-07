@@ -19,7 +19,7 @@ const buildSurfaceStyles = isLight => ({
     border: `1px solid ${isLight ? '#d5deea' : '#2a2a3e'}`
   },
   panelHeader: {
-    background: isLight ? '#f3f7fc' : '#1a1a2e',
+    background: isLight ? '#f8f9fb' : '#1a1a2e',
     borderBottom: `1px solid ${isLight ? '#d5deea' : '#2a2a3e'}`
   },
   label: {
@@ -29,14 +29,24 @@ const buildSurfaceStyles = isLight => ({
     color: isLight ? '#64748b' : '#888'
   },
   input: {
-    background: isLight ? '#f8fbff' : '#0d0d1a',
+    background: isLight ? '#fbfbfd' : '#0d0d1a',
     border: `1px solid ${isLight ? '#c8d4e6' : '#2a2a3e'}`,
     color: isLight ? '#0f172a' : '#ddd'
   },
   tokenButton: {
-    background: isLight ? '#eef4ff' : '#1e2035',
+    background: isLight ? '#f3f4f6' : '#1e2035',
     border: `1px solid ${isLight ? '#c8d4e6' : '#3a3a5e'}`,
     color: isLight ? '#334155' : '#a78bfa'
+  },
+  solidActionButton: {
+    background: isLight ? '#374151' : '#4f46e5',
+    borderColor: isLight ? '#374151' : '#4f46e5',
+    color: '#ffffff'
+  },
+  activeToggleButton: {
+    background: isLight ? '#e5e7eb' : '#4f46e5',
+    borderColor: isLight ? '#d1d5db' : '#4f46e5',
+    color: isLight ? '#111827' : '#ffffff'
   },
   preText: {
     color: isLight ? '#334155' : '#bbb'
@@ -174,7 +184,7 @@ const EmailTemplatesWorkspace = () => {
           <Button size="sm" variant="outline-secondary" onClick={() => handleReset('licenseExpiry')}>
             Reset to Default
           </Button>
-          <Button size="sm" variant="primary" onClick={handleSave} disabled={saving || !isDirty}>
+          <Button size="sm" variant="primary" style={surface.solidActionButton} onClick={handleSave} disabled={saving || !isDirty}>
             {saving ? 'Saving...' : 'Save Template'}
           </Button>
         </div>
@@ -303,7 +313,11 @@ const EmailTemplatesWorkspace = () => {
                 key={m}
                 size="sm"
                 variant={previewMode === m ? 'primary' : 'outline-secondary'}
-                style={{ fontSize: 11, padding: '2px 8px' }}
+                style={{
+                  fontSize: 11,
+                  padding: '2px 8px',
+                  ...(previewMode === m ? surface.activeToggleButton : {})
+                }}
                 onClick={() => setPreviewMode(m)}
               >
                 {m.toUpperCase()}

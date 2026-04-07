@@ -9,12 +9,12 @@ const STATUS_VARIANT = { active: 'warning', resolved: 'success' };
 
 const buildSurface = isLight => ({
   bg: isLight ? '#ffffff' : '#141420',
-  header: isLight ? '#f3f7fc' : '#1a1a2e',
+  header: isLight ? '#f8f9fb' : '#1a1a2e',
   border: isLight ? '#d5deea' : '#2a2a3e',
   text: isLight ? '#0f172a' : '#ddd',
   muted: isLight ? '#64748b' : '#888',
   dimmer: isLight ? '#94a3b8' : '#555',
-  selectedRow: isLight ? 'rgba(59,130,246,0.1)' : 'rgba(99,102,241,0.18)'
+  selectedRow: isLight ? '#eef0f3' : 'rgba(99,102,241,0.18)'
 });
 
 const formatDate = iso => {
@@ -23,6 +23,15 @@ const formatDate = iso => {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
+};
+
+const buildFilterButtonStyle = (isActive, isLight) => {
+  if (!isActive) return undefined;
+  return {
+    backgroundColor: isLight ? '#e5e7eb' : '#4f46e5',
+    borderColor: isLight ? '#d1d5db' : '#4f46e5',
+    color: isLight ? '#111827' : '#ffffff'
+  };
 };
 
 const SystemMessagesWorkspace = () => {
@@ -172,8 +181,8 @@ const SystemMessagesWorkspace = () => {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4 }}>
-          <Button size="sm" variant={filter === 'active' ? 'primary' : 'outline-secondary'} onClick={() => setFilter('active')}>Active</Button>
-          <Button size="sm" variant={filter === 'all' ? 'primary' : 'outline-secondary'} onClick={() => setFilter('all')}>All</Button>
+          <Button size="sm" variant={filter === 'active' ? 'primary' : 'outline-secondary'} style={buildFilterButtonStyle(filter === 'active', isLight)} onClick={() => setFilter('active')}>Active</Button>
+          <Button size="sm" variant={filter === 'all' ? 'primary' : 'outline-secondary'} style={buildFilterButtonStyle(filter === 'all', isLight)} onClick={() => setFilter('all')}>All</Button>
         </div>
         <Button size="sm" variant="outline-info" onClick={fetchMessages} disabled={loading}>{loading ? '...' : 'Refresh'}</Button>
         <Button size="sm" variant="warning" onClick={handleRunCheck} disabled={runningCheck} style={{ marginLeft: 'auto' }}>
