@@ -5,6 +5,8 @@ import {
   clearSystemMessageMediaById,
   readSystemMessages,
   resolveSystemMessageById,
+  resolveMessagesByDriverId,
+  reactivateMessagesByDriverId,
   upsertSystemMessage
 } from '@/server/system-messages-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
@@ -145,6 +147,20 @@ export async function PATCH(request) {
       const updated = await resolveSystemMessageById(id);
       if (!updated) return NextResponse.json({ error: 'Message not found' }, { status: 404 });
       return NextResponse.json({ message: updated });
+    }
+
+    if (action === 'resolve-by-driver') {
+      if (!id) return badRequest('Missing driverId');
+      await resolveMessagesByDriverId(id);
+      const messages = await readSystemMessages();
+      return NextResponse.json({ messages });
+    }
+
+    if (action === 'reactivate-by-driver') {
+      if (!id) return badRequest('Missing driverId');
+      await reactivateMessagesByDriverId(id);
+      const messages = await readSystemMessages();
+      return NextResponse.json({ messages });
     }
 
     if (action === 'remove-media') {

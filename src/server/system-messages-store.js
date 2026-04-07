@@ -136,6 +136,22 @@ export const clearSystemMessageMediaById = async id => {
   return next;
 };
 
+export const resolveMessagesByDriverId = async driverId => {
+  await ensureTable();
+  await query(
+    `UPDATE system_messages SET status = 'resolved', resolved_at = NOW() WHERE driver_id = $1 AND status = 'active'`,
+    [String(driverId || '').trim()]
+  );
+};
+
+export const reactivateMessagesByDriverId = async driverId => {
+  await ensureTable();
+  await query(
+    `UPDATE system_messages SET status = 'active', resolved_at = NULL WHERE driver_id = $1 AND status = 'resolved'`,
+    [String(driverId || '').trim()]
+  );
+};
+
 export const getActiveMessageForDriver = async (driverId, type) => {
   await ensureTable();
   const result = await query(
