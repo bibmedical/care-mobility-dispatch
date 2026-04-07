@@ -5,7 +5,7 @@ import { parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
 import { getMapTileConfig } from '@/utils/map-tiles';
 import { divIcon } from 'leaflet';
 import { useSearchParams } from 'next/navigation';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Badge, Button, Form, Spinner } from 'react-bootstrap';
 import { MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
@@ -209,11 +209,17 @@ const areStringArraysEqual = (left, right) => {
   return true;
 };
 
-const MapViewportController = ({ points }) => {
+const MapViewportController = ({ points, fitKey = '' }) => {
   const map = useMap();
+  const lastFitKeyRef = useRef('');
 
   useEffect(() => {
     if (!Array.isArray(points) || points.length === 0) return;
+    const normalizedFitKey = String(fitKey || '').trim();
+    if (normalizedFitKey && lastFitKeyRef.current === normalizedFitKey) return;
+    if (normalizedFitKey) {
+      lastFitKeyRef.current = normalizedFitKey;
+    }
     if (points.length === 1) {
       map.setView(points[0], 11, {
         animate: true
@@ -224,7 +230,7 @@ const MapViewportController = ({ points }) => {
       animate: true,
       padding: [48, 48]
     });
-  }, [map, points]);
+  }, [fitKey, map, points]);
 
   return null;
 };
@@ -672,7 +678,6 @@ const StandaloneDispatchMapScreen = () => {
   const mapPoints = useMemo(() => {
     if (isDashboardMap) {
       const points = [];
-      if (selectedDriver?.position) points.push(selectedDriver.position);
       dashboardRouteStops.forEach(stop => {
         if (Array.isArray(stop.position)) points.push(stop.position);
       });
@@ -683,6 +688,17 @@ const StandaloneDispatchMapScreen = () => {
     if (destinationResult?.coordinates) points.push(destinationResult.coordinates);
     return points.length > 0 ? points : [DEFAULT_CENTER];
   }, [dashboardRouteStops, destinationResult, isDashboardMap, originResult, selectedDriver]);
+
+  const mapViewportFitKey = useMemo(() => {
+    if (isDashboardMap) {
+      const routeTripKey = routeTripSelectionIds.map(value => String(value || '').trim()).filter(Boolean).join('|');
+      const stopKey = dashboardRouteStops.map(stop => String(stop?.key || '').trim()).filter(Boolean).join('|');
+      return `dashboard:${activeDashboardViewMode}:${routeTripKey}:${stopKey}`;
+    }
+    const originLabel = String(originResult?.label || '').trim();
+    const destinationLabel = String(destinationResult?.label || '').trim();
+    return `lookup:${originLabel}:${destinationLabel}`;
+  }, [activeDashboardViewMode, dashboardRouteStops, destinationResult?.label, isDashboardMap, originResult?.label, routeTripSelectionIds]);
 
   const handleLookupRoute = async event => {
     event?.preventDefault();
@@ -896,7 +912,7 @@ const StandaloneDispatchMapScreen = () => {
             </div> : null}
           <MapContainer key={`solo-map-${dashboardViewMode}`} center={selectedDriver?.position ?? DEFAULT_CENTER} zoom={10} zoomControl={false} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
             <StandaloneMapResizer resizeKey={`solo-map-${dashboardViewMode}-${dashboardRouteStops.length}-${routeGeometry.length}-${selectedDashboardRouteGeometry.length}`} />
-            <MapViewportController points={mapPoints} />
+            <MapViewportController points={mapPoints} fitKey={mapViewportFitKey} />
             <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
             <ZoomControl position="bottomright" />
             {activeDashboardViewMode !== 'addresses' && !hideRoutes ? dashboardRouteOptions.map((routeOption, index) => {
@@ -1030,7 +1046,7 @@ const StandaloneDispatchMapScreen = () => {
               </div> : null}
             <MapContainer center={selectedDriver?.position ?? DEFAULT_CENTER} zoom={10} zoomControl={false} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
               <StandaloneMapResizer resizeKey={`${dashboardSidebarHidden}-${dashboardViewMode}-${dashboardRouteStops.length}-${routeGeometry.length}-${selectedDashboardRouteGeometry.length}`} />
-              <MapViewportController points={mapPoints} />
+              <MapViewportController points={mapPoints} fitKey={mapViewportFitKey} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
               <ZoomControl position="bottomright" />
               {activeDashboardViewMode !== 'addresses' && !hideRoutes ? dashboardRouteOptions.map((routeOption, index) => {
@@ -1112,7 +1128,7 @@ const StandaloneDispatchMapScreen = () => {
         <div style={{ position: 'relative', minWidth: 0 }}>
           <MapContainer center={DEFAULT_CENTER} zoom={10} zoomControl={false} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
             <StandaloneMapResizer resizeKey={`${originResult?.label || ''}-${destinationResult?.label || ''}-${routeGeometry.length}`} />
-            <MapViewportController points={mapPoints} />
+            <MapViewportController points={mapPoints} fitKey={mapViewportFitKey} />
             <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
             <ZoomControl position="bottomright" />
             {routeGeometry.length > 1 ? <Polyline positions={routeGeometry} pathOptions={{ color: '#0f766e', weight: 5 }} /> : null}
