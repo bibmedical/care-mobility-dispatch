@@ -2272,13 +2272,14 @@ const DispatcherWorkspace = () => {
   const workspaceHeight = 'calc(100dvh - 12px)';
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
+  const inlineMapVisible = dispatcherLayout.mapVisible && showInlineMap;
   const actionsPanelVisible = dispatcherLayout.actionsVisible;
-  const hasLeftColumn = dispatcherLayout.mapVisible || dispatcherLayout.messagingVisible;
+  const hasLeftColumn = inlineMapVisible || dispatcherLayout.messagingVisible;
   const hasRightColumn = dispatcherLayout.tripsVisible || actionsPanelVisible;
-  const hasTopRow = dispatcherLayout.mapVisible || dispatcherLayout.tripsVisible;
+  const hasTopRow = inlineMapVisible || dispatcherLayout.tripsVisible;
   const hasBottomRow = dispatcherLayout.messagingVisible || actionsPanelVisible;
   const hasColumnSplit = hasLeftColumn && hasRightColumn;
-  const hasRowSplit = dispatcherLayout.mapVisible && dispatcherLayout.messagingVisible || dispatcherLayout.tripsVisible && actionsPanelVisible;
+  const hasRowSplit = inlineMapVisible && dispatcherLayout.messagingVisible || dispatcherLayout.tripsVisible && actionsPanelVisible;
   const gridTemplateColumns = hasColumnSplit ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : hasLeftColumn ? '1fr 0px 0px' : '0px 0px 1fr';
   const gridTemplateRows = hasRowSplit ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : hasTopRow ? '1fr 0px 0px' : hasBottomRow ? '0px 0px 1fr' : '1fr 0px 0px';
   const workspaceGridStyle = {
@@ -2290,7 +2291,7 @@ const DispatcherWorkspace = () => {
     position: 'relative'
   };
   const mapPanelGridRow = dispatcherLayout.messagingVisible ? 1 : '1 / span 3';
-  const messagingPanelGridRow = dispatcherLayout.mapVisible ? 3 : '1 / span 3';
+  const messagingPanelGridRow = inlineMapVisible ? 3 : '1 / span 3';
   const tripsPanelGridRow = actionsPanelVisible ? 1 : '1 / span 3';
   const actionsPanelGridRow = dispatcherLayout.tripsVisible ? 3 : '1 / span 3';
   const dividerBaseStyle = {
@@ -2318,7 +2319,7 @@ const DispatcherWorkspace = () => {
 
   return <>
       <div ref={workspaceRef} style={workspaceGridStyle}>
-        <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.mapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
+        <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
           <Card className="h-100" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0">
               {showInlineMap ? <div className="position-relative h-100">

@@ -294,7 +294,7 @@ const StandaloneDispatchMapScreen = () => {
   const [dashboardMapState, setDashboardMapState] = useState(null);
   const { uiPreferences, drivers = [], trips = [], routePlans = [], selectedTripIds: contextSelectedTripIds = [], selectedDriverId: contextSelectedDriverId = '', selectedRouteId: contextSelectedRouteId = '', upsertDispatchThreadMessage } = useNemtContext();
   const source = querySource || storedSource || (contextSelectedDriverId || contextSelectedRouteId || contextSelectedTripIds.length > 0 ? 'dashboard' : '');
-  const isDashboardMap = source === 'dashboard';
+  const isDashboardMap = source === 'dashboard' || source === 'dispatcher';
   const [originQuery, setOriginQuery] = useState('32808');
   const [destinationQuery, setDestinationQuery] = useState('32822');
   const [isLoading, setIsLoading] = useState(false);
