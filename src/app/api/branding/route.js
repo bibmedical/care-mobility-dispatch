@@ -11,7 +11,13 @@ const buildBrandingPayload = state => ({
 
 export async function GET() {
   const state = await readIntegrationsState();
-  return NextResponse.json(buildBrandingPayload(state));
+  return NextResponse.json(buildBrandingPayload(state), {
+    headers: {
+      // Cache branding config for 2 min; serve stale for up to 10 min while revalidating.
+      // This eliminates the round-trip delay on every login/page load.
+      'Cache-Control': 'public, max-age=120, stale-while-revalidate=600'
+    }
+  });
 }
 
 export async function PUT(request) {

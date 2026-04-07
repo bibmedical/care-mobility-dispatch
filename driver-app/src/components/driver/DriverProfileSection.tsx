@@ -10,8 +10,19 @@ type Props = {
 
 const getInitials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0).toUpperCase()).join('') || 'DR';
 
+const getDocumentUri = (value: unknown) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object') {
+    const candidate = value as { dataUrl?: string; url?: string; path?: string };
+    return String(candidate.dataUrl || candidate.url || candidate.path || '').trim();
+  }
+  return '';
+};
+
 export const DriverProfileSection = ({ runtime }: Props) => {
   const name = runtime.driverSession?.name || runtime.driverCode || 'Driver';
+  const resolvedProfilePhotoUrl = runtime.driverSession?.profilePhotoUrl || getDocumentUri(runtime.driverDocuments.profilePhoto);
   const [draftName, setDraftName] = useState(name);
   const [draftEmail, setDraftEmail] = useState(runtime.driverSession?.email || '');
   const [draftPhone, setDraftPhone] = useState(runtime.driverSession?.phone || '');
@@ -55,7 +66,7 @@ export const DriverProfileSection = ({ runtime }: Props) => {
       <View style={styles.headerBlock}>
         <Pressable style={styles.avatarButton} onPress={() => void pickProfilePhoto()}>
           <View style={styles.avatarBubble}>
-            {runtime.driverSession?.profilePhotoUrl ? <Image source={{ uri: runtime.driverSession.profilePhotoUrl }} style={styles.avatarImage} resizeMode="cover" /> : <Text style={styles.avatarText}>{getInitials(name)}</Text>}
+            {resolvedProfilePhotoUrl ? <Image source={{ uri: resolvedProfilePhotoUrl }} style={styles.avatarImage} resizeMode="cover" /> : <Text style={styles.avatarText}>{getInitials(name)}</Text>}
           </View>
           <View style={styles.avatarBadge}>
             {runtime.isUploadingDocument ? <ActivityIndicator color="#ffffff" size="small" /> : <Text style={styles.avatarBadgeText}>Photo</Text>}

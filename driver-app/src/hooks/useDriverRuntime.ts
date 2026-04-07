@@ -108,6 +108,16 @@ const EMPTY_DRIVER_DOCUMENTS: DriverDocuments = {
   trainingCertificate: null
 };
 
+const getDocumentUri = (value: unknown) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'object') {
+    const candidate = value as { dataUrl?: string; url?: string; path?: string };
+    return String(candidate.dataUrl || candidate.url || candidate.path || '').trim();
+  }
+  return '';
+};
+
 export const useDriverRuntime = () => {
   const [driverCode, setDriverCode] = useState('');
   const [password, setPassword] = useState('');
@@ -252,9 +262,10 @@ export const useDriverRuntime = () => {
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to load documents.'));
       if (!signalActive) return;
       setDriverDocuments(payload?.documents || EMPTY_DRIVER_DOCUMENTS);
+      const profilePhotoUrl = String(payload?.profilePhotoUrl || getDocumentUri(payload?.documents?.profilePhoto) || '').trim();
       setDriverSession(current => current ? {
         ...current,
-        profilePhotoUrl: payload?.profilePhotoUrl || current.profilePhotoUrl || ''
+        profilePhotoUrl: profilePhotoUrl || current.profilePhotoUrl || ''
       } : current);
       setDocumentsError('');
     } catch (error) {
@@ -933,7 +944,7 @@ export const useDriverRuntime = () => {
     setMessageDraft(body);
     setIsSendingMessage(true);
     try {
-      const response = await fetch(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
+      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
         method: 'POST',
         headers: {
           ...getDriverAuthHeaders(driverSession, {
@@ -949,9 +960,8 @@ export const useDriverRuntime = () => {
           deliveryMethod: 'in-app'
         })
       });
-      const payload = await response.json();
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
-      if (!response.ok) throw new Error(payload?.error || 'Unable to send driver alert.');
+      if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to send driver alert.'));
 
       setMessages(current => [payload.message, ...current]);
       setMessageDraft('');
@@ -1030,9 +1040,10 @@ export const useDriverRuntime = () => {
       }
 
       setDriverDocuments(payload?.documents || driverDocuments);
+      const profilePhotoUrl = String(payload?.profilePhotoUrl || getDocumentUri(payload?.documents?.profilePhoto) || '').trim();
       setDriverSession(current => current ? {
         ...current,
-        profilePhotoUrl: payload?.profilePhotoUrl || current.profilePhotoUrl || ''
+        profilePhotoUrl: profilePhotoUrl || current.profilePhotoUrl || ''
       } : current);
       setDocumentsError('');
       return true;

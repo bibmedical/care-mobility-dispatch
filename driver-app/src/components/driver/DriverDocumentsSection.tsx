@@ -40,7 +40,7 @@ export const DriverDocumentsSection = ({ runtime }: Props) => {
     return {
       label: value.name || 'Saved on file',
       updatedAt: value.updatedAt ? new Date(value.updatedAt).toLocaleString() : '',
-      previewUri: value.dataUrl || ''
+      previewUri: value.dataUrl || value.url || value.path || ''
     };
   };
 

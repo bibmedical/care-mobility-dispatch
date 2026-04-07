@@ -97,6 +97,8 @@ export type DriverSession = {
 export type DriverDocumentValue = {
   name?: string;
   dataUrl?: string;
+  url?: string;
+  path?: string;
   updatedAt?: string;
 } | string | null;
 

@@ -29,7 +29,8 @@ const BrandImage = ({
   const resolvedSrc = useMemo(() => {
     return resolveBrandingImage(branding, resolvedTarget) || defaultSrc;
   }, [branding, defaultSrc, resolvedTarget]);
-  const [src, setSrc] = useState(defaultSrc);
+  // Initialize from resolvedSrc so if branding is already module-cached (soft nav), no flash occurs.
+  const [src, setSrc] = useState(() => resolvedSrc);
   const versionedSrc = useMemo(() => appendCacheVersion(src || defaultSrc, branding?.updatedAt), [branding?.updatedAt, defaultSrc, src]);
 
   useEffect(() => {
