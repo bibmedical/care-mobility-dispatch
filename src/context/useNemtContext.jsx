@@ -199,9 +199,17 @@ export const NemtProvider = ({
       if (response.ok) {
         lastPersistedSnapshotRef.current = nextSnapshot;
         hasLocalDispatchChangesRef.current = false;
+      } else {
+        // Keep failed snapshots queued so trip updates are not lost on transient server errors.
+        pendingPersistSnapshotRef.current = nextSnapshot;
+        pendingAllowTripShrinkRef.current = allowTripShrink;
+        pendingAllowTripShrinkReasonRef.current = allowTripShrinkReason;
       }
     } catch {
-      // Keep local state if the server is temporarily unavailable.
+      // Keep failed snapshots queued so trip updates are not lost on transient network issues.
+      pendingPersistSnapshotRef.current = nextSnapshot;
+      pendingAllowTripShrinkRef.current = allowTripShrink;
+      pendingAllowTripShrinkReasonRef.current = allowTripShrinkReason;
     } finally {
       persistInFlightRef.current = false;
       if (pendingPersistSnapshotRef.current && pendingPersistSnapshotRef.current !== lastPersistedSnapshotRef.current) {
