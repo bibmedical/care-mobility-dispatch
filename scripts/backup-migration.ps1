@@ -48,16 +48,23 @@ if (-not $SkipDatabase) {
         throw "DATABASE_URL is missing. Set env:DATABASE_URL or pass -DatabaseUrl."
     }
 
-    $null = Get-RequiredCommand -Name 'pg_dump'
+    $pgDumpCommand = Get-Command pg_dump -ErrorAction SilentlyContinue
+    if ($pgDumpCommand) {
+        $dbCustomDumpPath = Join-Path $dbDir 'postgres.backup'
+        $dbSqlDumpPath = Join-Path $dbDir 'postgres.sql'
 
-    $dbCustomDumpPath = Join-Path $dbDir 'postgres.backup'
-    $dbSqlDumpPath = Join-Path $dbDir 'postgres.sql'
+        Write-Step 'Creating PostgreSQL custom dump (postgres.backup)...'
+        & pg_dump --dbname "$resolvedDatabaseUrl" --format=custom --no-owner --no-privileges --file "$dbCustomDumpPath"
 
-    Write-Step 'Creating PostgreSQL custom dump (postgres.backup)...'
-    & pg_dump --dbname "$resolvedDatabaseUrl" --format=custom --no-owner --no-privileges --file "$dbCustomDumpPath"
-
-    Write-Step 'Creating PostgreSQL SQL dump (postgres.sql)...'
-    & pg_dump --dbname "$resolvedDatabaseUrl" --format=plain --no-owner --no-privileges --file "$dbSqlDumpPath"
+        Write-Step 'Creating PostgreSQL SQL dump (postgres.sql)...'
+        & pg_dump --dbname "$resolvedDatabaseUrl" --format=plain --no-owner --no-privileges --file "$dbSqlDumpPath"
+    }
+    else {
+        Write-Step 'pg_dump not found. Falling back to JSON export via Node script...'
+        $jsonDumpDir = Join-Path $dbDir 'json'
+        New-Item -ItemType Directory -Path $jsonDumpDir -Force | Out-Null
+        & node (Join-Path $PSScriptRoot 'backup-db-json.mjs') --output="$jsonDumpDir" --databaseUrl="$resolvedDatabaseUrl"
+    }
 }
 else {
     Write-Step 'Skipping database dump by request.'
