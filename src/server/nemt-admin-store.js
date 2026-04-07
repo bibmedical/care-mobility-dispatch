@@ -92,10 +92,10 @@ const normalizeState = value => ({
 export const readNemtAdminState = async () => {
   await ensureAdminSchema();
   const [driversRes, vehiclesRes, attendantsRes, groupingsRes] = await Promise.all([
-    query(`SELECT data FROM admin_drivers ORDER BY updated_at DESC LIMIT 1000`),
-    query(`SELECT data FROM admin_vehicles ORDER BY updated_at DESC LIMIT 500`),
-    query(`SELECT data FROM admin_attendants ORDER BY updated_at DESC LIMIT 500`),
-    query(`SELECT data FROM admin_groupings ORDER BY updated_at DESC LIMIT 100`)
+    query(`SELECT data FROM admin_drivers ORDER BY updated_at DESC LIMIT 500`),
+    query(`SELECT data FROM admin_vehicles ORDER BY updated_at DESC LIMIT 200`),
+    query(`SELECT data FROM admin_attendants ORDER BY updated_at DESC LIMIT 200`),
+    query(`SELECT data FROM admin_groupings ORDER BY updated_at DESC LIMIT 50`)
   ]);
   return normalizeState({
     drivers: driversRes.rows.map(r => r.data),
