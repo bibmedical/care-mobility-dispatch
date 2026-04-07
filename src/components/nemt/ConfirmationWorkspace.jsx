@@ -1361,9 +1361,6 @@ const ConfirmationWorkspace = () => {
     if (!confirmed) return;
     deleteTripRecord(trip.id);
     setCustomStatus(`Deleted cloned trip ${trip.id}.`);
-    window.setTimeout(() => {
-      void refreshDispatchState({ forceServer: true });
-    }, 350);
   };
 
   const handleSaveHospitalRehab = async () => {
