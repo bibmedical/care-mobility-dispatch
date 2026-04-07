@@ -2968,7 +2968,7 @@ const TripDashboardWorkspace = () => {
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
                   {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
-                  {mapQuickTrips.flatMap(trip => {
+                  {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
                   const points = [{
                     key: `${trip.id}-pickup-mapquick`,
                     tripId: trip.id,
@@ -2989,7 +2989,7 @@ const TripDashboardWorkspace = () => {
                   }
                 }}>
                       <Popup>{point.label}</Popup>
-                    </CircleMarker>)}
+                    </CircleMarker>) : null}
                   {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
                       <Popup>
                         <div className="fw-semibold">{stop.title}</div>

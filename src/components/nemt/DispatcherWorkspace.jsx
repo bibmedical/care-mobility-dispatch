@@ -122,11 +122,11 @@ const DISPATCHER_LAYOUT_PRESETS = [
 ];
 
 const DEFAULT_DISPATCHER_LAYOUT = {
-  preset: 'full',
+  preset: 'map-trips',
   mapVisible: true,
   tripsVisible: true,
-  messagingVisible: true,
-  actionsVisible: true
+  messagingVisible: false,
+  actionsVisible: false
 };
 
 const getDispatcherPresetPanels = presetId => DISPATCHER_LAYOUT_PRESETS.find(preset => preset.id === presetId)?.panels || null;
@@ -139,10 +139,10 @@ const resolveDispatcherLayoutPreset = layout => {
 const normalizeDispatcherLayout = value => {
   const nextLayout = {
     preset: String(value?.preset || DEFAULT_DISPATCHER_LAYOUT.preset).trim() || DEFAULT_DISPATCHER_LAYOUT.preset,
-    mapVisible: value?.mapVisible !== false,
-    tripsVisible: value?.tripsVisible !== false,
-    messagingVisible: value?.messagingVisible !== false,
-    actionsVisible: value?.actionsVisible !== false
+    mapVisible: typeof value?.mapVisible === 'boolean' ? value.mapVisible : DEFAULT_DISPATCHER_LAYOUT.mapVisible,
+    tripsVisible: typeof value?.tripsVisible === 'boolean' ? value.tripsVisible : DEFAULT_DISPATCHER_LAYOUT.tripsVisible,
+    messagingVisible: typeof value?.messagingVisible === 'boolean' ? value.messagingVisible : DEFAULT_DISPATCHER_LAYOUT.messagingVisible,
+    actionsVisible: typeof value?.actionsVisible === 'boolean' ? value.actionsVisible : DEFAULT_DISPATCHER_LAYOUT.actionsVisible
   };
 
   if (!nextLayout.mapVisible && !nextLayout.tripsVisible && !nextLayout.messagingVisible && !nextLayout.actionsVisible) {
@@ -905,6 +905,17 @@ const DispatcherWorkspace = () => {
     setStatusMessage(`Bloque de ${panelLabels[panelKey]} ${nextLayout[panelKey] ? 'visible' : 'oculto'}.`);
   };
 
+  const handleSmsPanelsToggle = () => {
+    const shouldShowBottomPanels = !dispatcherLayout.messagingVisible && !dispatcherLayout.actionsVisible;
+    const nextLayout = persistDispatcherLayout({
+      ...dispatcherLayout,
+      messagingVisible: shouldShowBottomPanels,
+      actionsVisible: shouldShowBottomPanels,
+      preset: 'custom'
+    });
+    setStatusMessage(nextLayout.messagingVisible ? 'Paneles inferiores visibles (SMS + acciones).' : 'Paneles inferiores ocultos.');
+  };
+
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
     const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
     const normalizedToBlockId = canonicalizeToolbarBlockId(toBlockId);
@@ -1391,9 +1402,12 @@ const DispatcherWorkspace = () => {
     };
 
     const groups = filteredTrips.reduce((map, trip) => {
-      const groupKey = trip.brokerTripId || trip.id;
-      if (!map.has(groupKey)) map.set(groupKey, []);
-      map.get(groupKey).push(trip);
+      const pickupMinutes = parseTripClockMinutes(getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup));
+      const hasTime = Number.isFinite(pickupMinutes);
+      const bucketHour = hasTime ? Math.floor(pickupMinutes / 60) : null;
+      const bucketLabel = hasTime ? `${String(bucketHour).padStart(2, '0')}:00` : 'No Time';
+      if (!map.has(bucketLabel)) map.set(bucketLabel, []);
+      map.get(bucketLabel).push(trip);
       return map;
     }, new Map());
 
@@ -1404,7 +1418,7 @@ const DispatcherWorkspace = () => {
       type: 'group',
       groupKey: group.groupKey,
       ridesCount: group.trips.length,
-      label: group.trips.length > 1 ? `Trip ${group.groupKey} • ${group.trips.length} rides` : `Trip ${group.groupKey}`
+      label: group.trips.length > 1 ? `Hour ${group.groupKey} • ${group.trips.length} rides` : `Hour ${group.groupKey} • 1 ride`
     }, ...group.trips.map(trip => ({
       type: 'trip',
       groupKey: group.groupKey,
@@ -1687,13 +1701,6 @@ const DispatcherWorkspace = () => {
 
     if (isSelecting && trip?.driverId) {
       setSelectedDriverId(trip.driverId);
-      if (!dispatcherLayout.messagingVisible) {
-        persistDispatcherLayout({
-          ...dispatcherLayout,
-          messagingVisible: true,
-          preset: 'custom'
-        });
-      }
       setStatusMessage(`SMS listo con ${getDriverName(trip.driverId)} para el trip ${trip.id}.`);
     }
   };
@@ -1770,13 +1777,6 @@ const DispatcherWorkspace = () => {
     setSelectedDriverId(quickReassignDriverId);
     setSelectedRouteId('');
     setQuickReassignDriverId('');
-    if (!dispatcherLayout.actionsVisible) {
-      persistDispatcherLayout({
-        ...dispatcherLayout,
-        actionsVisible: true,
-        preset: 'custom'
-      });
-    }
     setStatusMessage(`${selectedCount} trip(s) reasignados a ${driver.name}.`);
   };
 
@@ -2338,7 +2338,7 @@ const DispatcherWorkspace = () => {
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
                   <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked}>All drivers</Button>
-                  <Button variant="dark" size="sm" onClick={() => toggleDispatcherLayoutPanel('messagingVisible')} disabled={mapLocked}>{dispatcherLayout.messagingVisible ? 'Hide SMS' : 'Show SMS'}</Button>
+                  <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
                 {showSelectedDriverEtaCard && selectedDriver?.hasRealLocation && (selectedDriverActiveTrip || selectedDriverPendingEtaTrip) ? <div className="position-absolute top-0 end-0 m-3 text-white border rounded shadow-sm p-3" style={{ zIndex: 500, minWidth: 260, borderColor: selectedDriverColor, background: `linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, ${selectedDriverColor} 160%)`, pointerEvents: 'none', opacity: 0.98 }}>
@@ -2393,7 +2393,7 @@ const DispatcherWorkspace = () => {
                         <div className="small text-muted">{driver.live}</div>
                       </Tooltip>
                     </Marker>) : null}
-                  {mapQuickTrips.flatMap(trip => {
+                  {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
                   const points = [{
                     key: `${trip.id}-pickup-mapquick`,
                     tripId: trip.id,
@@ -2412,7 +2412,7 @@ const DispatcherWorkspace = () => {
                   click: () => toggleTripSelection(point.tripId)
                 }}>
                       <Popup>{point.label}</Popup>
-                    </CircleMarker>)}
+                    </CircleMarker>) : null}
                   {hasSelectedTrips ? routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
                       <Popup>
                         <div className="fw-semibold">{stop.title}</div>
