@@ -2280,8 +2280,10 @@ const DispatcherWorkspace = () => {
   const hasBottomRow = dispatcherLayout.messagingVisible || actionsPanelVisible;
   const hasColumnSplit = hasLeftColumn && hasRightColumn;
   const hasRowSplit = inlineMapVisible && dispatcherLayout.messagingVisible || dispatcherLayout.tripsVisible && actionsPanelVisible;
+  const rightOnlySplitMode = !inlineMapVisible && dispatcherLayout.tripsVisible && actionsPanelVisible;
+  const effectiveRowSplit = rightOnlySplitMode ? 70 : rowSplit;
   const gridTemplateColumns = hasColumnSplit ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : hasLeftColumn ? '1fr 0px 0px' : '0px 0px 1fr';
-  const gridTemplateRows = hasRowSplit ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : hasTopRow ? '1fr 0px 0px' : hasBottomRow ? '0px 0px 1fr' : '1fr 0px 0px';
+  const gridTemplateRows = hasRowSplit ? `${effectiveRowSplit}% ${dividerSize}px minmax(0, ${100 - effectiveRowSplit}%)` : hasTopRow ? '1fr 0px 0px' : hasBottomRow ? '0px 0px 1fr' : '1fr 0px 0px';
   const workspaceGridStyle = {
     display: 'grid',
     gridTemplateColumns,
@@ -2805,7 +2807,7 @@ const DispatcherWorkspace = () => {
         <div onMouseDown={() => hasRowSplit ? setDragMode('row') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'row-resize',
-        gridColumn: '1 / span 3',
+        gridColumn: rightOnlySplitMode ? 3 : '1 / span 3',
         gridRow: 2,
         display: hasRowSplit ? 'block' : 'none'
       }}>
@@ -2820,7 +2822,7 @@ const DispatcherWorkspace = () => {
         border: '3px solid #0f1320',
         position: 'absolute',
         left: `calc(${columnSplit}% - ${dividerSize / 2}px)`,
-        top: `calc(${rowSplit}% - ${dividerSize / 2}px)`,
+        top: `calc(${effectiveRowSplit}% - ${dividerSize / 2}px)`,
         transform: 'translate(-50%, -50%)',
         cursor: 'move',
         zIndex: 50,
