@@ -1,10 +1,23 @@
 import { normalizeDispatchThreadRecord, normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState } from '@/server/dispatch-history-store';
 import { query, queryOne, withTransaction } from '@/server/db';
+import { runMigrations } from '@/server/db-schema';
+
+let ensureDispatchSchemaPromise = null;
+
+const ensureDispatchSchema = async () => {
+  if (ensureDispatchSchemaPromise) return ensureDispatchSchemaPromise;
+  ensureDispatchSchemaPromise = runMigrations().catch(error => {
+    ensureDispatchSchemaPromise = null;
+    throw error;
+  });
+  return ensureDispatchSchemaPromise;
+};
 
 // ─── READ ─────────────────────────────────────────────────────────────────────
 
 export const readNemtDispatchState = async () => {
+  await ensureDispatchSchema();
   const [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
     query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`),
     query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`),
@@ -25,6 +38,7 @@ export const readNemtDispatchState = async () => {
 };
 
 export const readNemtDispatchThreads = async () => {
+  await ensureDispatchSchema();
   const res = await query(`SELECT data FROM dispatch_threads`);
   return res.rows.map(r => r.data).map(normalizeDispatchThreadRecord);
 };
@@ -32,6 +46,7 @@ export const readNemtDispatchThreads = async () => {
 // ─── WRITE ────────────────────────────────────────────────────────────────────
 
 export const writeNemtDispatchState = async nextState => {
+  await ensureDispatchSchema();
   const normalized = normalizePersistentDispatchState(nextState);
 
   await withTransaction(async client => {
@@ -127,6 +142,7 @@ export const writeNemtDispatchState = async nextState => {
 // ─── DRIVER TRIP UPDATE (mobile) ──────────────────────────────────────────────
 
 export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => {
+  await ensureDispatchSchema();
   return withTransaction(async client => {
     const result = await client.query(`SELECT data FROM dispatch_trips WHERE id = $1 FOR UPDATE`, [String(tripId || '').trim()]);
     if (!result.rows.length) return { ok: false, reason: 'not-found' };

@@ -1,5 +1,17 @@
 import { buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { query, queryOne, withTransaction } from '@/server/db';
+import { runMigrations } from '@/server/db-schema';
+
+let ensureAdminSchemaPromise = null;
+
+const ensureAdminSchema = async () => {
+  if (ensureAdminSchemaPromise) return ensureAdminSchemaPromise;
+  ensureAdminSchemaPromise = runMigrations().catch(error => {
+    ensureAdminSchemaPromise = null;
+    throw error;
+  });
+  return ensureAdminSchemaPromise;
+};
 
 const isMeaningfulDocumentValue = value => {
   if (!value) return false;
@@ -78,6 +90,7 @@ const normalizeState = value => ({
 // ─── READ ─────────────────────────────────────────────────────────────────────
 
 export const readNemtAdminState = async () => {
+  await ensureAdminSchema();
   const [driversRes, vehiclesRes, attendantsRes, groupingsRes] = await Promise.all([
     query(`SELECT data FROM admin_drivers ORDER BY updated_at DESC`),
     query(`SELECT data FROM admin_vehicles ORDER BY updated_at DESC`),
@@ -112,6 +125,7 @@ const upsertEntities = async (client, table, entities) => {
 };
 
 export const writeNemtAdminState = async nextState => {
+  await ensureAdminSchema();
   const currentState = await readNemtAdminState();
   const mergedState = mergePreservedDriverData(currentState, nextState);
   const normalized = normalizeState(mergedState);
@@ -149,6 +163,7 @@ export const updateDriverLocation = async ({
   checkpoint,
   trackingLastSeen
 }) => {
+  await ensureAdminSchema();
   const tracking = {
     latitude,
     longitude,
