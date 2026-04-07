@@ -10,8 +10,8 @@ const resolvedApiBaseUrl = normalizeApiBaseUrl(process.env.EXPO_PUBLIC_DRIVER_AP
 export const DRIVER_APP_CONFIG = {
   apiBaseUrl: resolvedApiBaseUrl,
   enableBackgroundTracking: true,
-  // Keep sync responsive without overloading Render during active dispatch shifts.
-  tripSyncIntervalMs: 15000,
+  // Trip updates should reach drivers quickly after dispatcher changes.
+  tripSyncIntervalMs: 8000,
   messageSyncIntervalMs: 15000,
   lateAlertThresholdMinutes: 5,
   gpsDistanceIntervalMeters: 20,

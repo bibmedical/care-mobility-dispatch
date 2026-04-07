@@ -50,7 +50,7 @@ const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#08
 const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
-const DISPATCH_SYNC_POLL_MS = 12000;
+const DISPATCH_MESSAGES_SYNC_POLL_MS = 5000;
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
   if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;
@@ -171,7 +171,6 @@ export const NemtProvider = ({
   const pendingAllowTripShrinkRef = useRef(false);
   const allowTripShrinkReasonNextPersistRef = useRef('');
   const pendingAllowTripShrinkReasonRef = useRef('');
-  const liveSyncCycleRef = useRef(0);
 
   const flushPersistQueue = async () => {
     if (persistInFlightRef.current) return;
@@ -275,6 +274,28 @@ export const NemtProvider = ({
     } catch {
       lastPersistedSnapshotRef.current = JSON.stringify(createPersistedSnapshot(buildClientState(state ?? createInitialState())));
       return false;
+    }
+  };
+
+  const syncDispatchThreadsFromServer = async () => {
+    try {
+      const response = await fetch('/api/nemt/dispatch/threads', {
+        cache: 'no-store'
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const nextThreads = Array.isArray(payload?.dispatchThreads) ? payload.dispatchThreads : [];
+      startTransition(() => {
+        setState(currentState => {
+          const localState = buildClientState(currentState ?? createInitialState());
+          return {
+            ...localState,
+            dispatchThreads: nextThreads
+          };
+        });
+      });
+    } catch {
+      // Keep current message threads if background sync is temporarily unavailable.
     }
   };
 
@@ -398,11 +419,9 @@ export const NemtProvider = ({
     };
 
     window.addEventListener('nemt-admin-updated', handleAdminUpdate);
-    window.addEventListener('focus', handleAdminUpdate);
 
     return () => {
       window.removeEventListener('nemt-admin-updated', handleAdminUpdate);
-      window.removeEventListener('focus', handleAdminUpdate);
     };
   }, [syncEnabled]);
 
@@ -411,17 +430,11 @@ export const NemtProvider = ({
 
     let active = true;
 
-    const syncLiveState = async (options = {}) => {
+    const syncLiveMessages = async () => {
       if (!active || liveSyncInFlightRef.current) return;
-      const forceDrivers = options.forceDrivers ?? false;
-      const shouldSyncDrivers = forceDrivers || liveSyncCycleRef.current % 3 === 0;
-      liveSyncCycleRef.current += 1;
       liveSyncInFlightRef.current = true;
       try {
-        await Promise.allSettled([
-          syncDispatchFromServer(),
-          shouldSyncDrivers ? syncDriversFromServer() : Promise.resolve()
-        ]);
+        await syncDispatchThreadsFromServer();
       } finally {
         liveSyncInFlightRef.current = false;
       }
@@ -429,12 +442,12 @@ export const NemtProvider = ({
 
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === 'hidden') return;
-      void syncLiveState();
-    }, DISPATCH_SYNC_POLL_MS);
+      void syncLiveMessages();
+    }, DISPATCH_MESSAGES_SYNC_POLL_MS);
 
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'hidden') return;
-      void syncLiveState({ forceDrivers: true });
+      void syncLiveMessages();
     };
 
     window.addEventListener('focus', handleVisibilityOrFocus);
@@ -1262,7 +1275,8 @@ export const NemtProvider = ({
     resetNemtState,
     getDriverName,
     refreshDrivers: syncDriversFromServer,
-    refreshDispatchState: syncDispatchFromServer
+    refreshDispatchState: syncDispatchFromServer,
+    refreshDispatchMessages: syncDispatchThreadsFromServer
   }), [resolvedUiPreferences, session, state])}>
       {children}
     </NemtContext.Provider>;

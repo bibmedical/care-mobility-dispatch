@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
+import { normalizeDispatchThreadRecord, normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState } from '@/server/dispatch-history-store';
 import { acquireAdvisoryLock, query, queryOne, withTransaction } from '@/server/db';
 import { getStorageFilePath } from '@/server/storage-paths';
@@ -56,6 +56,13 @@ export const readNemtDispatchState = async () => {
   await ensureSeeded();
   const row = await queryOne(`SELECT data FROM dispatch_state WHERE id = $1`, [ROW_ID]);
   return normalizePersistentDispatchState(row?.data ?? {});
+};
+
+export const readNemtDispatchThreads = async () => {
+  await ensureSeeded();
+  const row = await queryOne(`SELECT data->'dispatchThreads' AS dispatch_threads FROM dispatch_state WHERE id = $1`, [ROW_ID]);
+  const threads = Array.isArray(row?.dispatch_threads) ? row.dispatch_threads : [];
+  return threads.map(normalizeDispatchThreadRecord);
 };
 
 export const writeNemtDispatchState = async nextState => {
