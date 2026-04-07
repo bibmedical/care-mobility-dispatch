@@ -1,15 +1,5 @@
-import { mkdir, readFile, writeFile } from 'fs/promises';
-import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-
-const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('assistant-memory.json');
-
-const DEFAULT_STATE = {
-  version: 1,
-  conversations: {},
-  facts: []
-};
+import { query, queryOne } from '@/server/db';
+import { runMigrations } from '@/server/db-schema';
 
 const normalizeFact = value => ({
   id: String(value?.id ?? `fact-${Date.now()}`),
@@ -38,29 +28,22 @@ const normalizeState = value => ({
   facts: Array.isArray(value?.facts) ? value.facts.map(normalizeFact).filter(f => f.subject && f.value) : []
 });
 
-const ensureStorageFile = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    await writeFile(STORAGE_FILE, JSON.stringify(DEFAULT_STATE, null, 2), 'utf8');
-  }
-};
-
 export const readAssistantMemoryState = async () => {
-  await ensureStorageFile();
-  const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizeState(JSON.parse(fileContents));
+  await runMigrations();
+  const row = await queryOne(`SELECT conversations, facts FROM assistant_memory WHERE id = 'singleton'`);
+  return normalizeState({
+    conversations: row?.conversations ?? {},
+    facts: row?.facts ?? []
+  });
 };
 
 export const writeAssistantMemoryState = async nextState => {
-  await ensureStorageFile();
+  await runMigrations();
   const normalized = normalizeState(nextState);
-  await writeJsonFileWithSnapshots({
-    filePath: STORAGE_FILE,
-    nextValue: normalized,
-    backupName: 'assistant-memory'
-  });
+  await query(
+    `UPDATE assistant_memory SET conversations = $1, facts = $2, updated_at = NOW() WHERE id = 'singleton'`,
+    [normalized.conversations, normalized.facts]
+  );
   return normalized;
 };
 

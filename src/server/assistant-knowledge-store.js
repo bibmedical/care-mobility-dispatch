@@ -1,18 +1,12 @@
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { PDFParse } from 'pdf-parse';
-import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
+import { query, queryOne } from '@/server/db';
+import { runMigrations } from '@/server/db-schema';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
 const STORAGE_DIR = getStorageRoot();
-const STORAGE_FILE = getStorageFilePath('assistant-knowledge.json');
 const KNOWLEDGE_FILES_DIR = path.join(STORAGE_DIR, 'assistant-knowledge', 'files');
-
-const DEFAULT_STATE = {
-  version: 1,
-  documents: [],
-  chunks: []
-};
 
 const normalizeText = value => String(value ?? '').replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 
@@ -57,13 +51,8 @@ const normalizeState = value => ({
 });
 
 const ensureStorage = async () => {
-  await mkdir(STORAGE_DIR, { recursive: true });
+  await runMigrations();
   await mkdir(KNOWLEDGE_FILES_DIR, { recursive: true });
-  try {
-    await readFile(STORAGE_FILE, 'utf8');
-  } catch {
-    await writeFile(STORAGE_FILE, JSON.stringify(DEFAULT_STATE, null, 2), 'utf8');
-  }
 };
 
 const getSafeExtension = (fileName, mimeType) => {
@@ -74,6 +63,25 @@ const getSafeExtension = (fileName, mimeType) => {
 };
 
 const buildStoredFileName = (documentId, extension) => `${documentId}${extension}`;
+
+export const readAssistantKnowledgeState = async () => {
+  await ensureStorage();
+  const row = await queryOne(`SELECT documents, chunks FROM assistant_knowledge WHERE id = 'singleton'`);
+  return normalizeState({
+    documents: row?.documents ?? [],
+    chunks: row?.chunks ?? []
+  });
+};
+
+const writeAssistantKnowledgeState = async nextState => {
+  await ensureStorage();
+  const normalized = normalizeState(nextState);
+  await query(
+    `UPDATE assistant_knowledge SET documents = $1, chunks = $2, updated_at = NOW() WHERE id = 'singleton'`,
+    [normalized.documents, normalized.chunks]
+  );
+  return normalized;
+};
 
 const extractTextFromBuffer = async ({ buffer, fileName, mimeType }) => {
   const extension = getSafeExtension(fileName, mimeType);
@@ -126,23 +134,6 @@ const buildChunks = (documentId, text) => {
 };
 
 const buildDocumentTitle = fileName => path.basename(String(fileName || '').trim(), path.extname(String(fileName || '').trim())) || 'Knowledge Document';
-
-export const readAssistantKnowledgeState = async () => {
-  await ensureStorage();
-  const fileContents = await readFile(STORAGE_FILE, 'utf8');
-  return normalizeState(JSON.parse(fileContents));
-};
-
-const writeAssistantKnowledgeState = async nextState => {
-  await ensureStorage();
-  const normalized = normalizeState(nextState);
-  await writeJsonFileWithSnapshots({
-    filePath: STORAGE_FILE,
-    nextValue: normalized,
-    backupName: 'assistant-knowledge'
-  });
-  return normalized;
-};
 
 export const readAssistantKnowledgeOverview = async () => {
   const state = await readAssistantKnowledgeState();
