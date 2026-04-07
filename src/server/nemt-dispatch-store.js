@@ -18,11 +18,13 @@ const ensureDispatchSchema = async () => {
 
 export const readNemtDispatchState = async () => {
   await ensureDispatchSchema();
+  // Get today's date key to filter recent data only
+  const todayKey = new Date().toISOString().split('T')[0];
   const [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
-    query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`),
-    query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`),
-    query(`SELECT data FROM dispatch_threads`),
-    query(`SELECT data FROM dispatch_daily_drivers ORDER BY created_at`),
+    query(`SELECT data FROM dispatch_trips WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 5000`, [todayKey]),
+    query(`SELECT data FROM dispatch_route_plans WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 1000`, [todayKey]),
+    query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 500`),
+    query(`SELECT data FROM dispatch_daily_drivers ORDER BY created_at DESC LIMIT 100`),
     query(`SELECT data FROM dispatch_audit_log ORDER BY occurred_at DESC LIMIT 500`),
     queryOne(`SELECT data FROM dispatch_ui_prefs WHERE id = 'singleton'`)
   ]);
@@ -39,7 +41,7 @@ export const readNemtDispatchState = async () => {
 
 export const readNemtDispatchThreads = async () => {
   await ensureDispatchSchema();
-  const res = await query(`SELECT data FROM dispatch_threads`);
+  const res = await query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 500`);
   return res.rows.map(r => r.data).map(normalizeDispatchThreadRecord);
 };
 
