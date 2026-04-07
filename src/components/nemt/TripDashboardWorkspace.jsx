@@ -1950,25 +1950,41 @@ const TripDashboardWorkspace = () => {
       return String(leftTrip.id).localeCompare(String(rightTrip.id));
     };
 
-    const buildGroupedRows = trips => {
+    const buildGroupedRows = (trips, sectionKey = 'all') => {
       const groups = trips.reduce((map, trip) => {
-        const groupKey = trip.brokerTripId || trip.id;
-        if (!map.has(groupKey)) map.set(groupKey, []);
-        map.get(groupKey).push(trip);
+        const pickupMinutes = parseTripClockMinutes(getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup));
+        const hasTime = Number.isFinite(pickupMinutes);
+        const bucketHour = hasTime ? Math.floor(pickupMinutes / 60) : null;
+        const bucketLabel = hasTime ? `${String(bucketHour).padStart(2, '0')}:00` : 'No Time';
+        const bucketSort = hasTime ? bucketHour : Number.MAX_SAFE_INTEGER;
+        if (!map.has(bucketLabel)) {
+          map.set(bucketLabel, {
+            groupKey: bucketLabel,
+            groupSort: bucketSort,
+            trips: []
+          });
+        }
+        map.get(bucketLabel).trips.push(trip);
         return map;
       }, new Map());
-      return Array.from(groups.entries())
-        .map(([groupKey, groupTrips]) => ({ groupKey, trips: [...groupTrips].sort(compareTrips) }))
-        .sort((leftGroup, rightGroup) => compareTrips(leftGroup.trips[0], rightGroup.trips[0]))
-        .flatMap(group => [
-          {
-            type: 'group',
-            groupKey: group.groupKey,
-            ridesCount: group.trips.length,
-            label: group.trips.length > 1 ? `Trip ${group.groupKey} \u2022 ${group.trips.length} rides` : `Trip ${group.groupKey}`
-          },
-          ...group.trips.map(trip => ({ type: 'trip', groupKey: group.groupKey, trip }))
-        ]);
+      return Array.from(groups.values())
+        .map(group => ({ ...group, trips: [...group.trips].sort(compareTrips) }))
+        .sort((leftGroup, rightGroup) => {
+          if (leftGroup.groupSort !== rightGroup.groupSort) return leftGroup.groupSort - rightGroup.groupSort;
+          return compareTrips(leftGroup.trips[0], rightGroup.trips[0]);
+        })
+        .flatMap(group => {
+          const rowGroupKey = `${sectionKey}-${group.groupKey}`;
+          return [
+            {
+              type: 'group',
+              groupKey: rowGroupKey,
+              ridesCount: group.trips.length,
+              label: group.trips.length > 1 ? `Hour ${group.groupKey} \u2022 ${group.trips.length} rides` : `Hour ${group.groupKey} \u2022 1 ride`
+            },
+            ...group.trips.map(trip => ({ type: 'trip', groupKey: rowGroupKey, trip }))
+          ];
+        });
     };
 
     const sortedTrips = [...filteredTrips].sort(compareTrips);
@@ -1989,17 +2005,17 @@ const TripDashboardWorkspace = () => {
     const rows = [];
 
     if (tripDateFilter === 'all') {
-      return buildGroupedRows(sortedTrips);
+      return buildGroupedRows(sortedTrips, 'all');
     }
 
     if (happenedTrips.length > 0) {
       rows.push({ type: 'section', key: 'happened', label: selectedDateIsPast ? 'What Happened On This Day' : 'Already Happened' });
-      rows.push(...buildGroupedRows(happenedTrips));
+      rows.push(...buildGroupedRows(happenedTrips, 'happened'));
     }
 
     if (upcomingTrips.length > 0) {
       rows.push({ type: 'section', key: 'upcoming', label: selectedDateIsFuture ? 'What Will Happen On This Day' : 'Still Pending / Will Happen' });
-      rows.push(...buildGroupedRows(upcomingTrips));
+      rows.push(...buildGroupedRows(upcomingTrips, 'upcoming'));
     }
 
     return rows;
@@ -2947,8 +2963,8 @@ const TripDashboardWorkspace = () => {
                     <div className="small mt-1">DO {activeInfoTrip.dropoff}</div>
                     <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
                   </div> : null}
-                <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
-                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
+                <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
                   {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}

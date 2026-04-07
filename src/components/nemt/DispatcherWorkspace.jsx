@@ -286,9 +286,8 @@ const FollowDriverMapController = ({ enabled, position, zoom = 14 }) => {
     const positionKey = normalizedPosition.map(value => value.toFixed(6)).join(',');
     if (lastPositionRef.current === positionKey) return;
     lastPositionRef.current = positionKey;
-    map.flyTo(normalizedPosition, Math.max(map.getZoom(), zoom), {
-      animate: true,
-      duration: 0.8
+    map.setView(normalizedPosition, Math.max(map.getZoom(), zoom), {
+      animate: false
     });
   }, [enabled, map, position, zoom]);
 
@@ -2363,10 +2362,10 @@ const DispatcherWorkspace = () => {
                         </div>
                       </>}
                   </div> : null}
-                <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} style={{ height: '100%', width: '100%' }}>
+                <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
                   <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
-                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
+                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
                   {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <>
