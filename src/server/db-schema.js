@@ -1,121 +1,91 @@
 import { query, queryOne } from '@/server/db';
 
-export const runMigrations = async () => {
+// Single shared promise — all stores share this so migrations run exactly once per process.
+let _migrationsPromise = null;
+
+export const runMigrations = () => {
+  if (_migrationsPromise) return _migrationsPromise;
+  _migrationsPromise = _runMigrationsOnce().catch(err => {
+    _migrationsPromise = null; // allow retry on next request if first attempt failed
+    throw err;
+  });
+  return _migrationsPromise;
+};
+
+const _runMigrationsOnce = async () => {
   console.log('[DB] Running schema migrations...');
 
-  // ─── DISPATCH BLOB (kept for history/archive reference) ──────────────────────
+  // ── ALL DDL in 1 round trip ──────────────────────────────────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS dispatch_state (
       id           TEXT PRIMARY KEY DEFAULT 'singleton',
       version      INTEGER NOT NULL DEFAULT 1,
       data         JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await query(`INSERT INTO dispatch_state (id, version, data) VALUES ('singleton', 1, '{}'::jsonb) ON CONFLICT (id) DO NOTHING`);
-
-  // ─── DISPATCH NORMALIZED TABLES ──────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS dispatch_trips (
       id             TEXT PRIMARY KEY,
       service_date   TEXT NOT NULL DEFAULT '',
       broker_trip_id TEXT NOT NULL DEFAULT '',
       data           JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_trips_service_date ON dispatch_trips(service_date)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_trips_broker_trip_id ON dispatch_trips(broker_trip_id)`);
-
-  await query(`
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_trips_service_date ON dispatch_trips(service_date);
+    CREATE INDEX IF NOT EXISTS idx_dispatch_trips_broker_trip_id ON dispatch_trips(broker_trip_id);
     CREATE TABLE IF NOT EXISTS dispatch_route_plans (
       id           TEXT PRIMARY KEY,
       service_date TEXT NOT NULL DEFAULT '',
       data         JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_route_plans_service_date ON dispatch_route_plans(service_date)`);
-
-  await query(`
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_route_plans_service_date ON dispatch_route_plans(service_date);
     CREATE TABLE IF NOT EXISTS dispatch_threads (
       driver_id    TEXT PRIMARY KEY,
       data         JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS dispatch_daily_drivers (
       id         TEXT PRIMARY KEY,
       data       JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS dispatch_audit_log (
       id          TEXT PRIMARY KEY,
       data        JSONB NOT NULL DEFAULT '{}'::jsonb,
       occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_audit_log_occurred_at ON dispatch_audit_log(occurred_at DESC)`);
-
-  await query(`
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_audit_log_occurred_at ON dispatch_audit_log(occurred_at DESC);
     CREATE TABLE IF NOT EXISTS dispatch_ui_prefs (
       id         TEXT PRIMARY KEY DEFAULT 'singleton',
       data       JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await query(`INSERT INTO dispatch_ui_prefs (id, data) VALUES ('singleton', '{}'::jsonb) ON CONFLICT (id) DO NOTHING`);
-
-  // ─── ADMIN NORMALIZED TABLES ─────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS admin_state (
       id           TEXT PRIMARY KEY DEFAULT 'singleton',
       version      INTEGER NOT NULL DEFAULT 2,
       data         JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await query(`INSERT INTO admin_state (id, version, data) VALUES ('singleton', 2, '{"drivers":[],"attendants":[],"vehicles":[],"groupings":[]}'::jsonb) ON CONFLICT (id) DO NOTHING`);
-
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS admin_drivers (
       id         TEXT PRIMARY KEY,
       data       JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS admin_vehicles (
       id         TEXT PRIMARY KEY,
       data       JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS admin_attendants (
       id         TEXT PRIMARY KEY,
       data       JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS admin_groupings (
       id         TEXT PRIMARY KEY,
       data       JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // ─── DISPATCH DAILY ARCHIVES ─────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS dispatch_daily_archives (
       archive_date   TEXT PRIMARY KEY,
       data           JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -126,40 +96,15 @@ export const runMigrations = async () => {
       audit_count    INTEGER NOT NULL DEFAULT 0,
       archived_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_daily_archives_archived_at ON dispatch_daily_archives(archived_at DESC)`);
-
-  // ─── SYSTEM USERS ────────────────────────────────────────────────────────────
-  await query(`
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_daily_archives_archived_at ON dispatch_daily_archives(archived_at DESC);
     CREATE TABLE IF NOT EXISTS system_users_state (
       id                  TEXT PRIMARY KEY DEFAULT 'singleton',
       version             INTEGER NOT NULL DEFAULT 6,
       protected_user_ids  JSONB NOT NULL DEFAULT '[]'::jsonb,
       users               JSONB NOT NULL DEFAULT '[]'::jsonb,
       updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-  await query(`INSERT INTO system_users_state (id, version, protected_user_ids, users) VALUES ('singleton', 6, '[]'::jsonb, '[]'::jsonb) ON CONFLICT (id) DO NOTHING`);
-
-  await query(`
-    CREATE TABLE IF NOT EXISTS system_users_state (
-      id                  TEXT PRIMARY KEY DEFAULT 'singleton',
-      version             INTEGER NOT NULL DEFAULT 6,
-      protected_user_ids  JSONB NOT NULL DEFAULT '[]'::jsonb,
-      users               JSONB NOT NULL DEFAULT '[]'::jsonb,
-      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`
-    INSERT INTO system_users_state (id, version, protected_user_ids, users)
-    VALUES ('singleton', 6, '[]'::jsonb, '[]'::jsonb)
-    ON CONFLICT (id) DO NOTHING
-  `);
-
-  // ─── SYSTEM MESSAGES ─────────────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS system_messages (
       id           TEXT PRIMARY KEY,
       driver_id    TEXT,
@@ -171,14 +116,9 @@ export const runMigrations = async () => {
       data         JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       resolved_at  TIMESTAMPTZ
-    )
-  `);
-
-  await query(`CREATE INDEX IF NOT EXISTS idx_system_messages_driver_id ON system_messages(driver_id)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_system_messages_status ON system_messages(status)`);
-
-  // ─── ACTIVITY LOGS ───────────────────────────────────────────────────────────
-  await query(`
+    );
+    CREATE INDEX IF NOT EXISTS idx_system_messages_driver_id ON system_messages(driver_id);
+    CREATE INDEX IF NOT EXISTS idx_system_messages_status ON system_messages(status);
     CREATE TABLE IF NOT EXISTS activity_logs (
       id           TEXT PRIMARY KEY,
       user_id      TEXT NOT NULL,
@@ -193,14 +133,9 @@ export const runMigrations = async () => {
       timestamp    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       date         TEXT,
       time         TEXT
-    )
-  `);
-
-  await query(`CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs(timestamp DESC)`);
-
-  // ─── BLACKLIST ───────────────────────────────────────────────────────────────
-  await query(`
+    );
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs(timestamp DESC);
     CREATE TABLE IF NOT EXISTS blacklist_entries (
       id           TEXT PRIMARY KEY,
       name         TEXT,
@@ -212,25 +147,16 @@ export const runMigrations = async () => {
       source       TEXT NOT NULL DEFAULT 'Dispatcher',
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // ─── LOGIN FAILURES ──────────────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS login_failures (
       id           SERIAL PRIMARY KEY,
       identifier   TEXT NOT NULL,
       ip_address   TEXT,
       reason       TEXT,
       timestamp    BIGINT NOT NULL
-    )
-  `);
-
-  await query(`CREATE INDEX IF NOT EXISTS idx_login_failures_identifier ON login_failures(identifier)`);
-  await query(`CREATE INDEX IF NOT EXISTS idx_login_failures_timestamp ON login_failures(timestamp DESC)`);
-
-  // ─── MOBILE DRIVER SESSIONS ─────────────────────────────────────────────────
-  await query(`
+    );
+    CREATE INDEX IF NOT EXISTS idx_login_failures_identifier ON login_failures(identifier);
+    CREATE INDEX IF NOT EXISTS idx_login_failures_timestamp ON login_failures(timestamp DESC);
     CREATE TABLE IF NOT EXISTS driver_mobile_sessions (
       driver_id      TEXT PRIMARY KEY,
       driver_name    TEXT,
@@ -238,110 +164,70 @@ export const runMigrations = async () => {
       session_token  TEXT NOT NULL,
       created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`CREATE INDEX IF NOT EXISTS idx_driver_mobile_sessions_last_seen_at ON driver_mobile_sessions(last_seen_at DESC)`);
-
-  // ─── 2FA SECRETS ─────────────────────────────────────────────────────────────
-  await query(`
+    );
+    CREATE INDEX IF NOT EXISTS idx_driver_mobile_sessions_last_seen_at ON driver_mobile_sessions(last_seen_at DESC);
     CREATE TABLE IF NOT EXISTS two_fa_secrets (
       user_id      TEXT PRIMARY KEY,
       secret       TEXT NOT NULL,
       enabled      BOOLEAN NOT NULL DEFAULT FALSE,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // ─── EMAIL AUTH CODES ────────────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS email_auth_codes (
       email        TEXT PRIMARY KEY,
       code         TEXT NOT NULL,
       attempts     INTEGER NOT NULL DEFAULT 0,
       expires_at   BIGINT NOT NULL,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // ─── PASSWORD RESET CODES ───────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS password_reset_codes (
       email        TEXT PRIMARY KEY,
       code         TEXT NOT NULL,
       attempts     INTEGER NOT NULL DEFAULT 0,
       expires_at   BIGINT NOT NULL,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // ─── EMAIL TEMPLATES ─────────────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS email_templates (
       id           TEXT PRIMARY KEY,
       data         JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // ─── INTEGRATIONS ────────────────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS integrations_state (
       id           TEXT PRIMARY KEY DEFAULT 'singleton',
       version      INTEGER NOT NULL DEFAULT 1,
       data         JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`
-    INSERT INTO integrations_state (id, version, data)
-    VALUES ('singleton', 1, '{}'::jsonb)
-    ON CONFLICT (id) DO NOTHING
-  `);
-
-  // ─── USER UI PREFERENCES ────────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS user_ui_preferences (
       user_id      TEXT PRIMARY KEY,
       preferences  JSONB NOT NULL DEFAULT '{}'::jsonb,
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  // ─── ASSISTANT MEMORY ────────────────────────────────────────────────────────
-  await query(`
+    );
     CREATE TABLE IF NOT EXISTS assistant_memory (
-      id           TEXT PRIMARY KEY DEFAULT 'singleton',
+      id            TEXT PRIMARY KEY DEFAULT 'singleton',
       conversations JSONB NOT NULL DEFAULT '{}'::jsonb,
-      facts        JSONB NOT NULL DEFAULT '[]'::jsonb,
-      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await query(`
-    INSERT INTO assistant_memory (id, conversations, facts)
-    VALUES ('singleton', '{}'::jsonb, '[]'::jsonb)
-    ON CONFLICT (id) DO NOTHING
-  `);
-
-  // ─── ASSISTANT KNOWLEDGE ─────────────────────────────────────────────────────
-  await query(`
+      facts         JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
     CREATE TABLE IF NOT EXISTS assistant_knowledge (
-      id           TEXT PRIMARY KEY DEFAULT 'singleton',
-      documents    JSONB NOT NULL DEFAULT '[]'::jsonb,
-      chunks       JSONB NOT NULL DEFAULT '[]'::jsonb,
-      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      id         TEXT PRIMARY KEY DEFAULT 'singleton',
+      documents  JSONB NOT NULL DEFAULT '[]'::jsonb,
+      chunks     JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
+  // ── Seed singleton rows in 1 round trip ──────────────────────────────────────
   await query(`
-    INSERT INTO assistant_knowledge (id, documents, chunks)
-    VALUES ('singleton', '[]'::jsonb, '[]'::jsonb)
-    ON CONFLICT (id) DO NOTHING
+    INSERT INTO dispatch_state (id, version, data) VALUES ('singleton', 1, '{}'::jsonb) ON CONFLICT (id) DO NOTHING;
+    INSERT INTO dispatch_ui_prefs (id, data) VALUES ('singleton', '{}'::jsonb) ON CONFLICT (id) DO NOTHING;
+    INSERT INTO admin_state (id, version, data) VALUES ('singleton', 2, '{"drivers":[],"attendants":[],"vehicles":[],"groupings":[]}'::jsonb) ON CONFLICT (id) DO NOTHING;
+    INSERT INTO system_users_state (id, version, protected_user_ids, users) VALUES ('singleton', 6, '[]'::jsonb, '[]'::jsonb) ON CONFLICT (id) DO NOTHING;
+    INSERT INTO integrations_state (id, version, data) VALUES ('singleton', 1, '{}'::jsonb) ON CONFLICT (id) DO NOTHING;
+    INSERT INTO assistant_memory (id, conversations, facts) VALUES ('singleton', '{}'::jsonb, '[]'::jsonb) ON CONFLICT (id) DO NOTHING;
+    INSERT INTO assistant_knowledge (id, documents, chunks) VALUES ('singleton', '[]'::jsonb, '[]'::jsonb) ON CONFLICT (id) DO NOTHING
   `);
 
-  // ─── MIGRATE BLOB → NORMALIZED TABLES (runs once) ────────────────────────────
+  // ── Migrate blob → normalized tables (runs once, checks row count first) ─────
   await migrateDispatchBlobToNormalized();
   await migrateAdminBlobToNormalized();
 

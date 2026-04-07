@@ -97,3 +97,22 @@ export const isRateLimited = async (identifier, maxFailures = 5, withinMinutes =
   const recentFailures = await getRecentFailures(identifier, withinMinutes);
   return recentFailures.length >= maxFailures;
 };
+
+/**
+ * Clear all failure records for a specific identifier (unlock a locked account)
+ */
+export const clearLoginFailures = async identifier => {
+  try {
+    await ensureTable();
+    const normalizedIdentifier = String(identifier ?? '').trim().toLowerCase();
+    if (!normalizedIdentifier) return 0;
+    const result = await query(
+      `DELETE FROM login_failures WHERE identifier = $1`,
+      [normalizedIdentifier]
+    );
+    return result.rowCount ?? 0;
+  } catch (error) {
+    console.error('Error clearing login failures:', error);
+    return 0;
+  }
+};

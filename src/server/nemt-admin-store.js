@@ -113,13 +113,15 @@ const upsertEntities = async (client, table, entities) => {
     await client.query(`DELETE FROM ${table}`);
     return;
   }
-  for (const entity of rows) {
-    await client.query(
-      `INSERT INTO ${table} (id, data, updated_at) VALUES ($1, $2, NOW())
-       ON CONFLICT (id) DO UPDATE SET data=$2, updated_at=NOW()`,
-      [entity.id, entity]
-    );
-  }
+  // Bulk upsert — 1 query regardless of entity count
+  await client.query(
+    `INSERT INTO ${table} (id, data, updated_at)
+     SELECT (t.data->>'id'), t.data, NOW()
+     FROM json_array_elements($1::json) AS t(data)
+     WHERE (t.data->>'id') IS NOT NULL AND (t.data->>'id') != ''
+     ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=NOW()`,
+    [JSON.stringify(rows)]
+  );
   const ids = rows.map(e => e.id);
   await client.query(`DELETE FROM ${table} WHERE id != ALL($1::text[])`, [ids]);
 };
