@@ -92,13 +92,13 @@ const getDriverAuthHeaders = (session: DriverSession | null, baseHeaders: Header
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
+    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false
   })
 });
-
 const EMPTY_DRIVER_DOCUMENTS: DriverDocuments = {
   profilePhoto: null,
   licenseFront: null,
