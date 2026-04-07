@@ -693,12 +693,12 @@ const StandaloneDispatchMapScreen = () => {
     if (isDashboardMap) {
       const routeTripKey = routeTripSelectionIds.map(value => String(value || '').trim()).filter(Boolean).join('|');
       const stopKey = dashboardRouteStops.map(stop => String(stop?.key || '').trim()).filter(Boolean).join('|');
-      return `dashboard:${activeDashboardViewMode}:${routeTripKey}:${stopKey}`;
+      return `dashboard:${dashboardViewMode}:${routeTripKey}:${stopKey}`;
     }
     const originLabel = String(originResult?.label || '').trim();
     const destinationLabel = String(destinationResult?.label || '').trim();
     return `lookup:${originLabel}:${destinationLabel}`;
-  }, [activeDashboardViewMode, dashboardRouteStops, destinationResult?.label, isDashboardMap, originResult?.label, routeTripSelectionIds]);
+  }, [dashboardRouteStops, dashboardViewMode, destinationResult?.label, isDashboardMap, originResult?.label, routeTripSelectionIds]);
 
   const handleLookupRoute = async event => {
     event?.preventDefault();
