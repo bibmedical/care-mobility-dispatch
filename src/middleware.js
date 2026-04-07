@@ -50,7 +50,7 @@ export default withAuth(
     callbacks: {
       authorized: ({ req, token }) => {
         const pathname = req.nextUrl.pathname;
-        const reauthWindowMinutes = 15;
+        const reauthWindowMinutes = 30;
 
         if (AUTH_ROUTES.some(route => pathname.startsWith(route))) {
           return true;
@@ -71,7 +71,8 @@ export default withAuth(
 
         const tokenIp = normalizeIp(token.loginIp || '');
         const currentIp = getRequestIp(req);
-        if (!tokenIp || !currentIp || tokenIp !== currentIp) {
+        // Enforce IP binding only when both IPs are present and non-local.
+        if (tokenIp && currentIp && tokenIp !== 'localhost' && currentIp !== 'localhost' && tokenIp !== currentIp) {
           return false;
         }
 
