@@ -587,6 +587,23 @@ const ConfirmationWorkspace = () => {
     return patientHistoryRows.find(row => row.key === selectedPatientKey) || null;
   }, [patientHistoryRows, selectedPatientKey]);
 
+  const selectedPatientHistoryAnchorTrip = useMemo(() => {
+    if (!selectedPatientHistory) return null;
+    const selectedHistoryTripIds = new Set((selectedPatientHistory.trips || []).map(item => String(item?.id || '').trim()).filter(Boolean));
+    const exactMatch = trips.find(trip => selectedHistoryTripIds.has(String(trip?.id || '').trim()));
+    if (exactMatch) return exactMatch;
+
+    const normalizedPhone = String(selectedPatientHistory.phone || '').replace(/\D/g, '');
+    const normalizedRider = String(selectedPatientHistory.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return trips.find(trip => {
+      const tripPhone = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
+      const tripRider = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (normalizedPhone && tripPhone && normalizedPhone === tripPhone) return true;
+      if (normalizedRider && tripRider && normalizedRider === tripRider) return true;
+      return false;
+    }) || null;
+  }, [selectedPatientHistory, trips]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (userPreferencesLoading) return;
@@ -1296,6 +1313,17 @@ const ConfirmationWorkspace = () => {
       setHospitalRehabEndDate(endDate.toISOString().slice(0, 10));
       setHospitalRehabNotes('');
     }
+  };
+
+  const handleDeleteClonedTrip = trip => {
+    if (!trip?.id) return;
+    const confirmed = window.confirm(`DELETE COPY ${trip.id}\nOriginal: ${trip.clonedFromTripId || '-'}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`);
+    if (!confirmed) return;
+    deleteTripRecord(trip.id);
+    setCustomStatus(`Deleted cloned trip ${trip.id}.`);
+    window.setTimeout(() => {
+      void refreshDispatchState({ forceServer: true });
+    }, 350);
   };
 
   const handleSaveHospitalRehab = async () => {
@@ -2137,7 +2165,7 @@ const ConfirmationWorkspace = () => {
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => { if (window.confirm(`DELETE COPY ${trip.id}\nOriginal: ${trip.clonedFromTripId}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}
+                          onClick={() => handleDeleteClonedTrip(trip)}
                         >
                           🗑 Delete Copy
                         </Button>
@@ -2203,6 +2231,9 @@ const ConfirmationWorkspace = () => {
                 </Button>
                 <Button style={surfaceStyles.button} onClick={handleOpenPatientStatusModal} disabled={!selectedPatientHistory}>
                   Set Patient Rule
+                </Button>
+                <Button style={surfaceStyles.button} onClick={() => selectedPatientHistoryAnchorTrip ? handleOpenHospitalRehabModal(selectedPatientHistoryAnchorTrip) : setCustomStatus('No live trip found for this patient to mark Rehab/Hospital.')} disabled={!selectedPatientHistory}>
+                  Set Rehab/Hospital
                 </Button>
                 <Button style={surfaceStyles.button} onClick={handleClearPatientStatus} disabled={!selectedPatientHistory}>
                   Clear Rule
