@@ -65,13 +65,19 @@ export const writeBlacklistState = async (nextState, options = {}) => {
 
   if (allowDelete) {
     await query(`DELETE FROM blacklist_entries`);
-    for (const entry of normalized.entries) {
+    if (normalized.entries.length > 0) {
+      const entriesJson = JSON.stringify(normalized.entries);
       await query(
         `INSERT INTO blacklist_entries (id, name, phone, category, status, hold_until, notes, source, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         SELECT 
+           e->>'id', e->>'name', e->>'phone', e->>'category', e->>'status',
+           e->>'holdUntil', e->>'notes', e->>'source', e->>'createdAt', e->>'updatedAt'
+         FROM json_array_elements($1::json) AS e
          ON CONFLICT (id) DO UPDATE SET
-           name=$2, phone=$3, category=$4, status=$5, hold_until=$6, notes=$7, source=$8, updated_at=$10`,
-        [entry.id, entry.name, entry.phone, entry.category, entry.status, entry.holdUntil, entry.notes, entry.source, entry.createdAt, entry.updatedAt]
+           name=EXCLUDED.name, phone=EXCLUDED.phone, category=EXCLUDED.category, 
+           status=EXCLUDED.status, hold_until=EXCLUDED.hold_until, notes=EXCLUDED.notes, 
+           source=EXCLUDED.source, updated_at=EXCLUDED.updated_at`,
+        [entriesJson]
       );
     }
     return normalized;
@@ -92,13 +98,19 @@ export const writeBlacklistState = async (nextState, options = {}) => {
 
   const mergedEntries = Array.from(mergedEntriesMap.values()).filter(entry => entry.name || entry.phone);
 
-  for (const entry of mergedEntries) {
+  if (mergedEntries.length > 0) {
+    const entriesJson = JSON.stringify(mergedEntries);
     await query(
       `INSERT INTO blacklist_entries (id, name, phone, category, status, hold_until, notes, source, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       SELECT 
+         e->>'id', e->>'name', e->>'phone', e->>'category', e->>'status',
+         e->>'holdUntil', e->>'notes', e->>'source', e->>'createdAt', e->>'updatedAt'
+       FROM json_array_elements($1::json) AS e
        ON CONFLICT (id) DO UPDATE SET
-         name=$2, phone=$3, category=$4, status=$5, hold_until=$6, notes=$7, source=$8, updated_at=$10`,
-      [entry.id, entry.name, entry.phone, entry.category, entry.status, entry.holdUntil, entry.notes, entry.source, entry.createdAt, entry.updatedAt]
+         name=EXCLUDED.name, phone=EXCLUDED.phone, category=EXCLUDED.category, 
+         status=EXCLUDED.status, hold_until=EXCLUDED.hold_until, notes=EXCLUDED.notes, 
+         source=EXCLUDED.source, updated_at=EXCLUDED.updated_at`,
+      [entriesJson]
     );
   }
   return normalizeBlacklistState({ entries: mergedEntries });
