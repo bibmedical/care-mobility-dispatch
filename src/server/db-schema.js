@@ -1,9 +1,9 @@
-import { query } from '@/server/db';
+import { query, queryOne } from '@/server/db';
 
 export const runMigrations = async () => {
   console.log('[DB] Running schema migrations...');
 
-  // ─── DISPATCH (trips + state) ────────────────────────────────────────────────
+  // ─── DISPATCH BLOB (kept for history/archive reference) ──────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS dispatch_state (
       id           TEXT PRIMARY KEY DEFAULT 'singleton',
@@ -12,13 +12,109 @@ export const runMigrations = async () => {
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await query(`INSERT INTO dispatch_state (id, version, data) VALUES ('singleton', 1, '{}'::jsonb) ON CONFLICT (id) DO NOTHING`);
+
+  // ─── DISPATCH NORMALIZED TABLES ──────────────────────────────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS dispatch_trips (
+      id             TEXT PRIMARY KEY,
+      service_date   TEXT NOT NULL DEFAULT '',
+      broker_trip_id TEXT NOT NULL DEFAULT '',
+      data           JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_trips_service_date ON dispatch_trips(service_date)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_trips_broker_trip_id ON dispatch_trips(broker_trip_id)`);
 
   await query(`
-    INSERT INTO dispatch_state (id, version, data)
-    VALUES ('singleton', 1, '{}'::jsonb)
-    ON CONFLICT (id) DO NOTHING
+    CREATE TABLE IF NOT EXISTS dispatch_route_plans (
+      id           TEXT PRIMARY KEY,
+      service_date TEXT NOT NULL DEFAULT '',
+      data         JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_route_plans_service_date ON dispatch_route_plans(service_date)`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS dispatch_threads (
+      driver_id    TEXT PRIMARY KEY,
+      data         JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS dispatch_daily_drivers (
+      id         TEXT PRIMARY KEY,
+      data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS dispatch_audit_log (
+      id          TEXT PRIMARY KEY,
+      data        JSONB NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_audit_log_occurred_at ON dispatch_audit_log(occurred_at DESC)`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS dispatch_ui_prefs (
+      id         TEXT PRIMARY KEY DEFAULT 'singleton',
+      data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query(`INSERT INTO dispatch_ui_prefs (id, data) VALUES ('singleton', '{}'::jsonb) ON CONFLICT (id) DO NOTHING`);
+
+  // ─── ADMIN NORMALIZED TABLES ─────────────────────────────────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS admin_state (
+      id           TEXT PRIMARY KEY DEFAULT 'singleton',
+      version      INTEGER NOT NULL DEFAULT 2,
+      data         JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await query(`INSERT INTO admin_state (id, version, data) VALUES ('singleton', 2, '{"drivers":[],"attendants":[],"vehicles":[],"groupings":[]}'::jsonb) ON CONFLICT (id) DO NOTHING`);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS admin_drivers (
+      id         TEXT PRIMARY KEY,
+      data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS admin_vehicles (
+      id         TEXT PRIMARY KEY,
+      data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS admin_attendants (
+      id         TEXT PRIMARY KEY,
+      data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS admin_groupings (
+      id         TEXT PRIMARY KEY,
+      data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // ─── DISPATCH DAILY ARCHIVES ─────────────────────────────────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS dispatch_daily_archives (
       archive_date   TEXT PRIMARY KEY,
@@ -32,26 +128,20 @@ export const runMigrations = async () => {
       updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-
   await query(`CREATE INDEX IF NOT EXISTS idx_dispatch_daily_archives_archived_at ON dispatch_daily_archives(archived_at DESC)`);
 
-  // ─── ADMIN (drivers, vehicles, attendants, groupings) ────────────────────────
+  // ─── SYSTEM USERS ────────────────────────────────────────────────────────────
   await query(`
-    CREATE TABLE IF NOT EXISTS admin_state (
-      id           TEXT PRIMARY KEY DEFAULT 'singleton',
-      version      INTEGER NOT NULL DEFAULT 2,
-      data         JSONB NOT NULL DEFAULT '{}'::jsonb,
-      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    CREATE TABLE IF NOT EXISTS system_users_state (
+      id                  TEXT PRIMARY KEY DEFAULT 'singleton',
+      version             INTEGER NOT NULL DEFAULT 6,
+      protected_user_ids  JSONB NOT NULL DEFAULT '[]'::jsonb,
+      users               JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await query(`INSERT INTO system_users_state (id, version, protected_user_ids, users) VALUES ('singleton', 6, '[]'::jsonb, '[]'::jsonb) ON CONFLICT (id) DO NOTHING`);
 
-  await query(`
-    INSERT INTO admin_state (id, version, data)
-    VALUES ('singleton', 2, '{"drivers":[],"attendants":[],"vehicles":[],"groupings":[]}'::jsonb)
-    ON CONFLICT (id) DO NOTHING
-  `);
-
-  // ─── SYSTEM USERS ────────────────────────────────────────────────────────────
   await query(`
     CREATE TABLE IF NOT EXISTS system_users_state (
       id                  TEXT PRIMARY KEY DEFAULT 'singleton',
@@ -251,5 +341,102 @@ export const runMigrations = async () => {
     ON CONFLICT (id) DO NOTHING
   `);
 
+  // ─── MIGRATE BLOB → NORMALIZED TABLES (runs once) ────────────────────────────
+  await migrateDispatchBlobToNormalized();
+  await migrateAdminBlobToNormalized();
+
   console.log('[DB] All migrations complete.');
+};
+
+const migrateDispatchBlobToNormalized = async () => {
+  const countRow = await queryOne(`SELECT COUNT(*)::int AS count FROM dispatch_trips`);
+  if (Number(countRow?.count) > 0) return;
+
+  const blobRow = await queryOne(`SELECT data FROM dispatch_state WHERE id = 'singleton'`);
+  if (!blobRow?.data) return;
+
+  const trips = Array.isArray(blobRow.data.trips) ? blobRow.data.trips : [];
+  const routePlans = Array.isArray(blobRow.data.routePlans) ? blobRow.data.routePlans : [];
+  const dispatchThreads = Array.isArray(blobRow.data.dispatchThreads) ? blobRow.data.dispatchThreads : [];
+  const dailyDrivers = Array.isArray(blobRow.data.dailyDrivers) ? blobRow.data.dailyDrivers : [];
+  const auditLog = Array.isArray(blobRow.data.auditLog) ? blobRow.data.auditLog : [];
+  const uiPreferences = blobRow.data.uiPreferences || {};
+
+  if (trips.length > 0) {
+    await query(
+      `INSERT INTO dispatch_trips (id, service_date, broker_trip_id, data)
+       SELECT
+         t.data->>'id',
+         COALESCE(t.data->>'serviceDate', t.data->>'rawServiceDate', ''),
+         COALESCE(t.data->>'brokerTripId', ''),
+         t.data
+       FROM json_array_elements($1::json) AS t(data)
+       WHERE t.data->>'id' IS NOT NULL AND t.data->>'id' != ''
+       ON CONFLICT (id) DO NOTHING`,
+      [JSON.stringify(trips)]
+    );
+  }
+  if (routePlans.length > 0) {
+    await query(
+      `INSERT INTO dispatch_route_plans (id, service_date, data)
+       SELECT
+         t.data->>'id',
+         COALESCE(t.data->>'serviceDate', t.data->>'routeDate', t.data->>'date', ''),
+         t.data
+       FROM json_array_elements($1::json) AS t(data)
+       WHERE t.data->>'id' IS NOT NULL AND t.data->>'id' != ''
+       ON CONFLICT (id) DO NOTHING`,
+      [JSON.stringify(routePlans)]
+    );
+  }
+  for (const thread of dispatchThreads) {
+    if (!thread?.driverId) continue;
+    await query(`INSERT INTO dispatch_threads (driver_id, data) VALUES ($1, $2) ON CONFLICT (driver_id) DO NOTHING`, [thread.driverId, thread]);
+  }
+  for (const dd of dailyDrivers) {
+    if (!dd?.id) continue;
+    await query(`INSERT INTO dispatch_daily_drivers (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [dd.id, dd]);
+  }
+  for (const entry of auditLog.slice(-500)) {
+    if (!entry?.id) continue;
+    await query(`INSERT INTO dispatch_audit_log (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [entry.id, entry]);
+  }
+  await query(`INSERT INTO dispatch_ui_prefs (id, data) VALUES ('singleton', $1) ON CONFLICT (id) DO UPDATE SET data=$1`, [uiPreferences]);
+
+  console.log(`[DB] Migrated ${trips.length} trips, ${routePlans.length} routes, ${dispatchThreads.length} threads from dispatch blob.`);
+};
+
+const migrateAdminBlobToNormalized = async () => {
+  const countRow = await queryOne(`SELECT COUNT(*)::int AS count FROM admin_drivers`);
+  if (Number(countRow?.count) > 0) return;
+
+  const blobRow = await queryOne(`SELECT data FROM admin_state WHERE id = 'singleton'`);
+  if (!blobRow?.data) return;
+
+  const drivers = Array.isArray(blobRow.data.drivers) ? blobRow.data.drivers : [];
+  const attendants = Array.isArray(blobRow.data.attendants) ? blobRow.data.attendants : [];
+  const vehicles = Array.isArray(blobRow.data.vehicles) ? blobRow.data.vehicles : [];
+  const groupings = Array.isArray(blobRow.data.groupings) ? blobRow.data.groupings : [];
+
+  for (const driver of drivers) {
+    if (!driver?.id) continue;
+    await query(`INSERT INTO admin_drivers (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [driver.id, driver]);
+  }
+  for (const vehicle of vehicles) {
+    const id = vehicle?.id || vehicle?.vin || vehicle?.plate;
+    if (!id) continue;
+    await query(`INSERT INTO admin_vehicles (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, { ...vehicle, id }]);
+  }
+  for (const attendant of attendants) {
+    const id = attendant?.id || attendant?.name;
+    if (!id) continue;
+    await query(`INSERT INTO admin_attendants (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, { ...attendant, id }]);
+  }
+  for (const grouping of groupings) {
+    const id = grouping?.id || grouping?.name;
+    if (!id) continue;
+    await query(`INSERT INTO admin_groupings (id, data) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING`, [id, { ...grouping, id }]);
+  }
+
+  console.log(`[DB] Migrated ${drivers.length} drivers, ${vehicles.length} vehicles from admin blob.`);
 };

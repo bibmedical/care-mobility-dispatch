@@ -1,93 +1,158 @@
 import { normalizeDispatchThreadRecord, normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState } from '@/server/dispatch-history-store';
-import { acquireAdvisoryLock, query, queryOne, withTransaction } from '@/server/db';
+import { query, queryOne, withTransaction } from '@/server/db';
 
-const ROW_ID = 'singleton';
-
-const getTripUpdatedAt = trip => {
-  const value = Number(trip?.updatedAt);
-  return Number.isFinite(value) ? value : 0;
-};
-
-const mergeTripsByLatestUpdate = (currentTrips, incomingTrips) => {
-  const currentTripMap = new Map((Array.isArray(currentTrips) ? currentTrips : []).map(trip => [String(trip?.id || ''), trip]));
-  return (Array.isArray(incomingTrips) ? incomingTrips : []).map(incomingTrip => {
-    const tripId = String(incomingTrip?.id || '');
-    const currentTrip = currentTripMap.get(tripId);
-    if (!currentTrip) return incomingTrip;
-    return getTripUpdatedAt(incomingTrip) >= getTripUpdatedAt(currentTrip) ? incomingTrip : currentTrip;
-  });
-};
-
-const upsertDispatchState = async normalizedState => {
-  await query(
-    `
-      INSERT INTO dispatch_state (id, version, data, updated_at)
-      VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (id)
-      DO UPDATE SET version = EXCLUDED.version, data = EXCLUDED.data, updated_at = NOW()
-    `,
-    [ROW_ID, Number(normalizedState?.version || 1), normalizedState]
-  );
-};
+// ─── READ ─────────────────────────────────────────────────────────────────────
 
 export const readNemtDispatchState = async () => {
-  const row = await queryOne(`SELECT data FROM dispatch_state WHERE id = $1`, [ROW_ID]);
-  return normalizePersistentDispatchState(row?.data ?? {});
+  const [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
+    query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`),
+    query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`),
+    query(`SELECT data FROM dispatch_threads`),
+    query(`SELECT data FROM dispatch_daily_drivers ORDER BY created_at`),
+    query(`SELECT data FROM dispatch_audit_log ORDER BY occurred_at DESC LIMIT 500`),
+    queryOne(`SELECT data FROM dispatch_ui_prefs WHERE id = 'singleton'`)
+  ]);
+
+  return normalizePersistentDispatchState({
+    trips: tripsRes.rows.map(r => r.data),
+    routePlans: routesRes.rows.map(r => r.data),
+    dispatchThreads: threadsRes.rows.map(r => r.data),
+    dailyDrivers: ddRes.rows.map(r => r.data),
+    auditLog: auditRes.rows.map(r => r.data),
+    uiPreferences: prefsRow?.data ?? {}
+  });
 };
 
 export const readNemtDispatchThreads = async () => {
-  const row = await queryOne(`SELECT data->'dispatchThreads' AS dispatch_threads FROM dispatch_state WHERE id = $1`, [ROW_ID]);
-  const threads = Array.isArray(row?.dispatch_threads) ? row.dispatch_threads : [];
-  return threads.map(normalizeDispatchThreadRecord);
+  const res = await query(`SELECT data FROM dispatch_threads`);
+  return res.rows.map(r => r.data).map(normalizeDispatchThreadRecord);
 };
 
+// ─── WRITE ────────────────────────────────────────────────────────────────────
+
 export const writeNemtDispatchState = async nextState => {
-  const currentState = await readNemtDispatchState();
-  const normalized = normalizePersistentDispatchState({
-    ...nextState,
-    trips: mergeTripsByLatestUpdate(currentState?.trips, nextState?.trips)
+  const normalized = normalizePersistentDispatchState(nextState);
+
+  await withTransaction(async client => {
+    // ── trips: bulk upsert, keep newest by updatedAt ──────────────────────────
+    if (normalized.trips.length > 0) {
+      await client.query(
+        `INSERT INTO dispatch_trips (id, service_date, broker_trip_id, data, updated_at)
+         SELECT
+           t.data->>'id',
+           COALESCE(t.data->>'serviceDate', t.data->>'rawServiceDate', ''),
+           COALESCE(t.data->>'brokerTripId', ''),
+           t.data,
+           NOW()
+         FROM json_array_elements($1::json) AS t(data)
+         WHERE t.data->>'id' IS NOT NULL AND t.data->>'id' != ''
+         ON CONFLICT (id) DO UPDATE SET
+           data = CASE
+             WHEN (EXCLUDED.data->>'updatedAt')::bigint >= COALESCE((dispatch_trips.data->>'updatedAt')::bigint, 0)
+             THEN EXCLUDED.data
+             ELSE dispatch_trips.data
+           END,
+           service_date = EXCLUDED.service_date,
+           broker_trip_id = EXCLUDED.broker_trip_id,
+           updated_at = NOW()`,
+        [JSON.stringify(normalized.trips)]
+      );
+      // remove trips not in this save
+      const tripIds = normalized.trips.map(t => t.id);
+      await client.query(`DELETE FROM dispatch_trips WHERE id != ALL($1::text[])`, [tripIds]);
+    } else {
+      await client.query(`DELETE FROM dispatch_trips`);
+    }
+
+    // ── route plans: bulk upsert ───────────────────────────────────────────────
+    if (normalized.routePlans.length > 0) {
+      await client.query(
+        `INSERT INTO dispatch_route_plans (id, service_date, data, updated_at)
+         SELECT
+           t.data->>'id',
+           COALESCE(t.data->>'serviceDate', t.data->>'routeDate', t.data->>'date', ''),
+           t.data,
+           NOW()
+         FROM json_array_elements($1::json) AS t(data)
+         WHERE t.data->>'id' IS NOT NULL AND t.data->>'id' != ''
+         ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, service_date=EXCLUDED.service_date, updated_at=NOW()`,
+        [JSON.stringify(normalized.routePlans)]
+      );
+      const planIds = normalized.routePlans.map(p => p.id);
+      await client.query(`DELETE FROM dispatch_route_plans WHERE id != ALL($1::text[])`, [planIds]);
+    } else {
+      await client.query(`DELETE FROM dispatch_route_plans`);
+    }
+
+    // ── threads: upsert per driver ─────────────────────────────────────────────
+    for (const thread of normalized.dispatchThreads) {
+      if (!thread?.driverId) continue;
+      await client.query(
+        `INSERT INTO dispatch_threads (driver_id, data, updated_at) VALUES ($1, $2, NOW())
+         ON CONFLICT (driver_id) DO UPDATE SET data=$2, updated_at=NOW()`,
+        [thread.driverId, thread]
+      );
+    }
+
+    // ── daily drivers: upsert ─────────────────────────────────────────────────
+    for (const dd of normalized.dailyDrivers) {
+      if (!dd?.id) continue;
+      await client.query(
+        `INSERT INTO dispatch_daily_drivers (id, data) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET data=$2`,
+        [dd.id, dd]
+      );
+    }
+
+    // ── audit log: insert only new entries ────────────────────────────────────
+    for (const entry of normalized.auditLog) {
+      if (!entry?.id) continue;
+      await client.query(
+        `INSERT INTO dispatch_audit_log (id, data, occurred_at) VALUES ($1, $2, NOW()) ON CONFLICT (id) DO NOTHING`,
+        [entry.id, entry]
+      );
+    }
+
+    // ── UI preferences ────────────────────────────────────────────────────────
+    await client.query(
+      `INSERT INTO dispatch_ui_prefs (id, data, updated_at) VALUES ('singleton', $1, NOW())
+       ON CONFLICT (id) DO UPDATE SET data=$1, updated_at=NOW()`,
+      [normalized.uiPreferences ?? {}]
+    );
   });
-  await upsertDispatchState(normalized);
+
   return normalized;
 };
 
+// ─── DRIVER TRIP UPDATE (mobile) ──────────────────────────────────────────────
+
 export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => {
   return withTransaction(async client => {
-    await acquireAdvisoryLock(client, 'dispatch-state-update');
-    const result = await client.query(`SELECT data FROM dispatch_state WHERE id = $1`, [ROW_ID]);
-    const currentData = normalizePersistentDispatchState(result.rows[0]?.data ?? {});
-    const trips = Array.isArray(currentData?.trips) ? currentData.trips : [];
-    const tripIndex = trips.findIndex(trip => String(trip?.id || '').trim() === String(tripId || '').trim());
-    if (tripIndex === -1) return { ok: false, reason: 'not-found' };
-    const trip = trips[tripIndex];
+    const result = await client.query(`SELECT data FROM dispatch_trips WHERE id = $1 FOR UPDATE`, [String(tripId || '').trim()]);
+    if (!result.rows.length) return { ok: false, reason: 'not-found' };
+    const trip = result.rows[0].data;
     const tripDriverId = String(trip?.driverId || '').trim();
     const tripSecondaryDriverId = String(trip?.secondaryDriverId || '').trim();
     const normalizedDriverId = String(driverId || '').trim();
     if (tripDriverId !== normalizedDriverId && tripSecondaryDriverId !== normalizedDriverId) {
       return { ok: false, reason: 'forbidden' };
     }
-    const updatedTrips = [...trips];
-    updatedTrips[tripIndex] = { ...trip, ...patch };
-    const nextData = normalizePersistentDispatchState({ ...currentData, trips: updatedTrips });
+    const updatedTrip = { ...trip, ...patch };
     await client.query(
-      `
-        INSERT INTO dispatch_state (id, version, data, updated_at)
-        VALUES ($1, $2, $3, NOW())
-        ON CONFLICT (id)
-        DO UPDATE SET version = EXCLUDED.version, data = EXCLUDED.data, updated_at = NOW()
-      `,
-      [ROW_ID, Number(nextData?.version || 1), nextData]
+      `UPDATE dispatch_trips SET data=$1, updated_at=NOW() WHERE id=$2`,
+      [updatedTrip, String(tripId || '').trim()]
     );
     return { ok: true };
   });
 };
 
+// ─── ARCHIVE MAINTENANCE ──────────────────────────────────────────────────────
+
 export const runDispatchArchiveMaintenance = async () => {
   const currentState = await readNemtDispatchState();
   const { nextState, archivedDates, archiveSummaries } = await archiveDispatchState(currentState);
   if (archivedDates.length > 0) {
-    await upsertDispatchState(nextState);
+    await writeNemtDispatchState(nextState);
   }
   return { state: nextState, archivedDates, archiveSummaries };
 };
