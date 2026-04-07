@@ -47,7 +47,7 @@ const DISCONNECTED_BADGE_STYLE = {
   color: '#ffffff'
 };
 
-const INLINE_CONFIRMATION_TIME_COLUMNS = new Set(['pickup', 'dropoff']);
+const INLINE_CONFIRMATION_EDITABLE_COLUMNS = new Set(['pickup', 'dropoff', 'pickupAddress', 'dropoffAddress']);
 
 const buildConfirmationActor = session => {
   const id = String(session?.user?.id || '').trim();
@@ -249,9 +249,11 @@ const normalizeTripTimeDisplay = value => {
   return text;
 };
 
-const getInlineConfirmationTimeValue = (trip, columnKey) => {
-  if (columnKey === 'pickup') return String(trip?.scheduledPickup || trip?.pickup || '').trim();
-  if (columnKey === 'dropoff') return String(trip?.scheduledDropoff || trip?.dropoff || '').trim();
+const getInlineConfirmationFieldValue = (trip, columnKey) => {
+  if (columnKey === 'pickup') return normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || '');
+  if (columnKey === 'dropoff') return normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || '');
+  if (columnKey === 'pickupAddress') return String(trip?.address || '').trim();
+  if (columnKey === 'dropoffAddress') return String(trip?.destination || '').trim();
   return '';
 };
 
@@ -1647,9 +1649,9 @@ const ConfirmationWorkspace = () => {
   const isInlineConfirmationTimeEditing = (tripId, columnKey) => inlineTimeEditCell?.tripId === tripId && inlineTimeEditCell?.columnKey === columnKey;
 
   const handleStartInlineConfirmationTimeEdit = (trip, columnKey) => {
-    if (!trip || !INLINE_CONFIRMATION_TIME_COLUMNS.has(columnKey)) return;
+    if (!trip || !INLINE_CONFIRMATION_EDITABLE_COLUMNS.has(columnKey)) return;
     setInlineTimeEditCell({ tripId: trip.id, columnKey });
-    setInlineTimeEditValue(getInlineConfirmationTimeValue(trip, columnKey));
+    setInlineTimeEditValue(getInlineConfirmationFieldValue(trip, columnKey));
   };
 
   const handleCancelInlineConfirmationTimeEdit = () => {
@@ -1661,7 +1663,7 @@ const ConfirmationWorkspace = () => {
     if (!trip || !inlineTimeEditCell?.columnKey) return;
 
     const columnKey = inlineTimeEditCell.columnKey;
-    const currentValue = String(getInlineConfirmationTimeValue(trip, columnKey) || '').trim();
+    const currentValue = String(getInlineConfirmationFieldValue(trip, columnKey) || '').trim();
     const nextValue = String(inlineTimeEditValue || '').trim();
 
     if (!nextValue || nextValue === currentValue) {
@@ -1674,59 +1676,102 @@ const ConfirmationWorkspace = () => {
     const newPickup = columnKey === 'pickup' ? nextValue : oldPickup;
     const newDropoff = columnKey === 'dropoff' ? nextValue : oldDropoff;
     const nowIso = new Date().toISOString();
-    const noteLine = buildScheduleChangeNoteLine({
-      actorName: confirmationActor.name,
-      oldPickup,
-      newPickup,
-      oldDropoff,
-      newDropoff
-    });
-    const mergedNotes = [String(trip?.notes || '').trim(), noteLine].filter(Boolean).join('\n');
-
-    updateTripRecord(trip.id, {
-      notes: mergedNotes,
-      ...(columnKey === 'pickup' ? {
-        pickup: nextValue,
-        scheduledPickup: nextValue,
-        pickupSortValue: buildConfirmationTimeSortValue(trip, nextValue, 'pickupSortValue')
-      } : {
-        dropoff: nextValue,
-        scheduledDropoff: nextValue,
-        dropoffSortValue: buildConfirmationTimeSortValue(trip, nextValue, 'dropoffSortValue')
-      }),
-      scheduleChange: {
+    if (columnKey === 'pickup' || columnKey === 'dropoff') {
+      const noteLine = buildScheduleChangeNoteLine({
+        actorName: confirmationActor.name,
         oldPickup,
         newPickup,
         oldDropoff,
-        newDropoff,
-        changedAt: nowIso,
-        updatedById: confirmationActor.id,
-        updatedByName: confirmationActor.name,
-        marker: 'NEW'
-      }
-    }, {
-      action: 'trip-schedule-inline-update',
-      source: 'confirmation-workspace',
-      actorId: confirmationActor.id,
-      actorName: confirmationActor.name,
-      summary: `${confirmationActor.name} changed ${columnKey} time on trip ${String(trip.id || '').trim()}`,
-      metadata: {
-        tripId: String(trip.id || '').trim(),
-        field: columnKey,
-        oldValue: currentValue,
-        newValue: nextValue
-      }
-    });
+        newDropoff
+      });
+      const mergedNotes = [String(trip?.notes || '').trim(), noteLine].filter(Boolean).join('\n');
 
-    setCustomStatus(`Time updated on trip ${String(trip.id || '').trim()} by ${confirmationActor.name}.`);
+      updateTripRecord(trip.id, {
+        notes: mergedNotes,
+        ...(columnKey === 'pickup' ? {
+          pickup: nextValue,
+          scheduledPickup: nextValue,
+          pickupSortValue: buildConfirmationTimeSortValue(trip, nextValue, 'pickupSortValue')
+        } : {
+          dropoff: nextValue,
+          scheduledDropoff: nextValue,
+          dropoffSortValue: buildConfirmationTimeSortValue(trip, nextValue, 'dropoffSortValue')
+        }),
+        scheduleChange: {
+          oldPickup,
+          newPickup,
+          oldDropoff,
+          newDropoff,
+          changedAt: nowIso,
+          updatedById: confirmationActor.id,
+          updatedByName: confirmationActor.name,
+          marker: 'NEW'
+        }
+      }, {
+        action: 'trip-schedule-inline-update',
+        source: 'confirmation-workspace',
+        actorId: confirmationActor.id,
+        actorName: confirmationActor.name,
+        summary: `${confirmationActor.name} changed ${columnKey} time on trip ${String(trip.id || '').trim()}`,
+        metadata: {
+          tripId: String(trip.id || '').trim(),
+          field: columnKey,
+          oldValue: currentValue,
+          newValue: nextValue
+        }
+      });
+
+      setCustomStatus(`Time updated on trip ${String(trip.id || '').trim()} by ${confirmationActor.name}.`);
+    } else {
+      updateTripRecord(trip.id, columnKey === 'pickupAddress' ? {
+        address: nextValue
+      } : {
+        destination: nextValue
+      }, {
+        action: 'trip-address-inline-update',
+        source: 'confirmation-workspace',
+        actorId: confirmationActor.id,
+        actorName: confirmationActor.name,
+        summary: `${confirmationActor.name} changed ${columnKey} on trip ${String(trip.id || '').trim()}`,
+        metadata: {
+          tripId: String(trip.id || '').trim(),
+          field: columnKey,
+          oldValue: currentValue,
+          newValue: nextValue
+        }
+      });
+
+      setCustomStatus(`Address updated on trip ${String(trip.id || '').trim()} by ${confirmationActor.name}.`);
+    }
+
     handleCancelInlineConfirmationTimeEdit();
   };
 
   const renderInlineConfirmationTimeCell = (trip, columnKey, displayValue) => {
     const isEditing = isInlineConfirmationTimeEditing(trip.id, columnKey);
     const changedBy = String(trip?.scheduleChange?.updatedByName || '').trim();
-    return <td style={{ cursor: 'text' }} onDoubleClick={() => handleStartInlineConfirmationTimeEdit(trip, columnKey)} title="Double-click to edit time">
-        {isEditing ? <Form.Control
+    const isAddressField = columnKey === 'pickupAddress' || columnKey === 'dropoffAddress';
+    return <td style={{ cursor: 'text', whiteSpace: isAddressField ? 'pre-line' : undefined }} onDoubleClick={() => handleStartInlineConfirmationTimeEdit(trip, columnKey)} title={isAddressField ? 'Double-click to edit address' : 'Double-click to edit time'}>
+        {isEditing ? isAddressField ? <Form.Control
+          as="textarea"
+          rows={3}
+          size="sm"
+          autoFocus
+          value={inlineTimeEditValue}
+          placeholder={columnKey === 'pickupAddress' ? 'Pickup address' : 'Dropoff address'}
+          onChange={event => setInlineTimeEditValue(event.target.value)}
+          onBlur={() => handleSaveInlineConfirmationTimeEdit(trip)}
+          onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            handleCancelInlineConfirmationTimeEdit();
+          }
+          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            event.preventDefault();
+            handleSaveInlineConfirmationTimeEdit(trip);
+          }
+        }}
+        /> : <Form.Control
           size="sm"
           autoFocus
           value={inlineTimeEditValue}
@@ -2515,10 +2560,10 @@ const ConfirmationWorkspace = () => {
                       </td> : null}
                       {showPhoneColumn ? <td>{trip.patientPhoneNumber || '-'}</td> : null}
                       {showPickupTimeColumn ? renderInlineConfirmationTimeCell(trip, 'pickup', getTripDisplayPickupTime(trip)) : null}
-                      {showPickupAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'pre-line', lineHeight: '1.2em' }}>{formatAddressForPrint(trip.address)}</td> : null}
+                      {showPickupAddressColumn ? renderInlineConfirmationTimeCell(trip, 'pickupAddress', formatAddressForPrint(trip.address)) : null}
                       {showPickupZipColumn ? <td>{getTripPickupZipValue(trip)}</td> : null}
                       {showDropoffTimeColumn ? renderInlineConfirmationTimeCell(trip, 'dropoff', getTripDisplayDropoffTime(trip)) : null}
-                      {showDropoffAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'pre-line', lineHeight: '1.2em' }}>{formatAddressForPrint(trip.destination)}</td> : null}
+                      {showDropoffAddressColumn ? renderInlineConfirmationTimeCell(trip, 'dropoffAddress', formatAddressForPrint(trip.destination)) : null}
                       {showDropoffZipColumn ? <td>{getTripDropoffZipValue(trip)}</td> : null}
                       {showMilesColumn ? <td>{getTripMilesDisplay(trip)}</td> : null}
                       {showLegColumn ? <td>{getTripLegFilterKey(trip)}</td> : null}
