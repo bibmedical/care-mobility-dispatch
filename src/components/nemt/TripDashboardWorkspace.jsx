@@ -1189,9 +1189,12 @@ const TripDashboardWorkspace = () => {
     const hasActiveBlacklistBlock = blockingState?.source === 'blacklist';
     const isAutoCancelledByExclusion = !hasActiveBlacklistBlock && Boolean(tripDateKey) && (exclusionMode === 'always' || exclusionMode === 'single-day' && tripDateKey === exclusionStart || exclusionMode === 'range' && exclusionStart && exclusionEnd && tripDateKey >= exclusionStart && tripDateKey <= exclusionEnd);
     const normalizedStatus = isAutoCancelledByExclusion ? 'cancelled' : String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
+    const nowDateKey = getLocalDateKey(new Date());
+    const hasActiveHospitalRehab = Boolean(trip?.hospitalStatus?.startDate) && Boolean(trip?.hospitalStatus?.endDate) && nowDateKey >= String(trip.hospitalStatus.startDate) && nowDateKey <= String(trip.hospitalStatus.endDate);
+    const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(normalizedStatus) || hasActiveHospitalRehab;
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
-    if (tripStatusFilter === 'all') return !['cancelled', 'canceled'].includes(normalizedStatus);
-    if (tripStatusFilter === 'unassigned') return !trip.driverId && !trip.secondaryDriverId && !['cancelled', 'canceled'].includes(normalizedStatus);
+    if (tripStatusFilter === 'all') return !isNonOperationalTrip;
+    if (tripStatusFilter === 'unassigned') return !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip;
     if (tripStatusFilter === 'willcall') return normalizedStatus === 'willcall';
     if (tripStatusFilter === 'block') return confirmationStatus === 'Opted Out';
     if (tripStatusFilter === 'confirm') return confirmationStatus === 'Confirmed';

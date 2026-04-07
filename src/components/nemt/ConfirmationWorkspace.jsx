@@ -733,9 +733,7 @@ const ConfirmationWorkspace = () => {
       if (legFilter !== 'all' && getTripLegFilterKey(trip) !== legFilter) return false;
       if (rideTypeFilter !== 'all' && getTripTypeLabel(trip) !== rideTypeFilter) return false;
 
-      // Optionally hide trips in active hospital/rehab status from normal confirmation view
-      // Uncomment below if you want to hide them automatically:
-      // if (isInHospitalRehab) return false;
+      if (isInHospitalRehab) return false;
 
       // Filter by date
       const tripDateKey = getTripServiceDateKey(trip);

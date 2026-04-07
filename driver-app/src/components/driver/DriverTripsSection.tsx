@@ -18,8 +18,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const focusTrip = runtime.activeTrip || runtime.assignedTrips[0] || null;
 
   const openDirections = async () => {
-    if (!focusTrip?.destination) return;
-    const query = encodeURIComponent(focusTrip.destination);
+    if (!focusTrip) return;
+    const headingToPickup = !focusTrip.enRouteAt || !focusTrip.arrivedAt;
+    const targetAddress = headingToPickup ? focusTrip.address : focusTrip.destination;
+    if (!targetAddress) return;
+    const query = encodeURIComponent(targetAddress);
     await Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${query}&travelmode=driving`);
   };
 

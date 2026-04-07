@@ -34,6 +34,7 @@ const COLUMN_ALIASES = {
   assistanceNeeds: ['assistanceneeds'],
   status: ['status'],
   confirmationStatus: ['confirmationstatus'],
+  serviceDate: ['servicedate', 'service date', 'dateofservice', 'date of service', 'dos', 'date', 'tripdate', 'trip date', 'appointmentdate', 'appointment date'],
   vehicleType: ['requestedvehicletype', 'vehicletype'],
   miles: ['distance'],
   notes: ['additionalnotes', 'otherdetails'],
@@ -151,6 +152,45 @@ const buildImportedTripId = ({
   return stableId || `trip-row-${index + 1}`;
 };
 
+const getImportedServiceDate = (row, rawPickupTime, rawDropoffTime) => {
+  const explicitServiceDate = getValueByAliases(row, COLUMN_ALIASES.serviceDate);
+  const parsedExplicitDate = getParsedDate(explicitServiceDate);
+  if (parsedExplicitDate) {
+    return parsedExplicitDate.toISOString().slice(0, 10);
+  }
+
+  const parsedPickupDate = getParsedDate(rawPickupTime);
+  if (parsedPickupDate) {
+    return parsedPickupDate.toISOString().slice(0, 10);
+  }
+
+  const parsedDropoffDate = getParsedDate(rawDropoffTime);
+  if (parsedDropoffDate) {
+    return parsedDropoffDate.toISOString().slice(0, 10);
+  }
+
+  return '';
+};
+
+const getImportedTripStatus = (statusValue, confirmationStatusValue) => {
+  const normalizedStatus = String(statusValue || '').trim().toLowerCase();
+  const normalizedConfirmation = String(confirmationStatusValue || '').trim().toLowerCase();
+
+  if (['cancelled', 'canceled'].includes(normalizedStatus) || ['cancelled', 'canceled', 'disconnected'].includes(normalizedConfirmation)) {
+    return 'Cancelled';
+  }
+
+  if (normalizedStatus.includes('rehab') || normalizedStatus.includes('hospital')) {
+    return 'Rehab';
+  }
+
+  if (['confirmed', 'confirm'].includes(normalizedConfirmation)) {
+    return 'Confirmed';
+  }
+
+  return 'Pending Confirmation';
+};
+
 const annotateSafeRideTrips = trips => {
   const groupedTrips = trips.reduce((accumulator, trip) => {
     const groupKey = trip.brokerTripId || trip.id;
@@ -191,6 +231,8 @@ const mapRowToTrip = (row, index) => {
   const tripId = getValueByAliases(row, COLUMN_ALIASES.brokerTripId);
   const status = getValueByAliases(row, COLUMN_ALIASES.status) || 'Scheduled';
   const confirmationStatus = getValueByAliases(row, COLUMN_ALIASES.confirmationStatus) || 'confirmed';
+  const serviceDate = getImportedServiceDate(row, rawPickupTime, rawDropoffTime);
+  const tripStatus = getImportedTripStatus(status, confirmationStatus);
   const position = [getCoordinate(row, 'lat', index), getCoordinate(row, 'lng', index)];
   const destinationPosition = [getDestinationCoordinate(row, 'lat', index), getDestinationCoordinate(row, 'lng', index)];
   const providedMiles = getValueByAliases(row, COLUMN_ALIASES.miles);
@@ -247,7 +289,8 @@ const mapRowToTrip = (row, index) => {
     safeRideStatus: status,
     confirmationStatus,
     source: 'SafeRide',
-    status: 'Unassigned',
+    status: tripStatus,
+    serviceDate,
     driverId: null,
     routeId: null,
     importedDriverName: getValueByAliases(row, COLUMN_ALIASES.driverName),

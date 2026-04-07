@@ -15,6 +15,17 @@ const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
 const isCancelledTrip = trip => ['cancelled', 'canceled'].includes(normalizeLookupValue(trip?.status));
 
+const isRehabTrip = trip => {
+  const normalizedStatus = normalizeLookupValue(trip?.status);
+  if (['rehab', 'hospital', 'hospital-rehab'].includes(normalizedStatus)) return true;
+
+  const startDate = String(trip?.hospitalStatus?.startDate || '').trim();
+  const endDate = String(trip?.hospitalStatus?.endDate || '').trim();
+  if (!startDate || !endDate) return false;
+  const todayKey = getLocalDateKey(Date.now(), DEFAULT_DISPATCH_TIME_ZONE);
+  return todayKey >= startDate && todayKey <= endDate;
+};
+
 const sortTripsByPickupTime = (leftTrip, rightTrip) => {
   const leftTime = Number.isFinite(leftTrip?.pickupSortValue) ? leftTrip.pickupSortValue : Number.MAX_SAFE_INTEGER;
   const rightTime = Number.isFinite(rightTrip?.pickupSortValue) ? rightTrip.pickupSortValue : Number.MAX_SAFE_INTEGER;
@@ -208,7 +219,9 @@ export async function GET(request) {
       }, { status: 404 });
     }
 
-    const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => trip?.driverId === driver.id && !isCancelledTrip(trip)).sort(sortTripsByPickupTime);
+    const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => {
+      return trip?.driverId === driver.id && !isCancelledTrip(trip) && !isRehabTrip(trip);
+    }).sort(sortTripsByPickupTime);
     const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(driverTrips.map(trip => trip?.id));
     const trips = driverTrips.map(trip => mapTripForDriver(trip, workflowEventsByTripId.get(String(trip?.id || '').trim()) || []));
     const activeTrip = trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed') || trips[0] || null;
