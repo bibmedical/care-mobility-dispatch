@@ -2484,10 +2484,10 @@ const ConfirmationWorkspace = () => {
                       </td> : null}
                       {showPhoneColumn ? <td>{trip.patientPhoneNumber || '-'}</td> : null}
                       {showPickupTimeColumn ? renderInlineConfirmationTimeCell(trip, 'pickup', getTripDisplayPickupTime(trip)) : null}
-                      {showPickupAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.address || '-'}</td> : null}
+                      {showPickupAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'pre-line', lineHeight: '1.2em' }}>{formatAddressForPrint(trip.address)}</td> : null}
                       {showPickupZipColumn ? <td>{getTripPickupZipValue(trip)}</td> : null}
                       {showDropoffTimeColumn ? renderInlineConfirmationTimeCell(trip, 'dropoff', getTripDisplayDropoffTime(trip)) : null}
-                      {showDropoffAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.destination || '-'}</td> : null}
+                      {showDropoffAddressColumn ? <td style={{ maxWidth: 240, whiteSpace: 'pre-line', lineHeight: '1.2em' }}>{formatAddressForPrint(trip.destination)}</td> : null}
                       {showDropoffZipColumn ? <td>{getTripDropoffZipValue(trip)}</td> : null}
                       {showMilesColumn ? <td>{getTripMilesDisplay(trip)}</td> : null}
                       {showLegColumn ? <td>{getTripLegFilterKey(trip)}</td> : null}
