@@ -6,7 +6,10 @@ const DRIVER_MOBILE_SESSION_TTL_MS = 1000 * 60 * 45;
 // In-memory fallback sessions for when DB is unavailable (local dev without DATABASE_URL)
 const _memSessions = new Map();
 
+let tableReady = false;
+
 const ensureTable = async () => {
+  if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS driver_mobile_sessions (
       driver_id TEXT PRIMARY KEY,
@@ -18,6 +21,7 @@ const ensureTable = async () => {
     )
   `);
   await query(`CREATE INDEX IF NOT EXISTS idx_driver_mobile_sessions_last_seen_at ON driver_mobile_sessions(last_seen_at DESC)`);
+  tableReady = true;
 };
 
 const buildDriverSessionError = (message, status = 401, code = 'driver-session-invalid') => {

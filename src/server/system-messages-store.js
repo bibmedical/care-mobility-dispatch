@@ -2,7 +2,10 @@ import { query } from '@/server/db';
 
 const MEDIA_RETENTION_DAYS = 60;
 
+let tableReady = false;
+
 const ensureTable = async () => {
+  if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS system_messages (
       id TEXT PRIMARY KEY,
@@ -18,6 +21,7 @@ const ensureTable = async () => {
     )
   `);
   await query(`CREATE INDEX IF NOT EXISTS idx_system_messages_driver_id ON system_messages(driver_id)`);
+  tableReady = true;
 };
 
 export const readSystemMessages = async () => {

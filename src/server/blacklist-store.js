@@ -18,7 +18,10 @@ const normalizeBlacklistState = value => ({
   entries: Array.isArray(value?.entries) ? value.entries.map(normalizeBlacklistEntry).filter(entry => entry.name || entry.phone) : []
 });
 
+let tableReady = false;
+
 const ensureTable = async () => {
+  if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS blacklist_entries (
       id TEXT PRIMARY KEY,
@@ -33,6 +36,7 @@ const ensureTable = async () => {
       updated_at TEXT NOT NULL DEFAULT ''
     )
   `);
+  tableReady = true;
 };
 
 export const readBlacklistState = async () => {

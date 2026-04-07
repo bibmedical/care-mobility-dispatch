@@ -1,6 +1,9 @@
 import { query } from '@/server/db';
 
+let tableReady = false;
+
 const ensureTable = async () => {
+  if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS driver_discipline_events (
       event_id TEXT PRIMARY KEY,
@@ -20,6 +23,7 @@ const ensureTable = async () => {
   await query(`CREATE INDEX IF NOT EXISTS idx_driver_discipline_events_driver_id ON driver_discipline_events(driver_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_driver_discipline_events_trip_id ON driver_discipline_events(trip_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_driver_discipline_events_occurred_at ON driver_discipline_events(occurred_at DESC)`);
+  tableReady = true;
 };
 
 export const upsertDriverDisciplineEvent = async event => {

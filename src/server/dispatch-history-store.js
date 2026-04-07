@@ -14,7 +14,10 @@ import { query } from '@/server/db';
 
 const runQuery = async (queryExecutor, text, params) => (queryExecutor ? queryExecutor.query(text, params) : query(text, params));
 
+let tableReady = false;
+
 const ensureTable = async queryExecutor => {
+  if (tableReady) return;
   await runQuery(queryExecutor, `
     CREATE TABLE IF NOT EXISTS dispatch_daily_archives (
       archive_date   TEXT PRIMARY KEY,
@@ -29,6 +32,7 @@ const ensureTable = async queryExecutor => {
     )
   `);
   await runQuery(queryExecutor, `CREATE INDEX IF NOT EXISTS idx_dispatch_daily_archives_archived_at ON dispatch_daily_archives(archived_at DESC)`);
+  tableReady = true;
 };
 
 const compareDateKeys = (left, right) => String(left || '').localeCompare(String(right || ''));

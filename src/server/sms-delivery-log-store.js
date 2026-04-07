@@ -1,6 +1,9 @@
 import { query } from '@/server/db';
 
+let tableReady = false;
+
 const ensureTable = async () => {
+  if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS sms_delivery_logs (
       id BIGSERIAL PRIMARY KEY,
@@ -23,6 +26,7 @@ const ensureTable = async () => {
   await query(`CREATE INDEX IF NOT EXISTS idx_sms_delivery_logs_trip_id ON sms_delivery_logs(trip_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_sms_delivery_logs_driver_id ON sms_delivery_logs(driver_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_sms_delivery_logs_created_at ON sms_delivery_logs(created_at DESC)`);
+  tableReady = true;
 };
 
 export const logSmsDelivery = async entry => {

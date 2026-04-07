@@ -67,7 +67,7 @@ const buildMessagingSurfaceStyles = isDarkMode => ({
   }
 });
 
-const MOBILE_ALERT_POLL_MS = 5000;
+const MOBILE_ALERT_POLL_MS = 12000;
 
 const DRIVER_ALERT_SMS_TEMPLATES = {
   'delay-alert': driverName => `Dispatch update for ${driverName}: we received your delay alert. Send your best ETA as soon as traffic clears or conditions change.`,

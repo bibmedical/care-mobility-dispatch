@@ -50,7 +50,7 @@ const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#08
 const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
-const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
+const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 8000;
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
   if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;
@@ -299,9 +299,12 @@ export const NemtProvider = ({
       if (!response.ok) return;
       const payload = await response.json();
       const nextThreads = Array.isArray(payload?.dispatchThreads) ? payload.dispatchThreads : [];
+      const nextThreadsJson = JSON.stringify(nextThreads);
       startTransition(() => {
         setState(currentState => {
           const localState = buildClientState(currentState ?? createInitialState());
+          const currentThreadsJson = JSON.stringify(Array.isArray(localState.dispatchThreads) ? localState.dispatchThreads : []);
+          if (currentThreadsJson === nextThreadsJson) return localState;
           return {
             ...localState,
             dispatchThreads: nextThreads

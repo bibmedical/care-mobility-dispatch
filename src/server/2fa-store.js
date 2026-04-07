@@ -1,7 +1,10 @@
 import { query } from '@/server/db';
 import { generateSecret, generateURI, verify } from 'otplib';
 
+let tableReady = false;
+
 const ensureTable = async () => {
+  if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS two_fa_secrets (
       user_id TEXT PRIMARY KEY,
@@ -10,6 +13,7 @@ const ensureTable = async () => {
       verified BOOLEAN NOT NULL DEFAULT FALSE
     )
   `);
+  tableReady = true;
 };
 
 /**

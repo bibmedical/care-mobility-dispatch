@@ -30,7 +30,10 @@ Please contact your dispatcher or update your license information immediately.
   }
 };
 
+let tableReady = false;
+
 const ensureTable = async () => {
+  if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS email_templates (
       id TEXT PRIMARY KEY,
@@ -44,6 +47,7 @@ const ensureTable = async () => {
       [id, JSON.stringify(tpl)]
     );
   }
+  tableReady = true;
 };
 
 export const readEmailTemplates = async () => {

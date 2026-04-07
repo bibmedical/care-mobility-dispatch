@@ -6,7 +6,10 @@ const MAX_ATTEMPTS = 3;
 
 const generateCode = () => Math.random().toString().slice(2, 8).padStart(6, '0');
 
+let tableReady = false;
+
 const ensureTable = async () => {
+  if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS email_auth_codes (
       email TEXT PRIMARY KEY,
@@ -18,6 +21,7 @@ const ensureTable = async () => {
   `);
 
   await query(`ALTER TABLE email_auth_codes ADD COLUMN IF NOT EXISTS expires_at BIGINT NOT NULL DEFAULT 0`);
+  tableReady = true;
 };
 
 /**
