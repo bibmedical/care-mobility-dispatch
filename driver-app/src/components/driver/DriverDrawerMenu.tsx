@@ -62,55 +62,66 @@ const styles = StyleSheet.create({
     flex: 1
   },
   drawer: {
-    width: 290,
+    width: 280,
     backgroundColor: driverTheme.colors.surface,
-    paddingTop: 18,
-    paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingTop: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
     borderLeftWidth: 1,
     borderLeftColor: driverTheme.colors.border
   },
   header: {
     backgroundColor: driverTheme.colors.headerBg,
-    borderRadius: 24,
-    padding: 18,
+    borderRadius: 0,
+    padding: 20,
+    paddingTop: 28,
     gap: 4
   },
   headerEyebrow: {
-    color: '#ffffff',
-    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
     textTransform: 'uppercase',
+    letterSpacing: 1.2,
     fontWeight: '700'
   },
   headerTitle: {
     color: '#ffffff',
-    fontSize: 22,
-    fontWeight: '800'
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 2
   },
   headerBody: {
-    color: 'rgba(255,255,255,0.9)'
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 12,
+    marginTop: 2
   },
   menuList: {
-    paddingTop: 18,
-    gap: 8
+    paddingTop: 8,
+    paddingHorizontal: 0,
+    gap: 0
   },
   menuItem: {
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    backgroundColor: driverTheme.colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: driverTheme.colors.border
+    borderRadius: 0,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: driverTheme.colors.border
   },
   menuItemActive: {
-    backgroundColor: driverTheme.colors.primary
+    backgroundColor: driverTheme.colors.primarySoft,
+    borderLeftWidth: 3,
+    borderLeftColor: driverTheme.colors.primary,
+    paddingLeft: 17
   },
   menuItemText: {
-    color: driverTheme.colors.text,
-    fontWeight: '700',
+    color: driverTheme.colors.textMuted,
+    fontWeight: '600',
     fontSize: 15
   },
   menuItemTextActive: {
-    color: '#ffffff'
+    color: driverTheme.colors.primaryText,
+    fontWeight: '800'
   }
 });

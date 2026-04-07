@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
   },
   heroShell: {
     backgroundColor: driverTheme.colors.surface,
-    borderRadius: 10,
+    borderRadius: driverTheme.radius.sm,
     padding: 24,
     alignItems: 'center',
     gap: 10,
@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
   heroBadge: {
     width: 64,
     height: 64,
-    borderRadius: 10,
+    borderRadius: driverTheme.radius.sm,
     backgroundColor: driverTheme.colors.headerBg,
     alignItems: 'center',
     justifyContent: 'center'
@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: driverTheme.colors.surface,
-    borderRadius: 10,
+    borderRadius: driverTheme.radius.sm,
     padding: 20,
     borderWidth: 1,
     borderColor: driverTheme.colors.border,

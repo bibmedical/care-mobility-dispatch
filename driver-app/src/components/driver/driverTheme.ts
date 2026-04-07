@@ -2,33 +2,33 @@ import { StyleSheet } from 'react-native';
 
 export const driverTheme = {
   colors: {
-    appBg: '#eef2f5',
+    appBg: '#f4f6f9',
     surface: '#ffffff',
     surfaceMuted: '#f8fafc',
-    surfaceElevated: '#ecfdf3',
-    border: '#d5dde5',
-    borderStrong: '#94a3b8',
-    primary: '#198754',
-    headerBg: '#0f172a',
+    surfaceElevated: '#fff8eb',
+    border: '#d7dee8',
+    borderStrong: '#8fa1b8',
+    primary: '#d97706',
+    headerBg: '#111827',
     headerText: '#ffffff',
-    primarySoft: '#dcfce7',
-    primaryText: '#166534',
-    accent: '#198754',
-    accentSoft: '#ecfdf5',
+    primarySoft: '#fff4dc',
+    primaryText: '#8a4300',
+    accent: '#f59e0b',
+    accentSoft: '#fff7e6',
     text: '#0f172a',
     textMuted: '#334155',
     textSoft: '#64748b',
-    success: '#dcfce7',
-    warning: '#fef3c7',
+    success: '#e7f8ef',
+    warning: '#fff3cd',
     danger: '#fee2e2',
-    info: '#dbeafe',
+    info: '#e0ecff',
     white: '#ffffff'
   },
   radius: {
-    xl: 12,
-    lg: 10,
-    md: 8,
-    sm: 6,
+    xl: 14,
+    lg: 12,
+    md: 10,
+    sm: 8,
     pill: 999
   },
   spacing: {
@@ -54,7 +54,12 @@ export const driverSharedStyles = StyleSheet.create({
     padding: 16,
     gap: 10,
     borderWidth: 1,
-    borderColor: driverTheme.colors.border
+    borderColor: driverTheme.colors.border,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1
   },
   softCard: {
     backgroundColor: driverTheme.colors.surfaceMuted,
@@ -108,7 +113,12 @@ export const driverSharedStyles = StyleSheet.create({
     borderRadius: driverTheme.radius.sm,
     paddingVertical: 13,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    shadowColor: '#d97706',
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1
   },
   primaryButtonText: {
     color: driverTheme.colors.white,

@@ -1,5 +1,5 @@
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useMemo, useState } from 'react';
+import { ActivityIndicator, Linking, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { driverSharedStyles, driverTheme } from './driverTheme';
 import { getTripTone, getTripWindow } from './driverUtils';
@@ -14,7 +14,9 @@ type QueueMode = 'scheduled' | 'in-progress';
 export const DriverTripsSection = ({ runtime }: Props) => {
   const [listMode, setListMode] = useState<ListMode>('routes');
   const [queueMode, setQueueMode] = useState<QueueMode>('scheduled');
-  const [riderSignatureName, setRiderSignatureName] = useState('');
+  const [signaturePoints, setSignaturePoints] = useState<Array<{ x: number; y: number }>>([]);
+  const [signaturePadSize, setSignaturePadSize] = useState({ width: 1, height: 1 });
+  const signaturePointsRef = useRef<Array<{ x: number; y: number }>>([]);
   const focusTrip = runtime.activeTrip || runtime.assignedTrips[0] || null;
 
   const openDirections = async () => {
@@ -47,7 +49,36 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
   const workflow = focusTrip?.driverWorkflow || null;
   const canMarkArrived = Boolean(focusTrip?.enRouteAt);
-  const canCompleteTrip = Boolean(focusTrip?.arrivedAt) && riderSignatureName.trim().length > 1;
+  const canCompleteTrip = Boolean(focusTrip?.arrivedAt) && signaturePoints.length >= 12;
+
+  const clampPoint = (value: number, max: number) => Math.max(0, Math.min(max, value));
+
+  const pushSignaturePoint = (x: number, y: number) => {
+    const width = Math.max(1, signaturePadSize.width);
+    const height = Math.max(1, signaturePadSize.height);
+    const nextPoint = {
+      x: clampPoint(x, width),
+      y: clampPoint(y, height)
+    };
+    signaturePointsRef.current = [...signaturePointsRef.current, nextPoint].slice(-900);
+    setSignaturePoints(signaturePointsRef.current);
+  };
+
+  const clearSignature = () => {
+    signaturePointsRef.current = [];
+    setSignaturePoints([]);
+  };
+
+  const signaturePanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: event => {
+      pushSignaturePoint(event.nativeEvent.locationX, event.nativeEvent.locationY);
+    },
+    onPanResponderMove: event => {
+      pushSignaturePoint(event.nativeEvent.locationX, event.nativeEvent.locationY);
+    }
+  }), [signaturePadSize.height, signaturePadSize.width]);
 
   const renderSupportBadges = (trip?: DriverRuntime['activeTrip']) => {
     if (!trip || (!trip.hasServiceAnimal && !trip.mobilityType && !trip.assistLevel)) return null;
@@ -148,13 +179,25 @@ export const DriverTripsSection = ({ runtime }: Props) => {
             <Text style={styles.workflowLine}>Completion: {workflow?.completedTimeLabel || 'Pending'}</Text>
           </View>
 
-          <TextInput
-            value={riderSignatureName}
-            onChangeText={setRiderSignatureName}
-            placeholder="Passenger signature name"
-            placeholderTextColor={driverTheme.colors.textSoft}
-            style={styles.signatureInput}
-          />
+          <View style={styles.signatureCard}>
+            <View style={styles.signatureHeaderRow}>
+              <Text style={styles.signatureLabel}>Passenger signature (draw on screen)</Text>
+              <Pressable onPress={clearSignature}>
+                <Text style={styles.signatureClearText}>Clear</Text>
+              </Pressable>
+            </View>
+            <View
+              style={styles.signaturePad}
+              onLayout={event => {
+                const { width, height } = event.nativeEvent.layout;
+                setSignaturePadSize({ width: Math.max(1, width), height: Math.max(1, height) });
+              }}
+              {...signaturePanResponder.panHandlers}
+            >
+              {signaturePoints.map((point, index) => <View key={`${point.x}-${point.y}-${index}`} style={[styles.signatureDot, { left: point.x - 1.5, top: point.y - 1.5 }]} />)}
+              {signaturePoints.length === 0 ? <Text style={styles.signatureHint}>Sign here with your finger</Text> : null}
+            </View>
+          </View>
 
           <View style={styles.actionRow}>
             <Pressable style={[driverSharedStyles.secondaryButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('en-route')} disabled={runtime.activeTripAction.length > 0}>
@@ -166,7 +209,14 @@ export const DriverTripsSection = ({ runtime }: Props) => {
             <Pressable style={[driverSharedStyles.secondaryButton, styles.mapButton]} onPress={() => void openDirections()}>
               <Text style={driverSharedStyles.secondaryButtonText}>Directions</Text>
             </Pressable>
-            <Pressable style={[driverSharedStyles.primaryButton, !canCompleteTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('complete', { riderSignatureName })} disabled={!canCompleteTrip || runtime.activeTripAction.length > 0}>
+            <Pressable style={[driverSharedStyles.primaryButton, !canCompleteTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('complete', {
+            riderSignatureName: 'Signed on device',
+            riderSignatureData: {
+              points: signaturePoints,
+              width: signaturePadSize.width,
+              height: signaturePadSize.height
+            }
+          })} disabled={!canCompleteTrip || runtime.activeTripAction.length > 0}>
               <Text style={driverSharedStyles.primaryButtonText}>{runtime.activeTripAction === 'complete' ? 'Sending...' : 'Complete'}</Text>
             </Pressable>
           </View>
@@ -418,14 +468,52 @@ const styles = StyleSheet.create({
     color: driverTheme.colors.textMuted,
     lineHeight: 18
   },
-  signatureInput: {
+  signatureCard: {
     borderWidth: 1,
     borderColor: driverTheme.colors.border,
     borderRadius: driverTheme.radius.sm,
     backgroundColor: '#ffffff',
+    padding: 10,
+    gap: 8
+  },
+  signatureHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  signatureLabel: {
     color: driverTheme.colors.text,
-    paddingHorizontal: 12,
-    paddingVertical: 12
+    fontWeight: '700',
+    fontSize: 12
+  },
+  signatureClearText: {
+    color: '#c2410c',
+    fontWeight: '700',
+    fontSize: 12
+  },
+  signaturePad: {
+    height: 120,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    overflow: 'hidden'
+  },
+  signatureDot: {
+    position: 'absolute',
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#111827'
+  },
+  signatureHint: {
+    position: 'absolute',
+    top: '45%',
+    alignSelf: 'center',
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: '600'
   },
   actionDisabled: {
     opacity: 0.65

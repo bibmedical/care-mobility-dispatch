@@ -32,6 +32,60 @@ const buildSurfaceStyles = isLight => ({
   }
 });
 
+const normalizeSignaturePayload = value => {
+  if (!value || typeof value !== 'object') return null;
+  const width = Number(value.width);
+  const height = Number(value.height);
+  const points = Array.isArray(value.points)
+    ? value.points
+      .map(point => ({ x: Number(point?.x), y: Number(point?.y) }))
+      .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+      .slice(0, 1200)
+    : [];
+  if (points.length < 2) return null;
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : 300,
+    height: Number.isFinite(height) && height > 0 ? height : 120,
+    points
+  };
+};
+
+const buildPreviewPoints = points => {
+  if (!Array.isArray(points) || points.length === 0) return '';
+  const maxPreviewPoints = 140;
+  const step = Math.max(1, Math.ceil(points.length / maxPreviewPoints));
+  const sampled = [];
+  for (let index = 0; index < points.length; index += step) sampled.push(points[index]);
+  const lastPoint = points[points.length - 1];
+  if (sampled.length === 0 || sampled[sampled.length - 1] !== lastPoint) sampled.push(lastPoint);
+  return sampled.map(point => `${point.x},${point.y}`).join(' ');
+};
+
+const RiderSignaturePreview = ({ trip }) => {
+  const payload = normalizeSignaturePayload(trip?.riderSignatureData);
+  if (!payload) {
+    if (!trip?.riderSignatureName) return null;
+    return <div className="small text-muted mt-1">Signed by {trip.riderSignatureName}</div>;
+  }
+  const polylinePoints = buildPreviewPoints(payload.points);
+  if (!polylinePoints) return null;
+  return <div className="mt-1">
+      <div style={{
+      width: 160,
+      maxWidth: '100%',
+      height: 60,
+      border: '1px solid #d0d7e2',
+      borderRadius: 8,
+      backgroundColor: '#ffffff'
+    }}>
+        <svg width="100%" height="100%" viewBox={`0 0 ${payload.width} ${payload.height}`} preserveAspectRatio="none">
+          <polyline points={polylinePoints} fill="none" stroke="#0f172a" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      {trip?.riderSignatureName ? <div className="small text-muted mt-1">Signed by {trip.riderSignatureName}</div> : null}
+    </div>;
+};
+
 const STATUS_VARIANTS = {
   Confirmed: 'success',
   Cancelled: 'danger',
@@ -2658,7 +2712,12 @@ const ConfirmationWorkspace = () => {
                         )}
                       </td> : null}
                       {showConfirmationColumn ? <td>{confirmationStatus === 'Opted Out' ? <Badge style={{ backgroundColor: '#000000', color: '#ffffff' }}>{confirmationStatus}</Badge> : confirmationStatus === 'Disconnected' ? <Badge style={DISCONNECTED_BADGE_STYLE}>{confirmationStatus}</Badge> : <Badge bg={STATUS_VARIANTS[confirmationStatus] || 'secondary'}>{confirmationStatus}</Badge>}{trip.confirmation?.lastResponseCode ? <Badge bg="light" text="dark" className="ms-1">{trip.confirmation.lastResponseCode}</Badge> : null}</td> : null}
-                      {showDispatchStatusColumn ? <td>{trip.safeRideStatus || trip.status || '-'}</td> : null}
+                      {showDispatchStatusColumn ? <td>
+                          <div>{trip.safeRideStatus || trip.status || '-'}</div>
+                          {trip.completedByDriverName ? <div className="small text-info mt-1">Driven by {trip.completedByDriverName}</div> : null}
+                          {trip.riderSignatureData || trip.riderSignatureName ? <Badge bg="secondary" className="mt-1">Signature captured</Badge> : null}
+                          {trip.riderSignatureData || trip.riderSignatureName ? <RiderSignaturePreview trip={trip} /> : null}
+                        </td> : null}
                       {showReplyColumn ? <td style={{ maxWidth: 240, whiteSpace: 'normal' }}>{trip.confirmation?.lastResponseText || '-'}</td> : null}
                       {showSentColumn ? <td>{trip.confirmation?.sentAt ? new Date(trip.confirmation.sentAt).toLocaleString() : '-'}</td> : null}
                       {showRespondedColumn ? <td>{trip.confirmation?.respondedAt ? new Date(trip.confirmation.respondedAt).toLocaleString() : '-'}</td> : null}

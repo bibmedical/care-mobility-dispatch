@@ -827,7 +827,14 @@ export const useDriverRuntime = () => {
     void writeStoredNotificationMode(mode);
   };
 
-  const submitTripAction = async (action: 'en-route' | 'arrived' | 'complete', options: { riderSignatureName?: string } = {}) => {
+  const submitTripAction = async (action: 'en-route' | 'arrived' | 'complete', options: {
+    riderSignatureName?: string;
+    riderSignatureData?: {
+      points: Array<{ x: number; y: number }>;
+      width: number;
+      height: number;
+    };
+  } = {}) => {
     if (!driverSession?.driverId || !activeTrip?.id) return false;
 
     setActiveTripAction(action);
@@ -856,6 +863,7 @@ export const useDriverRuntime = () => {
           tripId: activeTrip.id,
           action,
           riderSignatureName: String(options.riderSignatureName || '').trim() || undefined,
+          riderSignatureData: options.riderSignatureData || undefined,
           locationSnapshot: locationSnapshot || undefined
         })
       });

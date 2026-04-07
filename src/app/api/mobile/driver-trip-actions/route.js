@@ -35,6 +35,26 @@ const normalizeLocationSnapshot = value => {
   };
 };
 
+const normalizeRiderSignatureData = value => {
+  if (!value || typeof value !== 'object') return null;
+  const width = Number(value.width);
+  const height = Number(value.height);
+  const points = Array.isArray(value.points)
+    ? value.points
+      .map(point => ({ x: Number(point?.x), y: Number(point?.y) }))
+      .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+      .slice(0, 900)
+    : [];
+
+  if (points.length < 8) return null;
+
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : 300,
+    height: Number.isFinite(height) && height > 0 ? height : 120,
+    points
+  };
+};
+
 const getCurrentClockMinutes = timestamp => {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: DEFAULT_DISPATCH_TIME_ZONE,
@@ -233,6 +253,7 @@ export async function POST(request) {
   const driverId = String(body?.driverId || '').trim();
   const action = normalizeLookupValue(body?.action);
   const riderSignatureName = String(body?.riderSignatureName || '').trim();
+  const riderSignatureData = normalizeRiderSignatureData(body?.riderSignatureData);
 
   if (!tripId || !driverId || !action) {
     return jsonWithMobileCors(request, { ok: false, error: 'tripId, driverId, and action are required.' }, { status: 400 });
@@ -261,7 +282,7 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived before Complete.' }, { status: 400 });
   }
 
-  if (action === 'complete' && !riderSignatureName) {
+  if (action === 'complete' && !riderSignatureName && !riderSignatureData) {
     return jsonWithMobileCors(request, { ok: false, error: 'Rider signature is required before completing the trip.' }, { status: 400 });
   }
 
@@ -274,6 +295,14 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Unsupported action.' }, { status: 400 });
   }
   const patch = actionUpdate.patch;
+
+  if (action === 'complete') {
+    const adminPayload = await readNemtAdminPayload();
+    const currentDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
+    patch.completedByDriverId = driverId;
+    patch.completedByDriverName = String(currentDriver?.name || currentTrip?.driverName || '').trim() || driverId;
+    patch.riderSignatureData = riderSignatureData;
+  }
 
   const nextTrips = trips.map(trip => String(trip?.id || '').trim() === tripId ? {
     ...trip,

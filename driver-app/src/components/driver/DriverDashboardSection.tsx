@@ -44,23 +44,23 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
         </View>
       </Pressable>
 
-      <Text style={styles.sectionTitle}>Quick pages</Text>
+      <Text style={styles.sectionTitle}>Quick access</Text>
 
       <View style={styles.quickMoodRow}>
         <Pressable style={styles.moodCard} onPress={() => runtime.setActiveTab('messages')}>
-          <Text style={styles.moodEmoji}>🙂</Text>
+          <Text style={styles.moodCode}>MSG</Text>
           <Text style={styles.moodLabel}>Messages</Text>
         </Pressable>
         <Pressable style={styles.moodCard} onPress={() => runtime.setActiveTab('alerts')}>
-          <Text style={styles.moodEmoji}>😎</Text>
+          <Text style={styles.moodCode}>ALT</Text>
           <Text style={styles.moodLabel}>Alerts</Text>
         </Pressable>
         <Pressable style={styles.moodCard} onPress={() => runtime.setActiveTab('profile')}>
-          <Text style={styles.moodEmoji}>😊</Text>
+          <Text style={styles.moodCode}>PRF</Text>
           <Text style={styles.moodLabel}>Profile</Text>
         </Pressable>
         <Pressable style={styles.moodCard} onPress={() => runtime.setActiveTab('settings')}>
-          <Text style={styles.moodEmoji}>⚙️</Text>
+          <Text style={styles.moodCode}>SET</Text>
           <Text style={styles.moodLabel}>Settings</Text>
         </Pressable>
       </View>
@@ -210,69 +210,78 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: driverTheme.colors.text,
-    fontSize: 18,
-    fontWeight: '800'
+    fontSize: 13,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8
   },
   quickMoodRow: {
     flexDirection: 'row',
-    gap: 10
+    gap: 8
   },
   moodCard: {
     flex: 1,
-    backgroundColor: driverTheme.colors.surfaceElevated,
-    borderRadius: driverTheme.radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
+    backgroundColor: driverTheme.colors.surface,
+    borderRadius: driverTheme.radius.sm,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     borderWidth: 1,
     borderColor: driverTheme.colors.border
   },
-  moodEmoji: {
-    fontSize: 22
+  moodCode: {
+    color: driverTheme.colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1
   },
   moodLabel: {
-    color: '#1f2c39',
-    fontSize: 12,
+    color: driverTheme.colors.text,
+    fontSize: 11,
     fontWeight: '700'
   },
   featureGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12
+    gap: 8
   },
   featureCard: {
     width: '48%',
-    backgroundColor: driverTheme.colors.surfaceElevated,
-    borderRadius: driverTheme.radius.lg,
-    padding: 18,
-    minHeight: 150,
+    backgroundColor: driverTheme.colors.surface,
+    borderRadius: driverTheme.radius.sm,
+    padding: 16,
+    minHeight: 130,
     justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: driverTheme.colors.border
   },
   featureWide: {
     width: '100%',
-    minHeight: 120,
-    backgroundColor: driverTheme.colors.surfaceMuted
+    minHeight: 100,
+    backgroundColor: driverTheme.colors.surfaceElevated,
+    borderColor: driverTheme.colors.primary
   },
   featureValueLarge: {
-    color: '#1f2c39',
-    fontSize: 28,
+    color: driverTheme.colors.primaryText,
+    fontSize: 22,
     fontWeight: '800'
   },
   featureValue: {
-    color: '#1f2c39',
-    fontSize: 24,
+    color: driverTheme.colors.text,
+    fontSize: 20,
     fontWeight: '800'
   },
   featureLabel: {
     color: driverTheme.colors.textMuted,
-    fontSize: 14,
-    fontWeight: '700'
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5
   },
   featureSubtext: {
     color: driverTheme.colors.textSoft,
-    lineHeight: 18
+    fontSize: 12,
+    lineHeight: 17
   }
 });

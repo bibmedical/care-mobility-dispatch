@@ -63,6 +63,52 @@ const splitRiderName = value => {
   };
 };
 
+const normalizeSignaturePayload = value => {
+  if (!value || typeof value !== 'object') return null;
+  const width = Number(value.width);
+  const height = Number(value.height);
+  const points = Array.isArray(value.points)
+    ? value.points
+      .map(point => ({
+        x: Number(point?.x),
+        y: Number(point?.y)
+      }))
+      .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
+      .slice(0, 1200)
+    : [];
+  if (points.length < 2) return null;
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : 300,
+    height: Number.isFinite(height) && height > 0 ? height : 120,
+    points
+  };
+};
+
+const RiderSignaturePreview = ({ trip }) => {
+  const payload = normalizeSignaturePayload(trip?.riderSignatureData);
+  if (!payload) {
+    if (!trip?.riderSignatureName) return null;
+    return <div className="small text-muted mt-1">Signed by {trip.riderSignatureName}</div>;
+  }
+  const points = payload.points.map(point => `${point.x},${point.y}`).join(' ');
+  return <div className="mt-1">
+      <div className="small text-muted" style={{ lineHeight: 1.1 }}>Rider signature</div>
+      <div style={{
+      width: 180,
+      maxWidth: '100%',
+      height: 72,
+      border: '1px solid #cbd5e1',
+      borderRadius: 8,
+      backgroundColor: '#ffffff'
+    }}>
+        <svg width="100%" height="100%" viewBox={`0 0 ${payload.width} ${payload.height}`} preserveAspectRatio="none">
+          <polyline points={points} fill="none" stroke="#0f172a" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      {trip?.riderSignatureName ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1 }}>Signed by {trip.riderSignatureName}</div> : null}
+    </div>;
+};
+
 const yellowMapTabStyle = {
   position: 'absolute',
   top: 28,
@@ -3404,7 +3450,15 @@ const TripDashboardWorkspace = () => {
                             {row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
                             {row.trip.mobilityType ? <Badge bg="light" text="dark" className="mt-1 border">{row.trip.mobilityType}</Badge> : null}
                           </td> : null}
-                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}{getTripAddedByLabel(row.trip) ? <div className="mt-1"><Badge bg="dark">{getTripAddedByLabel(row.trip)}</Badge></div> : null}{row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}</td> : null}
+                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}>
+                            <Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>
+                            {row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
+                            {getTripAddedByLabel(row.trip) ? <div className="mt-1"><Badge bg="dark">{getTripAddedByLabel(row.trip)}</Badge></div> : null}
+                            {row.trip.completedByDriverName ? <div className="mt-1"><Badge bg="info" text="dark">Driven by {row.trip.completedByDriverName}</Badge></div> : null}
+                            {row.trip.riderSignatureData || row.trip.riderSignatureName ? <div className="mt-1"><Badge bg="secondary">Signature captured</Badge></div> : null}
+                            {row.trip.riderSignatureData || row.trip.riderSignatureName ? <RiderSignaturePreview trip={row.trip} /> : null}
+                            {row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}
+                          </td> : null}
                         {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}><div>{getTripDriverDisplay(row.trip)}</div>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}</td> : null}
                         {visibleTripColumns.includes('pickup') ? renderInlineEditableTripCell({
                       trip: row.trip,

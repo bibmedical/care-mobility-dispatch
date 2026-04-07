@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
   overviewTile: {
     width: '48%',
     backgroundColor: driverTheme.colors.surface,
-    borderRadius: 20,
+    borderRadius: driverTheme.radius.sm,
     padding: 16,
     borderWidth: 1,
     borderColor: driverTheme.colors.border
@@ -147,25 +147,26 @@ const styles = StyleSheet.create({
     marginTop: 10
   },
   alertCard: {
-    borderRadius: 22,
-    padding: 18,
+    borderRadius: driverTheme.radius.sm,
+    padding: 16,
     gap: 6
   },
   alertCardDanger: {
-    backgroundColor: '#fff0ee',
+    backgroundColor: '#fff7ed',
     borderWidth: 1,
-    borderColor: '#ffd0ca'
+    borderColor: driverTheme.colors.primary
   },
   alertCardInfo: {
     backgroundColor: '#eef7fb',
     borderWidth: 1,
-    borderColor: '#d6e9f2'
+    borderColor: '#b0d6e6'
   },
   alertLabel: {
-    color: '#0f766e',
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase'
+    color: driverTheme.colors.primaryText,
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1
   },
   alertTitle: {
     color: driverTheme.colors.text,
@@ -191,9 +192,11 @@ const styles = StyleSheet.create({
   },
   routeBox: {
     backgroundColor: driverTheme.colors.surfaceMuted,
-    borderRadius: 18,
+    borderRadius: driverTheme.radius.sm,
     padding: 14,
-    gap: 10
+    gap: 10,
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border
   },
   routeRow: {
     flexDirection: 'row',
@@ -244,16 +247,17 @@ const styles = StyleSheet.create({
     gap: 10
   },
   tripListItem: {
-    backgroundColor: driverTheme.colors.surfaceMuted,
-    borderRadius: 18,
+    backgroundColor: driverTheme.colors.surface,
+    borderRadius: driverTheme.radius.sm,
     padding: 14,
     gap: 8,
     borderWidth: 1,
-    borderColor: '#dce6eb'
+    borderColor: driverTheme.colors.border
   },
   tripListItemActive: {
-    borderColor: '#8ecdbf',
-    backgroundColor: '#edf8f5'
+    borderColor: driverTheme.colors.primary,
+    borderLeftWidth: 3,
+    backgroundColor: driverTheme.colors.surfaceElevated
   },
   tripCopy: {
     flex: 1

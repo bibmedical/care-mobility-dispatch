@@ -91,28 +91,29 @@ const styles = StyleSheet.create({
   menuButton: {
     backgroundColor: driverTheme.colors.headerBg,
     borderRadius: driverTheme.radius.sm,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 11,
-    borderWidth: 1,
-    borderColor: '#1e293b'
+    borderWidth: 0
   },
   menuButtonText: {
     color: '#ffffff',
-    fontWeight: '800'
+    fontWeight: '800',
+    fontSize: 13,
+    letterSpacing: 0.5
   },
   titleBlock: {
     flex: 1
   },
   titleEyebrow: {
-    color: driverTheme.colors.primaryText,
-    fontSize: 11,
+    color: driverTheme.colors.primary,
+    fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 1
+    letterSpacing: 1.2
   },
   titleText: {
     color: driverTheme.colors.text,
-    fontSize: 23,
+    fontSize: 20,
     fontWeight: '800'
   }
 });
