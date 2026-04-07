@@ -451,10 +451,47 @@ const ConfirmationWorkspace = () => {
     const riderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
     return riderKey ? `rider:${riderKey}` : '';
   };
+  const getTripPatientIdentity = trip => ({
+    phone: String(trip?.patientPhoneNumber || '').replace(/\D/g, ''),
+    rider: String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  });
+  const matchesPatientIdentity = (trip, entry) => {
+    const tripIdentity = getTripPatientIdentity(trip);
+    const entryPhone = String(entry?.phone || '').replace(/\D/g, '');
+    const entryName = String(entry?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (tripIdentity.phone && entryPhone && tripIdentity.phone === entryPhone) return true;
+    if (tripIdentity.rider && entryName && tripIdentity.rider === entryName) return true;
+    return false;
+  };
   const getPatientProfileForTrip = trip => {
     const key = buildPatientProfileKey(trip);
     if (!key) return null;
     return riderProfiles[key] || null;
+  };
+  const getTripRehabHospitalInfo = trip => {
+    if (trip?.hospitalStatus) {
+      return {
+        type: trip.hospitalStatus.type || 'Hospital',
+        startDate: trip.hospitalStatus.startDate || '',
+        endDate: trip.hospitalStatus.endDate || '',
+        notes: trip.hospitalStatus.notes || '',
+        source: 'trip'
+      };
+    }
+
+    const exclusion = getPatientProfileForTrip(trip)?.exclusion || null;
+    const matchingMedicalHold = blacklistEntries.find(entry => entry?.status === 'Active' && matchesPatientIdentity(trip, entry) && String(entry?.category || '').toLowerCase().includes('medical'));
+    if (!exclusion && !matchingMedicalHold) return null;
+
+    const reasonSource = `${exclusion?.reason || ''} ${exclusion?.sourceNote || ''} ${matchingMedicalHold?.notes || ''}`.toLowerCase();
+    const derivedType = reasonSource.includes('rehab') ? 'Rehab' : 'Hospital';
+    return {
+      type: derivedType,
+      startDate: exclusion?.startDate || '',
+      endDate: exclusion?.endDate || matchingMedicalHold?.holdUntil || '',
+      notes: exclusion?.sourceNote || matchingMedicalHold?.notes || '',
+      source: exclusion ? 'patient-rule' : 'blacklist'
+    };
   };
   const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
     trip,
@@ -477,7 +514,7 @@ const ConfirmationWorkspace = () => {
     needsCall: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Needs Call').length,
     notSent: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Not Sent').length,
     optedOut: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length,
-    rehabHospital: trips.filter(trip => Boolean(trip?.hospitalStatus)).length,
+    rehabHospital: trips.filter(trip => Boolean(getTripRehabHospitalInfo(trip))).length,
     blacklisted: blacklistEntries.filter(entry => entry.status === 'Active').length,
     clones: trips.filter(trip => Boolean(trip?.clonedFromTripId)).length
   }), [blacklistEntries, tripBlockingMap, trips]);
@@ -513,9 +550,10 @@ const ConfirmationWorkspace = () => {
       const responseCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
       const status = String(trip?.status || '').trim();
       const notes = String(trip?.notes || '').trim();
-      const hospitalType = String(trip?.hospitalStatus?.type || '').trim().toLowerCase();
+      const rehabHospitalInfo = getTripRehabHospitalInfo(trip);
+      const hospitalType = String(rehabHospitalInfo?.type || '').trim().toLowerCase();
       const isRehab = hospitalType.includes('rehab');
-      const isHospital = Boolean(trip?.hospitalStatus) && !isRehab;
+      const isHospital = Boolean(rehabHospitalInfo) && !isRehab;
       const exclusion = riderProfiles[key]?.exclusion || null;
       const excludedNow = isPatientExclusionActiveForDate(exclusion, dateKey, new Date().toISOString().slice(0, 10));
 
@@ -560,14 +598,14 @@ const ConfirmationWorkspace = () => {
         confirmationStatus,
         responseCode,
         excluded: excludedNow ? 'Excluded' : 'Active',
-        rehabHospital: trip?.hospitalStatus ? `${trip.hospitalStatus.type || 'Hospital'} until ${trip.hospitalStatus.endDate || '-'}` : '-',
+        rehabHospital: rehabHospitalInfo ? `${rehabHospitalInfo.type || 'Hospital'} until ${rehabHospitalInfo.endDate || '-'}` : '-',
         note: notes || '-'
       });
       groups.set(key, current);
     });
 
     return Array.from(groups.values()).sort((a, b) => b.totalTrips - a.totalTrips || a.rider.localeCompare(b.rider));
-  }, [patientFromDate, patientSearch, patientToDate, riderProfiles, tripBlockingMap, trips]);
+  }, [blacklistEntries, patientFromDate, patientSearch, patientToDate, riderProfiles, tripBlockingMap, trips]);
 
   useEffect(() => {
     if (patientHistoryRows.length === 0) {
@@ -1447,11 +1485,45 @@ const ConfirmationWorkspace = () => {
     setHospitalRehabModal(null);
   };
 
-  const handleRemoveHospitalRehab = trip => {
-    updateTripRecord(trip.id, {
-      hospitalStatus: null
+  const handleRemoveHospitalRehab = async trip => {
+    const patientKey = buildPatientProfileKey(trip);
+    if (patientKey) {
+      const existingProfile = riderProfiles[patientKey] || {};
+      const nextProfile = { ...existingProfile };
+      delete nextProfile.exclusion;
+      await saveSmsData({
+        sms: {
+          ...(smsData?.sms || {}),
+          riderProfiles: {
+            ...riderProfiles,
+            [patientKey]: nextProfile
+          }
+        }
+      });
+    }
+
+    const nextBlacklistEntries = blacklistEntries.map(entry => matchesPatientIdentity(trip, entry) && entry?.status === 'Active' && String(entry?.category || '').toLowerCase().includes('medical') ? {
+      ...entry,
+      status: 'Removed',
+      updatedAt: new Date().toISOString()
+    } : entry);
+    await saveBlacklistData({
+      version: blacklistData?.version ?? 1,
+      entries: nextBlacklistEntries
     });
-    setCustomStatus(`Hospital/Rehab status removido para trip ${trip.id}.`);
+
+    const matchingTrips = trips.filter(candidate => matchesPatientIdentity(trip, {
+      name: candidate?.rider,
+      phone: candidate?.patientPhoneNumber
+    }));
+    matchingTrips.forEach(candidate => {
+      updateTripRecord(candidate.id, {
+        hospitalStatus: null
+      });
+    });
+
+    await refreshDispatchState({ forceServer: true });
+    setCustomStatus(`Hospital/Rehab status removed for ${trip.rider || trip.id}.`);
   };
 
   const isHospitalRehabActive = trip => {
@@ -2093,7 +2165,7 @@ const ConfirmationWorkspace = () => {
         <Modal.Body>
           {/* Rehab / Hospital section */}
           <h6 className="text-uppercase text-warning fw-bold mb-2">Rehab / Hospital <span className="badge bg-warning text-dark ms-1">{summary.rehabHospital}</span></h6>
-          {trips.filter(trip => Boolean(trip?.hospitalStatus)).length > 0 ? (
+          {trips.filter(trip => Boolean(getTripRehabHospitalInfo(trip))).length > 0 ? (
             <div className="table-responsive mb-4">
               <table className="table table-sm table-bordered mb-0" style={{ fontSize: 13 }}>
                 <thead>
@@ -2109,8 +2181,9 @@ const ConfirmationWorkspace = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {trips.filter(trip => Boolean(trip?.hospitalStatus)).map(trip => (
-                    <tr key={trip.id}>
+                  {trips.filter(trip => Boolean(getTripRehabHospitalInfo(trip))).map(trip => {
+                    const rehabHospitalInfo = getTripRehabHospitalInfo(trip);
+                    return <tr key={trip.id}>
                       <td className="fw-semibold">
                         <div>{trip.id}</div>
                         {trip.clonedFromTripId ? (
@@ -2121,18 +2194,18 @@ const ConfirmationWorkspace = () => {
                       </td>
                       <td>{trip.rider || '-'}</td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
-                      <td><span className="badge bg-warning text-dark">{trip.hospitalStatus?.type || 'Hospital'}</span></td>
-                      <td>{trip.hospitalStatus?.startDate || '-'}</td>
-                      <td>{trip.hospitalStatus?.endDate || '-'}</td>
-                      <td style={{ maxWidth: 200, whiteSpace: 'normal' }}>{trip.hospitalStatus?.notes || '-'}</td>
+                      <td><span className="badge bg-warning text-dark">{rehabHospitalInfo?.type || 'Hospital'}</span></td>
+                      <td>{rehabHospitalInfo?.startDate || '-'}</td>
+                      <td>{rehabHospitalInfo?.endDate || '-'}</td>
+                      <td style={{ maxWidth: 200, whiteSpace: 'normal' }}>{rehabHospitalInfo?.notes || '-'}</td>
                       <td>
                         <div className="d-flex flex-column gap-1">
                           <Button size="sm" variant="outline-warning" onClick={() => { setShowRehabBlacklistPanel(false); handleRemoveHospitalRehab(trip); }}>Remove RH</Button>
                           <Button size="sm" variant="outline-danger" onClick={() => { if (window.confirm(`DELETE trip ${trip.id}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}>Delete</Button>
                         </div>
                       </td>
-                    </tr>
-                  ))}
+                    </tr>;
+                  })}
                 </tbody>
               </table>
             </div>
