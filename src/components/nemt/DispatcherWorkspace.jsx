@@ -1402,7 +1402,7 @@ const DispatcherWorkspace = () => {
     };
 
     const groups = filteredTrips.reduce((map, trip) => {
-      const pickupMinutes = parseTripClockMinutes(getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup));
+      const pickupMinutes = parseTripClockMinutes(getEffectivePickupTimeText(trip));
       const hasTime = Number.isFinite(pickupMinutes);
       const bucketHour = hasTime ? Math.floor(pickupMinutes / 60) : null;
       const bucketLabel = hasTime ? `${String(bucketHour).padStart(2, '0')}:00` : 'No Time';
