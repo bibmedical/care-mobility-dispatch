@@ -69,10 +69,13 @@ const getTripLookupKeys = trip => {
   const tripId = String(trip?.id || '').trim();
   const rideId = String(trip?.rideId || '').trim();
   const brokerTripId = String(trip?.brokerTripId || '').trim();
+  const importFingerprint = String(trip?.importFingerprint || '').trim().toLowerCase();
 
   if (tripId) keys.push(`id:${tripId}`);
   if (rideId) keys.push(`ride:${rideId}`);
+  if (brokerTripId) keys.push(`broker:${brokerTripId}`);
   if (rideId && brokerTripId) keys.push(`ride-broker:${rideId}:${brokerTripId}`);
+  if (importFingerprint) keys.push(`import:${importFingerprint}`);
 
   return keys;
 };
@@ -80,6 +83,7 @@ const getTripLookupKeys = trip => {
 const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => normalizeTripRecord({
   ...importedTrip,
   id: String(currentTrip?.id || importedTrip?.id || '').trim(),
+  importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
   driverId: currentTrip?.driverId ?? null,
   secondaryDriverId: currentTrip?.secondaryDriverId ?? null,
   routeId: currentTrip?.routeId ?? null,

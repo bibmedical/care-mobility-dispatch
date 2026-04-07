@@ -268,11 +268,21 @@ const mapRowToTrip = (row, index) => {
     destination,
     rider
   }, index);
+  const importFingerprint = [
+    String(tripId || '').trim().toLowerCase(),
+    String(rideId || '').trim().toLowerCase(),
+    String(serviceDate || '').trim(),
+    String(rider || '').trim().toLowerCase(),
+    String(pickup || '').trim().toLowerCase(),
+    String(address || '').trim().toLowerCase(),
+    String(destination || '').trim().toLowerCase()
+  ].filter(Boolean).join('|');
 
   return {
     id: uniqueTripId,
     rideId,
     brokerTripId: tripId,
+    importFingerprint,
     rider,
     pickup,
     dropoff,
