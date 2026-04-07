@@ -5,6 +5,130 @@
   color: #e8eefc;
 }
 
+.pageRootLight {
+  color: #0f172a;
+}
+
+.pageRootLight .heroCard,
+.pageRootLight .sectionCard,
+.pageRootLight .sidebarCard,
+.pageRootLight .driverPickerCard,
+.pageRootLight .threadCard,
+.pageRootLight .patientGroup,
+.pageRootLight .photoCard {
+  background: #ffffff;
+  border-color: #d5deea;
+  box-shadow: none;
+  color: #0f172a;
+}
+
+.pageRootLight .heroSummaryCard,
+.pageRootLight .detailBadge,
+.pageRootLight .sidebarItem,
+.pageRootLight .emptyState,
+.pageRootLight .statCard {
+  background: #f8f9fb;
+  border-color: #d5deea;
+  color: #0f172a;
+}
+
+.pageRootLight .heroText,
+.pageRootLight .heroSummaryLabel,
+.pageRootLight .sectionMeta,
+.pageRootLight .sidebarItemMeta,
+.pageRootLight .photoMeta,
+.pageRootLight .messageMeta,
+.pageRootLight .statLabel {
+  color: #64748b;
+}
+
+.pageRootLight .sidebarItemActive {
+  background: #eef0f3;
+  border-color: #d1d5db;
+  color: #0f172a;
+}
+
+.pageRootLight .messageIncoming,
+.pageRootLight .messageOutgoing {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.pageRootLight .statusPill {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.pageRootLight .locationCell,
+.pageRootLight .notesCell {
+  color: #334155;
+}
+
+.pageRootLight :global(.text-secondary),
+.pageRootLight :global(.small.text-secondary) {
+  color: #64748b !important;
+}
+
+.pageRootLight :global(.badge.bg-dark) {
+  background: #e5e7eb !important;
+  color: #111827 !important;
+}
+
+.pageRootLight .sidebarCard :global(.form-control),
+.pageRootLight .sidebarCard :global(.form-select) {
+  background: #fbfbfd;
+  border-color: #d5deea;
+  color: #0f172a;
+}
+
+.pageRootLight .sidebarCard :global(.form-control:focus),
+.pageRootLight .sidebarCard :global(.form-select:focus) {
+  background: #ffffff;
+  border-color: #d1d5db;
+  box-shadow: 0 0 0 0.2rem rgba(17, 24, 39, 0.08);
+  color: #0f172a;
+}
+
+.pageRootLight .sectionCard :global(.table),
+.pageRootLight .sectionCard :global(.table > :not(caption) > * > *),
+.pageRootLight .sectionCard :global(thead th),
+.pageRootLight .sectionCard :global(tbody tr) {
+  color: #0f172a;
+  border-color: #d5deea;
+  background: #ffffff;
+}
+
+.pageRootLight .sectionCard :global(.table-hover > tbody > tr:hover > *) {
+  background: #f3f4f6;
+  color: #0f172a;
+}
+
+.pageRootLight .sectionCard :global(.table-responsive) {
+  border-color: #d5deea;
+}
+
+.pageRootLight .sectionCard :global(.btn-outline-dark),
+.pageRootLight .sectionCard :global(.btn-outline-secondary),
+.pageRootLight .sidebarCard :global(.btn-outline-secondary) {
+  color: #374151;
+  border-color: #cbd5e1;
+}
+
+.pageRootLight .sectionCard :global(.btn-outline-dark:hover),
+.pageRootLight .sectionCard :global(.btn-outline-secondary:hover),
+.pageRootLight .sidebarCard :global(.btn-outline-secondary:hover) {
+  background: #e5e7eb;
+  color: #111827;
+  border-color: #d1d5db;
+}
+
+.pageRootLight .sidebarCard :global(.btn-dark),
+.pageRootLight .sectionCard :global(.btn-dark) {
+  background: #4b5563;
+  border-color: #4b5563;
+  color: #ffffff;
+}
+
 .historyShell {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);

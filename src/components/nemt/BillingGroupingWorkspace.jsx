@@ -10,21 +10,21 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 
 const buildShellStyles = isLight => ({
-  windowHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a' },
+  windowHeader: { backgroundColor: isLight ? '#374151' : '#23324a' },
   body: { backgroundColor: isLight ? '#ffffff' : '#171b27' },
   toolbarButton: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
-  primaryButton: { backgroundColor: '#8dc63f', borderColor: '#8dc63f', color: '#08131a' },
-  activePill: { backgroundColor: '#1565c0', borderColor: '#1565c0', color: '#ffffff' },
+  primaryButton: { backgroundColor: isLight ? '#4b5563' : '#8dc63f', borderColor: isLight ? '#4b5563' : '#8dc63f', color: '#ffffff' },
+  activePill: { backgroundColor: isLight ? '#e5e7eb' : '#1565c0', borderColor: isLight ? '#d1d5db' : '#1565c0', color: isLight ? '#111827' : '#ffffff' },
   dangerButton: { backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff' },
   tableShell: { borderColor: isLight ? '#d5deea' : '#2a3144', backgroundColor: isLight ? '#ffffff' : '#171b27' },
-  tableHead: { backgroundColor: '#8dc63f', color: '#08131a' },
-  tableHeadCell: { backgroundColor: '#8dc63f', color: '#08131a', borderColor: 'rgba(8,19,26,0.14)' },
+  tableHead: { backgroundColor: isLight ? '#e5e7eb' : '#8dc63f', color: '#111827' },
+  tableHeadCell: { backgroundColor: isLight ? '#e5e7eb' : '#8dc63f', color: '#111827', borderColor: isLight ? '#d1d5db' : 'rgba(8,19,26,0.14)' },
   cardShell: { backgroundColor: isLight ? '#f8fbff' : '#101521', border: `1px solid ${isLight ? '#c8d4e6' : '#2a3144'}`, color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 16 },
   input: { backgroundColor: isLight ? '#f8fbff' : '#0c111b', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
   modalContent: { backgroundColor: isLight ? '#ffffff' : '#171b27', color: isLight ? '#0f172a' : '#e6ecff', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
   modalHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
   rowBackground: {
-    selected: isLight ? '#e8f2ff' : '#202c42',
+    selected: isLight ? '#eef0f3' : '#202c42',
     default: isLight ? '#ffffff' : '#171b27'
   },
   rowTextColor: isLight ? '#0f172a' : '#e6ecff'
@@ -281,7 +281,7 @@ const BillingGroupingWorkspace = ({ title = 'Driver Grouping' }) => {
               label: 'Vehicles covered',
               value: summary.vehiclesCovered,
               icon: 'iconoir:truck'
-            }].map(card => <Col md={6} xl={3} key={card.label}><div style={shellStyles.cardShell} className="p-3 h-100"><div className="d-flex align-items-center justify-content-between"><div><div className="text-secondary small text-uppercase">{card.label}</div><div className="fs-3 fw-semibold mt-2">{card.value}</div></div><IconifyIcon icon={card.icon} className="fs-1 text-success" /></div></div></Col>)}
+            }].map(card => <Col md={6} xl={3} key={card.label}><div style={shellStyles.cardShell} className="p-3 h-100"><div className="d-flex align-items-center justify-content-between"><div><div className="text-secondary small text-uppercase">{card.label}</div><div className="fs-3 fw-semibold mt-2">{card.value}</div></div><IconifyIcon icon={card.icon} className={`fs-1 ${themeMode === 'light' ? 'text-secondary' : 'text-success'}`} /></div></div></Col>)}
           </Row>
 
           <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
@@ -311,12 +311,12 @@ const BillingGroupingWorkspace = ({ title = 'Driver Grouping' }) => {
           <Row className="g-3">
             <Col xl={8}>
               <div className="border overflow-hidden rounded-3" style={shellStyles.tableShell}>
-                <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom" style={{ borderColor: '#2a3144', backgroundColor: '#101521' }}>
+                <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom" style={{ borderColor: themeMode === 'light' ? '#d5deea' : '#2a3144', backgroundColor: themeMode === 'light' ? '#f8f9fb' : '#101521' }}>
                   <div className="small text-uppercase text-secondary">Active route roster</div>
                   <Form.Control value={search} onChange={event => setSearch(event.target.value)} placeholder="Search" style={{ ...shellStyles.input, maxWidth: 220 }} className="rounded-pill" />
                 </div>
                 <div className="table-responsive" style={{ maxHeight: 640 }}>
-                  <Table className="align-middle mb-0 text-white">
+                  <Table className="align-middle mb-0" style={{ color: shellStyles.rowTextColor }}>
                     <thead style={shellStyles.tableHead}>
                       <tr>
                         {['#', 'Driver Info', 'Vehicle Info', 'Work Hours', 'ATD', 'Roster', 'Ctrl'].map(column => <th key={column} className="fw-normal" style={shellStyles.tableHeadCell}>{column}</th>)}
@@ -398,13 +398,13 @@ const BillingGroupingWorkspace = ({ title = 'Driver Grouping' }) => {
                       <Col sm={6}><div className="small text-secondary text-uppercase">Week</div><div>{normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).mode === 'weekly' ? normalizeRouteRoster(selectedDriver.routeRoster, selectedDriver).weekKey : 'Permanent'}</div></Col>
                     </Row>
 
-                    <div className="border rounded-3 p-3" style={{ borderColor: '#2a3144', backgroundColor: '#0c111b' }}>
+                    <div className="border rounded-3 p-3" style={{ borderColor: themeMode === 'light' ? '#d5deea' : '#2a3144', backgroundColor: themeMode === 'light' ? '#f8f9fb' : '#0c111b' }}>
                       <div className="small text-secondary text-uppercase mb-2">Compliance alerts</div>
                       <div className="d-flex flex-column gap-2">
                         {getDocumentAlerts(selectedDriver).length > 0 ? getDocumentAlerts(selectedDriver).slice(0, 5).map(alert => <div key={alert.text} className="small d-flex align-items-start gap-2"><Badge bg={alert.severity === 'danger' ? 'danger' : 'warning'}>{alert.severity}</Badge><span>{alert.text}</span></div>) : <div className="small text-secondary">No compliance alerts for this driver.</div>}
                       </div>
                     </div>
-                  </> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center text-secondary"><IconifyIcon icon="iconoir:user-badge-check" className="fs-1 mb-3 text-success" /><div className="fw-semibold text-white mb-2">No driver selected</div><div>Selecciona un chofer del roster para ver horarios, ATD y alertas de licencia.</div></div>}
+                  </> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center text-secondary"><IconifyIcon icon="iconoir:user-badge-check" className={`fs-1 mb-3 ${themeMode === 'light' ? 'text-secondary' : 'text-success'}`} /><div className={`fw-semibold mb-2 ${themeMode === 'light' ? 'text-dark' : 'text-white'}`}>No driver selected</div><div>Selecciona un chofer del roster para ver horarios, ATD y alertas de licencia.</div></div>}
               </div>
             </Col>
           </Row>
@@ -416,12 +416,12 @@ const BillingGroupingWorkspace = ({ title = 'Driver Grouping' }) => {
           <Modal.Title>Important Notifications</Modal.Title>
         </Modal.Header>
         <Modal.Body style={shellStyles.modalContent}>
-          <div className="fw-semibold fs-5 mb-3" style={{ color: '#ffb84d' }}>Upcoming Expirations (Next 7 Days)</div>
+          <div className="fw-semibold fs-5 mb-3" style={{ color: themeMode === 'light' ? '#4b5563' : '#ffb84d' }}>Upcoming Expirations (Next 7 Days)</div>
           <div className="fw-semibold mb-2">Documents ({upcomingExpirations.length}):</div>
           <ul className="mb-0">
             {upcomingExpirations.map(item => <li key={`${item.driverId}-${item.documentLabel}`}>{item.documentLabel}: {item.driverName} (DL: {item.licenseNumber}) - Expires {item.expirationDate}</li>)}
           </ul>
-          <div className="mt-4 small text-secondary border-top pt-3" style={{ borderColor: '#2a3144' }}>You can update these records by navigating to Drivers or Vehicles menu.</div>
+          <div className="mt-4 small text-secondary border-top pt-3" style={{ borderColor: themeMode === 'light' ? '#d5deea' : '#2a3144' }}>You can update these records by navigating to Drivers or Vehicles menu.</div>
         </Modal.Body>
         <Modal.Footer style={shellStyles.modalHeader}>
           <Button style={shellStyles.activePill} onClick={() => setShowExpiryModal(false)}>Ok</Button>

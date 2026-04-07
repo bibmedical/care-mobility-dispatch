@@ -9,7 +9,7 @@ import { Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
 
 const buildShellStyles = isLight => ({
   windowHeader: {
-    backgroundColor: isLight ? '#2b3f60' : '#23324a'
+    backgroundColor: isLight ? '#374151' : '#23324a'
   },
   body: {
     backgroundColor: isLight ? '#ffffff' : '#171b27'
@@ -20,14 +20,14 @@ const buildShellStyles = isLight => ({
     color: isLight ? '#0f172a' : '#e6ecff'
   },
   primaryPill: {
-    backgroundColor: '#2f60c9',
-    borderColor: '#2f60c9',
+    backgroundColor: isLight ? '#4b5563' : '#2f60c9',
+    borderColor: isLight ? '#4b5563' : '#2f60c9',
     color: '#fff'
   },
   activeTab: {
-    backgroundColor: '#8dc63f',
-    borderColor: '#8dc63f',
-    color: '#08131a'
+    backgroundColor: isLight ? '#e5e7eb' : '#8dc63f',
+    borderColor: isLight ? '#d1d5db' : '#8dc63f',
+    color: isLight ? '#111827' : '#08131a'
   },
   inactiveTab: {
     backgroundColor: isLight ? '#f6f7fb' : '#101521',
@@ -42,17 +42,17 @@ const buildShellStyles = isLight => ({
     position: 'sticky',
     top: 0,
     zIndex: 1,
-    backgroundColor: '#8dc63f',
-    color: '#fff'
+    backgroundColor: isLight ? '#e5e7eb' : '#8dc63f',
+    color: isLight ? '#111827' : '#fff'
   },
   tableHeadCell: {
-    backgroundColor: '#8dc63f',
-    color: '#fff',
-    borderColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: isLight ? '#e5e7eb' : '#8dc63f',
+    color: isLight ? '#111827' : '#fff',
+    borderColor: isLight ? '#d1d5db' : 'rgba(255,255,255,0.2)',
     fontWeight: 400
   },
   rowBackground: {
-    selected: isLight ? '#e8f2ff' : '#202c42',
+    selected: isLight ? '#eef0f3' : '#202c42',
     default: isLight ? '#ffffff' : '#171b27'
   },
   rowTextColor: isLight ? '#0f172a' : '#e6ecff'
@@ -122,7 +122,7 @@ const RatesWorkspace = () => {
             label: 'Pending Billing',
             value: `$${billingSummary.pendingRevenue.toFixed(2)}`,
             detail: 'Trips ready to bill'
-          }].map(card => <Col md={4} key={card.label}><div className="rounded-3 p-3 h-100" style={{ backgroundColor: themeMode === 'light' ? '#f8fbff' : '#101521', border: `1px solid ${themeMode === 'light' ? '#c8d4e6' : '#2a3144'}`, color: themeMode === 'light' ? '#0f172a' : '#e6ecff' }}><div className="small text-secondary text-uppercase">{card.label}</div><div className="fs-4 fw-semibold mt-2">{card.value}</div><div className="small text-secondary mt-1">{card.detail}</div></div></Col>)}
+          }].map(card => <Col md={4} key={card.label}><div className="rounded-3 p-3 h-100" style={{ backgroundColor: themeMode === 'light' ? '#f8f9fb' : '#101521', border: `1px solid ${themeMode === 'light' ? '#d5deea' : '#2a3144'}`, color: themeMode === 'light' ? '#0f172a' : '#e6ecff' }}><div className="small text-secondary text-uppercase">{card.label}</div><div className="fs-4 fw-semibold mt-2">{card.value}</div><div className="small text-secondary mt-1">{card.detail}</div></div></Col>)}
         </Row>
 
         <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -157,7 +157,7 @@ const RatesWorkspace = () => {
 
         <div className="border overflow-hidden rounded-2" style={shellStyles.tableShell}>
           <div className="table-responsive" style={{ minHeight: 600, maxHeight: 600 }}>
-            <Table className="align-middle mb-0 text-white">
+            <Table className="align-middle mb-0" style={{ color: shellStyles.rowTextColor }}>
               <thead style={shellStyles.tableHead}>
                 <tr>
                   <th style={{ ...shellStyles.tableHeadCell, width: 38 }} />

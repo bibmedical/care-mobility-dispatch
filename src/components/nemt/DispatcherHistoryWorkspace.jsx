@@ -1,5 +1,6 @@
 'use client';
 
+import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
 import { getDriverColor, withDriverAlpha } from '@/helpers/nemt-driver-colors';
 import { formatDispatchTime, formatTripDateLabel, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
@@ -137,6 +138,8 @@ const buildRouteTripMap = (routePlans, trips) => {
 };
 
 const DispatcherHistoryWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const isLight = themeMode === 'light';
   const { showNotification } = useNotificationContext();
   const [loading, setLoading] = useState(true);
   const [backfillRunning, setBackfillRunning] = useState(false);
@@ -402,7 +405,7 @@ const DispatcherHistoryWorkspace = () => {
     auditCount: 0
   };
 
-  return <div className={styles.pageRoot}>
+  return <div className={`${styles.pageRoot} ${isLight ? styles.pageRootLight : ''}`}>
       <Card className={styles.heroCard}>
         <CardBody className="p-4 p-lg-5">
           <div className="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-end">
