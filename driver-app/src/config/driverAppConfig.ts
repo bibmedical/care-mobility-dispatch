@@ -10,13 +10,14 @@ const resolvedApiBaseUrl = normalizeApiBaseUrl(process.env.EXPO_PUBLIC_DRIVER_AP
 export const DRIVER_APP_CONFIG = {
   apiBaseUrl: resolvedApiBaseUrl,
   enableBackgroundTracking: true,
-  tripSyncIntervalMs: 5000,
-  messageSyncIntervalMs: 5000,
+  // Keep sync responsive without overloading Render during active dispatch shifts.
+  tripSyncIntervalMs: 15000,
+  messageSyncIntervalMs: 15000,
   lateAlertThresholdMinutes: 5,
-  gpsDistanceIntervalMeters: 10,
-  gpsTimeIntervalMs: 10000,
+  gpsDistanceIntervalMeters: 20,
+  gpsTimeIntervalMs: 15000,
   backgroundGpsDistanceIntervalMeters: 25,
-  backgroundGpsTimeIntervalMs: 30000,
+  backgroundGpsTimeIntervalMs: 45000,
   backgroundLocationNotificationTitle: 'Florida Mobility Group tracking active',
   backgroundLocationNotificationBody: 'Dispatcher can keep seeing your live vehicle position while the app is in the background.'
 };

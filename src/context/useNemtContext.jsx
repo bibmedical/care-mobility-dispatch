@@ -50,7 +50,7 @@ const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#08
 const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
-const DISPATCH_SYNC_POLL_MS = 5000;
+const DISPATCH_SYNC_POLL_MS = 12000;
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
   if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;
@@ -171,6 +171,7 @@ export const NemtProvider = ({
   const pendingAllowTripShrinkRef = useRef(false);
   const allowTripShrinkReasonNextPersistRef = useRef('');
   const pendingAllowTripShrinkReasonRef = useRef('');
+  const liveSyncCycleRef = useRef(0);
 
   const flushPersistQueue = async () => {
     if (persistInFlightRef.current) return;
@@ -410,11 +411,17 @@ export const NemtProvider = ({
 
     let active = true;
 
-    const syncLiveState = async () => {
+    const syncLiveState = async (options = {}) => {
       if (!active || liveSyncInFlightRef.current) return;
+      const forceDrivers = options.forceDrivers ?? false;
+      const shouldSyncDrivers = forceDrivers || liveSyncCycleRef.current % 3 === 0;
+      liveSyncCycleRef.current += 1;
       liveSyncInFlightRef.current = true;
       try {
-        await Promise.allSettled([syncDriversFromServer(), syncDispatchFromServer()]);
+        await Promise.allSettled([
+          syncDispatchFromServer(),
+          shouldSyncDrivers ? syncDriversFromServer() : Promise.resolve()
+        ]);
       } finally {
         liveSyncInFlightRef.current = false;
       }
@@ -427,7 +434,7 @@ export const NemtProvider = ({
 
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'hidden') return;
-      void syncLiveState();
+      void syncLiveState({ forceDrivers: true });
     };
 
     window.addEventListener('focus', handleVisibilityOrFocus);

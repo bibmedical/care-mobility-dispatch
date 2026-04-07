@@ -147,7 +147,7 @@ export const updateDriverLocation = async ({
     const currentState = normalizeState(result.rows[0]?.data ?? {});
     const drivers = Array.isArray(currentState?.drivers) ? currentState.drivers : [];
     const driverIndex = drivers.findIndex(driver => String(driver?.id || '').trim() === String(driverId || '').trim());
-    if (driverIndex === -1) return;
+    if (driverIndex === -1) return false;
     const updatedDrivers = [...drivers];
     updatedDrivers[driverIndex] = {
       ...drivers[driverIndex],
@@ -165,5 +165,6 @@ export const updateDriverLocation = async ({
     };
     const normalized = normalizeState({ ...currentState, drivers: updatedDrivers });
     await client.query(`UPDATE admin_state SET data = $1, updated_at = NOW() WHERE id = $2`, [normalized, ROW_ID]);
+    return true;
   });
 };

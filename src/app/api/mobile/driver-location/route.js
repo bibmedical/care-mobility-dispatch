@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { readNemtAdminState, updateDriverLocation } from '@/server/nemt-admin-store';
+import { updateDriverLocation } from '@/server/nemt-admin-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
@@ -26,16 +26,8 @@ export async function POST(request) {
   const authResult = await authorizeMobileDriverRequest(request, driverId);
   if (authResult.response) return withMobileCors(authResult.response, request);
 
-  const adminState = await readNemtAdminState();
-  const drivers = Array.isArray(adminState?.drivers) ? adminState.drivers : [];
-  const currentDriver = drivers.find(driver => String(driver?.id || '').trim() === driverId);
-
-  if (!currentDriver) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
-  }
-
   const trackingLastSeen = Number.isFinite(sourceTimestamp) ? new Date(sourceTimestamp).toISOString() : new Date().toISOString();
-  await updateDriverLocation({
+  const updated = await updateDriverLocation({
     driverId,
     latitude,
     longitude,
@@ -46,6 +38,10 @@ export async function POST(request) {
     checkpoint: body?.checkpoint || city || formatCheckpoint(latitude, longitude),
     trackingLastSeen
   });
+
+  if (!updated) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
+  }
 
   return jsonWithMobileCors(request, { ok: true, driverId, trackingLastSeen });
   } catch (error) {
