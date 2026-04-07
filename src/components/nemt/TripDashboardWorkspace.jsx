@@ -1950,6 +1950,27 @@ const TripDashboardWorkspace = () => {
       return String(leftTrip.id).localeCompare(String(rightTrip.id));
     };
 
+    const buildGroupedRows = trips => {
+      const groups = trips.reduce((map, trip) => {
+        const groupKey = trip.brokerTripId || trip.id;
+        if (!map.has(groupKey)) map.set(groupKey, []);
+        map.get(groupKey).push(trip);
+        return map;
+      }, new Map());
+      return Array.from(groups.entries())
+        .map(([groupKey, groupTrips]) => ({ groupKey, trips: [...groupTrips].sort(compareTrips) }))
+        .sort((leftGroup, rightGroup) => compareTrips(leftGroup.trips[0], rightGroup.trips[0]))
+        .flatMap(group => [
+          {
+            type: 'group',
+            groupKey: group.groupKey,
+            ridesCount: group.trips.length,
+            label: group.trips.length > 1 ? `Trip ${group.groupKey} \u2022 ${group.trips.length} rides` : `Trip ${group.groupKey}`
+          },
+          ...group.trips.map(trip => ({ type: 'trip', groupKey: group.groupKey, trip }))
+        ]);
+    };
+
     const sortedTrips = [...filteredTrips].sort(compareTrips);
     const now = Date.now();
     const selectedDateIsToday = tripDateFilter === todayDateKey;
@@ -1968,37 +1989,17 @@ const TripDashboardWorkspace = () => {
     const rows = [];
 
     if (tripDateFilter === 'all') {
-      return sortedTrips.map(trip => ({
-        type: 'trip',
-        groupKey: trip.brokerTripId || trip.id,
-        trip
-      }));
+      return buildGroupedRows(sortedTrips);
     }
 
     if (happenedTrips.length > 0) {
-      rows.push({
-        type: 'section',
-        key: 'happened',
-        label: selectedDateIsPast ? 'What Happened On This Day' : 'Already Happened'
-      });
-      rows.push(...happenedTrips.map(trip => ({
-        type: 'trip',
-        groupKey: trip.brokerTripId || trip.id,
-        trip
-      })));
+      rows.push({ type: 'section', key: 'happened', label: selectedDateIsPast ? 'What Happened On This Day' : 'Already Happened' });
+      rows.push(...buildGroupedRows(happenedTrips));
     }
 
     if (upcomingTrips.length > 0) {
-      rows.push({
-        type: 'section',
-        key: 'upcoming',
-        label: selectedDateIsFuture ? 'What Will Happen On This Day' : 'Still Pending / Will Happen'
-      });
-      rows.push(...upcomingTrips.map(trip => ({
-        type: 'trip',
-        groupKey: trip.brokerTripId || trip.id,
-        trip
-      })));
+      rows.push({ type: 'section', key: 'upcoming', label: selectedDateIsFuture ? 'What Will Happen On This Day' : 'Still Pending / Will Happen' });
+      rows.push(...buildGroupedRows(upcomingTrips));
     }
 
     return rows;
@@ -3408,6 +3409,8 @@ const TripDashboardWorkspace = () => {
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'section' ? <tr key={row.key} className="table-light">
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
+                      </tr> : row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={{ backgroundColor: '#1a1a2e', borderBottom: '1px solid #374151' }}>
+                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#60a5fa', paddingLeft: 10 }}>{row.label}</td>
                       </tr> : <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
                         <td>
                           <input
