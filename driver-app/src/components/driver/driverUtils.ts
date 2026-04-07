@@ -13,9 +13,31 @@ export const formatShortClock = (value?: string | null) => {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 };
 
+export const formatTripClockValue = (value?: string | number | null) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '--';
+
+  // Preserve already formatted values like "7:40 AM" or "07:40".
+  if (/\d{1,2}:\d{2}/.test(raw) || /\b(am|pm)\b/i.test(raw) || /^tbd$/i.test(raw)) {
+    return raw;
+  }
+
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return raw;
+
+  // SafeRide imports may carry Excel date serials (e.g. 46116.26875); time is in the fractional part.
+  const dayFraction = Math.abs(numeric % 1);
+  const totalMinutes = Math.round(dayFraction * 24 * 60) % (24 * 60);
+  const hours24 = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${String(minutes).padStart(2, '0')} ${period}`;
+};
+
 export const getTripWindow = (trip: DriverTrip) => {
-  const pickup = trip.scheduledPickup || trip.pickup || '--';
-  const dropoff = trip.scheduledDropoff || trip.dropoff || '--';
+  const pickup = formatTripClockValue(trip.scheduledPickup || trip.pickup || '--');
+  const dropoff = formatTripClockValue(trip.scheduledDropoff || trip.dropoff || '--');
   return `${pickup} -> ${dropoff}`;
 };
 

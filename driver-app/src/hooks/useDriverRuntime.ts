@@ -146,6 +146,7 @@ export const useDriverRuntime = () => {
   const [messageDraft, setMessageDraft] = useState('');
   const [messagesError, setMessagesError] = useState('');
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [lastMessageSyncAt, setLastMessageSyncAt] = useState<number | null>(null);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [tripActionError, setTripActionError] = useState('');
   const [activeTripAction, setActiveTripAction] = useState('');
@@ -242,6 +243,7 @@ export const useDriverRuntime = () => {
       if (!signalActive) return;
       setMessages(Array.isArray(payload?.messages) ? payload.messages : []);
       setMessagesError('');
+      setLastMessageSyncAt(Date.now());
     } catch (error) {
       if (!signalActive) return;
       setMessages([]);
@@ -546,6 +548,7 @@ export const useDriverRuntime = () => {
     if (!loggedIn || !driverSession?.driverId) {
       setMessages([]);
       setMessagesError('');
+      setLastMessageSyncAt(null);
       return;
     }
 
@@ -827,7 +830,7 @@ export const useDriverRuntime = () => {
     void writeStoredNotificationMode(mode);
   };
 
-  const submitTripAction = async (action: 'en-route' | 'arrived' | 'complete', options: {
+  const submitTripAction = async (action: 'accept' | 'en-route' | 'arrived' | 'complete', options: {
     riderSignatureName?: string;
     riderSignatureData?: {
       points: Array<{ x: number; y: number }>;
@@ -840,7 +843,7 @@ export const useDriverRuntime = () => {
     setActiveTripAction(action);
     setTripActionError('');
 
-    const optimisticStatus = action === 'en-route' ? 'In Progress' : action === 'arrived' ? 'Arrived' : 'Completed';
+    const optimisticStatus = action === 'accept' ? 'In Progress' : action === 'en-route' ? 'In Progress' : action === 'arrived' ? 'Arrived' : 'Completed';
     setAssignedTrips(current => current.map(trip => trip.id === activeTrip.id ? {
       ...trip,
       status: optimisticStatus
@@ -870,6 +873,7 @@ export const useDriverRuntime = () => {
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to update trip.'));
 
+      if (action === 'accept') setShiftState('available');
       if (action === 'en-route') setShiftState('en-route');
       if (action === 'arrived') setShiftState('arrived');
       if (action === 'complete') setShiftState('completed');
@@ -918,6 +922,48 @@ export const useDriverRuntime = () => {
       return true;
     } catch (error) {
       setMessagesError(error instanceof Error ? error.message : 'Unable to send message.');
+      return false;
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  const sendOutsideSmsNotice = async (trip: DriverTrip | null | undefined, riderMessage: string, phoneNumber?: string) => {
+    if (!driverSession?.driverId || !trip) return false;
+
+    const messageText = String(riderMessage || '').trim();
+    if (!messageText) return false;
+
+    const phoneDigits = String(phoneNumber || '').replace(/\D+/g, '');
+    const tripReference = String(trip.rideId || trip.id || '').trim() || 'Unknown trip';
+    const riderName = String(trip.rider || '').trim() || 'rider';
+
+    setIsSendingMessage(true);
+    try {
+      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
+        method: 'POST',
+        headers: {
+          ...getDriverAuthHeaders(driverSession, {
+            'Content-Type': 'application/json'
+          })
+        },
+        body: JSON.stringify({
+          driverId: driverSession.driverId,
+          body: `Driver ${driverSession.name} sent rider SMS for trip ${tripReference} (${riderName})${phoneDigits ? ` to ${phoneDigits}` : ''}: "${messageText}"`,
+          subject: `Rider SMS sent for trip ${tripReference}`,
+          type: 'rider-sms-outside',
+          priority: 'normal',
+          deliveryMethod: 'sms'
+        })
+      });
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to log rider SMS notice.'));
+
+      setMessages(current => [payload.message, ...current]);
+      setMessagesError('');
+      return true;
+    } catch (error) {
+      setMessagesError(error instanceof Error ? error.message : 'Unable to log rider SMS notice.');
       return false;
     } finally {
       setIsSendingMessage(false);
@@ -1098,6 +1144,7 @@ export const useDriverRuntime = () => {
     messageDraft,
     setMessageDraft,
     messagesError,
+    lastMessageSyncAt,
     isLoadingMessages,
     isSendingMessage,
     tripActionError,
@@ -1122,6 +1169,7 @@ export const useDriverRuntime = () => {
     setDriverNotificationMode,
     submitTripAction,
     sendDriverMessage,
+    sendOutsideSmsNotice,
     sendPresetDriverAlert,
     updateDriverProfile,
     uploadDriverDocument,

@@ -1,7 +1,8 @@
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useMemo, useState } from 'react';
+import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
+import { DRIVER_APP_CONFIG } from '../../config/driverAppConfig';
 import { formatShortClock } from './driverUtils';
 import { DriverMessage } from '../../types/driver';
 import { driverTheme } from './driverTheme';
@@ -14,7 +15,29 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [selectedPhotoDataUrl, setSelectedPhotoDataUrl] = useState('');
   const [previewImageUrl, setPreviewImageUrl] = useState('');
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const pinnedDispatchers = ['Lexy', 'Balbino', 'Robert', 'Carlos'];
+  const syncLabel = runtime.lastMessageSyncAt ? formatShortClock(new Date(runtime.lastMessageSyncAt).toISOString()) : 'never';
+  const baseUrlLabel = DRIVER_APP_CONFIG.apiBaseUrl.replace(/^https?:\/\//, '');
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, event => {
+      const height = Number(event?.endCoordinates?.height || 0);
+      setKeyboardInset(Math.max(0, height - 12));
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const getThreadName = (message: DriverMessage) => {
     const subject = String(message.subject || '');
@@ -81,7 +104,7 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
   };
 
   if (!selectedThread) {
-    return <View style={styles.screen}>
+    return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}>
         <View style={styles.headerRow}>
           <Text style={styles.pageTitle}>Messages</Text>
           <Pressable style={styles.newMessageButton} onPress={() => setSelectedThread('Lexy')}>
@@ -89,7 +112,30 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.listWrap}>
+        <View style={styles.debugCard}>
+          <View style={styles.debugRow}>
+            <Text style={styles.debugLabel}>API</Text>
+            <Text numberOfLines={1} style={styles.debugValue}>{baseUrlLabel}</Text>
+          </View>
+          <View style={styles.debugRow}>
+            <Text style={styles.debugLabel}>Driver</Text>
+            <Text style={styles.debugValue}>{runtime.driverSession?.driverId || 'none'}</Text>
+          </View>
+          <View style={styles.debugRow}>
+            <Text style={styles.debugLabel}>Messages</Text>
+            <Text style={styles.debugValue}>{String(runtime.messages.length)}</Text>
+          </View>
+          <View style={styles.debugRow}>
+            <Text style={styles.debugLabel}>Last sync</Text>
+            <Text style={styles.debugValue}>{runtime.isLoadingMessages ? 'syncing...' : syncLabel}</Text>
+          </View>
+          <Pressable style={styles.debugRefreshButton} onPress={() => void runtime.reloadMessages()}>
+            <Text style={styles.debugRefreshText}>Refresh messages</Text>
+          </Pressable>
+          {runtime.messagesError ? <Text style={styles.debugErrorText}>{runtime.messagesError}</Text> : null}
+        </View>
+
+        <ScrollView contentContainerStyle={styles.listWrap} keyboardShouldPersistTaps="handled">
           {threads.map(thread => {
           const lastMessage = thread.messages[thread.messages.length - 1];
           const unread = thread.messages.filter(message => !isOutgoing(message) && (message.status === 'active' || message.priority === 'high')).length;
@@ -106,10 +152,10 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
               </Pressable>;
         })}
         </ScrollView>
-      </View>;
+      </KeyboardAvoidingView>;
   }
 
-  return <View style={styles.screen}>
+  return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}>
       <View style={styles.chatHeader}>
         <Pressable onPress={() => setSelectedThread(null)}>
           <Text style={styles.backText}>←</Text>
@@ -120,7 +166,7 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
 
       <Text style={styles.dayLabel}>Today</Text>
 
-      <ScrollView style={styles.chatScroll} contentContainerStyle={styles.chatBody}>
+      <ScrollView style={styles.chatScroll} contentContainerStyle={styles.chatBody} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
           {selectedMessages.length === 0 ? <Text style={styles.emptyText}>No messages yet. Send the first message.</Text> : selectedMessages.map(message => <View key={message.id} style={[styles.bubble, isOutgoing(message) ? styles.bubbleOutgoing : styles.bubbleIncoming]}>
               <Text style={[styles.bubbleText, isOutgoing(message) ? styles.bubbleTextOutgoing : null]}>{message.body}</Text>
             {(String(message.mediaType || '').toLowerCase() === 'image' || String(message.mediaType || '').toLowerCase().startsWith('image/')) && message.mediaUrl ? <Pressable onPress={() => setPreviewImageUrl(message.mediaUrl || '')}>
@@ -137,8 +183,8 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
           </Pressable>
         </View> : null}
 
-      <View style={styles.composer}>
-        <TextInput value={runtime.messageDraft} onChangeText={runtime.setMessageDraft} placeholder="Type a message..." placeholderTextColor="#a6afbb" style={styles.composerInput} multiline />
+      <View style={[styles.composer, keyboardInset > 0 ? { marginBottom: keyboardInset } : null]}>
+        <TextInput value={runtime.messageDraft} onChangeText={runtime.setMessageDraft} placeholder="Type a message..." placeholderTextColor="#a6afbb" style={styles.composerInput} multiline textAlignVertical="top" />
         <Pressable style={styles.attachButton} onPress={() => void pickPhoto()}>
           <Text style={styles.attachButtonText}>+</Text>
         </Pressable>
@@ -160,15 +206,15 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
       </Modal>
 
       {runtime.messagesError ? <Text style={styles.errorText}>{runtime.messagesError}</Text> : null}
-    </View>;
+    </KeyboardAvoidingView>;
 };
 
 const styles = StyleSheet.create({
   screen: {
+    flex: 1,
     backgroundColor: driverTheme.colors.surface,
     borderRadius: driverTheme.radius.xl,
     padding: 14,
-    minHeight: 620,
     gap: 10,
     borderWidth: 1,
     borderColor: driverTheme.colors.border
@@ -200,6 +246,52 @@ const styles = StyleSheet.create({
   listWrap: {
     gap: 6,
     paddingBottom: 8
+  },
+  debugCard: {
+    backgroundColor: driverTheme.colors.info,
+    borderRadius: driverTheme.radius.md,
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border,
+    padding: 10,
+    gap: 6
+  },
+  debugRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12
+  },
+  debugLabel: {
+    color: driverTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  debugValue: {
+    flex: 1,
+    color: driverTheme.colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'right'
+  },
+  debugRefreshButton: {
+    marginTop: 2,
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: driverTheme.colors.border,
+    borderRadius: driverTheme.radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  debugRefreshText: {
+    color: driverTheme.colors.primaryText,
+    fontWeight: '800',
+    fontSize: 12
+  },
+  debugErrorText: {
+    color: '#b03050',
+    fontSize: 12,
+    lineHeight: 18
   },
   threadRow: {
     flexDirection: 'row',

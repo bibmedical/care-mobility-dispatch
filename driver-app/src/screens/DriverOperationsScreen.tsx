@@ -53,6 +53,8 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
     return <DriverControlSection runtime={runtime} />;
   };
 
+  const useStaticBodyWrap = runtime.activeTab === 'messages' || runtime.activeTab === 'trips';
+
   return <View style={styles.screen}>
       <View style={[styles.topBar, { borderBottomColor: withDriverAccentAlpha(driverAccent, 0.2) }]}>
         <Pressable style={[styles.menuButton, { backgroundColor: driverAccent, borderColor: withDriverAccentAlpha(driverAccent, 0.55) }]} onPress={() => setIsDrawerOpen(true)}>
@@ -64,9 +66,9 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={driverSharedStyles.screen}>
-        {renderBody()}
-      </ScrollView>
+      {useStaticBodyWrap ? <View style={styles.messagesBodyWrap}>{renderBody()}</View> : <ScrollView contentContainerStyle={driverSharedStyles.screen}>
+          {renderBody()}
+        </ScrollView>}
 
       {isDrawerOpen ? <DriverDrawerMenu activeTab={runtime.activeTab} onChange={runtime.setActiveTab} onClose={() => setIsDrawerOpen(false)} driverName={runtime.driverSession?.name || runtime.driverCode || 'Driver'} driverKey={runtime.driverSession?.driverId || runtime.driverSession?.name || runtime.driverCode || 'driver'} /> : null}
     </View>;
@@ -115,5 +117,9 @@ const styles = StyleSheet.create({
     color: driverTheme.colors.text,
     fontSize: 20,
     fontWeight: '800'
+  },
+  messagesBodyWrap: {
+    flex: 1,
+    padding: 12
   }
 });

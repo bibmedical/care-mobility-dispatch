@@ -41,6 +41,7 @@ export type DriverTrip = {
   punctualityVariant?: 'success' | 'danger' | 'secondary';
   lateMinutes?: string;
   isWillCall?: boolean;
+  isNextDayTrip?: boolean;
   enRouteAt?: number | null;
   arrivedAt?: number | null;
   completedAt?: number | null;
@@ -48,6 +49,8 @@ export type DriverTrip = {
   riderSignedAt?: number | null;
   driverWorkflow?: {
     status?: string;
+    acceptedAt?: number | null;
+    acceptedTimeLabel?: string;
     departureAt?: number | null;
     departureTimeLabel?: string;
     departureLocationSnapshot?: LocationSnapshot | null;

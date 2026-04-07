@@ -8,12 +8,34 @@ type Props = {
 };
 
 const getInitials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0).toUpperCase()).join('') || 'DR';
+const toDateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+const normalizeServiceDateKey = (value?: string | null) => {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const slashMatch = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (slashMatch) {
+    const mm = String(slashMatch[1]).padStart(2, '0');
+    const dd = String(slashMatch[2]).padStart(2, '0');
+    const yyyy = slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return '';
+};
 
 export const DriverDashboardSection = ({ runtime }: Props) => {
   const driverName = runtime.driverSession?.name || runtime.driverCode || 'Driver';
   const driverAccent = getDriverAccentColor({ id: runtime.driverSession?.driverId, name: driverName });
   const initials = getInitials(driverName);
-  const tripCount = runtime.assignedTrips.length;
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const todayKey = toDateKey(today);
+  const tomorrowKey = toDateKey(tomorrow);
+  const todayTripCount = runtime.assignedTrips.filter(trip => normalizeServiceDateKey(trip.serviceDate) === todayKey).length;
+  const nextDayTripCount = runtime.assignedTrips.filter(trip => normalizeServiceDateKey(trip.serviceDate) === tomorrowKey || trip.isNextDayTrip).length;
+  const tripCount = todayTripCount + nextDayTripCount;
   const urgentMessages = runtime.messages.filter(message => String(message.source || '').toLowerCase() !== 'mobile-driver-app').length;
   const activeRouteName = runtime.activeTrip?.rider || 'No active route';
 
@@ -36,8 +58,17 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
       <Pressable style={[styles.primaryCard, { backgroundColor: driverAccent, borderColor: withDriverAccentAlpha(driverAccent, 0.52) }]} onPress={() => runtime.setActiveTab('trips')}>
         <View style={styles.primaryCardCopy}>
           <Text style={styles.primaryLabel}>Trips</Text>
-          <Text style={styles.primaryValue}>{tripCount}</Text>
-          <Text style={styles.primaryMeta}>{tripCount === 1 ? '1 trip assigned today' : `${tripCount} trips assigned today`}</Text>
+          <View style={styles.tripSplitRow}>
+            <View style={styles.tripSplitBlock}>
+              <Text style={styles.tripSplitLabel}>Today</Text>
+              <Text style={styles.primaryValue}>{todayTripCount}</Text>
+            </View>
+            <View style={styles.tripSplitBlock}>
+              <Text style={styles.tripSplitLabel}>Next day</Text>
+              <Text style={styles.primaryValue}>{nextDayTripCount}</Text>
+            </View>
+          </View>
+          <Text style={styles.primaryMeta}>{tripCount === 1 ? '1 trip in queue' : `${tripCount} trips in queue`}</Text>
         </View>
         <View style={[styles.primaryBadge, { backgroundColor: withDriverAccentAlpha('#ffffff', 0.18), borderColor: withDriverAccentAlpha('#ffffff', 0.26) }]}>
           <Text style={styles.primaryBadgeText}>{tripCount}</Text>
@@ -179,6 +210,23 @@ const styles = StyleSheet.create({
   primaryCardCopy: {
     flex: 1,
     gap: 4
+  },
+  tripSplitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+    gap: 12
+  },
+  tripSplitBlock: {
+    flex: 1
+  },
+  tripSplitLabel: {
+    color: 'rgba(255,255,255,0.9)',
+    textTransform: 'uppercase',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6
   },
   primaryLabel: {
     color: '#ffffff',

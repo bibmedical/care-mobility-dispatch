@@ -1,5 +1,5 @@
-import { ActivityIndicator, Linking, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Linking, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { driverSharedStyles, driverTheme } from './driverTheme';
 import { getTripTone, getTripWindow } from './driverUtils';
@@ -10,10 +10,30 @@ type Props = {
 
 type ListMode = 'routes' | 'trips';
 type QueueMode = 'scheduled' | 'in-progress';
+type TripDateMode = 'today' | 'next-day';
+
+const toDateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+
+const normalizeServiceDateKey = (value?: string | null) => {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const slashMatch = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (slashMatch) {
+    const mm = String(slashMatch[1]).padStart(2, '0');
+    const dd = String(slashMatch[2]).padStart(2, '0');
+    const yyyy = slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return '';
+};
 
 export const DriverTripsSection = ({ runtime }: Props) => {
+  const OUTSIDE_SMS_TEMPLATE = 'Hi this is Care Mobility. Your driver is outside waiting for you.';
   const [listMode, setListMode] = useState<ListMode>('routes');
   const [queueMode, setQueueMode] = useState<QueueMode>('scheduled');
+  const [tripDateMode, setTripDateMode] = useState<TripDateMode>('today');
   const [signaturePoints, setSignaturePoints] = useState<Array<{ x: number; y: number }>>([]);
   const [signaturePadSize, setSignaturePadSize] = useState({ width: 1, height: 1 });
   const signaturePointsRef = useRef<Array<{ x: number; y: number }>>([]);
@@ -22,6 +42,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const openDirections = async () => {
     if (!focusTrip) return;
     const headingToPickup = !focusTrip.enRouteAt || !focusTrip.arrivedAt;
+    if (headingToPickup && !String(focusTrip.riderSignatureName || '').trim() && signaturePoints.length < 12) return;
     const targetAddress = headingToPickup ? focusTrip.address : focusTrip.destination;
     if (!targetAddress) return;
     const query = encodeURIComponent(targetAddress);
@@ -34,22 +55,51 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     await Linking.openURL(`tel:${digits}`);
   };
 
+  const sendOutsideSms = async (trip: NonNullable<DriverRuntime['activeTrip']>) => {
+    const digits = String(trip.patientPhoneNumber || '').replace(/\D+/g, '');
+    if (!digits) return;
+    const encodedText = encodeURIComponent(OUTSIDE_SMS_TEMPLATE);
+    const querySeparator = Platform.OS === 'ios' ? '&' : '?';
+    await Linking.openURL(`sms:${digits}${querySeparator}body=${encodedText}`);
+    await runtime.sendOutsideSmsNotice(trip, OUTSIDE_SMS_TEMPLATE, digits);
+  };
+
   const isInProgressTrip = (status?: string) => {
     const normalized = String(status || '').toLowerCase();
     return normalized.includes('en-route') || normalized.includes('arrived') || normalized.includes('progress');
   };
 
   const filteredTrips = useMemo(() => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const todayKey = toDateKey(today);
+    const tomorrowKey = toDateKey(tomorrow);
+
     if (queueMode === 'in-progress') {
-      return runtime.assignedTrips.filter(trip => isInProgressTrip(trip.status));
+      return runtime.assignedTrips.filter(trip => isInProgressTrip(trip.status)).filter(trip => {
+        const serviceDateKey = normalizeServiceDateKey(trip.serviceDate);
+        if (!serviceDateKey) return tripDateMode === 'today';
+        return tripDateMode === 'today' ? serviceDateKey === todayKey : serviceDateKey === tomorrowKey;
+      });
     }
 
-    return runtime.assignedTrips.filter(trip => !isInProgressTrip(trip.status));
-  }, [queueMode, runtime.assignedTrips]);
+    return runtime.assignedTrips.filter(trip => !isInProgressTrip(trip.status)).filter(trip => {
+      const serviceDateKey = normalizeServiceDateKey(trip.serviceDate);
+      if (!serviceDateKey) return tripDateMode === 'today';
+      return tripDateMode === 'today' ? serviceDateKey === todayKey : serviceDateKey === tomorrowKey;
+    });
+  }, [queueMode, runtime.assignedTrips, tripDateMode]);
 
   const workflow = focusTrip?.driverWorkflow || null;
+  const hasRequiredSignature = signaturePoints.length >= 12;
+  const hasExistingSignature = Boolean(String(focusTrip?.riderSignatureName || '').trim());
+  const hasSignatureForAccept = hasRequiredSignature || hasExistingSignature;
+  const hasAcceptedState = Boolean(focusTrip && (String(focusTrip.status || '').toLowerCase().includes('progress') || String(focusTrip.driverWorkflow?.status || '').toLowerCase() === 'accepted'));
+  const canAcceptTrip = hasSignatureForAccept && !hasAcceptedState;
   const canMarkArrived = Boolean(focusTrip?.enRouteAt);
-  const canCompleteTrip = Boolean(focusTrip?.arrivedAt) && signaturePoints.length >= 12;
+  const canCompleteTrip = Boolean(focusTrip?.arrivedAt) && hasRequiredSignature;
+  const canStartTrip = hasAcceptedState;
 
   const clampPoint = (value: number, max: number) => Math.max(0, Math.min(max, value));
 
@@ -80,10 +130,17 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     }
   }), [signaturePadSize.height, signaturePadSize.width]);
 
+  useEffect(() => {
+    clearSignature();
+  }, [focusTrip?.id]);
+
   const renderSupportBadges = (trip?: DriverRuntime['activeTrip']) => {
-    if (!trip || (!trip.hasServiceAnimal && !trip.mobilityType && !trip.assistLevel)) return null;
+    if (!trip || (!trip.hasServiceAnimal && !trip.mobilityType && !trip.assistLevel && !trip.isNextDayTrip)) return null;
 
     return <View style={styles.supportBadgeRow}>
+        {trip.isNextDayTrip ? <View style={[styles.supportBadge, styles.supportBadgeNextDay]}>
+            <Text style={styles.supportBadgeNextDayText}>Next day trip</Text>
+          </View> : null}
         {trip.hasServiceAnimal ? <View style={[styles.supportBadge, styles.supportBadgeAnimal]}>
             <Text style={styles.supportBadgeAnimalText}>🐕 Service Animal</Text>
           </View> : null}
@@ -99,8 +156,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   return <View style={styles.screen}>
       <View style={styles.routeShell}>
         <View style={styles.queueHeaderRow}>
-          <Pressable style={[styles.queueChip, styles.queueChipDate]}>
-            <Text style={styles.queueChipDateText}>Scheduled</Text>
+          <Pressable style={[styles.queueChip, tripDateMode === 'today' ? styles.queueChipDate : null]} onPress={() => setTripDateMode('today')}>
+            <Text style={[styles.queueChipDateText, tripDateMode !== 'today' ? styles.queueChipDateTextMuted : null]}>Today</Text>
+          </Pressable>
+          <Pressable style={[styles.queueChip, tripDateMode === 'next-day' ? styles.queueChipDate : null]} onPress={() => setTripDateMode('next-day')}>
+            <Text style={[styles.queueChipDateText, tripDateMode !== 'next-day' ? styles.queueChipDateTextMuted : null]}>Next day</Text>
           </Pressable>
           <Pressable style={[styles.queueChip, queueMode === 'scheduled' ? styles.queueChipActive : null]} onPress={() => setQueueMode('scheduled')}>
             <Text style={[styles.queueChipText, queueMode === 'scheduled' ? styles.queueChipTextActive : null]}>Scheduled</Text>
@@ -119,7 +179,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               <Text style={[styles.modeTabText, listMode === 'trips' ? styles.modeTabTextActive : null]}>Trips</Text>
             </Pressable>
           </View>
-          <Text style={styles.selectedRouteText}>Selected Route: {focusTrip?.rideId || focusTrip?.id || '--'}</Text>
+          <Text style={styles.selectedRouteText}>Selected Trip: {focusTrip?.rider || '--'}</Text>
         </View>
       </View>
 
@@ -129,11 +189,19 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       {listMode === 'routes' ? <>
           {filteredTrips.length === 0 ? <View style={driverSharedStyles.card}>
               <Text style={driverSharedStyles.emptyText}>No routes in this queue.</Text>
-            </View> : filteredTrips.map(trip => <Pressable key={trip.id} onPress={() => runtime.setActiveTrip(trip)} style={[styles.routeCard, runtime.activeTrip?.id === trip.id ? styles.routeCardActive : null]}>
+            </View> : filteredTrips.map(trip => <Pressable key={trip.id} onPress={() => {
+            runtime.setActiveTrip(trip);
+            setListMode('trips');
+          }} style={[styles.routeCard, runtime.activeTrip?.id === trip.id ? styles.routeCardActive : null]}>
                 <View style={styles.routeCardTop}>
-                  <Pressable style={styles.callBadge} onPress={() => void openPhoneCall(trip.patientPhoneNumber)}>
-                    <Text style={styles.callBadgeText}>Call</Text>
-                  </Pressable>
+                  <View style={styles.quickContactColumn}>
+                    <Pressable style={styles.callBadge} onPress={() => void openPhoneCall(trip.patientPhoneNumber)}>
+                      <Text style={styles.callBadgeText}>Call</Text>
+                    </Pressable>
+                    <Pressable style={styles.smsBadge} onPress={() => void sendOutsideSms(trip)}>
+                      <Text style={styles.smsBadgeText}>SMS</Text>
+                    </Pressable>
+                  </View>
                   <View style={styles.routeTopCopy}>
                     <Text style={styles.routeIdText}>ID: {trip.rideId || trip.id}</Text>
                     <Text style={styles.routeAddressText} numberOfLines={1}>{trip.address}</Text>
@@ -151,7 +219,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                     <Text style={styles.routeServiceText}>{trip.leg || 'Route'}</Text>
                     <Text style={styles.routeRiderText}>{trip.rider || 'Florida Mobility Group Service'}</Text>
                   </View>
-                  <Text style={styles.routeTimeText}>{trip.pickup || trip.scheduledPickup || '--'} - {trip.dropoff || trip.scheduledDropoff || '--'}</Text>
+                  <Text style={styles.routeTimeText}>{getTripWindow(trip)}</Text>
                   <Text style={styles.routeStatusText}>{trip.punctualityLabel || trip.status || 'Accepted'}</Text>
                 </View>
               </Pressable>)}
@@ -168,14 +236,18 @@ export const DriverTripsSection = ({ runtime }: Props) => {
             </View>
           </View>
 
-          <Text style={styles.routeText}>PU {focusTrip.address}</Text>
+          <View style={styles.routeRow}>
+            <Text style={styles.routeText}>PU {focusTrip.address}</Text>
+            {focusTrip.enRouteAt && !focusTrip.arrivedAt ? <Text style={styles.enRouteCheck}>✓ Going</Text> : null}
+          </View>
           <Text style={styles.routeText}>DO {focusTrip.destination}</Text>
 
           <View style={styles.workflowCard}>
             <Text style={styles.workflowTitle}>Trip workflow</Text>
+            <Text style={styles.workflowLine}>Accepted: {workflow?.acceptedTimeLabel || 'Pending'}</Text>
             <Text style={styles.workflowLine}>Departure: {workflow?.departureTimeLabel || 'Pending'}</Text>
             <Text style={styles.workflowLine}>Arrival: {workflow?.arrivalTimeLabel || 'Pending'}</Text>
-            <Text style={styles.workflowLine}>Passenger signature: {focusTrip.riderSignatureName || 'Required before complete'}</Text>
+            <Text style={styles.workflowLine}>Passenger signature: {focusTrip.riderSignatureName || 'Required before en route'}</Text>
             <Text style={styles.workflowLine}>Completion: {workflow?.completedTimeLabel || 'Pending'}</Text>
           </View>
 
@@ -194,20 +266,49 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               }}
               {...signaturePanResponder.panHandlers}
             >
-              {signaturePoints.map((point, index) => <View key={`${point.x}-${point.y}-${index}`} style={[styles.signatureDot, { left: point.x - 1.5, top: point.y - 1.5 }]} />)}
+              {signaturePoints.slice(1).map((point, index) => {
+              const previousPoint = signaturePoints[index];
+              const dx = point.x - previousPoint.x;
+              const dy = point.y - previousPoint.y;
+              const segmentLength = Math.max(2, Math.hypot(dx, dy));
+              const segmentAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+              return <View key={`${previousPoint.x}-${previousPoint.y}-${point.x}-${point.y}-${index}`} style={[styles.signatureStroke, {
+                left: previousPoint.x,
+                top: previousPoint.y,
+                width: segmentLength,
+                transform: [{
+                  rotate: `${segmentAngle}deg`
+                }]
+              }]} />;
+            })}
               {signaturePoints.length === 0 ? <Text style={styles.signatureHint}>Sign here with your finger</Text> : null}
             </View>
+            {!hasSignatureForAccept ? <Text style={styles.signatureRequirementText}>Signature required before Accept.</Text> : null}
           </View>
 
           <View style={styles.actionRow}>
-            <Pressable style={[driverSharedStyles.secondaryButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('en-route')} disabled={runtime.activeTripAction.length > 0}>
-              <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'en-route' ? 'Sending...' : 'En Route'}</Text>
+            <Pressable style={[driverSharedStyles.secondaryButton, !canAcceptTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('accept', {
+            riderSignatureName: hasRequiredSignature ? 'Signed on device' : String(focusTrip.riderSignatureName || '').trim() || 'Signed on device',
+            riderSignatureData: hasRequiredSignature ? {
+              points: signaturePoints,
+              width: signaturePadSize.width,
+              height: signaturePadSize.height
+            } : undefined
+          })} disabled={!canAcceptTrip || runtime.activeTripAction.length > 0}>
+              <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'accept' ? 'Sending...' : 'Accept'}</Text>
             </Pressable>
             <Pressable style={[driverSharedStyles.secondaryButton, !canMarkArrived || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived')} disabled={!canMarkArrived || runtime.activeTripAction.length > 0}>
               <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'arrived' ? 'Sending...' : 'Arrived'}</Text>
             </Pressable>
-            <Pressable style={[driverSharedStyles.secondaryButton, styles.mapButton]} onPress={() => void openDirections()}>
-              <Text style={driverSharedStyles.secondaryButtonText}>Directions</Text>
+            <Pressable style={[driverSharedStyles.secondaryButton, styles.mapButton, !canStartTrip ? styles.actionDisabled : null]} onPress={async () => {
+            if (!focusTrip) return;
+            if (!focusTrip.enRouteAt) {
+              const ok = await runtime.submitTripAction('en-route');
+              if (!ok) return;
+            }
+            await openDirections();
+          }} disabled={!canStartTrip || runtime.activeTripAction.length > 0}>
+              <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'en-route' ? 'Sending...' : 'Directions'}</Text>
             </Pressable>
             <Pressable style={[driverSharedStyles.primaryButton, !canCompleteTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('complete', {
             riderSignatureName: 'Signed on device',
@@ -260,6 +361,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '800'
+  },
+  queueChipDateTextMuted: {
+    color: '#2f4453'
   },
   queueChipActive: {
     backgroundColor: driverTheme.colors.primary,
@@ -326,6 +430,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10
   },
+  quickContactColumn: {
+    gap: 6
+  },
   callBadge: {
     width: 34,
     height: 34,
@@ -334,9 +441,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
+  smsBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: '#0ea5a5',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   callBadgeText: {
     color: '#ffffff',
     fontSize: 10,
+    fontWeight: '800'
+  },
+  smsBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
     fontWeight: '800'
   },
   routeTopCopy: {
@@ -383,10 +503,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff2cc',
     borderColor: '#f3d26b'
   },
+  supportBadgeNextDay: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b'
+  },
   supportBadgeText: {
     color: '#334a59',
     fontSize: 11,
     fontWeight: '700'
+  },
+  supportBadgeNextDayText: {
+    color: '#92400e',
+    fontSize: 11,
+    fontWeight: '800'
   },
   supportBadgeAnimalText: {
     color: '#6f4e00',
@@ -439,8 +568,19 @@ const styles = StyleSheet.create({
     marginTop: 4
   },
   routeText: {
+    flex: 1,
     color: driverTheme.colors.text,
     lineHeight: 20
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  enRouteCheck: {
+    color: '#0f766e',
+    fontWeight: '800',
+    fontSize: 12
   },
   actionRow: {
     flexDirection: 'row',
@@ -500,6 +640,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
     overflow: 'hidden'
   },
+  signatureStroke: {
+    position: 'absolute',
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#111827',
+    transformOrigin: 'left center'
+  },
   signatureDot: {
     position: 'absolute',
     width: 3,
@@ -514,6 +661,11 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 12,
     fontWeight: '600'
+  },
+  signatureRequirementText: {
+    color: '#b45309',
+    fontSize: 12,
+    fontWeight: '700'
   },
   actionDisabled: {
     opacity: 0.65

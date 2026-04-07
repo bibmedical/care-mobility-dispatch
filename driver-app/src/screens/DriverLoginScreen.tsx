@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { DriverRuntime } from '../hooks/useDriverRuntime';
 import { driverTheme } from '../components/driver/driverTheme';
 
@@ -7,40 +7,49 @@ type Props = {
 };
 
 export const DriverLoginScreen = ({ runtime }: Props) => {
-  return <ScrollView contentContainerStyle={styles.scrollContent}>
-      <View style={styles.heroShell}>
-        <View style={styles.heroBadge}>
-          <Text style={styles.heroBadgeText}>CM</Text>
+  return (
+    <KeyboardAvoidingView style={styles.kavContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <View style={styles.heroShell}>
+          <View style={styles.heroBadge}>
+            <Text style={styles.heroBadgeText}>CM</Text>
+          </View>
+          <Text style={styles.heroTitle}>Driver Access</Text>
+          <Text style={styles.heroSubtitle}>Login with the same driver account used in the portal.</Text>
         </View>
-        <Text style={styles.heroTitle}>Driver Access</Text>
-        <Text style={styles.heroSubtitle}>Login with the same driver account used in the portal.</Text>
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardEyebrow}>Driver Login</Text>
-        <Text style={styles.cardTitle}>Sign in</Text>
-        <Text style={styles.cardText}>Use the same driver credentials you use on the web portal.</Text>
-        {runtime.isRestoringSession ? <View style={styles.restoreNotice}>
-            <ActivityIndicator color="#3263ff" />
-            <Text style={styles.restoreNoticeText}>Checking saved session...</Text>
-          </View> : null}
-        <TextInput value={runtime.driverCode} onChangeText={runtime.setDriverCode} placeholder="Email" placeholderTextColor="#7f8ca8" style={styles.input} autoCapitalize="none" keyboardType="email-address" />
-        <TextInput value={runtime.password} onChangeText={runtime.setPassword} placeholder="Password" placeholderTextColor="#7f8ca8" style={styles.input} secureTextEntry autoCapitalize="none" />
-        {runtime.authError ? <Text style={styles.errorText}>{runtime.authError}</Text> : null}
-        <Pressable style={[styles.primaryButton, runtime.isSigningIn ? styles.primaryButtonDisabled : null]} onPress={() => void runtime.signIn()} disabled={runtime.isSigningIn}>
-          {runtime.isSigningIn ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Open Driver App</Text>}
-        </Pressable>
-      </View>
-    </ScrollView>;
+        <View style={styles.card}>
+          <Text style={styles.cardEyebrow}>Driver Login</Text>
+          <Text style={styles.cardTitle}>Sign in</Text>
+          <Text style={styles.cardText}>Use the same driver credentials you use on the web portal.</Text>
+          {runtime.isRestoringSession ? (
+            <View style={styles.restoreNotice}>
+              <ActivityIndicator color="#3263ff" />
+              <Text style={styles.restoreNoticeText}>Checking saved session...</Text>
+            </View>
+          ) : null}
+          <TextInput value={runtime.driverCode} onChangeText={runtime.setDriverCode} placeholder="Email" placeholderTextColor="#7f8ca8" style={styles.input} autoCapitalize="none" keyboardType="email-address" />
+          <TextInput value={runtime.password} onChangeText={runtime.setPassword} placeholder="Password" placeholderTextColor="#7f8ca8" style={styles.input} secureTextEntry autoCapitalize="none" />
+          {runtime.authError ? <Text style={styles.errorText}>{runtime.authError}</Text> : null}
+          <Pressable style={[styles.primaryButton, runtime.isSigningIn ? styles.primaryButtonDisabled : null]} onPress={() => void runtime.signIn()} disabled={runtime.isSigningIn}>
+            {runtime.isSigningIn ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Open Driver App</Text>}
+          </Pressable>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
 };
 
 const styles = StyleSheet.create({
+  kavContainer: {
+    flex: 1,
+    backgroundColor: driverTheme.colors.appBg
+  },
   scrollContent: {
     padding: 20,
     gap: 16,
-    backgroundColor: driverTheme.colors.appBg,
-    justifyContent: 'center',
-    minHeight: '100%'
+    flexGrow: 1,
+    justifyContent: 'center'
   },
   heroShell: {
     backgroundColor: driverTheme.colors.surface,
