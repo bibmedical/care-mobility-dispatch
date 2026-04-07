@@ -52,6 +52,20 @@ const findDriverFromAuthUser = (drivers, authUser) => {
   });
 };
 
+const findDriverFromDirectCredentials = (drivers, state, identifier, password) => {
+  const normalizedIdentifier = normalizeLookupValue(identifier);
+  const normalizedPassword = normalizeLookupValue(password);
+  if (!normalizedIdentifier || !normalizedPassword) return null;
+
+  return drivers.find(driver => {
+    const identifierMatches = matchesDriverIdentifier(driver, state, normalizedIdentifier);
+    if (!identifierMatches) return false;
+
+    const storedPassword = normalizeLookupValue(driver?.password);
+    return Boolean(storedPassword) && storedPassword === normalizedPassword;
+  }) || null;
+};
+
 const buildDriverSessionPayload = async (driver, baseSession, deviceId) => {
   const claimedSession = await claimDriverMobileSession({
     driverId: driver.id,
@@ -90,17 +104,25 @@ export async function POST(request) {
   // Primary auth path: same credentials as web (identifier + password).
   if (identifier && password) {
     try {
-      const authUser = await authorizePersistedSystemUser({
-        identifier,
-        password,
-        clientType: 'android'
-      });
+      let authUser = null;
+      let driver = null;
 
-      if (!isDriverRole(authUser?.role)) {
+      try {
+        authUser = await authorizePersistedSystemUser({
+          identifier,
+          password,
+          clientType: 'android'
+        });
+        driver = findDriverFromAuthUser(normalizedDrivers, authUser);
+      } catch (authError) {
+        driver = findDriverFromDirectCredentials(normalizedDrivers, state, identifier, password);
+        if (!driver) throw authError;
+      }
+
+      if (authUser && !isDriverRole(authUser?.role)) {
         return jsonWithMobileCors(request, { ok: false, error: 'This account is not a driver profile.' }, { status: 403 });
       }
 
-      const driver = findDriverFromAuthUser(normalizedDrivers, authUser);
       if (!driver) {
         return jsonWithMobileCors(request, { ok: false, error: 'Driver profile not found.' }, { status: 404 });
       }
@@ -117,8 +139,8 @@ export async function POST(request) {
           driverId: driver.id,
           driverCode,
           name: getFullName(driver),
-          username: authUser.username || driver.portalUsername || driver.username || '',
-          email: authUser.email || driver.portalEmail || driver.email || '',
+          username: authUser?.username || driver.portalUsername || driver.username || '',
+          email: authUser?.email || driver.portalEmail || driver.email || '',
           phone: normalizePhoneDigits(driver.phone),
           vehicleId: driver.vehicleId || '',
           passwordResetRequired: Boolean(driver.passwordResetRequired)

@@ -781,6 +781,15 @@ const TripDashboardWorkspace = () => {
     if (!hasPrimary) return secondaryDriverName;
     return `${primaryDriverName} + ${secondaryDriverName}`;
   };
+  const getTripCompanionNote = trip => {
+    const directCompanion = String(trip?.companion || trip?.companionNote || '').trim();
+    if (directCompanion) return directCompanion;
+    const profilePhoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
+    const profileRiderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
+    const profileKey = profilePhoneKey ? `phone:${profilePhoneKey}` : profileRiderKey ? `rider:${profileRiderKey}` : '';
+    if (!profileKey) return '';
+    return String(riderProfiles?.[profileKey]?.companion || '').trim();
+  };
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), uiPreferences?.timeZone), [uiPreferences?.timeZone]);
   const operatorDisplayName = useMemo(() => {
     const sessionName = String(session?.user?.name || '').trim();
@@ -3446,6 +3455,7 @@ const TripDashboardWorkspace = () => {
                         </td>
                         {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
                             <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
+                            {row.trip.rider ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1, whiteSpace: 'normal', maxWidth: 180 }}>{row.trip.rider}</div> : null}
                             {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1 me-1">{getLegBadge(row.trip).label}</Badge> : null}
                             {row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
                             {row.trip.mobilityType ? <Badge bg="light" text="dark" className="mt-1 border">{row.trip.mobilityType}</Badge> : null}
@@ -3556,7 +3566,12 @@ const TripDashboardWorkspace = () => {
                       placeholder: 'Ambulatory'
                     }) : null}
                         {visibleTripColumns.includes('mobility') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.mobilityType || '-'}</td> : null}
-                        {visibleTripColumns.includes('assistLevel') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.assistLevel || '-'}</td> : null}
+                        {visibleTripColumns.includes('assistLevel') ? <td style={{ whiteSpace: 'nowrap' }}>
+                            <div className="d-flex align-items-center gap-1">
+                              <span>{row.trip.assistLevel || '-'}</span>
+                              {getTripCompanionNote(row.trip) ? <Badge bg="info" text="dark">Companion: Yes</Badge> : null}
+                            </div>
+                          </td> : null}
                         {visibleTripColumns.includes('serviceAnimal') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark">🐕 Yes</Badge> : '-'}</td> : null}
                         {visibleTripColumns.includes('notes') ? <td style={{ minWidth: 220, maxWidth: 320, whiteSpace: 'normal' }}>{getTripNoteText(row.trip) || '-'}</td> : null}
                         {visibleTripColumns.includes('leg') ? <td style={{ whiteSpace: 'nowrap' }}>{getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant}>{getLegBadge(row.trip).label}</Badge> : '-'}</td> : null}

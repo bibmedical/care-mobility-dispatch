@@ -85,7 +85,9 @@ const normalizeTimestampToDateKey = value => {
   if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
   const parsedDate = new Date(timestamp);
   if (Number.isNaN(parsedDate.getTime())) return '';
-  return `${parsedDate.getFullYear()}-${padDatePart(parsedDate.getMonth() + 1)}-${padDatePart(parsedDate.getDate())}`;
+  const parts = getDatePartsInTimeZone(parsedDate, DEFAULT_DISPATCH_TIME_ZONE);
+  if (!parts) return '';
+  return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
 export const getTripServiceDateKey = trip => {

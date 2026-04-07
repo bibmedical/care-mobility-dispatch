@@ -108,9 +108,20 @@ const ensureSeeded = async () => {
 };
 
 export const readNemtAdminState = async () => {
-  await ensureSeeded();
-  const row = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ROW_ID]);
-  return normalizeState(row?.data ?? {});
+  try {
+    await ensureSeeded();
+    const row = await queryOne(`SELECT data FROM admin_state WHERE id = $1`, [ROW_ID]);
+    return normalizeState(row?.data ?? {});
+  } catch {
+    // DB unavailable — fall back to legacy JSON file
+    try {
+      const raw = await readFile(LEGACY_JSON_FILE, 'utf8');
+      const parsed = parseJsonSafe(raw);
+      return normalizeState(parsed);
+    } catch {
+      return normalizeState({});
+    }
+  }
 };
 
 export const writeNemtAdminState = async nextState => {

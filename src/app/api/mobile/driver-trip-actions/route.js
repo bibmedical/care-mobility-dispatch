@@ -157,6 +157,32 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
     ...workflowState
   };
 
+  if (action === 'accept') {
+    return {
+      patch: {
+        status: 'In Progress',
+        driverTripStatus: 'Accepted',
+        acceptedAt: timestamp,
+        riderSignatureName,
+        riderSignedAt: riderSignatureName ? timestamp : trip?.riderSignedAt || null,
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'accepted',
+          acceptedAt: timestamp,
+          acceptedTimeLabel: timeLabel,
+          riderSignatureName: riderSignatureName || existingWorkflow?.riderSignatureName || '',
+          riderSignedAt: riderSignatureName ? timestamp : existingWorkflow?.riderSignedAt || null
+        },
+        updatedAt: timestamp
+      },
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
+    };
+  }
+
   if (action === 'en-route') {
     return {
       patch: {
@@ -282,6 +308,10 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived before Complete.' }, { status: 400 });
   }
 
+  if (action === 'accept' && !riderSignatureName && !riderSignatureData) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Rider signature is required before accepting the trip.' }, { status: 400 });
+  }
+
   if (action === 'complete' && !riderSignatureName && !riderSignatureData) {
     return jsonWithMobileCors(request, { ok: false, error: 'Rider signature is required before completing the trip.' }, { status: 400 });
   }
@@ -295,6 +325,10 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Unsupported action.' }, { status: 400 });
   }
   const patch = actionUpdate.patch;
+
+  if (action === 'accept') {
+    patch.riderSignatureData = riderSignatureData;
+  }
 
   if (action === 'complete') {
     const adminPayload = await readNemtAdminPayload();

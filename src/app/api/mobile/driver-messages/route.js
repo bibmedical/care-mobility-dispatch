@@ -9,6 +9,15 @@ import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } 
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
 
+const normalizeDriverIdentitySet = (...values) => {
+  const identities = new Set();
+  values.forEach(value => {
+    const normalized = normalizeLookupValue(value);
+    if (normalized) identities.add(normalized);
+  });
+  return identities;
+};
+
 const resolveDriverByLookup = async lookup => {
   const adminPayload = await readNemtAdminPayload();
   const lookupValue = normalizeLookupValue(lookup);
@@ -65,31 +74,93 @@ const appendIncomingDriverThreadMessage = (dispatchThreads, driverId, message) =
 
 const internalError = (request, error) => jsonWithMobileCors(request, { ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
 
+const mapDispatchThreadMessageToMobileMessage = (entry, normalizedDriverId, driverName) => {
+  const messageId = String(entry?.id || '').trim() || `dispatch-thread-${Date.now()}`;
+  const messageText = String(entry?.text || '').trim();
+  const attachments = Array.isArray(entry?.attachments) ? entry.attachments : [];
+  const photoAttachment = attachments.find(item => String(item?.dataUrl || '').trim());
+  const mediaUrl = String(photoAttachment?.dataUrl || '').trim();
+  const mediaType = String(photoAttachment?.mimeType || (String(photoAttachment?.kind || '').toLowerCase() === 'photo' ? 'image/jpeg' : '')).trim() || null;
+
+  const isDriverOutgoing = String(entry?.direction || '').toLowerCase() === 'incoming';
+
+  return {
+    id: messageId,
+    type: 'dispatch-message',
+    priority: 'normal',
+    audience: isDriverOutgoing ? 'Dispatcher' : 'Driver',
+    subject: isDriverOutgoing
+      ? `Driver message from ${driverName || 'Driver'}`
+      : `[From: Dispatch] Dispatch message for ${driverName || 'driver'}`,
+    body: messageText || (mediaUrl ? '[Attachment]' : ''),
+    mediaUrl: mediaUrl || null,
+    mediaType,
+    driverId: normalizedDriverId,
+    driverName: driverName || null,
+    driverEmail: null,
+    status: 'active',
+    createdAt: entry?.timestamp || new Date().toISOString(),
+    resolvedAt: null,
+    source: isDriverOutgoing ? 'mobile-driver-app' : 'dispatcher-web',
+    deliveryMethod: 'in-app'
+  };
+};
+
 export async function GET(request) {
   try {
-  const { searchParams } = new URL(request.url);
-  const driverLookup = searchParams.get('driverId') || searchParams.get('driverCode');
+    const { searchParams } = new URL(request.url);
+    const driverLookup = searchParams.get('driverId') || searchParams.get('driverCode');
 
-  if (!driverLookup) {
-    return jsonWithMobileCors(request, { ok: false, error: 'driverId or driverCode is required.' }, { status: 400 });
-  }
+    if (!driverLookup) {
+      return jsonWithMobileCors(request, { ok: false, error: 'driverId or driverCode is required.' }, { status: 400 });
+    }
 
-  const authResult = await authorizeMobileDriverRequest(request, driverLookup);
-  if (authResult.response) return withMobileCors(authResult.response, request);
+    const authResult = await authorizeMobileDriverRequest(request, driverLookup);
+    if (authResult.response) return withMobileCors(authResult.response, request);
 
-  const driver = await resolveDriverByLookup(driverLookup);
-  if (!driver) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
-  }
+    const driver = await resolveDriverByLookup(driverLookup);
+    if (!driver) {
+      return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
+    }
 
-  const messages = await readSystemMessages();
-  const normalizedDriverId = String(driver?.id || '').trim();
-  const visibleMessages = messages.filter(message => {
-    const messageDriverId = String(message?.driverId || '').trim();
-    return !messageDriverId || messageDriverId === normalizedDriverId;
-  }).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
+    const normalizedDriverId = String(driver?.id || '').trim();
+    const driverIdentitySet = normalizeDriverIdentitySet(
+      normalizedDriverId,
+      driverLookup,
+      driver?.code,
+      driver?.portalUsername,
+      driver?.username,
+      driver?.email,
+      driver?.name,
+      driver?.nickname,
+      `${driver?.firstName || ''} ${driver?.lastName || ''}`
+    );
 
-  return jsonWithMobileCors(request, { ok: true, messages: visibleMessages, driverId: normalizedDriverId });
+    const messages = await readSystemMessages();
+    const visibleSystemMessages = messages.filter(message => {
+      const messageDriverId = String(message?.driverId || '').trim();
+      if (!messageDriverId) return true;
+      return driverIdentitySet.has(normalizeLookupValue(messageDriverId));
+    });
+
+    const dispatchState = await readNemtDispatchState();
+    const dispatchThreads = Array.isArray(dispatchState?.dispatchThreads) ? dispatchState.dispatchThreads : [];
+    const matchedThread = dispatchThreads.find(thread => driverIdentitySet.has(normalizeLookupValue(thread?.driverId)));
+    const mappedThreadMessages = Array.isArray(matchedThread?.messages)
+      ? matchedThread.messages.map(entry => mapDispatchThreadMessageToMobileMessage(entry, normalizedDriverId, driver?.name)).filter(message => String(message?.id || '').trim())
+      : [];
+
+    const mergedById = new Map();
+    [...visibleSystemMessages, ...mappedThreadMessages].forEach(message => {
+      const key = String(message?.id || '').trim();
+      if (!key) return;
+      if (mergedById.has(key)) return;
+      mergedById.set(key, message);
+    });
+
+    const visibleMessages = Array.from(mergedById.values()).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
+
+    return jsonWithMobileCors(request, { ok: true, messages: visibleMessages, driverId: normalizedDriverId });
   } catch (error) {
     return internalError(request, error);
   }

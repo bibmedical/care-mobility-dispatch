@@ -152,21 +152,28 @@ const buildImportedTripId = ({
   return stableId || `trip-row-${index + 1}`;
 };
 
+const toLocalDateKey = date => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const getImportedServiceDate = (row, rawPickupTime, rawDropoffTime) => {
   const explicitServiceDate = getValueByAliases(row, COLUMN_ALIASES.serviceDate);
   const parsedExplicitDate = getParsedDate(explicitServiceDate);
   if (parsedExplicitDate) {
-    return parsedExplicitDate.toISOString().slice(0, 10);
+    return toLocalDateKey(parsedExplicitDate);
   }
 
   const parsedPickupDate = getParsedDate(rawPickupTime);
   if (parsedPickupDate) {
-    return parsedPickupDate.toISOString().slice(0, 10);
+    return toLocalDateKey(parsedPickupDate);
   }
 
   const parsedDropoffDate = getParsedDate(rawDropoffTime);
   if (parsedDropoffDate) {
-    return parsedDropoffDate.toISOString().slice(0, 10);
+    return toLocalDateKey(parsedDropoffDate);
   }
 
   return '';

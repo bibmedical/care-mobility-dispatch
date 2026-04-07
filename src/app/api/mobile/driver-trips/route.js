@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, normalizeTripRecord, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
+import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, normalizeTripRecord, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { readNemtAdminPayload, readNemtAdminState } from '@/server/nemt-admin-store';
 import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { getActiveMessageForDriver, resolveSystemMessageById, upsertSystemMessage } from '@/server/system-messages-store';
@@ -219,11 +219,20 @@ export async function GET(request) {
       }, { status: 404 });
     }
 
+    const todayServiceDateKey = getLocalDateKey(Date.now(), DEFAULT_DISPATCH_TIME_ZONE);
+    const nextDayServiceDateKey = shiftTripDateKey(todayServiceDateKey, 1);
     const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => {
-      return trip?.driverId === driver.id && !isCancelledTrip(trip) && !isRehabTrip(trip);
+      const serviceDateKey = getTripServiceDateKey(trip);
+      return trip?.driverId === driver.id && [todayServiceDateKey, nextDayServiceDateKey].includes(serviceDateKey) && !isCancelledTrip(trip) && !isRehabTrip(trip);
     }).sort(sortTripsByPickupTime);
     const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(driverTrips.map(trip => trip?.id));
-    const trips = driverTrips.map(trip => mapTripForDriver(trip, workflowEventsByTripId.get(String(trip?.id || '').trim()) || []));
+    const trips = driverTrips.map(trip => {
+      const mappedTrip = mapTripForDriver(trip, workflowEventsByTripId.get(String(trip?.id || '').trim()) || []);
+      return {
+        ...mappedTrip,
+        isNextDayTrip: mappedTrip.serviceDate === nextDayServiceDateKey
+      };
+    });
     const activeTrip = trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed') || trips[0] || null;
     const driverState = (Array.isArray(adminState?.drivers) ? adminState.drivers : []).find(item => String(item?.id || '').trim() === String(driver.id).trim()) || null;
 
