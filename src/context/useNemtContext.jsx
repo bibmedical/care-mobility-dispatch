@@ -50,7 +50,7 @@ const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#08
 const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
-const DISPATCH_MESSAGES_SYNC_POLL_MS = 5000;
+const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
   if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;
@@ -429,9 +429,18 @@ export const NemtProvider = ({
     if (!syncEnabled || !isDispatchLoaded) return;
 
     let active = true;
+    let intervalId = null;
+
+    const isDispatchViewActive = () => {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+      const path = String(window.location?.pathname || '').toLowerCase();
+      const inDispatchRoute = path.includes('/dispatch');
+      return inDispatchRoute && document.visibilityState === 'visible' && document.hasFocus();
+    };
 
     const syncLiveMessages = async () => {
       if (!active || liveSyncInFlightRef.current) return;
+      if (!isDispatchViewActive()) return;
       liveSyncInFlightRef.current = true;
       try {
         await syncDispatchThreadsFromServer();
@@ -440,23 +449,44 @@ export const NemtProvider = ({
       }
     };
 
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'hidden') return;
-      void syncLiveMessages();
-    }, DISPATCH_MESSAGES_SYNC_POLL_MS);
-
-    const handleVisibilityOrFocus = () => {
-      if (document.visibilityState === 'hidden') return;
-      void syncLiveMessages();
+    const startPolling = () => {
+      if (intervalId != null) return;
+      intervalId = window.setInterval(() => {
+        void syncLiveMessages();
+      }, DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS);
     };
 
+    const stopPolling = () => {
+      if (intervalId == null) return;
+      window.clearInterval(intervalId);
+      intervalId = null;
+    };
+
+    const syncPollingState = () => {
+      if (!active) return;
+      if (isDispatchViewActive()) {
+        startPolling();
+        void syncLiveMessages();
+        return;
+      }
+      stopPolling();
+    };
+
+    const handleVisibilityOrFocus = () => {
+      syncPollingState();
+    };
+
+    syncPollingState();
+
     window.addEventListener('focus', handleVisibilityOrFocus);
+    window.addEventListener('blur', handleVisibilityOrFocus);
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
 
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      stopPolling();
       window.removeEventListener('focus', handleVisibilityOrFocus);
+      window.removeEventListener('blur', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
   }, [isDispatchLoaded, syncEnabled]);
