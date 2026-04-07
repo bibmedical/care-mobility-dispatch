@@ -567,7 +567,7 @@ const ConfirmationWorkspace = () => {
     });
 
     return Array.from(groups.values()).sort((a, b) => b.totalTrips - a.totalTrips || a.rider.localeCompare(b.rider));
-  }, [patientFromDate, patientSearch, patientToDate, tripBlockingMap, trips]);
+  }, [patientFromDate, patientSearch, patientToDate, riderProfiles, tripBlockingMap, trips]);
 
   useEffect(() => {
     if (patientHistoryRows.length === 0) {
@@ -1441,6 +1441,8 @@ const ConfirmationWorkspace = () => {
       });
     });
 
+
+    await refreshDispatchState({ forceServer: true });
     setCustomStatus(`${targetTrips.length} trip(s) marked ${hospitalRehabType} for ${hospitalRehabModal.rider || 'patient'} through ${hospitalRehabEndDate}, including both legs when they exist. New trips in that range will be auto-hidden unless you filter Cancelled.`);
     setHospitalRehabModal(null);
   };
