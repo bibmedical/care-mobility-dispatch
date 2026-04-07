@@ -127,7 +127,8 @@ export async function POST(request) {
         return jsonWithMobileCors(request, { ok: false, error: 'Driver profile not found.' }, { status: 404 });
       }
 
-      if (normalizeLookupValue(driver.profileStatus) !== 'active') {
+      const profileStatus = normalizeLookupValue(driver.profileStatus || 'active');
+      if (profileStatus !== 'active') {
         return jsonWithMobileCors(request, { ok: false, error: 'Driver profile is not active.' }, { status: 403 });
       }
 
@@ -166,7 +167,8 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
-  if (normalizeLookupValue(driver.profileStatus) !== 'active') {
+  const profileStatus = normalizeLookupValue(driver.profileStatus || 'active');
+  if (profileStatus !== 'active') {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver profile is not active.' }, { status: 403 });
   }
 
