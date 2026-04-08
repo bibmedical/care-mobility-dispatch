@@ -41,36 +41,18 @@ export const MENU_ITEMS = [{
   icon: 'iconoir:page-search',
   url: '/forms-safe-ride-import'
 }, {
+  key: 'billing-title',
+  label: 'Billing',
+  isTitle: true
+}, {
+  key: 'billing',
+  label: 'Billing',
+  icon: 'iconoir:bill',
+  url: '/billing'
+}, {
   key: 'settings',
   label: 'Settings',
   isTitle: true
-}, {
-  key: 'user-management',
-  label: 'User Management',
-  icon: 'iconoir:user-scan',
-  url: '/user-management'
-}, {
-  key: 'drivers-menu',
-  label: 'Drivers',
-  icon: 'iconoir:user',
-  children: [{
-    key: 'drivers',
-    label: 'Drivers',
-    url: '/drivers'
-  }, {
-    key: 'drivers-attendants',
-    label: 'Attendants',
-    url: '/drivers/attendants'
-  }, {
-    key: 'drivers-grouping',
-    label: 'Grouping',
-    url: '/drivers/grouping'
-  }]
-}, {
-  key: 'vehicles',
-  label: 'Vehicles',
-  icon: 'iconoir:truck',
-  url: '/drivers/vehicles'
 }, {
   key: 'configuraciones-menu',
   label: 'Settings',
@@ -91,6 +73,18 @@ export const MENU_ITEMS = [{
     key: 'avatar',
     label: 'Avatar',
     url: '/avatar'
+  }, {
+    key: 'user-management',
+    label: 'User Management',
+    url: '/user-management'
+  }, {
+    key: 'drivers-menu-inner',
+    label: 'Drivers',
+    url: '/drivers'
+  }, {
+    key: 'vehicles-inner',
+    label: 'Vehicles',
+    url: '/drivers/vehicles'
   }]
 }, {
   key: 'integrations-menu',
