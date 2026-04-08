@@ -2853,14 +2853,16 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center p-2 border-bottom gap-2 flex-wrap" style={dispatcherSurfaceStyles.header}>
                 <div className="d-flex gap-2 flex-wrap align-items-center">
-                    <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220, ...dispatcherSurfaceStyles.select }}>
+                  <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
+                  <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
+                </div>
+                <div className="d-flex gap-2 flex-wrap align-items-center justify-content-end">
+                  <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220, ...dispatcherSurfaceStyles.select }}>
                     <option value="">Reassign to active driver</option>
                     {activeDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
                   </Form.Select>
                   <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
                   <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
-                  <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
-                  <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
                 </div>
               </div>
               <div className="table-responsive flex-grow-1" style={{ minHeight: 0 }}>
