@@ -1420,6 +1420,7 @@ const TripDashboardWorkspace = () => {
     const term = deferredRouteSearch.trim().toLowerCase();
     return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => value.toLowerCase().includes(term))));
   }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedDriverWorkingTrips, selectedRoute, selectedTripIds, trips]);
+  const selectedRoutePanelTripIds = useMemo(() => routeTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean).filter(tripId => selectedTripIdSet.has(tripId)), [routeTrips, selectedTripIdSet]);
 
   const selectedDriverDayAssignedTripIds = useMemo(() => {
     if (!selectedDriverId || tripDateFilter === 'all') return [];
@@ -2411,6 +2412,30 @@ const TripDashboardWorkspace = () => {
     setStatusMessage('Trips updated with secondary driver.');
   };
 
+  const handleRoutePanelReassign = () => {
+    const targetTripIds = [...selectedRoutePanelTripIds];
+    if (!selectedDriverId || targetTripIds.length === 0) {
+      setStatusMessage('Select a driver and at least one trip from the route table.');
+      return;
+    }
+
+    assignTripsToDriver(selectedDriverId, targetTripIds);
+    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
+    setStatusMessage(`Reassigned ${targetTripIds.length} trip(s) to selected driver.`);
+  };
+
+  const handleRoutePanelAssignSecondary = () => {
+    const targetTripIds = [...selectedRoutePanelTripIds];
+    if (!selectedSecondaryDriverId || targetTripIds.length === 0) {
+      setStatusMessage('Select a secondary driver and at least one trip from the route table.');
+      return;
+    }
+
+    assignTripsToSecondaryDriver(selectedSecondaryDriverId, targetTripIds);
+    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
+    setStatusMessage(`Added secondary driver to ${targetTripIds.length} trip(s).`);
+  };
+
   const handleUnassign = () => {
     const targetTripIds = [...selectedTripIds];
     if (targetTripIds.length === 0) {
@@ -2885,6 +2910,17 @@ const TripDashboardWorkspace = () => {
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
+            <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => setSelectedDriverId(event.target.value || null)} style={{ width: 180 }}>
+              <option value="">Driver</option>
+              {drivers.map(driver => <option key={`route-driver-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+            </Form.Select>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRoutePanelReassign}>Reassign</Button>
+            <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 180 }}>
+              <option value="">2nd driver</option>
+              {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+            </Form.Select>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRoutePanelAssignSecondary}>Assign 2nd</Button>
+            <Badge bg="dark">{selectedRoutePanelTripIds.length} selected</Badge>
           </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
@@ -2893,6 +2929,7 @@ const TripDashboardWorkspace = () => {
               <tr>
                 <th style={{ width: 48 }} />
                 <th>Trip ID</th>
+                <th>Type</th>
                 <th>Miles</th>
                 <th>PU</th>
                 <th>DO</th>
@@ -2909,13 +2946,14 @@ const TripDashboardWorkspace = () => {
                     </div>
                   </td>
                   <td className="fw-semibold">{trip.id}{getTripAddedByLabel(trip) ? <div className="small mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}</td>
+                  <td><Badge bg={getTripTypeLabel(trip) === 'STR' ? 'danger' : getTripTypeLabel(trip) === 'W' ? 'warning' : 'success'} text={getTripTypeLabel(trip) === 'W' ? 'dark' : undefined}>{getTripTypeLabel(trip)}</Badge></td>
                   <td>{trip.miles || '-'}</td>
                   <td>{trip.pickup}</td>
                   <td>{trip.dropoff}</td>
                   <td>{trip.rider}</td>
                   <td>{trip.patientPhoneNumber || '-'}</td>
                 </tr>) : <tr>
-                  <td colSpan={7} className="text-center text-muted py-4">Select a route, a driver, or trips to view the route menu.</td>
+                  <td colSpan={8} className="text-center text-muted py-4">Select a route, a driver, or trips to view the route menu.</td>
                 </tr>}
             </tbody>
           </Table>
