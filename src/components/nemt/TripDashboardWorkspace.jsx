@@ -709,6 +709,7 @@ const TripDashboardWorkspace = () => {
   const tripTableElementRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
   const lastMapScreenStatePayloadRef = useRef('');
+  const layoutHydratedRef = useRef(false);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
   const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
@@ -2570,25 +2571,32 @@ const TripDashboardWorkspace = () => {
   }, [dragMode]);
 
   useEffect(() => {
-    const storedLayout = userPreferences?.tripDashboard?.layoutMode || window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
+    if (userPreferencesLoading || layoutHydratedRef.current) return;
+
+    const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY) || userPreferences?.tripDashboard?.layoutMode;
     if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
       setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
       setShowMapPane(true);
       setRightPanelCollapsed(true);
       setColumnSplit(94);
+      layoutHydratedRef.current = true;
       return;
     }
+
     setLayoutMode(storedLayout);
     if (storedLayout !== TRIP_DASHBOARD_LAYOUTS.normal) {
       setShowMapPane(false);
       setShowBottomPanels(true);
       setRightPanelCollapsed(false);
+      layoutHydratedRef.current = true;
       return;
     }
+
     setShowMapPane(true);
     setRightPanelCollapsed(true);
     setColumnSplit(94);
-  }, [userPreferences?.tripDashboard?.layoutMode]);
+    layoutHydratedRef.current = true;
+  }, [userPreferences?.tripDashboard?.layoutMode, userPreferencesLoading]);
 
   useEffect(() => {
     const storedPanelView = userPreferences?.tripDashboard?.panelView || window.localStorage.getItem(TRIP_DASHBOARD_PANEL_VIEW_KEY);
