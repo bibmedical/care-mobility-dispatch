@@ -176,6 +176,34 @@ export const writeNemtDispatchState = async nextState => {
 };
 
 // ─── DRIVER TRIP UPDATE (mobile) ──────────────────────────────────────────────
+// ─── DRIVER THREAD UPSERT (atomic — mobile incoming message) ─────────────────
+
+export const upsertIncomingDriverThreadMessage = async (driverId, message) => {
+  await ensureDispatchSchema();
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) throw new Error('driverId is required');
+  return withTransaction(async client => {
+    const res = await client.query(
+      `SELECT data FROM dispatch_threads WHERE driver_id = $1 FOR UPDATE`,
+      [normalizedDriverId]
+    );
+    const existing = res.rows[0]?.data ?? { driverId: normalizedDriverId, messages: [] };
+    const existingMessages = Array.isArray(existing.messages) ? existing.messages : [];
+    const messageId = String(message?.id || '').trim();
+    if (messageId && existingMessages.some(m => String(m?.id || '').trim() === messageId)) {
+      return { ok: true, duplicate: true };
+    }
+    const nextThread = { ...existing, messages: [...existingMessages, message] };
+    await client.query(
+      `INSERT INTO dispatch_threads (driver_id, data, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (driver_id) DO UPDATE SET data=$2, updated_at=NOW()`,
+      [normalizedDriverId, nextThread]
+    );
+    return { ok: true, duplicate: false };
+  });
+};
+
+// ─── DRIVER TRIP UPDATE (mobile) ──────────────────────────────────────────────
 
 export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => {
   await ensureDispatchSchema();

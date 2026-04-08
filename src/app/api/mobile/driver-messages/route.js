@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { normalizeDispatchMessageRecord } from '@/helpers/nemt-dispatch-state';
 import { normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
-import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
+import { upsertIncomingDriverThreadMessage } from '@/server/nemt-dispatch-store';
 import { readSystemMessages, upsertSystemMessage } from '@/server/system-messages-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
@@ -32,45 +31,6 @@ const resolveDriverByLookup = async lookup => {
   }) || null;
 };
 
-const appendIncomingDriverThreadMessage = (dispatchThreads, driverId, message) => {
-  const normalizedDriverId = String(driverId || '').trim();
-  if (!normalizedDriverId) return Array.isArray(dispatchThreads) ? dispatchThreads : [];
-
-  const nextMessage = normalizeDispatchMessageRecord({
-    id: message.id,
-    direction: 'incoming',
-    text: message.body,
-    timestamp: message.createdAt,
-    status: 'sent',
-    attachments: message?.mediaUrl ? [{
-      id: `${message.id}-media`,
-      kind: String(message?.mediaType || '').toLowerCase().includes('image') ? 'photo' : 'document',
-      name: String(message?.mediaType || '').toLowerCase().includes('image') ? 'Driver photo' : 'Driver attachment',
-      mimeType: String(message?.mediaType || '').trim(),
-      dataUrl: String(message?.mediaUrl || '').trim()
-    }] : []
-  });
-
-  const currentThreads = Array.isArray(dispatchThreads) ? dispatchThreads : [];
-  const existingThread = currentThreads.find(thread => String(thread?.driverId || '').trim() === normalizedDriverId);
-
-  if (!existingThread) {
-    return [...currentThreads, {
-      driverId: normalizedDriverId,
-      messages: [nextMessage]
-    }];
-  }
-
-  const existingMessages = Array.isArray(existingThread.messages) ? existingThread.messages : [];
-  if (existingMessages.some(entry => String(entry?.id || '').trim() === nextMessage.id)) {
-    return currentThreads;
-  }
-
-  return currentThreads.map(thread => String(thread?.driverId || '').trim() === normalizedDriverId ? {
-    ...thread,
-    messages: [...existingMessages, nextMessage]
-  } : thread);
-};
 
 const internalError = (request, error) => jsonWithMobileCors(request, { ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
 
@@ -206,11 +166,21 @@ export async function POST(request) {
   };
 
   await upsertSystemMessage(message);
-  const dispatchState = await readNemtDispatchState();
-  await writeNemtDispatchState({
-    ...dispatchState,
-    dispatchThreads: appendIncomingDriverThreadMessage(dispatchState?.dispatchThreads, String(driver?.id || '').trim(), message)
-  });
+  const incomingMessage = {
+    id: message.id,
+    direction: 'incoming',
+    text: message.body,
+    timestamp: message.createdAt,
+    status: 'sent',
+    attachments: message.mediaUrl ? [{
+      id: `${message.id}-media`,
+      kind: String(message.mediaType || '').toLowerCase().includes('image') ? 'photo' : 'document',
+      name: String(message.mediaType || '').toLowerCase().includes('image') ? 'Driver photo' : 'Driver attachment',
+      mimeType: String(message.mediaType || '').trim(),
+      dataUrl: String(message.mediaUrl || '').trim()
+    }] : []
+  };
+  await upsertIncomingDriverThreadMessage(String(driver?.id || '').trim(), incomingMessage);
   return jsonWithMobileCors(request, { ok: true, message });
   } catch (error) {
     return internalError(request, error);

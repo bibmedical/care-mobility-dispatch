@@ -24,17 +24,28 @@ export const MENU_ITEMS = [{
   key: 'trip-dashboard',
   label: 'Trip Dashboard',
   icon: 'iconoir:view-grid',
-  url: '/trip-dashboard'
+  children: [{
+    key: 'trip-dashboard-main',
+    label: 'Trip Dashboard',
+    url: '/trip-dashboard'
+  }, {
+    key: 'trip-dashboard-blacklist',
+    label: 'Black List',
+    url: '/blacklist'
+  }]
 }, {
   key: 'confirmation',
   label: 'Confirmation',
   icon: 'iconoir:check-circle',
-  url: '/confirmation'
-}, {
-  key: 'blacklist',
-  label: 'Black List',
-  icon: 'iconoir:shield-question',
-  url: '/blacklist'
+  children: [{
+    key: 'confirmation-main',
+    label: 'Confirmation',
+    url: '/confirmation'
+  }, {
+    key: 'confirmation-blacklist',
+    label: 'Black List',
+    url: '/blacklist'
+  }]
 }, {
   key: 'excel-loader',
   label: 'Excel Loader',
@@ -47,7 +58,7 @@ export const MENU_ITEMS = [{
 }, {
   key: 'billing',
   label: 'Billing',
-  icon: 'iconoir:bill',
+  icon: 'iconoir:dollar-circle',
   url: '/billing'
 }, {
   key: 'settings',
@@ -60,6 +71,7 @@ export const MENU_ITEMS = [{
   children: [{
     key: 'configuraciones-office',
     label: 'Office',
+    icon: 'iconoir:home-alt-slim',
     url: '/settings/office'
   }, {
     key: 'configuraciones-email-templates',
@@ -117,11 +129,6 @@ export const MENU_ITEMS = [{
   label: 'System Logs',
   icon: 'iconoir:list-select',
   url: '/system-logs'
-}, {
-  key: 'system-messages',
-  label: 'System Messages',
-  icon: 'iconoir:message-text',
-  url: '/system-messages'
 }, {
   key: 'reports',
   label: 'Reports',
