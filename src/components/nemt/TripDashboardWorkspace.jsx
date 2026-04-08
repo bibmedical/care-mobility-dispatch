@@ -1264,7 +1264,10 @@ const TripDashboardWorkspace = () => {
     if (tripStatusFilter === 'unassigned') return !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip;
     if (tripStatusFilter === 'willcall') return normalizedStatus === 'willcall';
     if (tripStatusFilter === 'block') return confirmationStatus === 'Opted Out';
-    if (tripStatusFilter === 'confirm') return confirmationStatus === 'Confirmed';
+    if (tripStatusFilter === 'confirm') {
+      const confirmCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
+      return confirmationStatus === 'Confirmed' || (['C', 'S', 'W'].includes(confirmCode) && (confirmationStatus === 'Not Sent' || confirmationStatus === 'Pending'));
+    }
     if (tripStatusFilter === 'unconfirm') return confirmationStatus === 'Not Sent' || String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase() === 'U';
     return normalizedStatus === tripStatusFilter;
   }).filter(trip => {
@@ -3035,6 +3038,16 @@ const TripDashboardWorkspace = () => {
         return <td key={`${trip.id}-punctuality`} style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(trip)}>{getTripPunctualityLabel(trip)}</Badge></td>;
       case 'lateMinutes':
         return <td key={`${trip.id}-late`} style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(trip)}</td>;
+      case 'confirmation': {
+        const blockingState = tripBlockingMap.get(trip.id);
+        const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
+        const confirmationCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
+        const confirmationLabel = confirmationCode === 'U' ? 'Unconfirmed' : ['C', 'S', 'W'].includes(confirmationCode) && (confirmationStatus === 'Not Sent' || confirmationStatus === 'Pending') ? 'Confirmed' : confirmationStatus;
+        const badgeVariant = confirmationLabel === 'Confirmed' ? 'success' : confirmationLabel === 'Opted Out' ? 'danger' : 'secondary';
+        return <td key={`${trip.id}-confirm`} style={{ whiteSpace: 'nowrap' }}>
+            <Badge bg={badgeVariant}>{confirmationLabel}</Badge>
+          </td>;
+      }
       default:
         return null;
     }
