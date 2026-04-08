@@ -1240,7 +1240,7 @@ const DispatcherWorkspace = () => {
     const primaryDriverName = getDriverName(trip?.driverId);
     const hasPrimary = Boolean(trip?.driverId);
     const hasSecondary = Boolean(trip?.secondaryDriverId);
-    if (!hasPrimary && !hasSecondary) return primaryDriverName;
+    if (!hasPrimary && !hasSecondary) return '-';
     if (!hasSecondary) return primaryDriverName;
     const secondaryDriverName = getDriverName(trip.secondaryDriverId);
     if (!hasPrimary) return secondaryDriverName;
