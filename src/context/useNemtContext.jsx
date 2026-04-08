@@ -1100,7 +1100,13 @@ export const NemtProvider = ({
     const currentTrips = normalizeTripRecords(currentState.trips);
     const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
     const currentTripLookup = new Map();
-    const consumedCurrentTripIds = new Set();
+    const importedLookupKeys = new Set();
+
+    importedTrips.forEach(importedTrip => {
+      getTripLookupKeys(importedTrip).forEach(key => {
+        if (key) importedLookupKeys.add(key);
+      });
+    });
 
     currentTrips.forEach(trip => {
       getTripLookupKeys(trip).forEach(key => {
@@ -1115,11 +1121,13 @@ export const NemtProvider = ({
       if (!currentTrip) {
         return importedTrip;
       }
-      consumedCurrentTripIds.add(String(currentTrip.id || '').trim());
       return mergeImportedTripWithCurrent(currentTrip, importedTrip);
     });
 
-    const untouchedCurrentTrips = currentTrips.filter(trip => !consumedCurrentTripIds.has(String(trip.id || '').trim()));
+    const untouchedCurrentTrips = currentTrips.filter(trip => {
+      const lookupKeys = getTripLookupKeys(trip);
+      return !lookupKeys.some(key => importedLookupKeys.has(key));
+    });
     const nextTrips = normalizeTripRecords([...untouchedCurrentTrips, ...mergedImportedTrips]);
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
 
