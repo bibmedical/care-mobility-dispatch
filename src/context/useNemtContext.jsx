@@ -838,21 +838,24 @@ export const NemtProvider = ({
   });
 
   const cancelTrips = (tripIds = [], options = {}) => updateState(currentState => {
-    const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const selectedTripIds = Array.isArray(currentState.selectedTripIds) ? currentState.selectedTripIds : [];
+    const targetTripIds = tripIds.length > 0 ? tripIds : selectedTripIds;
     const cancellationSource = String(options?.source || 'dispatcher-manual').trim() || 'dispatcher-manual';
     const providedReason = String(options?.reason || '').trim();
     const cancellationReason = providedReason || (cancellationSource === 'saferide-import' ? 'Canceled by SafeRide' : 'Cancelled by dispatcher');
     const cancelledAt = new Date().toISOString();
     const updatedAt = getMutationTimestamp();
-    const updatedRoutePlans = currentState.routePlans.map(routePlan => ({
+    const routePlans = Array.isArray(currentState.routePlans) ? currentState.routePlans : [];
+    const trips = Array.isArray(currentState.trips) ? currentState.trips : [];
+    const updatedRoutePlans = routePlans.map(routePlan => ({
       ...routePlan,
       tripIds: routePlan.tripIds.filter(id => !targetTripIds.includes(id))
     })).filter(routePlan => routePlan.tripIds.length > 0);
     return {
       ...currentState,
       routePlans: updatedRoutePlans,
-      selectedTripIds: currentState.selectedTripIds.filter(id => !targetTripIds.includes(id)),
-      trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
+      selectedTripIds: selectedTripIds.filter(id => !targetTripIds.includes(id)),
+      trips: trips.map(trip => targetTripIds.includes(trip.id) ? {
         ...trip,
         driverId: null,
         secondaryDriverId: null,

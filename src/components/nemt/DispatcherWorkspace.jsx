@@ -2107,10 +2107,6 @@ const DispatcherWorkspace = () => {
 
   const handleConfirmCancelTrips = () => {
     const reason = String(cancelReasonDraft || '').trim();
-    if (!reason) {
-      setStatusMessage('Cancellation reason is required.');
-      return;
-    }
     cancelTrips(cancelTripIds, {
       source: 'dispatcher-manual',
       reason
@@ -3175,18 +3171,18 @@ const DispatcherWorkspace = () => {
             <div className="small text-muted mb-2">
               {cancelTripIds.length} trip{cancelTripIds.length > 1 ? 's' : ''} will be cancelled and unassigned from drivers/routes.
             </div>
-            <Form.Label className="small text-uppercase text-muted fw-semibold">Cancellation reason (required)</Form.Label>
+            <Form.Label className="small text-uppercase text-muted fw-semibold">Cancellation reason (optional)</Form.Label>
             <Form.Control
               as="textarea"
               rows={4}
               value={cancelReasonDraft}
               onChange={event => setCancelReasonDraft(event.target.value)}
-              placeholder="Example: Patient called and cancelled with dispatch"
+              placeholder="Example: Patient called and cancelled with dispatch (optional)"
             />
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={handleCloseCancelModal}>Back</Button>
-            <Button variant="danger" onClick={handleConfirmCancelTrips} disabled={!String(cancelReasonDraft || '').trim()}>Cancel Trip{cancelTripIds.length > 1 ? 's' : ''}</Button>
+            <Button variant="danger" onClick={handleConfirmCancelTrips}>Cancel Trip{cancelTripIds.length > 1 ? 's' : ''}</Button>
           </Modal.Footer>
         </Modal>
 
