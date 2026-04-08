@@ -44,12 +44,28 @@ export const MENU_ITEMS = [{
   key: 'transportation-menu',
   label: 'Transportation',
   icon: 'iconoir:bus',
-  children: []
+  children: [{
+    key: 'drivers-menu-inner',
+    label: 'Drivers',
+    url: '/drivers'
+  }, {
+    key: 'vehicles-inner',
+    label: 'Vehicles',
+    url: '/drivers/vehicles'
+  }]
 }, {
   key: 'users-menu',
   label: 'Users',
   icon: 'iconoir:community',
-  children: []
+  children: [{
+    key: 'avatar',
+    label: 'Avatar',
+    url: '/avatar'
+  }, {
+    key: 'user-management',
+    label: 'User Management',
+    url: '/user-management'
+  }]
 }, {
   key: 'billing-title',
   label: 'Billing',
@@ -72,14 +88,6 @@ export const MENU_ITEMS = [{
   label: 'Settings',
   icon: 'iconoir:settings-system',
   children: [{
-    key: 'avatar',
-    label: 'Avatar',
-    url: '/avatar'
-  }, {
-    key: 'drivers-menu-inner',
-    label: 'Drivers',
-    url: '/drivers'
-  }, {
     key: 'configuraciones-email-templates',
     label: 'Email Templates',
     url: '/settings/email-templates'
@@ -91,14 +99,6 @@ export const MENU_ITEMS = [{
     key: 'configuraciones-office',
     label: 'Office',
     url: '/settings/office'
-  }, {
-    key: 'user-management',
-    label: 'User Management',
-    url: '/user-management'
-  }, {
-    key: 'vehicles-inner',
-    label: 'Vehicles',
-    url: '/drivers/vehicles'
   }]
 }, {
   key: 'integrations-menu',
