@@ -68,6 +68,35 @@ const mapDispatchThreadMessageToMobileMessage = (entry, normalizedDriverId, driv
   };
 };
 
+const safeReadVisibleSystemMessages = async driverIdentitySet => {
+  try {
+    const messages = await readSystemMessages();
+    return messages.filter(message => {
+      const messageDriverId = String(message?.driverId || '').trim();
+      if (!messageDriverId) return false;
+      if (String(message?.status || '').trim().toLowerCase() === 'resolved') return false;
+      return driverIdentitySet.has(normalizeLookupValue(messageDriverId));
+    }).slice(0, MOBILE_MESSAGES_MAX_ITEMS);
+  } catch (error) {
+    console.warn('[mobile/driver-messages] readSystemMessages failed, continuing with dispatch thread fallback:', error?.message || error);
+    return [];
+  }
+};
+
+const safeReadMappedThreadMessages = async ({ driverIdentitySet, normalizedDriverId, driverName }) => {
+  try {
+    const dispatchState = await readNemtDispatchState();
+    const dispatchThreads = Array.isArray(dispatchState?.dispatchThreads) ? dispatchState.dispatchThreads : [];
+    const matchedThread = dispatchThreads.find(thread => driverIdentitySet.has(normalizeLookupValue(thread?.driverId)));
+    return Array.isArray(matchedThread?.messages)
+      ? matchedThread.messages.map(entry => mapDispatchThreadMessageToMobileMessage(entry, normalizedDriverId, driverName)).filter(message => String(message?.id || '').trim())
+      : [];
+  } catch (error) {
+    console.warn('[mobile/driver-messages] readNemtDispatchState failed, continuing with system messages fallback:', error?.message || error);
+    return [];
+  }
+};
+
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -98,20 +127,10 @@ export async function GET(request) {
       `${driver?.firstName || ''} ${driver?.lastName || ''}`
     );
 
-    const messages = await readSystemMessages();
-    const visibleSystemMessages = messages.filter(message => {
-      const messageDriverId = String(message?.driverId || '').trim();
-      if (!messageDriverId) return false;
-      if (String(message?.status || '').trim().toLowerCase() === 'resolved') return false;
-      return driverIdentitySet.has(normalizeLookupValue(messageDriverId));
-    }).slice(0, MOBILE_MESSAGES_MAX_ITEMS);
-
-    const dispatchState = await readNemtDispatchState();
-    const dispatchThreads = Array.isArray(dispatchState?.dispatchThreads) ? dispatchState.dispatchThreads : [];
-    const matchedThread = dispatchThreads.find(thread => driverIdentitySet.has(normalizeLookupValue(thread?.driverId)));
-    const mappedThreadMessages = Array.isArray(matchedThread?.messages)
-      ? matchedThread.messages.map(entry => mapDispatchThreadMessageToMobileMessage(entry, normalizedDriverId, driver?.name)).filter(message => String(message?.id || '').trim())
-      : [];
+    const [visibleSystemMessages, mappedThreadMessages] = await Promise.all([
+      safeReadVisibleSystemMessages(driverIdentitySet),
+      safeReadMappedThreadMessages({ driverIdentitySet, normalizedDriverId, driverName: driver?.name })
+    ]);
 
     const mergedById = new Map();
     [...visibleSystemMessages, ...mappedThreadMessages].forEach(message => {

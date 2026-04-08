@@ -16,6 +16,9 @@ const unauthorized = () => NextResponse.json({ error: 'Authentication required' 
 const badRequest = message => NextResponse.json({ error: message }, { status: 400 });
 const internalError = error => NextResponse.json({ error: error?.message || 'Unable to process system messages' }, { status: 500 });
 const EXPO_PUSH_TIMEOUT_MS = 2500;
+const MAX_SUBJECT_LENGTH = 240;
+const MAX_BODY_LENGTH = 5000;
+const MAX_MEDIA_DATA_URL_LENGTH = 1_600_000;
 
 const removeMessageMediaFromDispatchThreads = dispatchState => {
   let removed = false;
@@ -103,14 +106,33 @@ export async function POST(request) {
     if (!session?.user?.id) return unauthorized();
 
     const body = await request.json();
+    const normalizedSubject = String(body.subject || '(no subject)').trim().slice(0, MAX_SUBJECT_LENGTH);
+    const normalizedBody = String(body.body || '').trim();
+    const normalizedMediaUrl = String(body.mediaUrl || '').trim();
+    const normalizedType = String(body.type || 'manual').trim() || 'manual';
+    const normalizedDriverId = String(body.driverId || '').trim() || null;
+
+    if (normalizedBody.length > MAX_BODY_LENGTH) {
+      return NextResponse.json({ error: `Message body exceeds ${MAX_BODY_LENGTH} characters.` }, { status: 413 });
+    }
+    if (normalizedMediaUrl.length > MAX_MEDIA_DATA_URL_LENGTH) {
+      return NextResponse.json({ error: 'Attachment payload is too large. Please send a smaller image.' }, { status: 413 });
+    }
+    if (!normalizedBody && !normalizedMediaUrl) {
+      return badRequest('Message body or media attachment is required.');
+    }
+    if (normalizedType === 'dispatch-message' && !normalizedDriverId) {
+      return badRequest('driverId is required for dispatch-message.');
+    }
+
     const msg = {
       id: body.id || `sysmsg-${Date.now()}`,
-      type: body.type || 'manual',
+      type: normalizedType,
       priority: body.priority || 'normal',
       audience: body.audience || 'System',
-      subject: body.subject || '(no subject)',
-      body: body.body || '',
-      driverId: body.driverId || null,
+      subject: normalizedSubject,
+      body: normalizedBody,
+      driverId: normalizedDriverId,
       driverName: body.driverName || null,
       driverEmail: body.driverEmail || null,
       expirationDate: body.expirationDate || null,
@@ -122,7 +144,7 @@ export async function POST(request) {
       resolvedAt: null,
       source: body.source || null,
       deliveryMethod: body.deliveryMethod || null,
-      mediaUrl: body.mediaUrl || null,
+      mediaUrl: normalizedMediaUrl || null,
       mediaType: body.mediaType || null
     };
 
