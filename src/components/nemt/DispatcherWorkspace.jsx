@@ -682,15 +682,20 @@ const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
 const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '' }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
   const bodyColor = isOnline ? getDriverColor(driverKey) : '#94a3b8';
-  const bodyShadow = isOnline ? '#0f172a' : '#64748b';
-  const glassColor = '#dbeafe';
+  const bodyShadow = isOnline ? '#334155' : '#64748b';
+  const glassColor = '#e6f0ff';
   const trimColor = '#0f172a';
+  const haloColor = isOnline ? 'rgba(132, 204, 22, 0.34)' : 'rgba(148, 163, 184, 0.24)';
+  const shadowHaloColor = isOnline ? 'rgba(59, 130, 246, 0.18)' : 'rgba(100, 116, 139, 0.16)';
+  const roofColor = '#f8fafc';
+  const wheelColor = '#111827';
+  const wheelStroke = 'rgba(255,255,255,0.85)';
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 2px 6px rgba(15,23,42,0.2));opacity:${isOnline ? '1' : '0.78'};"><svg width="22" height="22" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><path d="M23 10h18c4.9 0 9.1 3.2 10.4 8l4.4 16.8c1.1 4.1-2 8.2-6.2 8.2H14.1c-4.2 0-7.3-4.1-6.2-8.2L12.3 18c1.3-4.8 5.5-8 10.7-8Z" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="2"/><path d="M18 24h28c2.2 0 4 1.8 4 4v4H14v-4c0-2.2 1.8-4 4-4Z" fill="${glassColor}" opacity="0.95"/><path d="M20 16h24" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/><path d="M13 34h38" stroke="${trimColor}" stroke-width="1.6" opacity="0.25"/><circle cx="20" cy="44" r="4.2" fill="#111827" stroke="#ffffff" stroke-width="1.2"/><circle cx="44" cy="44" r="4.2" fill="#111827" stroke="#ffffff" stroke-width="1.2"/><path d="M10 29h4" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/><path d="M50 29h4" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/></g></svg></div>`,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12]
+    html: `<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><svg width="48" height="48" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><circle cx="48" cy="48" r="31" fill="${shadowHaloColor}"/><circle cx="48" cy="48" r="23" fill="${haloColor}"/><ellipse cx="48" cy="48" rx="18" ry="28" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="3"/><path d="M39 18h18c4 0 7 2.6 8 6.3l3.4 13.1c1 4-2 7.6-6.1 7.6H33.7c-4.1 0-7.1-3.6-6.1-7.6L31 24.3c1-3.7 4-6.3 8-6.3Z" fill="${roofColor}" opacity="0.9"/><path d="M36 29c0-3.9 3.1-7 7-7h10c3.9 0 7 3.1 7 7v8H36v-8Z" fill="${glassColor}" stroke="rgba(255,255,255,0.9)" stroke-width="1.5"/><path d="M41 47h14" stroke="${trimColor}" stroke-width="2" opacity="0.22"/><path d="M33 53h30" stroke="${trimColor}" stroke-width="2" opacity="0.18"/><path d="M42 12l6-6 6 6" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/><circle cx="31" cy="31" r="4.8" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.2"/><circle cx="65" cy="31" r="4.8" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.2"/><circle cx="31" cy="65" r="4.8" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.2"/><circle cx="65" cy="65" r="4.8" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.2"/></g></svg></div>`,
+    iconSize: [48, 48],
+    iconAnchor: [24, 24],
+    popupAnchor: [0, -20]
   });
 };
 
