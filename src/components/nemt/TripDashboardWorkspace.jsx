@@ -667,6 +667,7 @@ const TripDashboardWorkspace = () => {
   const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
   const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
+  const [draggingTripColumnKey, setDraggingTripColumnKey] = useState('');
   const [layoutMode, setLayoutMode] = useState(TRIP_DASHBOARD_LAYOUTS.normal);
   const [panelView, setPanelView] = useState(TRIP_DASHBOARD_PANEL_VIEWS.both);
   const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
@@ -798,6 +799,12 @@ const TripDashboardWorkspace = () => {
     }
     : undefined;
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
+  const tripColumnMeta = useMemo(() => Object.fromEntries(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => [option.key, {
+    label: option.label,
+    width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' ? 150 : option.key === 'rider' ? 180 : undefined,
+    sortable: option.key !== 'notes'
+  }])), []);
+  const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
   const activeDateTripIdSet = useMemo(() => {
     if (tripDateFilter === 'all') return null;
     return new Set(trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter).map(trip => String(trip?.id || '').trim()).filter(Boolean));
@@ -2038,16 +2045,33 @@ const TripDashboardWorkspace = () => {
     return Array.from(driverCounts.entries()).sort((left, right) => right[1] - left[1]);
   }, [filteredTrips, getDriverName]);
 
-  const tripTableColumnCount = visibleTripColumns.length + 3;
+  const tripTableColumnCount = orderedVisibleTripColumns.length + 3;
+
+  useEffect(() => {
+    if (visibleTripColumns.includes('mobility')) return;
+    setDispatcherVisibleTripColumns([...visibleTripColumns, 'mobility']);
+  }, [setDispatcherVisibleTripColumns, visibleTripColumns]);
 
   const handleToggleTripColumn = columnKey => {
-    const nextColumns = visibleTripColumns.includes(columnKey) ? visibleTripColumns.filter(item => item !== columnKey) : [...visibleTripColumns, columnKey];
+    const nextColumns = orderedVisibleTripColumns.includes(columnKey) ? orderedVisibleTripColumns.filter(item => item !== columnKey) : [...orderedVisibleTripColumns, columnKey];
     if (nextColumns.length === 0) {
       setStatusMessage('At least one column must remain visible.');
       return;
     }
     setDispatcherVisibleTripColumns(nextColumns);
     setStatusMessage('Column view updated.');
+  };
+
+  const handleTripColumnDrop = targetColumnKey => {
+    if (!draggingTripColumnKey || draggingTripColumnKey === targetColumnKey) return;
+    const sourceIndex = orderedVisibleTripColumns.indexOf(draggingTripColumnKey);
+    const targetIndex = orderedVisibleTripColumns.indexOf(targetColumnKey);
+    if (sourceIndex === -1 || targetIndex === -1) return;
+    const nextColumns = [...orderedVisibleTripColumns];
+    const [movedColumn] = nextColumns.splice(sourceIndex, 1);
+    nextColumns.splice(targetIndex, 0, movedColumn);
+    setDispatcherVisibleTripColumns(nextColumns);
+    setStatusMessage(`Column order saved: ${draggingTripColumnKey} moved.`);
   };
 
   const handleTripSelectionToggle = tripId => {
@@ -2155,18 +2179,32 @@ const TripDashboardWorkspace = () => {
     fontSize: '0.76rem'
   };
 
-  const renderTripHeader = (columnKey, label, width, sortable = true) => {
+  const renderTripHeader = (columnKey, label, width, sortable = true, draggableColumn = false) => {
     const resolvedWidth = columnWidths[columnKey] ?? width;
-    return <th style={resolvedWidth ? {
-      ...tripHeaderCellStyle,
-      width: resolvedWidth,
-      minWidth: resolvedWidth,
-      maxWidth: resolvedWidth,
-      position: 'relative'
-    } : {
-      ...tripHeaderCellStyle,
-      position: 'relative'
-    }}>
+    return <th
+      draggable={draggableColumn}
+      onDragStart={draggableColumn ? () => setDraggingTripColumnKey(columnKey) : undefined}
+      onDragOver={draggableColumn ? event => event.preventDefault() : undefined}
+      onDrop={draggableColumn ? event => {
+        event.preventDefault();
+        handleTripColumnDrop(columnKey);
+        setDraggingTripColumnKey('');
+      } : undefined}
+      onDragEnd={draggableColumn ? () => setDraggingTripColumnKey('') : undefined}
+      style={resolvedWidth ? {
+        ...tripHeaderCellStyle,
+        width: resolvedWidth,
+        minWidth: resolvedWidth,
+        maxWidth: resolvedWidth,
+        position: 'relative',
+        cursor: draggableColumn ? 'grab' : undefined,
+        opacity: draggingTripColumnKey === columnKey ? 0.72 : 1
+      } : {
+        ...tripHeaderCellStyle,
+        position: 'relative',
+        cursor: draggableColumn ? 'grab' : undefined,
+        opacity: draggingTripColumnKey === columnKey ? 0.72 : 1
+      }}>
       {sortable ? <button type="button" onClick={() => handleTripSortChange(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
           <span>{label}</span>
           <span className="small">{tripSort.key === columnKey ? tripSort.direction === 'asc' ? '↑' : '↓' : '↕'}</span>
@@ -2850,6 +2888,156 @@ const TripDashboardWorkspace = () => {
     setStatusMessage('Bottom panels anchored in Both mode.');
   };
 
+  const renderTripDataCell = trip => columnKey => {
+    switch (columnKey) {
+      case 'trip':
+        return <td key={`${trip.id}-trip`} style={{ whiteSpace: 'nowrap' }}>
+            <div className="fw-semibold">{getDisplayTripId(trip)}</div>
+            {!orderedVisibleTripColumns.includes('rider') && trip.rider ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1, whiteSpace: 'normal', maxWidth: 180 }}>{trip.rider}</div> : null}
+            {getLegBadge(trip) ? <Badge bg={getLegBadge(trip).variant} className="mt-1 me-1">{getLegBadge(trip).label}</Badge> : null}
+            {trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
+          </td>;
+      case 'vehicle':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'vehicle',
+          displayValue: trip.vehicleType || '-',
+          cellStyle: {
+            whiteSpace: 'nowrap'
+          },
+          placeholder: 'Ambulatory'
+        });
+      case 'status':
+        return <td key={`${trip.id}-status`} style={{ whiteSpace: 'nowrap' }}>
+            <Badge bg={isTripAssignedToSelectedDriver(trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(trip))}>{isTripAssignedToSelectedDriver(trip) ? 'Assigned Here' : getEffectiveTripStatus(trip)}</Badge>
+            {trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
+            {getTripAddedByLabel(trip) ? <div className="mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}
+            {trip.completedByDriverName ? <div className="mt-1"><Badge bg="info" text="dark">Driven by {trip.completedByDriverName}</Badge></div> : null}
+            {trip.riderSignatureData || trip.riderSignatureName ? <div className="mt-1"><Badge bg="secondary">Signature captured</Badge></div> : null}
+            {trip.riderSignatureData || trip.riderSignatureName ? <RiderSignaturePreview trip={trip} /> : null}
+            {trip.safeRideStatus && getEffectiveTripStatus(trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{trip.safeRideStatus}</div> : null}
+          </td>;
+      case 'driver':
+        return <td key={`${trip.id}-driver`} style={{ whiteSpace: 'nowrap' }}><div>{getTripDriverDisplay(trip)}</div>{trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}</td>;
+      case 'pickup':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'pickup',
+          displayValue: trip.pickup,
+          cellStyle: {
+            whiteSpace: 'nowrap'
+          },
+          placeholder: '07:40 AM'
+        });
+      case 'dropoff':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'dropoff',
+          displayValue: trip.dropoff,
+          cellStyle: {
+            whiteSpace: 'nowrap'
+          },
+          placeholder: '08:15 AM'
+        });
+      case 'miles':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'miles',
+          displayValue: trip.miles || '-',
+          cellStyle: {
+            whiteSpace: 'nowrap'
+          },
+          placeholder: '12.5'
+        });
+      case 'rider':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'rider',
+          displayValue: (() => {
+            const {
+              firstName,
+              lastName
+            } = splitRiderName(trip.rider);
+            return [firstName, lastName].filter(Boolean).join(' ');
+          })(),
+          cellStyle: {
+            whiteSpace: 'normal'
+          },
+          displayStyle: riderNameStackStyle,
+          placeholder: 'Nombre del paciente'
+        });
+      case 'address':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'address',
+          displayValue: trip.address,
+          cellStyle: {},
+          displayStyle: addressClampStyle,
+          placeholder: 'Pickup address'
+        });
+      case 'puZip':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'puZip',
+          displayValue: getPickupZip(trip) || '-',
+          cellStyle: {
+            whiteSpace: 'nowrap'
+          },
+          placeholder: '32808'
+        });
+      case 'destination':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'destination',
+          displayValue: trip.destination || '-',
+          cellStyle: {},
+          displayStyle: addressClampStyle,
+          placeholder: 'Dropoff address'
+        });
+      case 'doZip':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'doZip',
+          displayValue: getDropoffZip(trip) || '-',
+          cellStyle: {
+            whiteSpace: 'nowrap'
+          },
+          placeholder: '32714'
+        });
+      case 'phone':
+        return renderInlineEditableTripCell({
+          trip,
+          columnKey: 'phone',
+          displayValue: trip.patientPhoneNumber || '-',
+          cellStyle: {
+            whiteSpace: 'nowrap'
+          },
+          placeholder: '(407) 555-0000'
+        });
+      case 'mobility':
+        return <td key={`${trip.id}-mobility`} style={{ whiteSpace: 'nowrap' }}>{trip.mobilityType || '-'}</td>;
+      case 'assistLevel':
+        return <td key={`${trip.id}-assist`} style={{ whiteSpace: 'nowrap' }}>
+            <div className="d-flex align-items-center gap-1">
+              <span>{trip.assistLevel || '-'}</span>
+              {getTripCompanionNote(trip) ? <Badge bg="info" text="dark">Companion: Yes</Badge> : null}
+            </div>
+          </td>;
+      case 'serviceAnimal':
+        return <td key={`${trip.id}-animal`} style={{ whiteSpace: 'nowrap' }}>{trip.hasServiceAnimal ? <Badge bg="warning" text="dark">🐕 Yes</Badge> : '-'}</td>;
+      case 'notes':
+        return <td key={`${trip.id}-notes`} style={{ minWidth: 220, maxWidth: 320, whiteSpace: 'normal' }}>{getTripNoteText(trip) || '-'}</td>;
+      case 'leg':
+        return <td key={`${trip.id}-leg`} style={{ whiteSpace: 'nowrap' }}>{getLegBadge(trip) ? <Badge bg={getLegBadge(trip).variant}>{getLegBadge(trip).label}</Badge> : '-'}</td>;
+      case 'punctuality':
+        return <td key={`${trip.id}-punctuality`} style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(trip)}>{getTripPunctualityLabel(trip)}</Badge></td>;
+      case 'lateMinutes':
+        return <td key={`${trip.id}-late`} style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(trip)}</td>;
+      default:
+        return null;
+    }
+  };
+
   const driverPanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
@@ -3489,25 +3677,11 @@ const TripDashboardWorkspace = () => {
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
                       {renderTripHeader('notes', 'Notes', 56, false)}
-                      {visibleTripColumns.includes('trip') ? renderTripHeader('trip', 'Trip / Ride') : null}
-                      {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
-                      {visibleTripColumns.includes('status') ? renderTripHeader('status', 'Status') : null}
-                      {visibleTripColumns.includes('driver') ? renderTripHeader('driver', 'Driver') : null}
-                      {visibleTripColumns.includes('pickup') ? renderTripHeader('pickup', 'PU') : null}
-                      {visibleTripColumns.includes('dropoff') ? renderTripHeader('dropoff', 'DO') : null}
-                      {visibleTripColumns.includes('miles') ? renderTripHeader('miles', 'Miles') : null}
-                      {visibleTripColumns.includes('rider') ? renderTripHeader('rider', 'Rider') : null}
-                      {visibleTripColumns.includes('address') ? renderTripHeader('address', 'PU Address', 260) : null}
-                      {visibleTripColumns.includes('puZip') ? renderTripHeader('puZip', 'PU ZIP') : null}
-                      {visibleTripColumns.includes('destination') ? renderTripHeader('destination', 'DO Address', 260) : null}
-                      {visibleTripColumns.includes('doZip') ? renderTripHeader('doZip', 'DO ZIP') : null}
-                      {visibleTripColumns.includes('phone') ? renderTripHeader('phone', 'Phone') : null}
-                      {visibleTripColumns.includes('mobility') ? renderTripHeader('mobility', 'Mobility') : null}
-                      {visibleTripColumns.includes('assistLevel') ? renderTripHeader('assistLevel', 'Assist') : null}
-                      {visibleTripColumns.includes('serviceAnimal') ? renderTripHeader('serviceAnimal', 'Animal') : null}
-                      {visibleTripColumns.includes('leg') ? renderTripHeader('leg', 'Leg') : null}
-                      {visibleTripColumns.includes('punctuality') ? renderTripHeader('punctuality', 'Punctuality') : null}
-                      {visibleTripColumns.includes('lateMinutes') ? renderTripHeader('lateMinutes', 'Late Min') : null}
+                      {orderedVisibleTripColumns.map(columnKey => {
+                        const metadata = tripColumnMeta[columnKey];
+                        if (!metadata) return null;
+                        return <React.Fragment key={`trip-header-${columnKey}`}>{renderTripHeader(columnKey, metadata.label, metadata.width, metadata.sortable, true)}</React.Fragment>;
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -3556,130 +3730,7 @@ const TripDashboardWorkspace = () => {
                               </Button> : null}
                           </div>
                         </td>
-                        {visibleTripColumns.includes('trip') ? <td style={{ whiteSpace: 'nowrap' }}>
-                            <div className="fw-semibold">{getDisplayTripId(row.trip)}</div>
-                            {!visibleTripColumns.includes('rider') && row.trip.rider ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1, whiteSpace: 'normal', maxWidth: 180 }}>{row.trip.rider}</div> : null}
-                            {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1 me-1">{getLegBadge(row.trip).label}</Badge> : null}
-                            {row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
-                            {row.trip.mobilityType ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'} className="mt-1 border">{row.trip.mobilityType}</Badge> : null}
-                          </td> : null}
-                        {visibleTripColumns.includes('vehicle') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'vehicle',
-                      displayValue: row.trip.vehicleType || '-',
-                      cellStyle: {
-                        whiteSpace: 'nowrap'
-                      },
-                      placeholder: 'Ambulatory'
-                    }) : null}
-                        {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}>
-                            <Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>
-                            {row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
-                            {getTripAddedByLabel(row.trip) ? <div className="mt-1"><Badge bg="dark">{getTripAddedByLabel(row.trip)}</Badge></div> : null}
-                            {row.trip.completedByDriverName ? <div className="mt-1"><Badge bg="info" text="dark">Driven by {row.trip.completedByDriverName}</Badge></div> : null}
-                            {row.trip.riderSignatureData || row.trip.riderSignatureName ? <div className="mt-1"><Badge bg="secondary">Signature captured</Badge></div> : null}
-                            {row.trip.riderSignatureData || row.trip.riderSignatureName ? <RiderSignaturePreview trip={row.trip} /> : null}
-                            {row.trip.safeRideStatus && getEffectiveTripStatus(row.trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{row.trip.safeRideStatus}</div> : null}
-                          </td> : null}
-                        {visibleTripColumns.includes('driver') ? <td style={{ whiteSpace: 'nowrap' }}><div>{getTripDriverDisplay(row.trip)}</div>{row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}</td> : null}
-                        {visibleTripColumns.includes('pickup') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'pickup',
-                      displayValue: row.trip.pickup,
-                      cellStyle: {
-                        whiteSpace: 'nowrap'
-                      },
-                      placeholder: '07:40 AM'
-                    }) : null}
-                        {visibleTripColumns.includes('dropoff') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'dropoff',
-                      displayValue: row.trip.dropoff,
-                      cellStyle: {
-                        whiteSpace: 'nowrap'
-                      },
-                      placeholder: '08:15 AM'
-                    }) : null}
-                        {visibleTripColumns.includes('miles') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'miles',
-                      displayValue: row.trip.miles || '-',
-                      cellStyle: {
-                        whiteSpace: 'nowrap'
-                      },
-                      placeholder: '12.5'
-                    }) : null}
-                        {visibleTripColumns.includes('rider') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'rider',
-                      displayValue: (() => {
-                          const {
-                            firstName,
-                            lastName
-                          } = splitRiderName(row.trip.rider);
-                          return [firstName, lastName].filter(Boolean).join(' ');
-                        })(),
-                      cellStyle: {
-                        whiteSpace: 'normal'
-                      },
-                      displayStyle: riderNameStackStyle,
-                      placeholder: 'Nombre del paciente'
-                    }) : null}
-                        {visibleTripColumns.includes('address') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'address',
-                      displayValue: row.trip.address,
-                      cellStyle: {},
-                      displayStyle: addressClampStyle,
-                      placeholder: 'Pickup address'
-                    }) : null}
-                        {visibleTripColumns.includes('puZip') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'puZip',
-                      displayValue: getPickupZip(row.trip) || '-',
-                      cellStyle: {
-                        whiteSpace: 'nowrap'
-                      },
-                      placeholder: '32808'
-                    }) : null}
-                        {visibleTripColumns.includes('destination') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'destination',
-                      displayValue: row.trip.destination || '-',
-                      cellStyle: {},
-                      displayStyle: addressClampStyle,
-                      placeholder: 'Dropoff address'
-                    }) : null}
-                        {visibleTripColumns.includes('doZip') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'doZip',
-                      displayValue: getDropoffZip(row.trip) || '-',
-                      cellStyle: {
-                        whiteSpace: 'nowrap'
-                      },
-                      placeholder: '32714'
-                    }) : null}
-                        {visibleTripColumns.includes('phone') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'phone',
-                      displayValue: row.trip.patientPhoneNumber || '-',
-                      cellStyle: {
-                        whiteSpace: 'nowrap'
-                      },
-                      placeholder: '(407) 555-0000'
-                    }) : null}
-                        {visibleTripColumns.includes('mobility') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.mobilityType || '-'}</td> : null}
-                        {visibleTripColumns.includes('assistLevel') ? <td style={{ whiteSpace: 'nowrap' }}>
-                            <div className="d-flex align-items-center gap-1">
-                              <span>{row.trip.assistLevel || '-'}</span>
-                              {getTripCompanionNote(row.trip) ? <Badge bg="info" text="dark">Companion: Yes</Badge> : null}
-                            </div>
-                          </td> : null}
-                        {visibleTripColumns.includes('serviceAnimal') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark">🐕 Yes</Badge> : '-'}</td> : null}
-                        {visibleTripColumns.includes('notes') ? <td style={{ minWidth: 220, maxWidth: 320, whiteSpace: 'normal' }}>{getTripNoteText(row.trip) || '-'}</td> : null}
-                        {visibleTripColumns.includes('leg') ? <td style={{ whiteSpace: 'nowrap' }}>{getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant}>{getLegBadge(row.trip).label}</Badge> : '-'}</td> : null}
-                        {visibleTripColumns.includes('punctuality') ? <td style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(row.trip)}>{getTripPunctualityLabel(row.trip)}</Badge></td> : null}
-                        {visibleTripColumns.includes('lateMinutes') ? <td style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(row.trip)}</td> : null}
+                        {orderedVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
                       </tr>) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No activity found for that day. If a route was saved, check the same day in Trip Route to view related trips and drivers.</td>
                       </tr>}
