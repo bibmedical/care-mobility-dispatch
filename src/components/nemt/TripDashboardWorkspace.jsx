@@ -3436,11 +3436,7 @@ const TripDashboardWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'section' ? <tr key={row.key} style={{ backgroundColor: '#edf6ee' }}>
-                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#365314' }}>{row.label}</td>
-                      </tr> : row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={{ backgroundColor: '#dcefdc', borderBottom: '1px solid #a7cfa7' }}>
-                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#14532d', paddingLeft: 10 }}>{row.label}</td>
-                      </tr> : <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
+                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.filter(row => row.type === 'trip').map(row => <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
                         <td>
                           <input
                             type="checkbox"
