@@ -846,19 +846,6 @@ const DispatcherMessagingPanel = ({
       <div className="d-flex flex-grow-1" style={{ minHeight: 0, overflow: 'hidden' }}>
         <div className="border-end d-flex flex-column" style={{ width: '40%', minWidth: 220, minHeight: 0, ...messagingSurfaceStyles.sidebar }}>
           <div className="p-3 border-bottom" style={messagingSurfaceStyles.sidebarHeader}>
-            <div className="d-flex flex-column gap-2">
-              <div className="d-flex flex-wrap align-items-center gap-2 small" style={{ color: messagingSurfaceStyles.secondaryText }}>
-                <span className="d-inline-flex align-items-center gap-1" title="Flag = driver alert or urgent issue">
-                  <IconifyIcon icon="iconoir:triangle-flag" style={{ color: '#dc2626' }} /> Alert
-                </span>
-                <span className="d-inline-flex align-items-center gap-1" title="Pin = driver with live GPS available for the map">
-                  <IconifyIcon icon="iconoir:map-pin" style={{ color: '#16a34a' }} /> GPS
-                </span>
-                <span className="d-inline-flex align-items-center gap-1" title="Message = this thread has unread chat activity">
-                  <IconifyIcon icon="iconoir:message-text" style={{ color: selectedChatTheme.accent }} /> Chat
-                </span>
-              </div>
-            </div>
             {showAddDriver ? (
               <div className="mt-3 border rounded p-2" style={{ backgroundColor: messagingSurfaceStyles.input.backgroundColor, borderColor: messagingSurfaceStyles.sidebar.borderColor }}>
                 <div className="fw-semibold small mb-2">Daily Driver de emergencia</div>
@@ -916,12 +903,6 @@ const DispatcherMessagingPanel = ({
                       >
                         <div className="d-flex justify-content-between align-items-center gap-2">
                           <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
-                            <div className="d-flex align-items-center gap-1">
-                              <IconifyIcon icon="iconoir:triangle-flag" className={threadAlertCount > 0 || hasUrgentAlert ? 'text-danger' : thread.driverId === activeDriverId ? 'text-white-50' : 'text-secondary'} title={threadAlertCount > 0 || hasUrgentAlert ? 'This driver has alert activity' : 'No active alerts'} />
-                              <IconifyIcon icon="iconoir:map-pin" className={driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2) ? 'text-success' : thread.driverId === activeDriverId ? 'text-white-50' : 'text-secondary'} title={driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2) ? 'Driver GPS is available on the map' : 'No live GPS available'} />
-                              <IconifyIcon icon="iconoir:message-text" className={threadUnreadCount > 0 ? 'text-warning' : thread.messages.length > 0 ? '' : thread.driverId === activeDriverId ? 'text-white-50' : 'text-secondary'} style={threadUnreadCount > 0 ? undefined : thread.messages.length > 0 ? { color: selectedChatTheme.accent } : undefined} title={threadUnreadCount > 0 ? `${threadUnreadCount} unread messages` : thread.messages.length > 0 ? 'Chat history available' : 'No chat messages yet'} />
-                              {threadAlertCount > 0 ? <span className="rounded-circle bg-danger d-inline-block" style={{ width: 7, height: 7 }} /> : null}
-                            </div>
                             <div style={{ minWidth: 0 }}>
                               <div className="fw-semibold d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: 210 }}>
                                 <span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${thread.driverId === activeDriverId ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
@@ -945,7 +926,6 @@ const DispatcherMessagingPanel = ({
                                 }}
                                 title={hasGps ? 'Center this driver on the map and follow live ETA' : 'This driver has no live GPS yet'}
                               >
-                                <IconifyIcon icon="iconoir:map-pin" className="me-1" />
                                 {getDriverLocationLabel(driver)}
                               </button>
                               <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>

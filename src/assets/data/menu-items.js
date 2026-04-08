@@ -62,7 +62,6 @@ export const MENU_ITEMS = [{
   children: [{
     key: 'configuraciones-office',
     label: 'Office',
-    icon: 'iconoir:home-alt-slim',
     url: '/settings/office'
   }, {
     key: 'configuraciones-email-templates',
