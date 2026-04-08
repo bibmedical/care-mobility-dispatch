@@ -13,7 +13,9 @@ import { ZoomControl } from 'react-leaflet/ZoomControl';
 
 const DEFAULT_CENTER = [28.5383, -81.3792];
 const EMPTY_ITEMS = [];
-const MAP_SCREEN_DASHBOARD_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DASHBOARD_STATE__';
+const MAP_SCREEN_LEGACY_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DASHBOARD_STATE__';
+const MAP_SCREEN_DISPATCHER_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DISPATCHER_STATE__';
+const MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_TRIP_DASHBOARD_STATE__';
 
 const darkSidebarStyle = {
   background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(17, 24, 39, 0.98) 100%)',
@@ -287,10 +289,17 @@ const findRoute = async (coordinates, options = {}) => {
   return payload;
 };
 
-const readDashboardMapScreenState = () => {
+const getMapScreenStateStorageKey = source => {
+  const normalizedSource = String(source || '').trim().toLowerCase();
+  if (normalizedSource === 'dispatcher') return MAP_SCREEN_DISPATCHER_STATE_KEY;
+  return MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY;
+};
+
+const readDashboardMapScreenState = source => {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(MAP_SCREEN_DASHBOARD_STATE_KEY);
+    const storageKey = getMapScreenStateStorageKey(source);
+    const raw = window.localStorage.getItem(storageKey) || window.localStorage.getItem(MAP_SCREEN_LEGACY_STATE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
@@ -357,14 +366,14 @@ const StandaloneDispatchMapScreen = () => {
   useEffect(() => {
     if (!isDashboardMap) return;
     const loadState = () => {
-      setDashboardMapState(readDashboardMapScreenState());
+      setDashboardMapState(readDashboardMapScreenState(source));
     };
     loadState();
     window.addEventListener('storage', loadState);
     return () => {
       window.removeEventListener('storage', loadState);
     };
-  }, [isDashboardMap]);
+  }, [isDashboardMap, source]);
 
   const effectiveTripDateFilter = isDashboardMap ? String(dashboardMapState?.tripDateFilter || 'all') : 'all';
   const effectiveSelectedTripIds = isDashboardMap ? (Array.isArray(dashboardMapState?.selectedTripIds) ? dashboardMapState.selectedTripIds : EMPTY_ITEMS) : contextSelectedTripIds;

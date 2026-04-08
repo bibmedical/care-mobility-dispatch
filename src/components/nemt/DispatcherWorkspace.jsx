@@ -37,7 +37,7 @@ const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'toolbar-edit', 'columns', 'map-screen', 'trip-order', 'actions', 'leg-buttons', 'type-buttons'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
 const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['zip-filter', 'route-filter', 'metric-miles', 'metric-duration'];
-const MAP_SCREEN_DASHBOARD_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DASHBOARD_STATE__';
+const MAP_SCREEN_DISPATCHER_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DISPATCHER_STATE__';
 const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
 const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
 
@@ -1227,7 +1227,7 @@ const DispatcherWorkspace = () => {
       routeTripIds
     };
 
-    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify(payload));
+    window.localStorage.setItem(MAP_SCREEN_DISPATCHER_STATE_KEY, JSON.stringify(payload));
   }, [activeDateTripIdSet, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds, tripDateFilter]);
 
   const hasSelectedTrips = selectedTripIds.length > 0;
