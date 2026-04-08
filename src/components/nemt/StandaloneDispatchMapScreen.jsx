@@ -385,10 +385,7 @@ const StandaloneDispatchMapScreen = () => {
     if (effectiveTripDateFilter === 'all') return new Set();
     return new Set((Array.isArray(dashboardMapState?.activeDateTripIds) ? dashboardMapState.activeDateTripIds : EMPTY_ITEMS).map(value => String(value || '').trim()).filter(Boolean));
   }, [dashboardMapState?.activeDateTripIds, effectiveTripDateFilter, isDashboardMap]);
-  const mapTileConfig = useMemo(() => {
-    const preferred = getMapTileConfig(uiPreferences?.mapProvider);
-    return preferred || getMapTileConfig('auto');
-  }, [uiPreferences?.mapProvider]);
+  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const selectedDriver = useMemo(() => drivers.find(driver => String(driver.id || '').trim() === effectiveSelectedDriverId) ?? null, [drivers, effectiveSelectedDriverId]);
   const selectedRoute = useMemo(() => routePlans.find(route => String(route.id || '').trim() === effectiveSelectedRouteId) ?? null, [effectiveSelectedRouteId, routePlans]);
   const normalizeTripId = tripId => String(tripId || '').trim();
