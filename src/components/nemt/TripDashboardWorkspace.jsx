@@ -1133,12 +1133,21 @@ const TripDashboardWorkspace = () => {
               </Card> : null}
           </>;
       case 'map-screen':
-        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)}>{showInlineMap ? 'Map screen' : 'Show map here'}</Button>;
+        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => {
+          setShowInlineMap(true);
+          setShowMapPane(true);
+          if (layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight) {
+            setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
+            setShowBottomPanels(false);
+            setRightPanelCollapsed(true);
+            setColumnSplit(94);
+          }
+        }}>{showInlineMap ? 'Map screen' : 'Show map here'}</Button>;
       case 'layout':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">Layout</span>
             <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Normal</Button>
-            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)}>Focus right</Button>
+            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)} disabled={!showInlineMap}>Focus right</Button>
             <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.stacked)}>Stacked</Button>
             {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
           </div>;
@@ -2727,6 +2736,11 @@ const TripDashboardWorkspace = () => {
   };
 
   const applyLayoutMode = nextLayoutMode => {
+    if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && !showInlineMap) {
+      setStatusMessage('Focus Right requires inline map. Use Show map here first.');
+      return;
+    }
+
     setLayoutMode(nextLayoutMode);
 
     if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.normal) {
@@ -2752,6 +2766,12 @@ const TripDashboardWorkspace = () => {
     setRowSplit(current => clamp(current, 48, 74));
     setStatusMessage('Stacked layout enabled in Trip Dashboard.');
   };
+
+  useEffect(() => {
+    if (showInlineMap || layoutMode !== TRIP_DASHBOARD_LAYOUTS.focusRight) return;
+    setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
+    setStatusMessage('Focus Right disabled while map is popped out.');
+  }, [layoutMode, showInlineMap]);
 
   const handlePanelViewChange = nextView => {
     if (nextView === 'hidden') {
