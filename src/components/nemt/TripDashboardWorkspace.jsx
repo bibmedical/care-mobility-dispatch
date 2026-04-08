@@ -1129,25 +1129,11 @@ const TripDashboardWorkspace = () => {
           }
         }}>{showInlineMap ? 'Map screen' : 'Show map here'}</Button>;
       case 'layout':
-        return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <span className="fw-semibold small">Layout</span>
-            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Normal</Button>
-            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)} disabled={!showInlineMap}>Focus right</Button>
-            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.stacked)}>Stacked</Button>
-            {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
-          </div>;
+        return null;
       case 'panels':
-        return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <span className="fw-semibold small">Panels</span>
-            <Form.Select size="sm" value={TRIP_DASHBOARD_PANEL_VIEWS.both} onChange={event => handlePanelViewChange(event.target.value)} style={{ width: 112 }}>
-              <option value="both">Both</option>
-            </Form.Select>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setPanelOrder(current => current === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? TRIP_DASHBOARD_PANEL_ORDERS.routesFirst : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst)}>
-              Switch
-            </Button>
-          </div>;
+        return null;
       case 'trip-order':
-        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle}>{tripOrderMode === 'time' ? 'Original order' : 'By time'}</Button>;
+        return null;
       default:
         return null;
     }
