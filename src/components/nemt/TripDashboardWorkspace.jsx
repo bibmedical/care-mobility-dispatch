@@ -2791,18 +2791,18 @@ const TripDashboardWorkspace = () => {
           </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
-          <Table size="sm" className="align-middle mb-0 small" style={{ lineHeight: 1.1 }}>
-            <thead className="table-light">
+          <Table size="sm" bordered striped hover className="align-middle mb-0 small" style={{ lineHeight: 1.1, fontSize: '0.78rem' }}>
+            <thead style={{ backgroundColor: '#198754', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
-                <th className="py-1" style={{ width: 60 }}>ACT</th>
-                <th className="py-1">#</th>
-                <th className="py-1">VID</th>
-                <th className="py-1">Vehicle</th>
-                <th className="py-1">Driver</th>
-                <th className="py-1">Checkpoint</th>
-                {!isFocusRightLayout ? <th className="py-1">Attendant</th> : null}
-                {!isFocusRightLayout ? <th className="py-1">Info</th> : null}
-                <th className="py-1">Live</th>
+                <th className="py-1" style={{ width: 60, backgroundColor: '#198754', color: '#fff' }}>ACT</th>
+                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>#</th>
+                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>VID</th>
+                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Vehicle</th>
+                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Driver</th>
+                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Checkpoint</th>
+                {!isFocusRightLayout ? <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Attendant</th> : null}
+                {!isFocusRightLayout ? <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Info</th> : null}
+                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Live</th>
               </tr>
             </thead>
             <tbody>
@@ -2810,26 +2810,26 @@ const TripDashboardWorkspace = () => {
                   <td className="py-1">
                     <div className="d-flex align-items-center gap-1">
                       <Form.Check type="radio" checked={selectedDriverId === driver.id} onChange={() => setSelectedDriverId(driver.id)} />
-                      <Button variant="light" size="sm" onClick={() => handleAssign(driver.id)}>
+                      <Button variant="outline-success" size="sm" onClick={() => handleAssign(driver.id)}>
                         <IconifyIcon icon="la:arrow-right" />
                       </Button>
                     </div>
                   </td>
-                  <td className="py-1">{index + 1}</td>
-                  <td className="py-1">{driver.code}</td>
+                  <td className="py-1 text-center fw-bold">{index + 1}</td>
+                  <td className="py-1"><Badge bg="dark" className="fw-normal">{driver.code}</Badge></td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.vehicle}</td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}><div className="fw-semibold">{driver.name}</div></td>
                   <td className="py-1">
-                    <div className="d-flex align-items-center gap-2">
+                    <div className="d-flex align-items-center gap-1">
                       <IconifyIcon icon="iconoir:maps-arrow-diagonal" className={driver.live === 'Online' ? 'text-success' : 'text-muted'} />
-                      <div>
-                        <div className="fw-medium small">{getDriverCheckpoint(driver)}</div>
-                      </div>
+                      <span className="fw-medium">{getDriverCheckpoint(driver)}</span>
                     </div>
                   </td>
                   {!isFocusRightLayout ? <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td> : null}
                   {!isFocusRightLayout ? <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td> : null}
-                  <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.live}</td>
+                  <td className="py-1 text-center" style={{ whiteSpace: 'nowrap' }}>
+                    <Badge bg={driver.live === 'Online' ? 'success' : 'secondary'} className="fw-normal">{driver.live || 'Offline'}</Badge>
+                  </td>
                 </tr>) : <tr>
                   <td colSpan={isFocusRightLayout ? 7 : 9} className="text-center text-muted py-4">No drivers or vehicles loaded.</td>
                 </tr>}
