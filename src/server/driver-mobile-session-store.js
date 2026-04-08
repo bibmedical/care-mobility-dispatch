@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import { query, queryOne } from '@/server/db';
 
-const DRIVER_MOBILE_SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours — survives a full shift even when app is backgrounded
+const DRIVER_MOBILE_SESSION_TTL_MS = 1000 * 60 * 60 * 18; // 18 hours (3AM-9PM operational window)
 
 // In-memory fallback sessions for when DB is unavailable (local dev without DATABASE_URL)
 const _memSessions = new Map();

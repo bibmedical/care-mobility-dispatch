@@ -86,7 +86,7 @@ export const MENU_ITEMS = [{
 }, {
   key: 'configuraciones-menu',
   label: 'Settings',
-  icon: 'iconoir:settings-system',
+  icon: 'iconoir:settings',
   children: [{
     key: 'configuraciones-email-templates',
     label: 'Email Templates',

@@ -14,7 +14,7 @@ const formatDateTime = (value: number | null) => {
 };
 
 const SESSION_RESTORE_TIMEOUT_MS = 2500;
-const NETWORK_TIMEOUT_MS = 20000;
+const NETWORK_TIMEOUT_MS = 45000;
 
 const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> => {
   return await Promise.race([

@@ -8,6 +8,7 @@ import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
+const MOBILE_MESSAGES_MAX_ITEMS = 200;
 
 const normalizeDriverIdentitySet = (...values) => {
   const identities = new Set();
@@ -100,9 +101,10 @@ export async function GET(request) {
     const messages = await readSystemMessages();
     const visibleSystemMessages = messages.filter(message => {
       const messageDriverId = String(message?.driverId || '').trim();
-      if (!messageDriverId) return true;
+      if (!messageDriverId) return false;
+      if (String(message?.status || '').trim().toLowerCase() === 'resolved') return false;
       return driverIdentitySet.has(normalizeLookupValue(messageDriverId));
-    });
+    }).slice(0, MOBILE_MESSAGES_MAX_ITEMS);
 
     const dispatchState = await readNemtDispatchState();
     const dispatchThreads = Array.isArray(dispatchState?.dispatchThreads) ? dispatchState.dispatchThreads : [];
@@ -119,7 +121,9 @@ export async function GET(request) {
       mergedById.set(key, message);
     });
 
-    const visibleMessages = Array.from(mergedById.values()).sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
+    const visibleMessages = Array.from(mergedById.values())
+      .sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0))
+      .slice(0, MOBILE_MESSAGES_MAX_ITEMS);
 
     return jsonWithMobileCors(request, { ok: true, messages: visibleMessages, driverId: normalizedDriverId });
   } catch (error) {

@@ -745,6 +745,10 @@ const DispatcherMessagingPanel = ({
     }
     try {
       const dataUrl = kind === 'photo' ? await readPhotoAsCompressedDataUrl(file) : await readFileAsDataUrl(file);
+      if (String(dataUrl || '').length > 1_600_000) {
+        setSmsStatus('Attachment blocked: optimized file is still too large. Please send a smaller image.');
+        return;
+      }
       await handleSendMessage('', {
         attachments: [{
           id: `${kind}-${Date.now()}`,
