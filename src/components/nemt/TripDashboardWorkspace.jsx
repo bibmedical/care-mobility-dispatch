@@ -2774,7 +2774,7 @@ const TripDashboardWorkspace = () => {
     setStatusMessage('Bottom panels anchored in Both mode.');
   };
 
-  const driverPanelCard = <Card className="h-100 overflow-hidden">
+  const driverPanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -2791,7 +2791,7 @@ const TripDashboardWorkspace = () => {
           </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
-          <Table size="sm" bordered striped hover className="align-middle mb-0 small" style={{ lineHeight: 1.1, fontSize: '0.78rem' }}>
+          <Table size="sm" bordered striped hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ lineHeight: 1.1, fontSize: '0.78rem' }}>
             <thead style={{ backgroundColor: '#198754', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
                 <th className="py-1" style={{ width: 60, backgroundColor: '#198754', color: '#fff' }}>ACT</th>
