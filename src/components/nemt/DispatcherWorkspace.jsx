@@ -692,7 +692,7 @@ const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '' }
   const wheelStroke = 'rgba(255,255,255,0.85)';
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><svg width="48" height="48" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><circle cx="48" cy="48" r="31" fill="${shadowHaloColor}"/><circle cx="48" cy="48" r="23" fill="${haloColor}"/><ellipse cx="48" cy="48" rx="18" ry="28" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="3"/><path d="M39 18h18c4 0 7 2.6 8 6.3l3.4 13.1c1 4-2 7.6-6.1 7.6H33.7c-4.1 0-7.1-3.6-6.1-7.6L31 24.3c1-3.7 4-6.3 8-6.3Z" fill="${roofColor}" opacity="0.9"/><path d="M36 29c0-3.9 3.1-7 7-7h10c3.9 0 7 3.1 7 7v8H36v-8Z" fill="${glassColor}" stroke="rgba(255,255,255,0.9)" stroke-width="1.5"/><path d="M41 47h14" stroke="${trimColor}" stroke-width="2" opacity="0.22"/><path d="M33 53h30" stroke="${trimColor}" stroke-width="2" opacity="0.18"/><path d="M42 12l6-6 6 6" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/><circle cx="31" cy="31" r="4.8" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.2"/><circle cx="65" cy="31" r="4.8" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.2"/><circle cx="31" cy="65" r="4.8" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.2"/><circle cx="65" cy="65" r="4.8" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.2"/></g></svg></div>`,
+    html: `<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><svg width="48" height="48" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><circle cx="48" cy="48" r="31" fill="${shadowHaloColor}"/><circle cx="48" cy="48" r="23" fill="${haloColor}"/><path d="M48 10 62 20c3 2.2 5 5.5 5.6 9.2L72 58c.5 4-1.7 7.8-5.3 9.6L56 73.2c-5 2.6-11 2.6-16 0l-10.7-5.6C25.7 65.8 23.5 62 24 58l4.4-28.8c.6-3.7 2.6-7 5.6-9.2L48 10Z" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="3" stroke-linejoin="round"/><path d="M41 20h14c3.1 0 5.8 2.1 6.5 5.1l2.1 8.8c.8 3.3-1.7 6.4-5 6.4H37.4c-3.3 0-5.8-3.1-5-6.4l2.1-8.8c.7-3 3.4-5.1 6.5-5.1Z" fill="${roofColor}" opacity="0.95"/><path d="M39 28.5c0-2 1.6-3.6 3.6-3.6h10.8c2 0 3.6 1.6 3.6 3.6v5.2H39v-5.2Z" fill="${glassColor}" stroke="rgba(255,255,255,0.9)" stroke-width="1.3"/><path d="M34 47h28" stroke="${trimColor}" stroke-width="2" opacity="0.2"/><path d="M36 55h24" stroke="${trimColor}" stroke-width="2" opacity="0.16"/><path d="M48 11V5" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" opacity="0.9"/><circle cx="31" cy="35" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="65" cy="35" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="31" cy="61" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="65" cy="61" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/></g></svg></div>`,
     iconSize: [48, 48],
     iconAnchor: [24, 24],
     popupAnchor: [0, -20]
@@ -2630,6 +2630,14 @@ const DispatcherWorkspace = () => {
     setStatusMessage('Mapa abierto en otra pestana.');
   };
 
+  const handleInlineMapToggle = () => {
+    setShowInlineMap(current => {
+      const nextValue = !current;
+      setStatusMessage(nextValue ? 'Mapa pequeno visible.' : 'Mapa pequeno oculto.');
+      return nextValue;
+    });
+  };
+
   return <>
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
@@ -2653,6 +2661,7 @@ const DispatcherWorkspace = () => {
                   </Form.Select>
                   <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked}>All drivers</Button>
                   <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
+                  <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
                 {showSelectedDriverEtaCard && selectedDriver?.hasRealLocation ? <div className="position-absolute top-0 end-0 m-3 text-white border rounded shadow-sm px-3 py-2" style={{ zIndex: 500, minWidth: 220, maxWidth: 280, borderColor: selectedDriverColor, background: `linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, ${selectedDriverColor} 180%)`, pointerEvents: 'none', opacity: 0.98 }}>
