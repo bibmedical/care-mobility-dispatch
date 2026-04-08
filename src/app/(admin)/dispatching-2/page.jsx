@@ -6,7 +6,7 @@ export const metadata = {
 };
 
 const DispatchingTwoPage = () => {
-  return <DispatchingWorkspace title="Dispatching 2" />;
+  return <DispatchingWorkspace title="Dispatching 2" advancedLayouts />;
 };
 
 export default DispatchingTwoPage;

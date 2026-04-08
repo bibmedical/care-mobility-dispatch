@@ -318,6 +318,18 @@ const getConfirmationBadgeVariant = confirmationStatus => {
   return 'secondary';
 };
 
+const getDispatcherConfirmationLabel = (trip, blockingState) => {
+  const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
+  const confirmationCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
+
+  if (confirmationCode === 'U') return 'Unconfirmed';
+  if (['C', 'S', 'W'].includes(confirmationCode) && (confirmationStatus === 'Not Sent' || confirmationStatus === 'Pending')) {
+    return 'Confirmed';
+  }
+
+  return confirmationStatus;
+};
+
 const getLegBadge = trip => {
   if (trip.legVariant && trip.legLabel) return {
     variant: trip.legVariant,
@@ -1279,7 +1291,8 @@ const DispatcherWorkspace = () => {
     const hasActiveHospitalRehab = Boolean(trip?.hospitalStatus?.startDate) && Boolean(trip?.hospitalStatus?.endDate) && todayDateKey >= String(trip.hospitalStatus.startDate) && todayDateKey <= String(trip.hospitalStatus.endDate);
     const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(effectiveStatus) || hasActiveHospitalRehab;
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
-    const matchesStatus = tripStatusFilter === 'all' ? !isNonOperationalTrip : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationStatus === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationStatus === 'Not Sent' || String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase() === 'U' : effectiveStatus === tripStatusFilter;
+    const confirmationLabel = getDispatcherConfirmationLabel(trip, blockingState);
+    const matchesStatus = tripStatusFilter === 'all' ? !isNonOperationalTrip : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationLabel === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationLabel === 'Not Sent' || confirmationLabel === 'Unconfirmed' : effectiveStatus === tripStatusFilter;
     if (!matchesStatus) return false;
     if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) return false;
     return true;
@@ -1516,7 +1529,7 @@ const DispatcherWorkspace = () => {
     return null;
   }, [routeTrips, selectedDriver, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
-  const tripTableColumnCount = orderedVisibleTripColumns.length + 3;
+  const tripTableColumnCount = orderedVisibleTripColumns.length + 4;
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
     const preferredTrip = trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
@@ -1718,9 +1731,7 @@ const DispatcherWorkspace = () => {
           </td>;
       case 'confirmation': {
         const blockingState = tripBlockingMap.get(trip.id);
-        const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
-        const confirmationCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
-        const confirmationLabel = confirmationCode === 'U' ? 'Unconfirmed' : confirmationStatus;
+        const confirmationLabel = getDispatcherConfirmationLabel(trip, blockingState);
         return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>
             <Badge bg={getConfirmationBadgeVariant(confirmationLabel === 'Unconfirmed' ? 'Not Sent' : confirmationLabel)}>{confirmationLabel}</Badge>
           </td>;
@@ -2798,6 +2809,22 @@ const DispatcherWorkspace = () => {
                   </div>
                 </div>}
                 <Table ref={tripTableElementRef} size="sm" hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ ...dispatcherSurfaceStyles.table, whiteSpace: 'nowrap', minWidth: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', width: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', opacity: mapLocked ? 0.6 : 1 }}>
+                  <colgroup>
+                    <col style={{ width: 48, minWidth: 48, maxWidth: 48 }} />
+                    <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                    <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                    <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                    {orderedVisibleTripColumns.map(columnKey => {
+                    const metadata = tripColumnMeta[columnKey];
+                    const fallbackWidth = columnKey === 'address' || columnKey === 'destination' ? 260 : undefined;
+                    const resolvedWidth = columnWidths[columnKey] ?? metadata?.width ?? fallbackWidth;
+                    return <col key={`trip-col-${columnKey}`} style={resolvedWidth ? {
+                      width: resolvedWidth,
+                      minWidth: resolvedWidth,
+                      maxWidth: resolvedWidth
+                    } : undefined} />;
+                  })}
+                  </colgroup>
                   <thead style={{ position: 'sticky', top: 0, ...dispatcherSurfaceStyles.tableHead }}>
                     <tr>
                       <th style={{ width: 48 }}>
@@ -2820,10 +2847,12 @@ const DispatcherWorkspace = () => {
                       </th>
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
+                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>WC</th>
                       {orderedVisibleTripColumns.map(columnKey => {
                     const metadata = tripColumnMeta[columnKey];
                     if (!metadata) return null;
-                    const headerWidth = columnKey === 'address' || columnKey === 'destination' ? 260 : undefined;
+                    const fallbackWidth = columnKey === 'address' || columnKey === 'destination' ? 260 : undefined;
+                    const headerWidth = columnWidths[columnKey] ?? metadata.width ?? fallbackWidth;
                     return <React.Fragment key={`header-${columnKey}`}>
                           {renderTripHeader(columnKey, metadata.label, headerWidth, true)}
                         </React.Fragment>;

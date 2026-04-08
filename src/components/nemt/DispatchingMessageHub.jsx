@@ -57,7 +57,6 @@ const normalizeThread = (thread, driversById) => {
   return {
     driverId: thread.driverId,
     driverName: driver?.name || thread.driverId,
-    live: String(driver?.live || '').trim() || 'Offline',
     messages,
     lastMessage: messages[messages.length - 1] || null,
     unreadCount
@@ -79,21 +78,32 @@ const DispatchingMessageHub = () => {
   const driversById = useMemo(() => new Map((Array.isArray(drivers) ? drivers : []).map(driver => [driver.id, driver])), [drivers]);
 
   const threads = useMemo(() => {
-    const normalizedThreads = (Array.isArray(dispatchThreads) ? dispatchThreads : [])
-      .filter(thread => thread?.driverId)
-      .map(thread => normalizeThread(thread, driversById));
+    const threadMap = new Map((Array.isArray(dispatchThreads) ? dispatchThreads : []).filter(thread => thread?.driverId).map(thread => [thread.driverId, thread]));
+    const normalizedThreads = (Array.isArray(drivers) ? drivers : []).map(driver => {
+      const thread = threadMap.get(driver.id);
+      if (thread) return normalizeThread(thread, driversById);
+      return {
+        driverId: driver.id,
+        driverName: driver.name || driver.id,
+        messages: [],
+        lastMessage: null,
+        unreadCount: 0
+      };
+    });
+
     return normalizedThreads.sort((a, b) => {
       const aTime = a.lastMessage ? Date.parse(a.lastMessage.timestamp || '') : 0;
       const bTime = b.lastMessage ? Date.parse(b.lastMessage.timestamp || '') : 0;
-      return bTime - aTime;
+      if (bTime !== aTime) return bTime - aTime;
+      return String(a.driverName || '').localeCompare(String(b.driverName || ''));
     });
-  }, [dispatchThreads, driversById]);
+  }, [dispatchThreads, drivers, driversById]);
 
   const filteredThreads = useMemo(() => {
     const normalized = searchText.trim().toLowerCase();
     if (!normalized) return threads;
     return threads.filter(thread => {
-      const haystack = `${thread.driverName} ${thread.live} ${thread.lastMessage?.text || ''}`.toLowerCase();
+      const haystack = `${thread.driverName} ${thread.lastMessage?.text || ''}`.toLowerCase();
       return haystack.includes(normalized);
     });
   }, [searchText, threads]);
@@ -158,7 +168,7 @@ const DispatchingMessageHub = () => {
             <div className="px-3 py-2 border-bottom d-flex justify-content-between align-items-center gap-2">
               <div>
                 <div className="fw-semibold">{activeThread?.driverName || 'Select a thread'}</div>
-                <div className="small text-secondary">{activeThread?.live || 'No driver selected'}</div>
+                <div className="small text-secondary">{activeThread ? 'Driver thread' : 'No driver selected'}</div>
               </div>
               {activeThread ? <Button size="sm" variant="outline-secondary" onClick={() => markDispatchThreadRead(activeThread.driverId)}>Mark Read</Button> : null}
             </div>

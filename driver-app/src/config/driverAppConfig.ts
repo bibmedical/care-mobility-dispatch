@@ -12,7 +12,7 @@ export const DRIVER_APP_CONFIG = {
   enableBackgroundTracking: true,
   // Trip updates should reach drivers quickly after dispatcher changes.
   tripSyncIntervalMs: 8000,
-  messageSyncIntervalMs: 15000,
+  messageSyncIntervalMs: 3000,
   lateAlertThresholdMinutes: 5,
   gpsDistanceIntervalMeters: 20,
   gpsTimeIntervalMs: 15000,

@@ -150,21 +150,6 @@ export const MENU_ITEMS = [{
   label: 'Reports',
   isTitle: true
 }, {
-  key: 'full-shift-analysis',
-  label: 'Full Shift Analysis',
-  icon: 'iconoir:graph-up',
-  url: '/full-shift-analysis'
-}, {
-  key: 'daily-driver-snapshot',
-  label: 'Daily Driver Snapshot',
-  icon: 'iconoir:camera',
-  url: '/daily-driver-snapshot'
-}, {
-  key: 'driver-efficiency-report',
-  label: 'Driver Efficiency Report',
-  icon: 'iconoir:stats-report',
-  url: '/driver-efficiency-report'
-}, {
   key: 'help',
   label: 'Help',
   icon: 'iconoir:help-circle',
