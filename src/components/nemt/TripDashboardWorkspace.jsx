@@ -761,6 +761,23 @@ const TripDashboardWorkspace = () => {
   }), [routePlans, tripDateFilter, trips]);
   const selectedRoute = useMemo(() => filteredRoutePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [filteredRoutePlans, selectedRouteId]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const mapQuickFilterControlStyle = themeMode === 'dark'
+    ? {
+      width: 150,
+      backgroundColor: '#0f172a',
+      color: '#e5e7eb',
+      borderColor: '#334155'
+    }
+    : {
+      width: 150,
+      backgroundColor: '#ffffff',
+      color: '#08131a',
+      borderColor: '#0f172a'
+    };
+  const mapQuickZipControlStyle = {
+    ...mapQuickFilterControlStyle,
+    width: 130
+  };
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const activeDateTripIdSet = useMemo(() => {
     if (tripDateFilter === 'all') return null;
@@ -1047,7 +1064,7 @@ const TripDashboardWorkspace = () => {
       case 'trip-search':
         return <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, patient, phone, address..." style={{ width: 260 }} />;
       case 'driver-assigned':
-        return selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null;
+        return selectedDriver ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>{selectedDriverAssignedTripCount} assigned</Badge> : null;
       case 'action-buttons':
         return null;
       case 'leg-buttons':
@@ -1192,9 +1209,9 @@ const TripDashboardWorkspace = () => {
             <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
           </Button>;
       case 'metric-miles':
-        return routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
+        return routeMetrics?.distanceMiles != null ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
       case 'metric-duration':
-        return routeMetrics?.durationMinutes != null ? <Badge bg="light" text="dark">{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null;
+        return routeMetrics?.durationMinutes != null ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>{formatDriveMinutes(routeMetrics.durationMinutes)}</Badge> : null;
       default:
         return null;
     }
@@ -2816,7 +2833,7 @@ const TripDashboardWorkspace = () => {
                     </div>
                   </td>
                   <td className="py-1 text-center fw-bold">{index + 1}</td>
-                  <td className="py-1"><Badge bg="dark" className="fw-normal">{driver.code}</Badge></td>
+                  <td className="py-1"><Badge bg="success" className="fw-normal">{driver.code}</Badge></td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.vehicle}</td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}><div className="fw-semibold">{driver.name}</div></td>
                   <td className="py-1">
@@ -2839,7 +2856,7 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
-  const routePanelCard = <Card className="h-100 overflow-hidden">
+  const routePanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
           <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -2848,8 +2865,8 @@ const TripDashboardWorkspace = () => {
           </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
-          <Table className="align-middle mb-0">
-            <thead className="table-light">
+          <Table className="align-middle mb-0" data-bs-theme={themeMode}>
+            <thead className={themeMode === 'dark' ? 'table-dark' : 'table-light'}>
               <tr>
                 <th style={{ width: 48 }} />
                 <th>Trip ID</th>
@@ -2913,15 +2930,15 @@ const TripDashboardWorkspace = () => {
                 </Button>
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
-                  <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                  <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="">City</option>
                     {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
                   </Form.Select>
-                  <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} style={{ width: 130, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                  <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} style={mapQuickZipControlStyle}>
                     <option value="">ZIP Code</option>
                     {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
                   </Form.Select>
-                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={{ width: 150, backgroundColor: '#ffffff', color: '#08131a', borderColor: '#0f172a' }}>
+                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
@@ -3390,8 +3407,8 @@ const TripDashboardWorkspace = () => {
                     <div style={{ width: tripTableScrollWidth > 0 ? tripTableScrollWidth + 40 : 'calc(100% + 40px)', height: 18 }} />
                 </div> : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1 trip-dashboard-sheet-wrap" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
-                <Table ref={tripTableElementRef} hover className="align-middle mb-0 trip-dashboard-sheet-table" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
-                  <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
+                <Table ref={tripTableElementRef} hover className="align-middle mb-0 trip-dashboard-sheet-table" data-bs-theme={themeMode} style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
+                  <thead className={themeMode === 'dark' ? 'table-dark' : 'table-light'} style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ ...tripHeaderCellStyle, width: 48 }}>
                         <div className="d-flex align-items-center gap-1">
@@ -3486,7 +3503,7 @@ const TripDashboardWorkspace = () => {
                             {!visibleTripColumns.includes('rider') && row.trip.rider ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1, whiteSpace: 'normal', maxWidth: 180 }}>{row.trip.rider}</div> : null}
                             {getLegBadge(row.trip) ? <Badge bg={getLegBadge(row.trip).variant} className="mt-1 me-1">{getLegBadge(row.trip).label}</Badge> : null}
                             {row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
-                            {row.trip.mobilityType ? <Badge bg="light" text="dark" className="mt-1 border">{row.trip.mobilityType}</Badge> : null}
+                            {row.trip.mobilityType ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'} className="mt-1 border">{row.trip.mobilityType}</Badge> : null}
                           </td> : null}
                         {visibleTripColumns.includes('vehicle') ? renderInlineEditableTripCell({
                       trip: row.trip,
@@ -3805,6 +3822,28 @@ const TripDashboardWorkspace = () => {
 
           .trip-dashboard-sheet-table tbody tr:nth-child(even) td {
             background: #f9fcf9;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-wrap {
+            background: #111827;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table thead th {
+            background: #1f2937 !important;
+            color: #e5e7eb;
+            border-right: 1px solid #374151;
+            border-bottom: 1px solid #4b5563;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table tbody td {
+            background: #0f172a;
+            color: #e5e7eb;
+            border-right: 1px solid #1f2937;
+            border-bottom: 1px solid #243043;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table tbody tr:nth-child(even) td {
+            background: #111c31;
           }
         `}</style>
       </div>
