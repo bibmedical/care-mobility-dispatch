@@ -741,6 +741,7 @@ const DispatcherWorkspace = () => {
   const [tripDateFilter, setTripDateFilter] = useState(() => getLocalDateKey());
   const [selectedTripIds, setSelectedTripIds] = useState([]);
   const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [isManualDriverScope, setIsManualDriverScope] = useState(false);
   const [followSelectedDriver, setFollowSelectedDriver] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
@@ -793,6 +794,7 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     setSelectedDriverId(null);
+    setIsManualDriverScope(false);
     setSelectedSecondaryDriverId('');
     setDropoffZipFilter('');
     setDoCityFilter('');
@@ -879,6 +881,7 @@ const DispatcherWorkspace = () => {
     if (!selectedDriverId) return;
     if (drivers.some(driver => driver.id === selectedDriverId)) return;
     setSelectedDriverId(null);
+    setIsManualDriverScope(false);
   }, [drivers, selectedDriverId]);
 
   useEffect(() => {
@@ -1314,13 +1317,14 @@ const DispatcherWorkspace = () => {
       tripDateFilter,
       selectedTripIds,
       selectedDriverId: selectedDriverId || '',
+      driverScopeMode: isManualDriverScope ? 'manual' : 'implicit',
       selectedRouteId: selectedRouteId || '',
       activeDateTripIds,
       routeTripIds
     };
 
     window.localStorage.setItem(MAP_SCREEN_DISPATCHER_STATE_KEY, JSON.stringify(payload));
-  }, [activeDateTripIdSet, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds, tripDateFilter]);
+  }, [activeDateTripIdSet, isManualDriverScope, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds, tripDateFilter]);
 
   const hasSelectedTrips = selectedTripIds.length > 0;
   const isTripAssignedToSelectedDriver = trip => isTripAssignedToDriver(trip, selectedDriverId);
@@ -1531,11 +1535,13 @@ const DispatcherWorkspace = () => {
     const selectedRouteTripIdSet = new Set((Array.isArray(selectedRoute?.tripIds) ? selectedRoute.tripIds : []).map(id => String(id || '').trim()).filter(Boolean));
     const baseTrips = selectedRoute
       ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim()))
+      : isManualDriverScope && selectedDriver
+        ? trips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id))
       : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
     const scopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
     const term = deferredRouteSearch.trim().toLowerCase();
     return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => String(value || '').toLowerCase().includes(term))));
-  }, [activeDateTripIdSet, deferredRouteSearch, selectedRoute, selectedTripIds, trips]);
+  }, [activeDateTripIdSet, deferredRouteSearch, isManualDriverScope, selectedDriver, selectedRoute, selectedTripIds, trips]);
 
   const routeStops = useMemo(() => {
     if (!showRoute) return [];
@@ -1600,8 +1606,12 @@ const DispatcherWorkspace = () => {
       return routeTrips[0] ?? null;
     }
 
+    if (isManualDriverScope && selectedDriver) {
+      return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
+    }
+
     return null;
-  }, [routeTrips, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
+  }, [isManualDriverScope, routeTrips, selectedDriver, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const tripTableColumnCount = orderedVisibleTripColumns.length + 4;
   const selectedDriverSelectedTrip = useMemo(() => {
@@ -1610,8 +1620,13 @@ const DispatcherWorkspace = () => {
   }, [selectedDriver, selectedTripIdSet, trips]);
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
-    return selectedDriverSelectedTrip && isTripEnRoute(selectedDriverSelectedTrip) ? selectedDriverSelectedTrip : null;
-  }, [selectedDriver, selectedDriverSelectedTrip]);
+    const selectedEnRouteTrip = selectedDriverSelectedTrip && isTripEnRoute(selectedDriverSelectedTrip) ? selectedDriverSelectedTrip : null;
+    if (selectedEnRouteTrip) return selectedEnRouteTrip;
+    if (!isManualDriverScope) return null;
+    const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
+    if (routeTrip) return routeTrip;
+    return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip)) ?? null;
+  }, [isManualDriverScope, routeTrips, selectedDriver, selectedDriverSelectedTrip, trips]);
   const selectedDriverEtaTrip = useMemo(() => {
     if (!selectedDriver) return null;
     if (selectedDriverSelectedTrip) return selectedDriverSelectedTrip;
@@ -1964,6 +1979,7 @@ const DispatcherWorkspace = () => {
 
     if (isSelecting && trip?.driverId) {
       setSelectedDriverId(trip.driverId);
+      setIsManualDriverScope(false);
       setStatusMessage(`SMS listo con ${getDriverName(trip.driverId)} para el trip ${trip.id}.`);
     }
   };
@@ -2038,6 +2054,7 @@ const DispatcherWorkspace = () => {
     assignTripsToDriver(quickReassignDriverId, selectedTripIds);
     setSelectedTripIds([]);
     setSelectedDriverId(quickReassignDriverId);
+    setIsManualDriverScope(true);
     setSelectedRouteId('');
     setQuickReassignDriverId('');
     setStatusMessage(`${selectedCount} trip(s) reasignados a ${driver.name}.`);
@@ -2051,6 +2068,7 @@ const DispatcherWorkspace = () => {
 
   const handleDriverSelectionChange = nextDriverId => {
     setSelectedDriverId(nextDriverId);
+    setIsManualDriverScope(Boolean(nextDriverId));
     setSelectedRouteId('');
 
     if (!nextDriverId) {
@@ -3032,7 +3050,11 @@ const DispatcherWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: dispatcherLayout.messagingVisible ? 'block' : 'none', gridColumn: 1, gridRow: messagingPanelGridRow }}>
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 h-100">
-              <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} onLocateDriver={driverId => {
+              <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
+              setIsManualDriverScope(false);
+              setSelectedDriverId(nextDriverId || null);
+            }} onLocateDriver={driverId => {
+              setIsManualDriverScope(false);
               setSelectedDriverId(driverId);
               setFollowSelectedDriver(true);
               setStatusMessage(dispatcherLayout.mapVisible ? `Driver ${driverId} selected for the map.` : `Driver ${driverId} selected. Open the map manually when you want to view it.`);
