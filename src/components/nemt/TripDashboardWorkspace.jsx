@@ -18,7 +18,6 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
-import { useMap } from 'react-leaflet/hooks';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 import { useSession } from 'next-auth/react';
 
@@ -224,27 +223,6 @@ const getDistanceMiles = (from, to) => {
   const lat2 = toRadians(to[0]);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-const TripDashboardMapResizer = ({ resizeKey }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map) return;
-    const invalidate = () => map.invalidateSize({
-      pan: false,
-      animate: false
-    });
-    invalidate();
-    const immediateId = window.setTimeout(invalidate, 0);
-    const delayedId = window.setTimeout(invalidate, 140);
-    return () => {
-      window.clearTimeout(immediateId);
-      window.clearTimeout(delayedId);
-    };
-  }, [map, resizeKey]);
-
-  return null;
 };
 
 const formatEta = miles => {
@@ -2990,7 +2968,6 @@ const TripDashboardWorkspace = () => {
                     <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
                   </div> : null}
                 <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
-                  <TripDashboardMapResizer resizeKey={`${layoutMode}-${showMapPane}-${showBottomPanels}-${rightPanelCollapsed}-${columnSplit}-${rowSplit}-${showInlineMap}`} />
                   <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
