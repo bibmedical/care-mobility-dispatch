@@ -503,7 +503,8 @@ const DispatcherMessagingPanel = ({
       } catch (error) {
         if (!active) return;
         hasLoadedAlertsRef.current = true;
-        setAlertsError(error.message || 'Unable to load driver alerts.');
+        setAlertsError('');
+        console.warn('[DispatcherMessaging] Alerts poll error (transient):', error.message);
       } finally {
         if (active) setIsLoadingAlerts(false);
       }
@@ -826,7 +827,7 @@ const DispatcherMessagingPanel = ({
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
         </div>
         <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 140, maxWidth: 250 }}>
-          <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." style={messagingSurfaceStyles.input} />
+          <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." style={messagingSurfaceStyles.input} spellCheck={false} autoComplete="off" />
           <button
             type="button"
             onClick={() => setShowPanelSettings(true)}
@@ -956,7 +957,7 @@ const DispatcherMessagingPanel = ({
         <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0, ...messagingSurfaceStyles.mainPane }}>
           <div className="flex-grow-1 p-3 d-flex flex-column" style={{ overflowY: 'auto', minHeight: 0, background: messagingSurfaceStyles.mainPaneGradient }}>
             <div className="mb-3" style={messagingStatusRowStyle}>
-              {alertsError ? <div className="small text-danger">{alertsError}</div> : null}
+              {!isLoadingAlerts && alertsError ? <div className="small text-warning">{alertsError}</div> : null}
               {!alertsError && isLoadingAlerts && activeDriverAlerts.length === 0 ? <div className="small text-muted">Loading driver alerts...</div> : null}
             </div>
             {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') || smsStatus.toLowerCase().includes('failed') ? 'alert-warning' : smsStatus.toLowerCase().includes('sending') ? 'alert-info' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}

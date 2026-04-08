@@ -37,6 +37,20 @@ export const MENU_ITEMS = [{
     url: '/trip-dashboard'
   }]
 }, {
+  key: 'transportation-title',
+  label: 'Transportation',
+  isTitle: true
+}, {
+  key: 'transportation-menu',
+  label: 'Transportation',
+  icon: 'iconoir:bus',
+  children: []
+}, {
+  key: 'users-menu',
+  label: 'Users',
+  icon: 'iconoir:community',
+  children: []
+}, {
   key: 'billing-title',
   label: 'Billing',
   isTitle: true

@@ -604,10 +604,11 @@ export const NemtProvider = ({
       ? existingThreads.map(thread => thread.driverId === normalizedDriverId ? {
         ...thread,
         messages: thread.messages.some(currentMessage => String(currentMessage?.id || '').trim() === normalizedMessage.id)
-          ? thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
-            ...currentMessage,
-            status: 'read'
-          } : currentMessage)
+          ? thread.messages.map(currentMessage => {
+            if (String(currentMessage?.id || '').trim() === normalizedMessage.id) return normalizedMessage;
+            if (markIncomingRead && currentMessage.direction === 'incoming') return { ...currentMessage, status: 'read' };
+            return currentMessage;
+          })
           : [...thread.messages.map(currentMessage => markIncomingRead && currentMessage.direction === 'incoming' ? {
             ...currentMessage,
             status: 'read'
