@@ -265,11 +265,21 @@ const DispatcherMapResizer = ({ resizeKey }) => {
   const map = useMap();
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      map.invalidateSize();
-    }, 0);
+    if (!map) return;
+    const invalidate = () => map.invalidateSize({
+      pan: false,
+      animate: false
+    });
+    invalidate();
+    const immediateId = window.setTimeout(invalidate, 0);
+    const delayedId = window.setTimeout(invalidate, 140);
+    const lateId = window.setTimeout(invalidate, 320);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(immediateId);
+      window.clearTimeout(delayedId);
+      window.clearTimeout(lateId);
+    };
   }, [map, resizeKey]);
 
   return null;
