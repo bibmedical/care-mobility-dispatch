@@ -358,6 +358,15 @@ const TripImportWorkspace = () => {
   const [isParsing, setIsParsing] = useState(false);
   const [selectedAuditDate, setSelectedAuditDate] = useState(() => toLocalDateKey(new Date()));
 
+  const requireTypedDeleteConfirmation = warningLabel => {
+    const typedValue = String(window.prompt(`Safety check: type BORRAR to continue.\n\n${warningLabel}`) || '').trim();
+    if (typedValue !== 'BORRAR') {
+      setMessage('Operacion cancelada. Debes escribir BORRAR exactamente para confirmar borrado.');
+      return false;
+    }
+    return true;
+  };
+
   const importedServiceDateKeys = useMemo(() => Array.from(new Set(pendingTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).sort(), [pendingTrips]);
 
   const importReconciliation = useMemo(() => {
@@ -466,6 +475,7 @@ const TripImportWorkspace = () => {
   };
 
   const handleClearTrips = () => {
+    if (!requireTypedDeleteConfirmation('This will delete all current trips and routes.')) return;
     clearTrips();
     setPendingTrips([]);
     setSelectedFileName('');
@@ -529,6 +539,8 @@ const TripImportWorkspace = () => {
       setMessage('Borrado cancelado.');
       return;
     }
+
+    if (!requireTypedDeleteConfirmation(`Dias a borrar: ${importedServiceDateKeys.join(', ')}`)) return;
 
     clearTripsByServiceDates(importedServiceDateKeys);
     setMessage(`Se borraron los viajes de ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'}: ${importedServiceDateKeys.join(', ')}.`);

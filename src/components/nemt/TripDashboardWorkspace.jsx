@@ -2101,17 +2101,56 @@ const TripDashboardWorkspace = () => {
   };
 
   const handleCancelTrip = tripId => {
-    cancelTrips([tripId]);
-    setStatusMessage(`Trip ${tripId} cancelled.`);
+    const normalizedTripId = normalizeTripId(tripId);
+    if (!normalizedTripId) {
+      setStatusMessage('Trip invalido para cancelar.');
+      return;
+    }
+
+    try {
+      setSelectedTripIds(currentIds => currentIds.map(normalizeTripId).filter(id => id && id !== normalizedTripId));
+      setSelectedRouteId(currentRouteId => {
+        if (!currentRouteId) return currentRouteId;
+        const currentRoute = routePlans.find(routePlan => routePlan.id === currentRouteId);
+        if (!currentRoute) return null;
+        const remainingTripIds = (Array.isArray(currentRoute.tripIds) ? currentRoute.tripIds : []).map(normalizeTripId).filter(id => id && id !== normalizedTripId);
+        return remainingTripIds.length > 0 ? currentRouteId : null;
+      });
+      cancelTrips([normalizedTripId], {
+        source: 'dispatcher-manual',
+        reason: 'Cancelled by dispatcher'
+      });
+      setStatusMessage(`Trip ${normalizedTripId} cancelled.`);
+    } catch {
+      setStatusMessage('No se pudo cancelar el trip. Intenta refrescar y volver a intentar.');
+    }
   };
 
   const handleCancelSelectedTrips = () => {
-    if (selectedTripIds.length === 0) {
+    const targetTripIds = selectedTripIds.map(normalizeTripId).filter(Boolean);
+    if (targetTripIds.length === 0) {
       setStatusMessage('Select at least one trip to cancel.');
       return;
     }
-    cancelTrips(selectedTripIds);
-    setStatusMessage(`${selectedTripIds.length} trip(s) cancelled.`);
+
+    try {
+      const targetTripIdSet = new Set(targetTripIds);
+      setSelectedTripIds(currentIds => currentIds.map(normalizeTripId).filter(id => id && !targetTripIdSet.has(id)));
+      setSelectedRouteId(currentRouteId => {
+        if (!currentRouteId) return currentRouteId;
+        const currentRoute = routePlans.find(routePlan => routePlan.id === currentRouteId);
+        if (!currentRoute) return null;
+        const remainingTripIds = (Array.isArray(currentRoute.tripIds) ? currentRoute.tripIds : []).map(normalizeTripId).filter(id => id && !targetTripIdSet.has(id));
+        return remainingTripIds.length > 0 ? currentRouteId : null;
+      });
+      cancelTrips(targetTripIds, {
+        source: 'dispatcher-manual',
+        reason: 'Cancelled by dispatcher'
+      });
+      setStatusMessage(`${targetTripIds.length} trip(s) cancelled.`);
+    } catch {
+      setStatusMessage('No se pudieron cancelar los trips seleccionados. Intenta refrescar y volver a intentar.');
+    }
   };
 
   const handleReinstateTrip = tripId => {
@@ -2778,11 +2817,13 @@ const TripDashboardWorkspace = () => {
   useEffect(() => {
     const handleAssistantAction = event => {
       const detail = event?.detail || {};
+      const detailPathname = String(detail?.pathname || detail?.page || '').toLowerCase();
+      const isTripDashboardAction = detailPathname.includes('trip-dashboard') || String(detail?.source || '').toLowerCase() === 'trip-dashboard';
       void refreshDispatchState({ forceServer: true });
       if (detail?.serviceDate) setTripDateFilter(String(detail.serviceDate));
-      if (detail?.focusDriverId) setSelectedDriverId(String(detail.focusDriverId));
+      if (isTripDashboardAction && detail?.focusDriverId) setSelectedDriverId(String(detail.focusDriverId));
       const routeTripIds = Array.isArray(detail?.plan?.routes?.[0]?.tripIds) ? detail.plan.routes[0].tripIds : [];
-      if (routeTripIds.length > 0) setSelectedTripIds(routeTripIds);
+      if (isTripDashboardAction && routeTripIds.length > 0) setSelectedTripIds(routeTripIds);
       if (detail?.type === 'apply-route-plan') {
         setAiPlannerPreview(null);
         setShowRoute(true);
