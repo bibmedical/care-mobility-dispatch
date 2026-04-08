@@ -16,11 +16,6 @@ export const MENU_ITEMS = [{
     url: '/dispatcher/history'
   }]
 }, {
-  key: 'route-control',
-  icon: 'iconoir:view-grid',
-  label: 'Route Control',
-  url: '/route-control'
-}, {
   key: 'trip-analytics',
   label: 'Primary Dashboard',
   icon: 'iconoir:stats-report',
@@ -30,16 +25,6 @@ export const MENU_ITEMS = [{
   label: 'Trip Dashboard',
   icon: 'iconoir:view-grid',
   url: '/trip-dashboard'
-}, {
-  key: 'dispatching',
-  label: 'Dispatching',
-  icon: 'iconoir:message-text',
-  url: '/dispatching'
-}, {
-  key: 'dispatching-2',
-  label: 'Dispatching 2',
-  icon: 'iconoir:message-alert',
-  url: '/dispatching-2'
 }, {
   key: 'confirmation',
   label: 'Confirmation',
@@ -87,11 +72,6 @@ export const MENU_ITEMS = [{
   icon: 'iconoir:truck',
   url: '/drivers/vehicles'
 }, {
-  key: 'preferences',
-  label: 'Preferences',
-  icon: 'iconoir:settings',
-  url: '/preferences'
-}, {
   key: 'configuraciones-menu',
   label: 'Settings',
   icon: 'iconoir:settings-system',
@@ -103,12 +83,15 @@ export const MENU_ITEMS = [{
     key: 'configuraciones-email-templates',
     label: 'Email Templates',
     url: '/settings/email-templates'
+  }, {
+    key: 'preferences',
+    label: 'Logo',
+    url: '/preferences'
+  }, {
+    key: 'avatar',
+    label: 'Avatar',
+    url: '/avatar'
   }]
-}, {
-  key: 'avatar',
-  label: 'Avatar',
-  icon: 'iconoir:user-love',
-  url: '/avatar'
 }, {
   key: 'integrations-menu',
   label: 'Integrations',
