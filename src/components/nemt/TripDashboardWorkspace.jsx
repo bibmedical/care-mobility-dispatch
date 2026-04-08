@@ -127,6 +127,8 @@ const yellowMapTabStyle = {
 };
 
 const TRIP_COLUMN_MIN_WIDTHS = {
+  act: 52,
+  notes: 52,
   pickup: 56,
   dropoff: 56,
   miles: 56,
@@ -1043,35 +1045,13 @@ const TripDashboardWorkspace = () => {
       case 'driver-assigned':
         return selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null;
       case 'action-buttons':
-        return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
-                <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-                <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
-                <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
-                <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
-              </>}
-          </div>;
+        return null;
       case 'leg-buttons':
-        return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <span className="fw-semibold small">Leg</span>
-            <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="First leg to appointment">AL</Button>
-            <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
-            <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Third or connector leg">CL</Button>
-          </div>;
+        return null;
       case 'type-buttons':
-        return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <span className="fw-semibold small">Type</span>
-            <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
-            <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
-            <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
-            <Button variant={serviceAnimalOnly ? 'dark' : 'outline-dark'} size="sm" style={serviceAnimalOnly ? undefined : greenToolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
-          </div>;
+        return null;
       case 'closed-route':
-        return <Button variant={isActiveRouteClosed ? 'danger' : 'outline-dark'} size="sm" style={isActiveRouteClosed ? {
-          fontWeight: 700
-        } : greenToolbarButtonStyle} onClick={handleToggleClosedRoute} title="Lock route by driver/day. New trips added later will show who added them.">
-            {isActiveRouteClosed ? 'Route closed' : 'Close route'}
-          </Button>;
+        return null;
       default:
         return null;
     }
@@ -2150,7 +2130,7 @@ const TripDashboardWorkspace = () => {
     fontSize: '0.82rem'
   };
 
-  const renderTripHeader = (columnKey, label, width) => {
+  const renderTripHeader = (columnKey, label, width, sortable = true) => {
     const resolvedWidth = columnWidths[columnKey] ?? width;
     return <th style={resolvedWidth ? {
       ...tripHeaderCellStyle,
@@ -2162,18 +2142,18 @@ const TripDashboardWorkspace = () => {
       ...tripHeaderCellStyle,
       position: 'relative'
     }}>
-      <button type="button" onClick={() => handleTripSortChange(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
-        <span>{label}</span>
-        <span className="small">{tripSort.key === columnKey ? tripSort.direction === 'asc' ? '↑' : '↓' : '↕'}</span>
-      </button>
+      {sortable ? <button type="button" onClick={() => handleTripSortChange(columnKey)} className="btn btn-link text-decoration-none text-reset p-0 d-inline-flex align-items-center gap-1 fw-semibold">
+          <span>{label}</span>
+          <span className="small">{tripSort.key === columnKey ? tripSort.direction === 'asc' ? '↑' : '↓' : '↕'}</span>
+        </button> : <span className="fw-semibold">{label}</span>}
       <span role="presentation" onMouseDown={event => handleColumnResizeStart(event, columnKey)} style={{
         position: 'absolute',
         top: 0,
-        right: 0,
-        width: 10,
+        right: -8,
+        width: 16,
         height: '100%',
         cursor: 'col-resize',
-        background: 'linear-gradient(180deg, rgba(107,114,128,0) 0%, rgba(107,114,128,0.45) 30%, rgba(107,114,128,0.45) 70%, rgba(107,114,128,0) 100%)'
+        background: 'linear-gradient(180deg, rgba(107,114,128,0) 0%, rgba(107,114,128,0.55) 30%, rgba(107,114,128,0.55) 70%, rgba(107,114,128,0) 100%)'
       }} />
     </th>;
   };
@@ -3201,7 +3181,7 @@ const TripDashboardWorkspace = () => {
                     </div>)}
                 </div>
               </div>
-              {aiPlannerCollapsed ? <div className="mx-3 mt-2 mb-2 d-flex align-items-center justify-content-start">
+              {aiPlannerCollapsed ? <div className="mx-3 mt-2 mb-2 d-flex align-items-center justify-content-start gap-2 flex-wrap">
                   <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={{
                 borderRadius: 10,
                 border: '1px solid rgba(15, 23, 42, 0.18)',
@@ -3215,6 +3195,28 @@ const TripDashboardWorkspace = () => {
               }}>
                     AI Route
                   </button>
+                  <div className="d-flex align-items-center gap-1 flex-wrap">
+                    {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
+                        <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
+                        <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
+                        <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
+                        <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+                      </>}
+                    <span className="fw-semibold small ms-1">Leg</span>
+                    <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="First leg to appointment">AL</Button>
+                    <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
+                    <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Third or connector leg">CL</Button>
+                    <span className="fw-semibold small ms-1">Type</span>
+                    <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
+                    <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
+                    <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
+                    <Button variant={serviceAnimalOnly ? 'dark' : 'outline-dark'} size="sm" style={serviceAnimalOnly ? undefined : greenToolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
+                    <Button variant={isActiveRouteClosed ? 'danger' : 'outline-dark'} size="sm" style={isActiveRouteClosed ? {
+                    fontWeight: 700
+                  } : greenToolbarButtonStyle} onClick={handleToggleClosedRoute} title="Lock route by driver/day. New trips added later will show who added them.">
+                      {isActiveRouteClosed ? 'Route closed' : 'Close route'}
+                    </Button>
+                  </div>
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border bg-light-subtle text-dark" style={{ borderColor: 'rgba(15, 23, 42, 0.12)' }}>
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                     <div>
@@ -3414,8 +3416,8 @@ const TripDashboardWorkspace = () => {
                         />
                         <div className="small fw-semibold mt-1" style={{ lineHeight: 1 }}>{selectedTripIds.length}</div>
                       </th>
-                      <th style={{ ...tripHeaderCellStyle, width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
-                      <th style={{ ...tripHeaderCellStyle, width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
+                      {renderTripHeader('act', 'ACT', 56, false)}
+                      {renderTripHeader('notes', 'Notes', 56, false)}
                       {visibleTripColumns.includes('trip') ? renderTripHeader('trip', 'Trip / Ride') : null}
                       {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
                       {visibleTripColumns.includes('status') ? renderTripHeader('status', 'Status') : null}
@@ -3459,7 +3461,7 @@ const TripDashboardWorkspace = () => {
                             }}
                           />
                         </td>
-                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                        <td style={{ width: columnWidths.act ?? 56, minWidth: columnWidths.act ?? 56, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
                             <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" onClick={() => {
                           setSelectedTripIds([row.trip.id]);
@@ -3469,7 +3471,7 @@ const TripDashboardWorkspace = () => {
                         }}>ACT</Button>
                           </div>
                         </td>
-                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                        <td style={{ width: columnWidths.notes ?? 56, minWidth: columnWidths.notes ?? 56, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1">
                             <Button variant="outline-secondary" size="sm" onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent' }}>
                               N
