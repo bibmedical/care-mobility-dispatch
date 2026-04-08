@@ -624,6 +624,7 @@ const TripDashboardWorkspace = () => {
     cloneTripRecord,
     deleteTripRecord,
     uiPreferences,
+    hasLoadedUserUiPreferences,
     setDispatcherVisibleTripColumns,
     setMapProvider
   } = useNemtContext();
@@ -2048,9 +2049,10 @@ const TripDashboardWorkspace = () => {
   const tripTableColumnCount = orderedVisibleTripColumns.length + 3;
 
   useEffect(() => {
+    if (!hasLoadedUserUiPreferences) return;
     if (visibleTripColumns.includes('mobility')) return;
     setDispatcherVisibleTripColumns([...visibleTripColumns, 'mobility']);
-  }, [setDispatcherVisibleTripColumns, visibleTripColumns]);
+  }, [hasLoadedUserUiPreferences, setDispatcherVisibleTripColumns, visibleTripColumns]);
 
   const handleToggleTripColumn = columnKey => {
     const nextColumns = orderedVisibleTripColumns.includes(columnKey) ? orderedVisibleTripColumns.filter(item => item !== columnKey) : [...orderedVisibleTripColumns, columnKey];

@@ -1288,6 +1288,7 @@ export const NemtProvider = ({
   return <NemtContext.Provider value={useMemo(() => ({
     ...state,
     uiPreferences: resolvedUiPreferences,
+    hasLoadedUserUiPreferences,
     setSelectedTripIds,
     setSelectedDriverId,
     setSelectedRouteId,
