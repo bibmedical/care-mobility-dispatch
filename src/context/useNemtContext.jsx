@@ -837,12 +837,14 @@ export const NemtProvider = ({
     })
   });
 
-  const cancelTrips = (tripIds = [], options = {}) => updateState(currentState => {
-    const selectedTripIds = Array.isArray(currentState.selectedTripIds) ? currentState.selectedTripIds : [];
-    const targetTripIds = tripIds.length > 0 ? tripIds : selectedTripIds;
+  const cancelTrips = (tripIds = [], options = {}) => {
     const cancellationSource = String(options?.source || 'dispatcher-manual').trim() || 'dispatcher-manual';
     const providedReason = String(options?.reason || '').trim();
     const cancellationReason = providedReason || (cancellationSource === 'saferide-import' ? 'Canceled by SafeRide' : 'Cancelled by dispatcher');
+
+    return updateState(currentState => {
+    const selectedTripIds = Array.isArray(currentState.selectedTripIds) ? currentState.selectedTripIds : [];
+    const targetTripIds = tripIds.length > 0 ? tripIds : selectedTripIds;
     const cancelledAt = new Date().toISOString();
     const updatedAt = getMutationTimestamp();
     const routePlans = Array.isArray(currentState.routePlans) ? currentState.routePlans : [];
@@ -882,6 +884,7 @@ export const NemtProvider = ({
       }
     })
   });
+  };
 
   const reinstateTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
