@@ -163,7 +163,10 @@ const RouteControlWorkspace = () => {
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
   const closedRouteSnapshotRef = useRef('');
 
-  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const mapTileConfig = useMemo(() => {
+    const preferred = getMapTileConfig(uiPreferences?.mapProvider);
+    return preferred || getMapTileConfig('auto');
+  }, [uiPreferences?.mapProvider]);
   const hasSelectedDate = Boolean(dateFilter);
 
   const effectiveRoutes = useMemo(() => Array.isArray(routePlans) ? routePlans : [], [routePlans]);

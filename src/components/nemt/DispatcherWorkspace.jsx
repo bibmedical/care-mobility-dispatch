@@ -808,7 +808,10 @@ const DispatcherWorkspace = () => {
   const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
   const dispatchTimeZone = uiPreferences?.timeZone;
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), dispatchTimeZone), [dispatchTimeZone]);
-  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const mapTileConfig = useMemo(() => {
+    const preferred = getMapTileConfig(uiPreferences?.mapProvider);
+    return preferred || getMapTileConfig('auto');
+  }, [uiPreferences?.mapProvider]);
 
   useEffect(() => {
     setTripDateFilter(todayDateKey);

@@ -760,7 +760,10 @@ const TripDashboardWorkspace = () => {
     return getRouteServiceDateKey(routePlan, trips) === tripDateFilter;
   }), [routePlans, tripDateFilter, trips]);
   const selectedRoute = useMemo(() => filteredRoutePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [filteredRoutePlans, selectedRouteId]);
-  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const mapTileConfig = useMemo(() => {
+    const preferred = getMapTileConfig(uiPreferences?.mapProvider);
+    return preferred || getMapTileConfig('auto');
+  }, [uiPreferences?.mapProvider]);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const activeDateTripIdSet = useMemo(() => {
     if (tripDateFilter === 'all') return null;
