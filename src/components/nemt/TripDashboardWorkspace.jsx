@@ -3060,29 +3060,29 @@ const TripDashboardWorkspace = () => {
           <Table size="sm" bordered striped hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ lineHeight: 1.1, fontSize: '0.78rem' }}>
             <thead style={{ backgroundColor: '#198754', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
-                <th className="py-1" style={{ width: 60, backgroundColor: '#198754', color: '#fff' }}>ACT</th>
-                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>#</th>
                 <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Vehicle</th>
                 <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Driver</th>
                 {!isFocusRightLayout ? <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Attendant</th> : null}
                 {!isFocusRightLayout ? <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Info</th> : null}
                 <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Live</th>
+                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>#</th>
+                <th className="py-1" style={{ width: 60, backgroundColor: '#198754', color: '#fff' }}>ACT</th>
               </tr>
             </thead>
             <tbody>
               {filteredDrivers.length > 0 ? filteredDrivers.map((driver, index) => <tr key={driver.id} className={selectedDriverId === driver.id ? 'table-primary' : ''}>
-                  <td className="py-1">
-                    <div className="d-flex align-items-center justify-content-center">
-                      <Form.Check className="trip-dashboard-selector" type="radio" checked={selectedDriverId === driver.id} onChange={() => setSelectedDriverId(driver.id)} />
-                    </div>
-                  </td>
-                  <td className="py-1 text-center fw-bold">{index + 1}</td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.vehicle}</td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}><div className="fw-semibold">{driver.name}</div></td>
                   {!isFocusRightLayout ? <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td> : null}
                   {!isFocusRightLayout ? <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td> : null}
                   <td className="py-1 text-center" style={{ whiteSpace: 'nowrap' }}>
                     <Badge bg={driver.live === 'Online' ? 'success' : 'secondary'} className="fw-normal" style={driver.live === 'Online' ? undefined : offlineDriverBadgeStyle}>{driver.live || 'Offline'}</Badge>
+                  </td>
+                  <td className="py-1 text-center fw-bold">{index + 1}</td>
+                  <td className="py-1">
+                    <div className="d-flex align-items-center justify-content-center">
+                      <Form.Check className="trip-dashboard-selector" type="radio" checked={selectedDriverId === driver.id} onChange={() => setSelectedDriverId(driver.id)} />
+                    </div>
                   </td>
                 </tr>) : <tr>
                   <td colSpan={isFocusRightLayout ? 5 : 7} className="text-center text-muted py-4">No drivers or vehicles loaded.</td>
@@ -3117,7 +3117,6 @@ const TripDashboardWorkspace = () => {
           <Table className="align-middle mb-0" data-bs-theme={themeMode}>
             <thead className={themeMode === 'dark' ? 'table-dark' : 'table-light'}>
               <tr>
-                <th style={{ width: 48 }} />
                 <th>Trip ID</th>
                 <th>Type</th>
                 <th>Miles</th>
@@ -3125,15 +3124,11 @@ const TripDashboardWorkspace = () => {
                 <th>DO</th>
                 <th>Rider</th>
                 <th>Patient Phone</th>
+                <th style={{ width: 48 }} />
               </tr>
             </thead>
             <tbody>
               {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
-                  <td>
-                    <div className="d-flex align-items-center justify-content-center">
-                      <Form.Check className="trip-dashboard-selector" checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => toggleTripSelection(trip.id)} />
-                    </div>
-                  </td>
                   <td className="fw-semibold">{trip.id}{getTripAddedByLabel(trip) ? <div className="small mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}</td>
                   <td><Badge bg={getTripTypeLabel(trip) === 'STR' ? 'danger' : getTripTypeLabel(trip) === 'W' ? 'warning' : 'success'} text={getTripTypeLabel(trip) === 'W' ? 'dark' : undefined}>{getTripTypeLabel(trip)}</Badge></td>
                   <td>{trip.miles || '-'}</td>
@@ -3141,6 +3136,11 @@ const TripDashboardWorkspace = () => {
                   <td>{trip.dropoff}</td>
                   <td>{trip.rider}</td>
                   <td>{trip.patientPhoneNumber || '-'}</td>
+                  <td>
+                    <div className="d-flex align-items-center justify-content-center">
+                      <Form.Check className="trip-dashboard-selector" checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => toggleTripSelection(trip.id)} />
+                    </div>
+                  </td>
                 </tr>) : <tr>
                   <td colSpan={8} className="text-center text-muted py-4">Select a route, a driver, or trips to view the route menu.</td>
                 </tr>}
