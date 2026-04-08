@@ -2436,6 +2436,17 @@ const TripDashboardWorkspace = () => {
     setStatusMessage(`Added secondary driver to ${targetTripIds.length} trip(s).`);
   };
 
+  const handleRoutePanelUnassign = () => {
+    const targetTripIds = [...selectedRoutePanelTripIds];
+    if (targetTripIds.length === 0) {
+      setStatusMessage('Select at least one trip from the route table.');
+      return;
+    }
+
+    unassignTrips(targetTripIds);
+    setStatusMessage(`Unassigned ${targetTripIds.length} trip(s).`);
+  };
+
   const handleUnassign = () => {
     const targetTripIds = [...selectedTripIds];
     if (targetTripIds.length === 0) {
@@ -2911,6 +2922,7 @@ const TripDashboardWorkspace = () => {
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
             </Form.Select>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRoutePanelAssignSecondary}>Assign 2nd</Button>
+            <Button variant="outline-danger" size="sm" onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
             <Badge bg="dark">{selectedRoutePanelTripIds.length} selected</Badge>
           </div>
         </div>
