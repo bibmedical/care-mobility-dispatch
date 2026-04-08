@@ -1383,29 +1383,10 @@ const DispatcherWorkspace = () => {
       return String(leftTrip.id).localeCompare(String(rightTrip.id));
     };
 
-    const groups = filteredTrips.reduce((map, trip) => {
-      const pickupMinutes = parseTripClockMinutes(getEffectivePickupTimeText(trip));
-      const hasTime = Number.isFinite(pickupMinutes);
-      const bucketHour = hasTime ? Math.floor(pickupMinutes / 60) : null;
-      const bucketLabel = hasTime ? `${String(bucketHour).padStart(2, '0')}:00` : 'No Time';
-      if (!map.has(bucketLabel)) map.set(bucketLabel, []);
-      map.get(bucketLabel).push(trip);
-      return map;
-    }, new Map());
-
-    return Array.from(groups.entries()).map(([groupKey, groupTrips]) => ({
-      groupKey,
-      trips: [...groupTrips].sort(compareTrips)
-    })).sort((leftGroup, rightGroup) => compareTrips(leftGroup.trips[0], rightGroup.trips[0])).flatMap(group => [{
-      type: 'group',
-      groupKey: group.groupKey,
-      ridesCount: group.trips.length,
-      label: group.trips.length > 1 ? `Hour ${group.groupKey} • ${group.trips.length} rides` : `Hour ${group.groupKey} • 1 ride`
-    }, ...group.trips.map(trip => ({
+    return [...filteredTrips].sort(compareTrips).map(trip => ({
       type: 'trip',
-      groupKey: group.groupKey,
       trip
-    }))]);
+    }));
   }, [filteredTrips, getDriverName, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key]);
 
   const routeTrips = useMemo(() => {
