@@ -83,18 +83,34 @@ const getTripLookupKeys = trip => {
   return keys;
 };
 
-const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => normalizeTripRecord({
-  ...importedTrip,
-  id: String(currentTrip?.id || importedTrip?.id || '').trim(),
-  importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
-  driverId: currentTrip?.driverId ?? null,
-  secondaryDriverId: currentTrip?.secondaryDriverId ?? null,
-  routeId: currentTrip?.routeId ?? null,
-  status: currentTrip?.status || importedTrip?.status,
-  notes: String(currentTrip?.notes || '').trim() || importedTrip?.notes,
-  confirmation: currentTrip?.confirmation || importedTrip?.confirmation,
-  updatedAt: Number(currentTrip?.updatedAt) || Number(importedTrip?.updatedAt) || 0
-});
+const isCancelledLikeStatus = value => {
+  const token = String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  return token === 'cancelled' || token === 'canceled' || token === 'disconnected';
+};
+
+const isSafeRideCancelledImport = importedTrip => {
+  return isCancelledLikeStatus(importedTrip?.status) || isCancelledLikeStatus(importedTrip?.safeRideStatus) || isCancelledLikeStatus(importedTrip?.confirmationStatus);
+};
+
+const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
+  const shouldAutoCancel = isSafeRideCancelledImport(importedTrip);
+  return normalizeTripRecord({
+    ...importedTrip,
+    id: String(currentTrip?.id || importedTrip?.id || '').trim(),
+    importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
+    driverId: shouldAutoCancel ? null : currentTrip?.driverId ?? null,
+    secondaryDriverId: shouldAutoCancel ? null : currentTrip?.secondaryDriverId ?? null,
+    routeId: shouldAutoCancel ? null : currentTrip?.routeId ?? null,
+    status: shouldAutoCancel ? 'Cancelled' : (currentTrip?.status || importedTrip?.status),
+    safeRideStatus: shouldAutoCancel ? 'Canceled by SafeRide' : (importedTrip?.safeRideStatus || currentTrip?.safeRideStatus),
+    cancellationReason: shouldAutoCancel ? 'Canceled by SafeRide' : String(currentTrip?.cancellationReason || '').trim(),
+    cancellationSource: shouldAutoCancel ? 'saferide-import' : String(currentTrip?.cancellationSource || '').trim(),
+    cancelledAt: shouldAutoCancel ? new Date().toISOString() : (currentTrip?.cancelledAt || null),
+    notes: String(currentTrip?.notes || '').trim() || importedTrip?.notes,
+    confirmation: currentTrip?.confirmation || importedTrip?.confirmation,
+    updatedAt: Number(currentTrip?.updatedAt) || Number(importedTrip?.updatedAt) || 0
+  });
+};
 
 const dedupeImportedTripBatch = trips => {
   const dedupedTrips = [];
@@ -821,8 +837,12 @@ export const NemtProvider = ({
     })
   });
 
-  const cancelTrips = (tripIds = []) => updateState(currentState => {
+  const cancelTrips = (tripIds = [], options = {}) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const cancellationSource = String(options?.source || 'dispatcher-manual').trim() || 'dispatcher-manual';
+    const providedReason = String(options?.reason || '').trim();
+    const cancellationReason = providedReason || (cancellationSource === 'saferide-import' ? 'Canceled by SafeRide' : 'Cancelled by dispatcher');
+    const cancelledAt = new Date().toISOString();
     const updatedAt = getMutationTimestamp();
     const updatedRoutePlans = currentState.routePlans.map(routePlan => ({
       ...routePlan,
@@ -838,17 +858,25 @@ export const NemtProvider = ({
         secondaryDriverId: null,
         routeId: null,
         updatedAt,
-        status: 'Cancelled'
+        status: 'Cancelled',
+        safeRideStatus: cancellationSource === 'saferide-import' ? 'Canceled by SafeRide' : trip.safeRideStatus,
+        cancellationReason,
+        cancellationSource,
+        cancelledAt
       } : trip)
     };
   }, {
     markDispatchDirty: true,
-    buildAuditEntry: () => ({
+    buildAuditEntry: currentState => ({
       action: 'cancel-trips',
       entityType: 'trip',
       source: 'dispatcher',
-      summary: `Cancelled ${tripIds.length} trip(s)`,
-      metadata: { tripIds }
+      summary: `Cancelled ${getTargetTripIdsForAudit(currentState, tripIds).length} trip(s)`,
+      metadata: {
+        tripIds: getTargetTripIdsForAudit(currentState, tripIds),
+        cancellationReason,
+        cancellationSource
+      }
     })
   });
 
@@ -1130,11 +1158,15 @@ export const NemtProvider = ({
     });
     const nextTrips = normalizeTripRecords([...untouchedCurrentTrips, ...mergedImportedTrips]);
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
+    const cancelledTripIds = new Set(nextTrips.filter(trip => isCancelledLikeStatus(trip?.status)).map(trip => String(trip.id || '').trim()));
 
     return {
       ...currentState,
       trips: nextTrips,
-      routePlans: currentState.routePlans.filter(routePlan => routePlan.tripIds.some(tripId => nextTripIds.has(tripId))),
+      routePlans: currentState.routePlans.map(routePlan => ({
+        ...routePlan,
+        tripIds: routePlan.tripIds.filter(tripId => nextTripIds.has(tripId) && !cancelledTripIds.has(String(tripId || '').trim()))
+      })).filter(routePlan => routePlan.tripIds.length > 0),
       selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(tripId))
     };
   }, { markDispatchDirty: true });

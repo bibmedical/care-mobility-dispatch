@@ -775,6 +775,9 @@ const DispatcherWorkspace = () => {
   const [quickReassignDriverId, setQuickReassignDriverId] = useState('');
   const [noteModalTripId, setNoteModalTripId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelTripIds, setCancelTripIds] = useState([]);
+  const [cancelReasonDraft, setCancelReasonDraft] = useState('');
   const [tripEditDraft, setTripEditDraft] = useState(buildTripEditDraft(null));
   const [inlineTripEditCell, setInlineTripEditCell] = useState(null);
   const [inlineTripEditValue, setInlineTripEditValue] = useState('');
@@ -2011,19 +2014,43 @@ const DispatcherWorkspace = () => {
     setStatusMessage(`Trip ${tripId} desasignado.`);
   };
 
-  const handleCancelTrip = tripId => {
-    cancelTrips([tripId]);
-    setStatusMessage(`Trip ${tripId} cancelado.`);
-  };
-
-  const handleCancelSelectedTrips = () => {
-    if (selectedTripIds.length === 0) {
+  const openCancelModalForTrips = tripIds => {
+    const normalizedTripIds = (Array.isArray(tripIds) ? tripIds : []).map(id => String(id || '').trim()).filter(Boolean);
+    if (normalizedTripIds.length === 0) {
       setStatusMessage('Select at least one trip to cancel.');
       return;
     }
+    setCancelTripIds(normalizedTripIds);
+    setCancelReasonDraft('');
+    setShowCancelModal(true);
+  };
 
-    cancelTrips(selectedTripIds);
-    setStatusMessage(`${selectedTripIds.length} trip(s) cancelados.`);
+  const handleCloseCancelModal = () => {
+    setShowCancelModal(false);
+    setCancelTripIds([]);
+    setCancelReasonDraft('');
+  };
+
+  const handleConfirmCancelTrips = () => {
+    const reason = String(cancelReasonDraft || '').trim();
+    if (!reason) {
+      setStatusMessage('Cancellation reason is required.');
+      return;
+    }
+    cancelTrips(cancelTripIds, {
+      source: 'dispatcher-manual',
+      reason
+    });
+    setStatusMessage(`${cancelTripIds.length} trip(s) cancelados.`);
+    handleCloseCancelModal();
+  };
+
+  const handleCancelTrip = tripId => {
+    openCancelModalForTrips([tripId]);
+  };
+
+  const handleCancelSelectedTrips = () => {
+    openCancelModalForTrips(selectedTripIds);
   };
 
   const handleReinstateTrip = tripId => {
@@ -3074,6 +3101,29 @@ const DispatcherWorkspace = () => {
           <Modal.Footer>
             <Button variant="outline-secondary" onClick={() => applyDispatcherLayoutPreset('full')}>Restore full workspace</Button>
             <Button variant="dark" onClick={() => setShowLayoutModal(false)}>Close</Button>
+          </Modal.Footer>
+        </Modal>
+
+        <Modal show={showCancelModal} onHide={handleCloseCancelModal} centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Cancel Trip{cancelTripIds.length > 1 ? 's' : ''}</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="small text-muted mb-2">
+              {cancelTripIds.length} trip{cancelTripIds.length > 1 ? 's' : ''} will be cancelled and unassigned from drivers/routes.
+            </div>
+            <Form.Label className="small text-uppercase text-muted fw-semibold">Cancellation reason (required)</Form.Label>
+            <Form.Control
+              as="textarea"
+              rows={4}
+              value={cancelReasonDraft}
+              onChange={event => setCancelReasonDraft(event.target.value)}
+              placeholder="Example: Patient called and cancelled with dispatch"
+            />
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={handleCloseCancelModal}>Back</Button>
+            <Button variant="danger" onClick={handleConfirmCancelTrips} disabled={!String(cancelReasonDraft || '').trim()}>Cancel Trip{cancelTripIds.length > 1 ? 's' : ''}</Button>
           </Modal.Footer>
         </Modal>
 
