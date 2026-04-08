@@ -1262,6 +1262,15 @@ const DispatcherWorkspace = () => {
             >
               C
             </Button>
+            <Button
+              variant="dark"
+              size="sm"
+              onClick={handleBlockSelectedTrips}
+              disabled={mapLocked || selectedTripIds.length === 0}
+              title="Block selected trips as rehab or hospital"
+            >
+              B
+            </Button>
           </div>;
       case 'leg-buttons':
         return null;
@@ -2102,6 +2111,36 @@ const DispatcherWorkspace = () => {
     unassignTrips([tripId]);
     setSelectedTripIds(currentIds => currentIds.filter(id => id !== tripId));
     setStatusMessage(`Trip ${tripId} desasignado.`);
+  };
+
+  const handleBlockSelectedTrips = () => {
+    if (selectedTripIds.length === 0) {
+      setStatusMessage('Selecciona al menos un trip para bloquear.');
+      return;
+    }
+
+    const response = String(window.prompt('Block selected trips as: rehab or hospital', 'rehab') || '').trim().toLowerCase();
+    if (!response) return;
+
+    const blockType = response.startsWith('h') ? 'hospital' : response.startsWith('r') ? 'rehab' : '';
+    if (!blockType) {
+      setStatusMessage('Valor invalido. Usa rehab o hospital.');
+      return;
+    }
+
+    const endDate = shiftTripDateKey(todayDateKey, 14) || todayDateKey;
+    selectedTripIds.forEach(tripId => {
+      updateTripRecord(tripId, {
+        hospitalStatus: {
+          type: blockType,
+          startDate: todayDateKey,
+          endDate,
+          reason: blockType === 'hospital' ? 'Blocked to hospital by dispatcher' : 'Blocked to rehab by dispatcher'
+        }
+      });
+    });
+
+    setStatusMessage(`${selectedTripIds.length} trip(s) bloqueados como ${blockType}.`);
   };
 
   const openCancelModalForTrips = tripIds => {

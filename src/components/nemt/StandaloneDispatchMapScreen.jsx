@@ -397,6 +397,13 @@ const StandaloneDispatchMapScreen = () => {
   const normalizeTripId = tripId => String(tripId || '').trim();
   const selectedDashboardTripIds = useMemo(() => new Set((Array.isArray(effectiveSelectedTripIds) ? effectiveSelectedTripIds : EMPTY_ITEMS).map(value => normalizeTripId(value)).filter(Boolean)), [effectiveSelectedTripIds]);
   const selectedDashboardTrips = useMemo(() => sortTripsByPickupTime(trips.filter(trip => selectedDashboardTripIds.has(normalizeTripId(trip?.id)))), [selectedDashboardTripIds, trips]);
+  const shouldAutoSelectRouteTrips = useMemo(() => {
+    if (source !== 'dispatcher') return true;
+    if (!selectedDriver) return true;
+    if (effectiveRouteTripIds.length > 0) return true;
+    if (selectedDashboardTripIds.size > 0) return true;
+    return false;
+  }, [effectiveRouteTripIds.length, selectedDashboardTripIds.size, selectedDriver, source]);
   const selectedDriverCandidateTripIds = useMemo(() => new Set(trips.filter(trip => selectedDashboardTripIds.has(normalizeTripId(trip?.id)) && (!trip.driverId || String(trip.driverId || '').trim() === effectiveSelectedDriverId)).map(trip => trip.id)), [effectiveSelectedDriverId, selectedDashboardTripIds, trips]);
   const dashboardRouteTrips = useMemo(() => {
     if (effectiveRouteTripIds.length > 0) {
@@ -434,9 +441,12 @@ const StandaloneDispatchMapScreen = () => {
       if (kept.length > 0) {
         return areStringArraysEqual(kept, current) ? current : kept;
       }
+      if (!shouldAutoSelectRouteTrips) {
+        return current.length === 0 ? current : [];
+      }
       return areStringArraysEqual(availableIds, current) ? current : availableIds;
     });
-  }, [dashboardRouteTrips]);
+  }, [dashboardRouteTrips, shouldAutoSelectRouteTrips]);
 
   useEffect(() => {
     if (!dashboardSidebarHidden) return;
@@ -511,8 +521,8 @@ const StandaloneDispatchMapScreen = () => {
     if (!selectedDriver) return null;
     const preferredTrip = trips.find(trip => selectedDashboardTripIds.has(normalizeTripId(trip?.id)) && trip.driverId === selectedDriver.id && isTripEnRoute(trip));
     if (preferredTrip) return preferredTrip;
-    return activeDashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id && isTripEnRoute(trip)) || dashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id && isTripEnRoute(trip)) || trips.find(trip => trip.driverId === selectedDriver.id && isTripEnRoute(trip)) || null;
-  }, [activeDashboardRouteTrips, dashboardRouteTrips, selectedDashboardTripIds, selectedDriver, trips]);
+    return activeDashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id && isTripEnRoute(trip)) || null;
+  }, [activeDashboardRouteTrips, selectedDashboardTripIds, selectedDriver, trips]);
   const dashboardDriverPendingEtaTrip = useMemo(() => {
     if (!selectedDriver || dashboardDriverActiveTrip) return null;
     const preferredTrip = trips.find(trip => selectedDashboardTripIds.has(normalizeTripId(trip?.id)) && trip.driverId === selectedDriver.id);
