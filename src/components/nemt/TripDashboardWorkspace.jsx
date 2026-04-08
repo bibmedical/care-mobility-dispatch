@@ -2882,11 +2882,8 @@ const TripDashboardWorkspace = () => {
             <tbody>
               {filteredDrivers.length > 0 ? filteredDrivers.map((driver, index) => <tr key={driver.id} className={selectedDriverId === driver.id ? 'table-primary' : ''}>
                   <td className="py-1">
-                    <div className="d-flex align-items-center gap-1">
-                      <Form.Check type="radio" checked={selectedDriverId === driver.id} onChange={() => setSelectedDriverId(driver.id)} />
-                      <Button variant="outline-success" size="sm" onClick={() => handleAssign(driver.id)}>
-                        <IconifyIcon icon="la:arrow-right" />
-                      </Button>
+                    <div className="d-flex align-items-center justify-content-center">
+                      <Form.Check className="trip-dashboard-selector" type="radio" checked={selectedDriverId === driver.id} onChange={() => setSelectedDriverId(driver.id)} />
                     </div>
                   </td>
                   <td className="py-1 text-center fw-bold">{index + 1}</td>
@@ -2943,9 +2940,8 @@ const TripDashboardWorkspace = () => {
             <tbody>
               {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
                   <td>
-                    <div className="d-flex align-items-center gap-1">
-                      <Form.Check checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => toggleTripSelection(trip.id)} />
-                      <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
+                    <div className="d-flex align-items-center justify-content-center">
+                      <Form.Check className="trip-dashboard-selector" checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => toggleTripSelection(trip.id)} />
                     </div>
                   </td>
                   <td className="fw-semibold">{trip.id}{getTripAddedByLabel(trip) ? <div className="small mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}</td>
@@ -3884,6 +3880,34 @@ const TripDashboardWorkspace = () => {
 
           .trip-dashboard-sheet-table tbody tr:nth-child(even) td {
             background: #f9fcf9;
+          }
+
+          .trip-dashboard-selector {
+            margin-bottom: 0;
+          }
+
+          .trip-dashboard-selector .form-check-input {
+            width: 16px;
+            height: 16px;
+            margin-top: 0;
+            cursor: pointer;
+            border-width: 2px;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-selector .form-check-input {
+            background-color: #0f172a;
+            border-color: #94a3b8;
+            box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.25);
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-selector .form-check-input:checked {
+            background-color: #60a5fa;
+            border-color: #60a5fa;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-selector .form-check-input:focus {
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 0.2rem rgba(96, 165, 250, 0.35);
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-wrap {
