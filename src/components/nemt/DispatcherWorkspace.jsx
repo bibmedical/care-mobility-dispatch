@@ -3071,11 +3071,10 @@ const DispatcherWorkspace = () => {
                   <thead style={dispatcherSurfaceStyles.tableHead}>
                     <tr>
                       <th style={{ width: 48 }} />
-                      <th>Driver</th>
+                      <th>Rider</th>
                       <th>Type</th>
                       <th>PU</th>
                       <th>DO</th>
-                      <th>Rider</th>
                       <th>Phone</th>
                     </tr>
                   </thead>
@@ -3087,11 +3086,10 @@ const DispatcherWorkspace = () => {
                             <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
                           </div>
                         </td>
-                        <td className="fw-semibold">{getDriverName(trip.driverId)}</td>
+                        <td className="fw-semibold">{trip.rider}</td>
                         <td>{getTripTypeLabel(trip)}</td>
                         <td>{trip.pickup}</td>
                         <td>{trip.dropoff}</td>
-                        <td>{trip.rider}</td>
                         <td>{trip.patientPhoneNumber || '-'}</td>
                       </tr>) : <tr>
                         <td colSpan={6} className="text-center py-4" style={{ color: dispatcherSurfaceStyles.emptyText }}>Selecciona una ruta, un chofer o trips para ver el menu de ruta.</td>
