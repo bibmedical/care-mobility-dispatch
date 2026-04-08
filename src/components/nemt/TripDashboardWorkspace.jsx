@@ -1178,11 +1178,6 @@ const TripDashboardWorkspace = () => {
               <option value="">Origin</option>
               {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
             </Form.Select>
-            <span className="text-muted small">→</span>
-            <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} style={{ width: 140 }} title="Dropoff city">
-              <option value="">Destination</option>
-              {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
-            </Form.Select>
             {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} title="Clear city/ZIP filters" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
           </div>;
       case 'theme-toggle':
@@ -3207,6 +3202,10 @@ const TripDashboardWorkspace = () => {
                   <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
                   <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
                   <Button variant={serviceAnimalOnly ? 'dark' : 'outline-dark'} size="sm" style={serviceAnimalOnly ? undefined : greenToolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
+                  <Form.Select size="sm" value={doCityFilter} onChange={event => setDoCityFilter(event.target.value)} style={{ width: 140 }} title="Dropoff city">
+                    <option value="">Destination</option>
+                    {availableDropoffCities.map(city => <option key={`do-inline-${city}`} value={city}>{city}</option>)}
+                  </Form.Select>
                   <Button variant={isActiveRouteClosed ? 'danger' : 'outline-dark'} size="sm" style={isActiveRouteClosed ? {
                 fontWeight: 700
               } : greenToolbarButtonStyle} onClick={handleToggleClosedRoute} title="Lock route by driver/day. New trips added later will show who added them.">
