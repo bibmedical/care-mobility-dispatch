@@ -776,7 +776,6 @@ const DispatcherWorkspace = () => {
   const [routeMetrics, setRouteMetrics] = useState(null);
   const [selectedDriverRouteGeometry, setSelectedDriverRouteGeometry] = useState([]);
   const [selectedDriverRouteMetrics, setSelectedDriverRouteMetrics] = useState(null);
-  const [showSelectedDriverEtaCard, setShowSelectedDriverEtaCard] = useState(false);
   const [tripOrderMode, setTripOrderMode] = useState('time');
   const [quickReassignDriverId, setQuickReassignDriverId] = useState('');
   const [noteModalTripId, setNoteModalTripId] = useState(null);
@@ -1542,15 +1541,17 @@ const DispatcherWorkspace = () => {
   const routeTrips = useMemo(() => {
     const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
     const selectedRouteTripIdSet = new Set((Array.isArray(selectedRoute?.tripIds) ? selectedRoute.tripIds : []).map(id => String(id || '').trim()).filter(Boolean));
+    const hasDriverScope = Boolean(selectedDriver);
     const baseTrips = selectedRoute
       ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim()))
-      : isManualDriverScope && selectedDriver
+      : hasDriverScope
         ? trips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id))
       : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
-    const scopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
+    const dateScopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
+    const scopedTrips = hasDriverScope && !selectedRoute && selectedTripIds.length === 0 && dateScopedTrips.length === 0 ? baseTrips : dateScopedTrips;
     const term = deferredRouteSearch.trim().toLowerCase();
     return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => String(value || '').toLowerCase().includes(term))));
-  }, [activeDateTripIdSet, deferredRouteSearch, isManualDriverScope, selectedDriver, selectedRoute, selectedTripIds, trips]);
+  }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedRoute, selectedTripIds, trips]);
 
   const routeStops = useMemo(() => {
     if (!showRoute) return [];
@@ -2552,15 +2553,6 @@ const DispatcherWorkspace = () => {
   }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip]);
 
   useEffect(() => {
-    if (!dispatcherLayout.mapVisible || !selectedDriver?.id || !selectedDriver?.hasRealLocation) {
-      setShowSelectedDriverEtaCard(false);
-      return;
-    }
-
-    setShowSelectedDriverEtaCard(true);
-  }, [dispatcherLayout.mapVisible, selectedDriver?.hasRealLocation, selectedDriver?.id]);
-
-  useEffect(() => {
     if (!dragMode) return;
 
     const handlePointerMove = event => {
@@ -2715,15 +2707,6 @@ const DispatcherWorkspace = () => {
                   <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
                 </div>
-                {showSelectedDriverEtaCard && selectedDriver?.hasRealLocation ? <div className="position-absolute top-0 end-0 m-3 text-white border rounded shadow-sm px-3 py-2" style={{ zIndex: 500, minWidth: 220, maxWidth: 280, borderColor: selectedDriverColor, background: `linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, ${selectedDriverColor} 180%)`, pointerEvents: 'none', opacity: 0.98 }}>
-                    <div className="fw-semibold d-flex align-items-center gap-2"><IconifyIcon icon="iconoir:map-pin" /> {selectedDriver.name}</div>
-                    <div className="small mt-1">{getDriverMapLocationLabel(selectedDriver)}</div>
-                    {selectedDriverEtaTrip && selectedDriverEta ? <div className="mt-2 d-flex align-items-center gap-2 flex-wrap">
-                        <Badge bg="info">{selectedDriverEta.label || 'ETA unavailable'}</Badge>
-                        <Badge bg="secondary">{selectedDriverEtaTrip.id}</Badge>
-                        <Badge bg="secondary">{selectedDriverEta?.miles != null ? `${selectedDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
-                      </div> : null}
-                  </div> : null}
                 <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
                   <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
@@ -2744,7 +2727,6 @@ const DispatcherWorkspace = () => {
                       <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                         <div className="fw-semibold">{selectedDriver.name}</div>
                         <div>{getDriverMapLocationLabel(selectedDriver)}</div>
-                        {selectedDriverEtaTrip && selectedDriverEta ? <div className="small text-muted">ETA • {selectedDriverEta.label || 'ETA unavailable'}</div> : null}
                       </Tooltip>
                     </Marker> : null}
                   {!selectedDriverId ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online', driverKey: driver.id || driver.name })}>
