@@ -1125,7 +1125,7 @@ const TripDashboardWorkspace = () => {
             setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
             setShowBottomPanels(true);
             setRightPanelCollapsed(false);
-            setColumnSplit(94);
+            setColumnSplit(58);
           }
         }}>{showInlineMap ? 'Map screen' : 'Show map here'}</Button>;
       case 'layout':
@@ -2558,8 +2558,8 @@ const TripDashboardWorkspace = () => {
     if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
       setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
       setShowMapPane(true);
-      setRightPanelCollapsed(true);
-      setColumnSplit(94);
+      setRightPanelCollapsed(false);
+      setColumnSplit(58);
       layoutHydratedRef.current = true;
       return;
     }
@@ -2574,8 +2574,8 @@ const TripDashboardWorkspace = () => {
     }
 
     setShowMapPane(true);
-    setRightPanelCollapsed(true);
-    setColumnSplit(94);
+    setRightPanelCollapsed(false);
+    setColumnSplit(58);
     layoutHydratedRef.current = true;
   }, [userPreferences?.tripDashboard?.layoutMode, userPreferencesLoading]);
 
@@ -2748,7 +2748,7 @@ const TripDashboardWorkspace = () => {
       setShowMapPane(true);
       setShowBottomPanels(true);
       setRightPanelCollapsed(false);
-      setColumnSplit(94);
+      setColumnSplit(58);
       setRowSplit(68);
       setStatusMessage('Normal layout restored with anchored bottom panels.');
       return;
