@@ -2125,10 +2125,10 @@ const TripDashboardWorkspace = () => {
   };
 
   const tripHeaderCellStyle = {
-    paddingTop: '0.4rem',
-    paddingBottom: '0.4rem',
-    lineHeight: 1,
-    fontSize: '0.82rem'
+    paddingTop: '0.22rem',
+    paddingBottom: '0.22rem',
+    lineHeight: 1.02,
+    fontSize: '0.76rem'
   };
 
   const renderTripHeader = (columnKey, label, width, sortable = true) => {
@@ -2150,11 +2150,11 @@ const TripDashboardWorkspace = () => {
       <span role="presentation" onMouseDown={event => handleColumnResizeStart(event, columnKey)} style={{
         position: 'absolute',
         top: 0,
-        right: -8,
-        width: 16,
+        right: -5,
+        width: 10,
         height: '100%',
         cursor: 'col-resize',
-        background: 'linear-gradient(180deg, rgba(107,114,128,0) 0%, rgba(107,114,128,0.55) 30%, rgba(107,114,128,0.55) 70%, rgba(107,114,128,0) 100%)'
+        background: 'linear-gradient(180deg, rgba(90,108,98,0) 0%, rgba(90,108,98,0.2) 30%, rgba(90,108,98,0.2) 70%, rgba(90,108,98,0) 100%)'
       }} />
     </th>;
   };
@@ -3401,21 +3401,23 @@ const TripDashboardWorkspace = () => {
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ ...tripHeaderCellStyle, width: 48 }}>
-                        <input
-                          type="checkbox"
-                          checked={allVisibleSelected}
-                          onChange={event => handleSelectAll(event.target.checked)}
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 4,
-                            border: '1px solid #6b7280',
-                            backgroundColor: '#6b7280',
-                            accentColor: '#8b5cf6',
-                            cursor: 'pointer'
-                          }}
-                        />
-                        <div className="small fw-semibold mt-1" style={{ lineHeight: 1 }}>{selectedTripIds.length}</div>
+                        <div className="d-flex align-items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={allVisibleSelected}
+                            onChange={event => handleSelectAll(event.target.checked)}
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: 4,
+                              border: '1px solid #6b7280',
+                              backgroundColor: '#6b7280',
+                              accentColor: '#8b5cf6',
+                              cursor: 'pointer'
+                            }}
+                          />
+                          <span className="small fw-semibold" style={{ lineHeight: 1 }}>{selectedTripIds.length}</span>
+                        </div>
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
                       {renderTripHeader('notes', 'Notes', 56, false)}
@@ -3787,8 +3789,10 @@ const TripDashboardWorkspace = () => {
             z-index: 6;
             background: #d6ead8 !important;
             color: #1f2937;
-            border-right: 1px solid #b7d0bb;
-            border-bottom: 1px solid #9fbea4;
+            border-right: 1px solid #c8d8cb;
+            border-bottom: 1px solid #b8ccbc;
+            padding-top: 0.22rem;
+            padding-bottom: 0.22rem;
           }
 
           .trip-dashboard-sheet-table tbody td {
