@@ -356,6 +356,7 @@ const TripImportWorkspace = () => {
   const [pendingTrips, setPendingTrips] = useState([]);
   const [selectedFileName, setSelectedFileName] = useState('');
   const [isParsing, setIsParsing] = useState(false);
+  const [selectedAuditDate, setSelectedAuditDate] = useState(() => toLocalDateKey(new Date()));
 
   const importedServiceDateKeys = useMemo(() => Array.from(new Set(pendingTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).sort(), [pendingTrips]);
 
@@ -425,18 +426,31 @@ const TripImportWorkspace = () => {
     }).filter(Boolean);
   }, [importedServiceDateKeys, pendingTrips, trips]);
 
+  const selectedDateSummary = useMemo(() => {
+    const selectedDayTrips = trips.filter(trip => getTripServiceDateKey(trip) === selectedAuditDate);
+    const cancelledCount = selectedDayTrips.filter(trip => {
+      const normalizedStatus = String(trip?.status || trip?.safeRideStatus || '').trim().toLowerCase();
+      return normalizedStatus === 'cancelled' || normalizedStatus === 'canceled';
+    }).length;
+
+    return {
+      total: selectedDayTrips.length,
+      cancelled: cancelledCount
+    };
+  }, [selectedAuditDate, trips]);
+
   const stats = useMemo(() => [{
     label: 'Trips en sistema',
     value: String(trips.length)
   }, {
-    label: 'Preview rows',
+    label: 'Filas en vista previa',
     value: String(pendingTrips.length)
   }, {
     label: 'Formato',
     value: selectedFileName ? selectedFileName.split('.').pop()?.toUpperCase() || 'N/A' : 'XLSX/CSV'
   }, {
     label: 'Modo',
-    value: 'Replace matching days'
+    value: 'Reemplazar dias coincidentes'
   }], [pendingTrips.length, selectedFileName, trips.length]);
 
   const handleDownloadTemplate = () => {
@@ -521,7 +535,7 @@ const TripImportWorkspace = () => {
   };
 
   return <>
-      <PageTitle title="Trip Import" subName="Excel Loader" />
+      <PageTitle title="Importar viajes" subName="Cargador Excel" />
       <Row className="g-3 mb-3">
         {stats.map(stat => <Col md={6} xl={3} key={stat.label}>
             <Card className="h-100">
@@ -550,16 +564,37 @@ const TripImportWorkspace = () => {
               <div className="small text-muted mb-3">{selectedFileName ? `Archivo seleccionado: ${selectedFileName}` : 'No hay archivo seleccionado.'}</div>
               <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Dias detectados en archivo: ${importedServiceDateKeys.join(', ')}` : 'Dias detectados en archivo: -'}</div>
               <div className="small text-muted mb-3">{message}</div>
+              <Alert variant="secondary" className="small mb-3">
+                <div className="fw-semibold mb-2">Resumen diario de cancelados</div>
+                <div className="d-flex flex-wrap align-items-end gap-3">
+                  <Form.Group>
+                    <Form.Label className="mb-1">Selecciona fecha</Form.Label>
+                    <Form.Control
+                      type="date"
+                      value={selectedAuditDate}
+                      onChange={event => setSelectedAuditDate(event.target.value)}
+                    />
+                  </Form.Group>
+                  <div>
+                    <div className="text-muted">Viajes del dia</div>
+                    <div className="fw-semibold">{selectedDateSummary.total}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted">Cancelados del dia</div>
+                    <div className="fw-semibold text-danger">{selectedDateSummary.cancelled}</div>
+                  </div>
+                </div>
+              </Alert>
               {pendingTrips.length > 0 ? <Alert variant="light" className="small mb-3">
-                  <div className="fw-semibold mb-1">SafeRide Match Check (same day)</div>
-                  <div>SafeRide rows: {importReconciliation.sourceRows}</div>
-                  <div>Rows in system (same day): {importReconciliation.existingRows}</div>
-                  <div>Matched rows: {importReconciliation.matchedRows}</div>
-                  <div>New rows from SafeRide: {importReconciliation.newRows}</div>
-                  <div>Rows missing from SafeRide file: {importReconciliation.missingFromSafeRide}</div>
+                  <div className="fw-semibold mb-1">Comparacion SafeRide (mismo dia)</div>
+                  <div>Filas en SafeRide: {importReconciliation.sourceRows}</div>
+                  <div>Filas en sistema (mismo dia): {importReconciliation.existingRows}</div>
+                  <div>Filas coincidentes: {importReconciliation.matchedRows}</div>
+                  <div>Filas nuevas desde SafeRide: {importReconciliation.newRows}</div>
+                  <div>Filas que faltan en el archivo SafeRide: {importReconciliation.missingFromSafeRide}</div>
                 </Alert> : null}
               {changedToCancelledTrips.length > 0 ? <Alert variant="warning" className="small mb-3">
-                  <div className="fw-semibold mb-2">Changed to cancelled in this file: {changedToCancelledTrips.length}</div>
+                  <div className="fw-semibold mb-2">Cambiados a cancelado en este archivo: {changedToCancelledTrips.length}</div>
                   <div className="table-responsive">
                     <Table size="sm" className="mb-0 align-middle">
                       <thead>
@@ -578,7 +613,7 @@ const TripImportWorkspace = () => {
                       </tbody>
                     </Table>
                   </div>
-                  {changedToCancelledTrips.length > 25 ? <div className="mt-2">Showing first 25 rows.</div> : null}
+                  {changedToCancelledTrips.length > 25 ? <div className="mt-2">Mostrando las primeras 25 filas.</div> : null}
                 </Alert> : null}
               {pendingTrips.length > 0 ? <Alert variant="success" className="d-flex flex-wrap align-items-center justify-content-between gap-3">
                   <div>
@@ -612,23 +647,23 @@ const TripImportWorkspace = () => {
                     <tr>
                       <th>Ride ID</th>
                       <th>Trip ID</th>
-                      <th>Leg</th>
-                      <th>Rider</th>
-                      <th>Status</th>
-                      <th>Miles</th>
-                      <th>Phone</th>
+                      <th>Tramo</th>
+                      <th>Pasajero</th>
+                      <th>Estado</th>
+                      <th>Millas</th>
+                      <th>Telefono</th>
                       <th>PU</th>
                       <th>DO</th>
                       <th>PU Address</th>
                       <th>DO Address</th>
-                      <th>Vehicle</th>
+                      <th>Vehiculo</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pendingTrips.length > 0 ? pendingTrips.map(trip => <tr key={trip.id}>
                         <td className="fw-semibold">{trip.id}</td>
                         <td>{trip.brokerTripId || '-'}</td>
-                        <td><Badge bg={trip.legVariant || 'secondary'}>{trip.legLabel || 'Ride'}</Badge></td>
+                        <td><Badge bg={trip.legVariant || 'secondary'}>{trip.legLabel || 'Viaje'}</Badge></td>
                         <td>{trip.rider}</td>
                         <td><Badge bg="secondary">{trip.safeRideStatus || '-'}</Badge></td>
                         <td>{trip.miles || '-'}</td>

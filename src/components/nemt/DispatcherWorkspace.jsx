@@ -771,7 +771,7 @@ const DispatcherWorkspace = () => {
   const [selectedDriverRouteGeometry, setSelectedDriverRouteGeometry] = useState([]);
   const [selectedDriverRouteMetrics, setSelectedDriverRouteMetrics] = useState(null);
   const [showSelectedDriverEtaCard, setShowSelectedDriverEtaCard] = useState(false);
-  const [tripOrderMode, setTripOrderMode] = useState('original');
+  const [tripOrderMode, setTripOrderMode] = useState('time');
   const [quickReassignDriverId, setQuickReassignDriverId] = useState('');
   const [noteModalTripId, setNoteModalTripId] = useState(null);
   const [noteDraft, setNoteDraft] = useState('');
@@ -904,7 +904,12 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     if (userPreferencesLoading) return;
-    setDispatcherLayout(normalizeDispatcherLayout(userPreferences?.dispatcherLayout));
+    const nextLayout = normalizeDispatcherLayout({
+      ...normalizeDispatcherLayout(userPreferences?.dispatcherLayout),
+      messagingVisible: false,
+      actionsVisible: false
+    });
+    setDispatcherLayout(nextLayout);
   }, [userPreferences?.dispatcherLayout, userPreferencesLoading]);
 
   const persistDispatcherLayout = nextValue => {
