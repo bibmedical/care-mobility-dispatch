@@ -7,41 +7,35 @@ export const MENU_ITEMS = [{
   icon: 'iconoir:report-columns',
   label: 'Dispatcher',
   children: [{
-    key: 'dispatcher-live',
-    label: 'Live Board',
-    url: '/dispatcher'
+    key: 'trip-dashboard-blacklist',
+    label: 'Black List',
+    url: '/blacklist'
   }, {
     key: 'dispatcher-history',
     label: 'History',
     url: '/dispatcher/history'
+  }, {
+    key: 'dispatcher-live',
+    label: 'Live Board',
+    url: '/dispatcher'
   }]
-}, {
-  key: 'trip-analytics',
-  label: 'Primary Dashboard',
-  icon: 'iconoir:stats-report',
-  url: '/trip-analytics'
 }, {
   key: 'trip-dashboard',
   label: 'Trip Dashboard',
   icon: 'iconoir:view-grid',
   children: [{
-    key: 'trip-dashboard-main',
-    label: 'Trip Dashboard',
-    url: '/trip-dashboard'
-  }, {
     key: 'trip-dashboard-confirmation',
     label: 'Confirmation',
     url: '/confirmation'
   }, {
-    key: 'trip-dashboard-blacklist',
-    label: 'Black List',
-    url: '/blacklist'
+    key: 'excel-loader-inner',
+    label: 'Excel Loader',
+    url: '/forms-safe-ride-import'
+  }, {
+    key: 'trip-dashboard-main',
+    label: 'Trip Dashboard',
+    url: '/trip-dashboard'
   }]
-}, {
-  key: 'excel-loader',
-  label: 'Excel Loader',
-  icon: 'iconoir:page-search',
-  url: '/forms-safe-ride-import'
 }, {
   key: 'billing-title',
   label: 'Billing',
@@ -50,19 +44,27 @@ export const MENU_ITEMS = [{
   key: 'billing',
   label: 'Billing',
   icon: 'iconoir:dollar-circle',
-  url: '/billing'
-}, {
-  key: 'settings',
-  label: 'Settings',
-  isTitle: true
+  children: [{
+    key: 'billing-main',
+    label: 'Billing',
+    url: '/billing'
+  }, {
+    key: 'billing-rates',
+    label: 'Rates',
+    url: '/rates'
+  }]
 }, {
   key: 'configuraciones-menu',
   label: 'Settings',
   icon: 'iconoir:settings-system',
   children: [{
-    key: 'configuraciones-office',
-    label: 'Office',
-    url: '/settings/office'
+    key: 'avatar',
+    label: 'Avatar',
+    url: '/avatar'
+  }, {
+    key: 'drivers-menu-inner',
+    label: 'Drivers',
+    url: '/drivers'
   }, {
     key: 'configuraciones-email-templates',
     label: 'Email Templates',
@@ -72,17 +74,13 @@ export const MENU_ITEMS = [{
     label: 'Logo',
     url: '/preferences'
   }, {
-    key: 'avatar',
-    label: 'Avatar',
-    url: '/avatar'
+    key: 'configuraciones-office',
+    label: 'Office',
+    url: '/settings/office'
   }, {
     key: 'user-management',
     label: 'User Management',
     url: '/user-management'
-  }, {
-    key: 'drivers-menu-inner',
-    label: 'Drivers',
-    url: '/drivers'
   }, {
     key: 'vehicles-inner',
     label: 'Vehicles',
@@ -105,11 +103,6 @@ export const MENU_ITEMS = [{
     label: 'SMS',
     url: '/integrations/sms'
   }]
-}, {
-  key: 'rates',
-  label: 'Rates',
-  icon: 'iconoir:dollar-circle',
-  url: '/rates'
 }, {
   key: 'logs',
   label: 'Logs',
