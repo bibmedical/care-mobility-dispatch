@@ -32,7 +32,7 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 };
 
 const DISPATCHER_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW1_BLOCKS__';
-const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['trip-summary', 'status-filter', 'date-controls', 'trip-search', 'driver-assigned'];
+const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['trip-summary', 'status-filter', 'date-controls', 'trip-search', 'driver-select', 'secondary-driver', 'driver-assigned', 'selected-count'];
 const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'toolbar-edit', 'columns', 'map-screen', 'trip-order'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
