@@ -790,6 +790,13 @@ const TripDashboardWorkspace = () => {
       borderColor: '#334155'
     }
     : { width: 140 };
+  const offlineDriverBadgeStyle = isDarkTheme
+    ? {
+      backgroundColor: '#475569',
+      color: '#f8fafc',
+      border: '1px solid #64748b'
+    }
+    : undefined;
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const activeDateTripIdSet = useMemo(() => {
     if (tripDateFilter === 'all') return null;
@@ -2861,7 +2868,7 @@ const TripDashboardWorkspace = () => {
                   {!isFocusRightLayout ? <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td> : null}
                   {!isFocusRightLayout ? <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td> : null}
                   <td className="py-1 text-center" style={{ whiteSpace: 'nowrap' }}>
-                    <Badge bg={driver.live === 'Online' ? 'success' : 'secondary'} className="fw-normal">{driver.live || 'Offline'}</Badge>
+                    <Badge bg={driver.live === 'Online' ? 'success' : 'secondary'} className="fw-normal" style={driver.live === 'Online' ? undefined : offlineDriverBadgeStyle}>{driver.live || 'Offline'}</Badge>
                   </td>
                 </tr>) : <tr>
                   <td colSpan={isFocusRightLayout ? 7 : 9} className="text-center text-muted py-4">No drivers or vehicles loaded.</td>
@@ -3218,8 +3225,6 @@ const TripDashboardWorkspace = () => {
               }}>
                     AI Route
                   </button>
-                  <Button variant={compactToolbarOutlineVariant} size="sm" style={isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
-                  <Button variant={compactToolbarOutlineVariant} size="sm" style={isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
                   {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
                       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
                       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
