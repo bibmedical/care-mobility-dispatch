@@ -32,7 +32,7 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 };
 
 const DISPATCHER_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW1_BLOCKS__';
-const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'selected-count'];
+const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'selected-count', 'day-summary'];
 const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'toolbar-edit', 'columns', 'map-screen', 'trip-order'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
@@ -849,6 +849,18 @@ const DispatcherWorkspace = () => {
   const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
   const dispatchTimeZone = uiPreferences?.timeZone;
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), dispatchTimeZone), [dispatchTimeZone]);
+  const daySummaryMetrics = useMemo(() => {
+    const targetDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
+    const dayTrips = trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === targetDateKey);
+    const cancelled = dayTrips.filter(trip => getEffectiveTripStatus(trip) === 'Cancelled').length;
+    const completedByDrivers = dayTrips.filter(trip => String(getEffectiveTripStatus(trip)).trim().toLowerCase() === 'completed' && (trip?.driverId || trip?.secondaryDriverId)).length;
+    return {
+      dateKey: targetDateKey,
+      total: dayTrips.length,
+      cancelled,
+      completedByDrivers
+    };
+  }, [routePlans, todayDateKey, tripDateFilter, trips]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
 
   useEffect(() => {
@@ -870,25 +882,18 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     if (userPreferencesLoading) return;
-    const loadToolbarOrder = (storageKey, defaultOrder) => {
-      const storedValue = window.localStorage.getItem(storageKey);
-      if (!storedValue) return defaultOrder;
-      const parsed = JSON.parse(storedValue);
-      return Array.isArray(parsed) ? parsed : defaultOrder;
-    };
-
     try {
-      const loadedRow1 = userPreferences?.dispatcherToolbar?.row1?.length ? userPreferences.dispatcherToolbar.row1 : loadToolbarOrder(DISPATCHER_ROW1_BLOCKS_KEY, DISPATCHER_ROW1_DEFAULT_BLOCKS);
-      const loadedRow2 = userPreferences?.dispatcherToolbar?.row2?.length ? userPreferences.dispatcherToolbar.row2 : loadToolbarOrder(DISPATCHER_ROW2_BLOCKS_KEY, DISPATCHER_ROW2_DEFAULT_BLOCKS);
-      const loadedRow3 = userPreferences?.dispatcherToolbar?.row3?.length ? userPreferences.dispatcherToolbar.row3 : loadToolbarOrder(DISPATCHER_ROW3_BLOCKS_KEY, DISPATCHER_ROW3_DEFAULT_BLOCKS);
-      const normalizedRows = normalizeDispatcherToolbarRows(loadedRow1, loadedRow2, loadedRow3);
+      const normalizedRows = normalizeDispatcherToolbarRows(DISPATCHER_ROW1_DEFAULT_BLOCKS, DISPATCHER_ROW2_DEFAULT_BLOCKS, DISPATCHER_ROW3_DEFAULT_BLOCKS);
       setToolbarRow1Order(normalizedRows.row1);
       setToolbarRow2Order(normalizedRows.row2);
       setToolbarRow3Order(normalizedRows.row3);
+      window.localStorage.removeItem(DISPATCHER_ROW1_BLOCKS_KEY);
+      window.localStorage.removeItem(DISPATCHER_ROW2_BLOCKS_KEY);
+      window.localStorage.removeItem(DISPATCHER_ROW3_BLOCKS_KEY);
     } catch {
       // Ignore corrupted local toolbar layout preferences.
     }
-  }, [userPreferences?.dispatcherToolbar?.row1, userPreferences?.dispatcherToolbar?.row2, userPreferences?.dispatcherToolbar?.row3, userPreferencesLoading]);
+  }, [userPreferencesLoading]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
@@ -1141,6 +1146,21 @@ const DispatcherWorkspace = () => {
         return selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null;
       case 'selected-count':
         return <Badge bg={selectedTripIds.length > 0 ? 'dark' : 'light'} text={selectedTripIds.length > 0 ? 'light' : 'dark'}>{selectedTripIds.length} selected trips</Badge>;
+      case 'day-summary':
+        return <div className="d-flex align-items-center" style={{ border: '1px solid rgba(8,19,26,0.25)', borderRadius: 6, overflow: 'hidden' }} title={`Day summary for ${daySummaryMetrics.dateKey}`}>
+            <div className="px-2 py-1" style={{ backgroundColor: '#e2e8f0', minWidth: 74 }}>
+              <div className="small text-muted" style={{ lineHeight: 1 }}>Total</div>
+              <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.total}</div>
+            </div>
+            <div className="px-2 py-1 border-start" style={{ backgroundColor: '#fee2e2', minWidth: 94 }}>
+              <div className="small text-muted" style={{ lineHeight: 1 }}>Cancelled</div>
+              <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.cancelled}</div>
+            </div>
+            <div className="px-2 py-1 border-start" style={{ backgroundColor: '#dcfce7', minWidth: 104 }}>
+              <div className="small text-muted" style={{ lineHeight: 1 }}>Completed</div>
+              <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completedByDrivers}</div>
+            </div>
+          </div>;
       default:
         return null;
     }
@@ -1155,7 +1175,7 @@ const DispatcherWorkspace = () => {
           </>;
       case 'toolbar-edit':
         return <>
-            {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save Toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)} disabled={mapLocked}>Edit Toolbar</Button>}
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} disabled title="Toolbar order is locked">Edit Toolbar</Button>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout} disabled={mapLocked}>Reset Toolbar</Button>
           </>;
       case 'columns':

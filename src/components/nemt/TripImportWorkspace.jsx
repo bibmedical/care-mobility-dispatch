@@ -394,6 +394,37 @@ const TripImportWorkspace = () => {
     };
   }, [importedServiceDateKeys, pendingTrips, trips]);
 
+  const changedToCancelledTrips = useMemo(() => {
+    if (pendingTrips.length === 0 || importedServiceDateKeys.length === 0) return [];
+
+    const targetServiceDates = new Set(importedServiceDateKeys);
+    const currentSameDayTrips = trips.filter(trip => targetServiceDates.has(getTripServiceDateKey(trip)));
+    const currentByKey = new Map();
+
+    currentSameDayTrips.forEach(trip => {
+      const key = buildTripMatchKey(trip);
+      if (!key || currentByKey.has(key)) return;
+      currentByKey.set(key, trip);
+    });
+
+    return pendingTrips.map(nextTrip => {
+      const key = buildTripMatchKey(nextTrip);
+      if (!key) return null;
+      const previousTrip = currentByKey.get(key);
+      if (!previousTrip) return null;
+
+      const previousCancelled = String(previousTrip?.status || '').trim().toLowerCase() === 'cancelled';
+      const nextCancelled = String(nextTrip?.status || '').trim().toLowerCase() === 'cancelled';
+      if (previousCancelled || !nextCancelled) return null;
+
+      return {
+        rideId: nextTrip.rideId || '-',
+        tripId: nextTrip.brokerTripId || '-',
+        rider: nextTrip.rider || '-'
+      };
+    }).filter(Boolean);
+  }, [importedServiceDateKeys, pendingTrips, trips]);
+
   const stats = useMemo(() => [{
     label: 'Trips en sistema',
     value: String(trips.length)
@@ -526,6 +557,28 @@ const TripImportWorkspace = () => {
                   <div>Matched rows: {importReconciliation.matchedRows}</div>
                   <div>New rows from SafeRide: {importReconciliation.newRows}</div>
                   <div>Rows missing from SafeRide file: {importReconciliation.missingFromSafeRide}</div>
+                </Alert> : null}
+              {changedToCancelledTrips.length > 0 ? <Alert variant="warning" className="small mb-3">
+                  <div className="fw-semibold mb-2">Changed to cancelled in this file: {changedToCancelledTrips.length}</div>
+                  <div className="table-responsive">
+                    <Table size="sm" className="mb-0 align-middle">
+                      <thead>
+                        <tr>
+                          <th>Ride ID</th>
+                          <th>Trip ID</th>
+                          <th>Rider</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {changedToCancelledTrips.slice(0, 25).map(item => <tr key={`${item.rideId}-${item.tripId}`}>
+                            <td>{item.rideId}</td>
+                            <td>{item.tripId}</td>
+                            <td>{item.rider}</td>
+                          </tr>)}
+                      </tbody>
+                    </Table>
+                  </div>
+                  {changedToCancelledTrips.length > 25 ? <div className="mt-2">Showing first 25 rows.</div> : null}
                 </Alert> : null}
               {pendingTrips.length > 0 ? <Alert variant="success" className="d-flex flex-wrap align-items-center justify-content-between gap-3">
                   <div>
