@@ -29,20 +29,11 @@ export const MENU_ITEMS = [{
     label: 'Trip Dashboard',
     url: '/trip-dashboard'
   }, {
-    key: 'trip-dashboard-blacklist',
-    label: 'Black List',
-    url: '/blacklist'
-  }]
-}, {
-  key: 'confirmation',
-  label: 'Confirmation',
-  icon: 'iconoir:check-circle',
-  children: [{
-    key: 'confirmation-main',
+    key: 'trip-dashboard-confirmation',
     label: 'Confirmation',
     url: '/confirmation'
   }, {
-    key: 'confirmation-blacklist',
+    key: 'trip-dashboard-blacklist',
     label: 'Black List',
     url: '/blacklist'
   }]
