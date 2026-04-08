@@ -874,7 +874,7 @@ const StandaloneDispatchMapScreen = () => {
   const activeDashboardViewMode = dashboardViewMode;
 
   if (isDashboardMap) {
-    if (dashboardSidebarHidden) {
+    if (false && dashboardSidebarHidden) {
       return <div style={{ height: '100vh', padding: 0, background: '#020617', position: 'relative' }}>
           <div className="d-flex gap-2 flex-wrap" style={{ position: 'absolute', top: 16, left: 16, zIndex: 700 }}>
             <Button variant="dark" size="sm" onClick={() => setDashboardSidebarHidden(false)} style={soloMapButtonStyle}>Return to Panel</Button>
@@ -967,13 +967,12 @@ const StandaloneDispatchMapScreen = () => {
     }
 
     return <div style={{ height: '100vh', padding: 0, background: '#020617' }}>
-        <div className="h-100" style={{ display: 'grid', gridTemplateColumns: dashboardSidebarHidden ? '0px minmax(0, 1fr)' : '420px minmax(0, 1fr)' }}>
-          {!dashboardSidebarHidden ? <aside className="d-flex flex-column" style={{ ...darkSidebarStyle, padding: 20, gap: 16, overflowY: 'auto' }}>
+        <div className="h-100" style={{ display: 'grid', gridTemplateColumns: '420px minmax(0, 1fr)' }}>
+          <aside className="d-flex flex-column" style={{ ...darkSidebarStyle, padding: 20, gap: 16, overflowY: 'auto' }}>
               <div className="d-flex justify-content-between align-items-start gap-2">
                 <div>
                   <h1 className="h4 mt-1 mb-1" style={{ color: '#f8fafc' }}>Directions</h1>
                 </div>
-                <Button variant="outline-light" size="sm" onClick={() => setDashboardSidebarHidden(true)}>Solo mapa</Button>
               </div>
 
               <Form onSubmit={handleLookupRoute} className="d-flex flex-column gap-3">
@@ -994,82 +993,9 @@ const StandaloneDispatchMapScreen = () => {
               </Form>
 
               {errorMessage ? <Alert variant="danger" className="mb-0" style={{ borderRadius: 16 }}>{errorMessage}</Alert> : null}
-
-              <div className="rounded-4" style={{ ...darkCardStyle, padding: 16 }}>
-                <div className="small text-uppercase fw-semibold" style={{ color: '#94a3b8', letterSpacing: '0.08em' }}>Chofer seleccionado</div>
-                <div className="mt-2 fw-semibold" style={{ fontSize: 20 }}>{selectedDriver?.name || 'No driver selected'}</div>
-                <div className="small mt-1" style={{ color: '#cbd5e1' }}>{dashboardRouteTrips.length} viaje(s){dashboardRouteHealth?.candidateCount ? ` • ${dashboardRouteHealth.candidateCount} seleccionados` : ''}</div>
-                <div className="mt-3 d-flex gap-2 flex-wrap">
-                  <Badge bg={dashboardRouteHealth?.lateCount ? 'danger' : 'info'}>{dashboardRouteHealth?.lateCount ? 'Late risk' : dashboardDriverEta?.label || (dashboardDriverPendingEtaTrip ? 'Waiting for En Route' : 'ETA unavailable')}</Badge>
-                  <Badge bg="secondary">{dashboardDriverEta?.miles != null ? `${dashboardDriverEta.miles.toFixed(1)} mi` : 'No distance'}</Badge>
-                </div>
-                <div className="small mt-2" style={{ color: '#94a3b8' }}>{dashboardDriverPendingEtaTrip && !dashboardDriverActiveTrip ? 'ETA appears after the driver starts En Route in the mobile app.' : 'Ruta activa segun modo seleccionado. Puedes cambiarla sin cerrar esta ventana.'}</div>
-              </div>
-
-              {dashboardRouteOptions.length > 0 ? <div className="rounded-4 d-flex flex-column gap-2" style={{ ...darkCardStyle, padding: 16 }}>
-                  <div className="small text-uppercase fw-semibold" style={{ color: '#94a3b8', letterSpacing: '0.08em' }}>Opciones de ruta</div>
-                  {dashboardRouteOptions.map((routeOption, index) => <div key={`sidebar-${routeOption.id}`} className="text-start rounded-3 px-3 py-2" style={{ background: index === selectedDashboardRouteIndex ? 'rgba(37,99,235,0.22)' : 'rgba(255,255,255,0.05)', border: `1px solid ${index === selectedDashboardRouteIndex ? 'rgba(96,165,250,0.8)' : 'rgba(148,163,184,0.18)'}`, color: '#e2e8f0' }}>
-                      <button type="button" onClick={() => { setSelectedDashboardRouteIndex(index); setRouteDispatchNotice(''); }} className="w-100 text-start border-0 p-0" style={{ background: 'transparent', color: 'inherit' }}>
-                        <div className="d-flex justify-content-between align-items-center gap-2">
-                          <span className="fw-semibold small">{routeOption.label}</span>
-                          <Badge bg={index === selectedDashboardRouteIndex ? 'info' : 'secondary'}>{index === selectedDashboardRouteIndex ? 'Activa' : 'Disponible'}</Badge>
-                        </div>
-                        <div className="small mt-1" style={{ color: '#cbd5e1' }}>{routeOption.distanceMiles != null ? `${routeOption.distanceMiles.toFixed(1)} mi` : 'No distance'} • {routeOption.durationMinutes != null ? formatDriveMinutes(routeOption.durationMinutes) : 'No duration'}</div>
-                      </button>
-                      <div className="mt-2">
-                        <Button variant="success" size="sm" onClick={() => handleAcceptRouteForDriver(index)} disabled={!selectedDriver}>Accept this route</Button>
-                      </div>
-                    </div>)}
-                  <Button variant="outline-success" size="sm" onClick={() => handleAcceptRouteForDriver()} disabled={!selectedDriver || dashboardRouteOptions.length === 0}>Accept selected route</Button>
-                  {routeDispatchNotice ? <Alert variant="info" className="mb-0 py-2">{routeDispatchNotice}</Alert> : null}
-                </div> : null}
-
-              <div className="rounded-4" style={{ ...darkCardStyle, padding: 16 }}>
-                <div className="small text-uppercase fw-semibold" style={{ color: '#94a3b8', letterSpacing: '0.08em' }}>Address Search</div>
-                <div className="mt-2 small" style={{ color: '#e2e8f0', lineHeight: 1.6 }}>
-                  <div><strong>A:</strong> {originResult?.label || 'Waiting for origin'}</div>
-                  <div className="mt-2"><strong>B:</strong> {destinationResult?.label || 'Waiting for destination'}</div>
-                </div>
-                <div className="mt-3 d-flex gap-2 flex-wrap">
-                  <Badge bg="light" text="dark">{routeMetrics?.distanceMiles != null ? `${routeMetrics.distanceMiles.toFixed(1)} mi` : '--'}</Badge>
-                  <Badge bg="light" text="dark">{routeMetrics?.durationMinutes != null ? formatDriveMinutes(routeMetrics.durationMinutes) : '--'}</Badge>
-                </div>
-              </div>
-
-              <div className="d-flex flex-column gap-2">
-                {dashboardVisibleTripItems.slice(0, 10).map(item => <div key={item.trip.id} className="rounded-3 px-3 py-2" style={{ backgroundColor: item.late ? 'rgba(239,68,68,0.18)' : item.candidate ? 'rgba(245,158,11,0.16)' : 'rgba(255,255,255,0.05)', border: `1px solid ${item.late ? 'rgba(239,68,68,0.42)' : item.candidate ? 'rgba(245,158,11,0.34)' : 'rgba(148,163,184,0.16)'}` }}>
-                    <div className="d-flex justify-content-between align-items-center gap-2">
-                      <div className="d-flex flex-column gap-1" style={{ minWidth: 0 }}>
-                        <div className="fw-semibold small" style={{ color: '#f8fafc' }}>{item.trip.pickup} • {item.trip.rider}</div>
-                        <div className="d-flex gap-2 flex-wrap align-items-center">
-                          <span className="small" style={{ color: '#94a3b8' }}>Trip {getDisplayTripId(item.trip)}</span>
-                          {getLegBadge(item.trip) ? <Badge bg={getLegBadge(item.trip).variant}>{getLegBadge(item.trip).label}</Badge> : null}
-                        </div>
-                      </div>
-                      <button type="button" onClick={() => handleRouteOnlyThisTrip(item.trip.id)} className="border-0 p-0" style={{ background: 'transparent' }}>
-                        <Badge bg={item.late ? 'danger' : item.candidate ? 'warning' : 'secondary'} text={item.candidate ? 'dark' : undefined} style={{ cursor: 'pointer' }}>{item.late ? 'Late risk' : item.assignedElsewhere ? 'Selected' : item.candidate ? 'Adding' : 'OK'}</Badge>
-                      </button>
-                    </div>
-                    <div className="small mt-1" style={{ color: '#cbd5e1' }}>{item.trip.address}</div>
-                    <div className="small mt-1" style={{ color: item.late ? '#fca5a5' : '#94a3b8' }}>Drive {item.travelMinutes == null ? '--' : formatDriveMinutes(item.travelMinutes)} • {item.slackMinutes == null ? '--' : formatSlackLabel(item.slackMinutes)}</div>
-                    {acceptedRouteByTripId?.[item.trip.id] ? <div className="small mt-1" style={{ color: '#34d399' }}>Accepted: {acceptedRouteByTripId[item.trip.id].routeLabel}</div> : null}
-                    {segmentAlternativeLookup[item.trip.id] ? <div className="small mt-1" style={{ color: '#93c5fd' }}>Alt route: {formatDriveMinutes(segmentAlternativeLookup[item.trip.id].durationMinutes)} • {segmentAlternativeLookup[item.trip.id].distanceMiles != null ? `${segmentAlternativeLookup[item.trip.id].distanceMiles.toFixed(1)} mi` : 'No distance'}</div> : null}
-                    <div className="mt-2 d-flex gap-2 flex-wrap">
-                      <Button size="sm" variant={isTripSelectedForRoute(item.trip.id) && routeTripSelectionIds.length === 1 ? 'info' : 'outline-info'} onClick={() => handleRouteOnlyThisTrip(item.trip.id)}>Route only this trip</Button>
-                      <Button size="sm" variant={isTripSelectedForRoute(item.trip.id) ? 'warning' : 'outline-warning'} onClick={() => handleToggleTripForRoute(item.trip.id)}>{isTripSelectedForRoute(item.trip.id) ? 'Remove from route' : 'Add to route'}</Button>
-                    </div>
-                    <Form.Check id={`joint-trip-${item.trip.id}`} className="mt-2" type="checkbox" label={jointTripSelections[item.trip.id] ? 'Van juntos' : 'Montarlo junto con otro paciente'} checked={Boolean(jointTripSelections[item.trip.id])} onChange={() => handleToggleTripTogether(item.trip.id)} style={{ color: '#e2e8f0' }} />
-                  </div>)}
-              </div>
-            </aside> : null}
+            </aside>
 
           <div style={{ position: 'relative', minWidth: 0 }}>
-            {dashboardSidebarHidden ? <div className="d-flex gap-2 flex-wrap" style={{ position: 'absolute', top: 16, left: 16, zIndex: 700 }}>
-                <Button variant="dark" size="sm" onClick={() => setDashboardSidebarHidden(false)} style={{ background: 'rgba(15,23,42,0.92)', borderColor: 'rgba(148,163,184,0.24)' }}>Show Panel</Button>
-                <Button variant={dashboardViewMode === 'addresses' ? 'warning' : 'dark'} size="sm" onClick={() => setDashboardViewMode('addresses')} style={dashboardViewMode === 'addresses' ? undefined : { background: 'rgba(15,23,42,0.92)', borderColor: 'rgba(148,163,184,0.24)' }}>Solo addresses</Button>
-                <Button variant={dashboardViewMode === 'route' ? 'warning' : 'dark'} size="sm" onClick={() => setDashboardViewMode('route')} style={dashboardViewMode === 'route' ? undefined : { background: 'rgba(15,23,42,0.92)', borderColor: 'rgba(148,163,184,0.24)' }}>Solo route</Button>
-                <Button variant={dashboardViewMode === 'all' ? 'info' : 'dark'} size="sm" onClick={() => setDashboardViewMode('all')} style={dashboardViewMode === 'all' ? undefined : { background: 'rgba(15,23,42,0.92)', borderColor: 'rgba(148,163,184,0.24)' }}>Todo</Button>
-              </div> : null}
             <MapContainer center={selectedDriver?.position ?? DEFAULT_CENTER} zoom={10} zoomControl={false} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }}>
               <StandaloneMapResizer resizeKey={`${dashboardSidebarHidden}-${dashboardViewMode}-${dashboardRouteStops.length}-${routeGeometry.length}-${selectedDashboardRouteGeometry.length}`} />
               <MapViewportController points={mapPoints} fitKey={mapViewportFitKey} />
