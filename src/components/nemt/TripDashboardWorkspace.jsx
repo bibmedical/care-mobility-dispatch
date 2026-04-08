@@ -2768,13 +2768,6 @@ const TripDashboardWorkspace = () => {
     setStatusMessage('Focus Right disabled while map is popped out.');
   }, [layoutMode, showInlineMap]);
 
-  useEffect(() => {
-    if (layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal) return;
-    if (showBottomPanels || !rightPanelCollapsed) return;
-    if (!showMapPane) setShowMapPane(true);
-    if (!showInlineMap) setShowInlineMap(true);
-  }, [layoutMode, rightPanelCollapsed, showBottomPanels, showInlineMap, showMapPane]);
-
   const handlePanelViewChange = nextView => {
     void nextView;
     setShowBottomPanels(true);
