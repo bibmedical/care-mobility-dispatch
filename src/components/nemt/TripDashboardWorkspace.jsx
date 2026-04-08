@@ -5193,8 +5193,7 @@ const TripDashboardWorkspace = () => {
   }, [dragMode]);
 
   useEffect(() => {
-<<<<<<< HEAD
-    if (userPreferencesLoading || detailedDashboardHydratedRef.current) return;
+    if (userPreferencesLoading || detailedDashboardHydratedRef.current || layoutHydratedRef.current) return;
 
     const dashboardPreferences = userPreferences?.tripDashboard || {};
     const hasSavedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(dashboardPreferences.layoutMode);
@@ -5229,13 +5228,6 @@ const TripDashboardWorkspace = () => {
       setColumnWidths(dashboardPreferences.columnWidths || {});
       setClosedRouteStateByKey(dashboardPreferences.closedRouteStateByKey || {});
     } else {
-=======
-    if (userPreferencesLoading || layoutHydratedRef.current) return;
-
-    const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY) || userPreferences?.tripDashboard?.layoutMode;
-    if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
-      setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
->>>>>>> c7fa92b (Fix focus-right layout bounce by one-time hydration)
       setShowMapPane(true);
       setShowBottomPanels(false);
       setShowDriversPanel(true);
