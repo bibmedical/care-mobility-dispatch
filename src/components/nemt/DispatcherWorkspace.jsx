@@ -166,7 +166,9 @@ const buildDispatcherSurfaceStyles = isDarkMode => ({
     background: isDarkMode ? 'linear-gradient(180deg, #0f172a 0%, #111827 100%)' : '#ffffff',
     border: isDarkMode ? '1px solid rgba(71, 85, 105, 0.72)' : '1px solid #d5deea',
     color: isDarkMode ? '#e5eefc' : '#0f172a',
-    boxShadow: isDarkMode ? '0 18px 40px rgba(2, 6, 23, 0.34)' : '0 14px 30px rgba(148, 163, 184, 0.18)'
+    boxShadow: isDarkMode ? '0 16px 34px rgba(2, 6, 23, 0.28)' : '0 10px 24px rgba(148, 163, 184, 0.16)',
+    borderRadius: 12,
+    overflow: 'hidden'
   },
   header: {
     background: isDarkMode ? 'linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(15, 23, 42, 0.96) 100%)' : '#f8fafc',
@@ -181,18 +183,26 @@ const buildDispatcherSurfaceStyles = isDarkMode => ({
   button: {
     color: isDarkMode ? '#dbeafe' : '#0f172a',
     borderColor: isDarkMode ? 'rgba(96, 165, 250, 0.45)' : '#cbd5e1',
-    backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.58)' : '#f8fafc'
+    backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.58)' : '#f8fafc',
+    padding: '0.18rem 0.55rem',
+    fontSize: '0.76rem',
+    lineHeight: 1.1
   },
   table: {
     '--bs-table-bg': isDarkMode ? '#0f172a' : '#ffffff',
     '--bs-table-striped-bg': isDarkMode ? '#162033' : '#f8fafc',
     '--bs-table-hover-bg': isDarkMode ? '#172237' : '#f1f5f9',
     '--bs-table-color': isDarkMode ? '#e5eefc' : '#0f172a',
-    '--bs-table-border-color': isDarkMode ? 'rgba(71, 85, 105, 0.55)' : '#dbe3ef'
+    '--bs-table-border-color': isDarkMode ? 'rgba(71, 85, 105, 0.55)' : '#dbe3ef',
+    fontSize: '0.78rem',
+    lineHeight: 1.08,
+    borderCollapse: 'separate',
+    borderSpacing: 0
   },
   tableHead: {
     backgroundColor: isDarkMode ? '#172033' : '#f8fafc',
-    color: isDarkMode ? '#f8fafc' : '#0f172a'
+    color: isDarkMode ? '#f8fafc' : '#0f172a',
+    fontSize: '0.74rem'
   },
   groupRow: {
     backgroundColor: isDarkMode ? '#172033' : '#eef4ff'
@@ -2518,7 +2528,7 @@ const DispatcherWorkspace = () => {
   return <>
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
-          <Card className="h-100" style={dispatcherSurfaceStyles.card}>
+          <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0">
               {showInlineMap ? <div className="position-relative h-100">
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
@@ -2647,9 +2657,9 @@ const DispatcherWorkspace = () => {
         </div>
 
         <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.tripsVisible ? 'block' : 'none', gridColumn: 3, gridRow: tripsPanelGridRow }}>
-          <Card className="h-100" style={dispatcherSurfaceStyles.card}>
+          <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+              <div className="d-flex flex-column align-items-stretch px-2 py-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                 {/* Row 1: Trip filters and selection */}
                 <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
@@ -2787,7 +2797,7 @@ const DispatcherWorkspace = () => {
                     <div style={{ fontSize: '12px', color: '#d1d5db' }}>Click "Unlock" to make changes</div>
                   </div>
                 </div>}
-                <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ ...dispatcherSurfaceStyles.table, whiteSpace: 'nowrap', minWidth: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', width: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', opacity: mapLocked ? 0.6 : 1 }}>
+                <Table ref={tripTableElementRef} size="sm" hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ ...dispatcherSurfaceStyles.table, whiteSpace: 'nowrap', minWidth: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', width: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', opacity: mapLocked ? 0.6 : 1 }}>
                   <thead style={{ position: 'sticky', top: 0, ...dispatcherSurfaceStyles.tableHead }}>
                     <tr>
                       <th style={{ width: 48 }}>
@@ -2907,7 +2917,7 @@ const DispatcherWorkspace = () => {
       }} />
 
         <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: dispatcherLayout.messagingVisible ? 'block' : 'none', gridColumn: 1, gridRow: messagingPanelGridRow }}>
-          <Card className="h-100" style={dispatcherSurfaceStyles.card}>
+          <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 h-100">
               <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={setSelectedDriverId} onLocateDriver={driverId => {
               setSelectedDriverId(driverId);
@@ -2925,9 +2935,9 @@ const DispatcherWorkspace = () => {
         </div>
 
         <div style={{ minWidth: 0, minHeight: 0, display: actionsPanelVisible ? 'block' : 'none', gridColumn: 3, gridRow: actionsPanelGridRow }}>
-          <Card className="h-100" style={dispatcherSurfaceStyles.card}>
+          <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex justify-content-between align-items-center p-2 border-bottom gap-2 flex-wrap" style={dispatcherSurfaceStyles.header}>
+              <div className="d-flex justify-content-between align-items-center px-2 py-2 border-bottom gap-2 flex-wrap" style={dispatcherSurfaceStyles.header}>
                 <div className="d-flex gap-2 flex-wrap align-items-center">
                   <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
                   <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
@@ -2942,7 +2952,7 @@ const DispatcherWorkspace = () => {
                 </div>
               </div>
               <div className="table-responsive flex-grow-1" style={{ minHeight: 0 }}>
-                <Table className="align-middle mb-0" style={dispatcherSurfaceStyles.table}>
+                <Table size="sm" striped hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={dispatcherSurfaceStyles.table}>
                   <thead style={dispatcherSurfaceStyles.tableHead}>
                     <tr>
                       <th style={{ width: 48 }} />

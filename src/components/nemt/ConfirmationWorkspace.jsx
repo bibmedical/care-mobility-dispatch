@@ -18,7 +18,9 @@ const buildSurfaceStyles = isLight => ({
   card: {
     backgroundColor: isLight ? '#ffffff' : '#171b27',
     borderColor: isLight ? '#d5deea' : '#2a3144',
-    color: isLight ? '#0f172a' : '#e6ecff'
+    color: isLight ? '#0f172a' : '#e6ecff',
+    borderRadius: 12,
+    boxShadow: isLight ? '0 10px 24px rgba(148, 163, 184, 0.12)' : '0 16px 34px rgba(2, 6, 23, 0.24)'
   },
   input: {
     backgroundColor: isLight ? '#f8fbff' : '#101521',
@@ -28,7 +30,21 @@ const buildSurfaceStyles = isLight => ({
   button: {
     backgroundColor: isLight ? '#f3f7fc' : '#101521',
     borderColor: isLight ? '#c8d4e6' : '#2a3144',
-    color: isLight ? '#0f172a' : '#e6ecff'
+    color: isLight ? '#0f172a' : '#e6ecff',
+    padding: '0.18rem 0.55rem',
+    fontSize: '0.76rem',
+    lineHeight: 1.1
+  },
+  table: {
+    fontSize: '0.78rem',
+    lineHeight: 1.08,
+    borderCollapse: 'separate',
+    borderSpacing: 0
+  },
+  tableHead: {
+    backgroundColor: isLight ? '#f8fafc' : '#172033',
+    color: isLight ? '#0f172a' : '#f8fafc',
+    fontSize: '0.74rem'
   }
 });
 
@@ -2483,8 +2499,8 @@ const ConfirmationWorkspace = () => {
         </Modal.Footer>
       </Modal>
 
-      <Card style={surfaceStyles.card} className="border mb-3">
-        <CardBody>
+      <Card style={surfaceStyles.card} className="border mb-3 overflow-hidden">
+        <CardBody className="p-3">
           <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 align-items-start align-items-xl-center">
             <div>
               <h5 className="mb-1">Trip Confirmation Center</h5>
@@ -2498,8 +2514,8 @@ const ConfirmationWorkspace = () => {
         </CardBody>
       </Card>
 
-      <Card style={surfaceStyles.card} className="border mb-3">
-        <CardBody>
+      <Card style={surfaceStyles.card} className="border mb-3 overflow-hidden">
+        <CardBody className="p-3">
           <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-3">
             <div>
               <h5 className="mb-1">Patient History Search</h5>
@@ -2564,8 +2580,8 @@ const ConfirmationWorkspace = () => {
                   </div>
 
                   <div className="table-responsive">
-                    <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
-                      <thead className="table-light">
+                    <Table size="sm" striped hover className="align-middle mb-0 small" style={{ ...surfaceStyles.table, whiteSpace: 'nowrap' }}>
+                      <thead style={surfaceStyles.tableHead}>
                         <tr>
                           <th>Date</th>
                           <th>Trip ID</th>
@@ -2602,8 +2618,8 @@ const ConfirmationWorkspace = () => {
         </CardBody>
       </Card>
 
-      <Card ref={resultsSectionRef} style={surfaceStyles.card} className="border">
-        <CardBody>
+      <Card ref={resultsSectionRef} style={surfaceStyles.card} className="border overflow-hidden">
+        <CardBody className="p-3">
           <div className="border rounded-3 p-3 mb-3" style={surfaceStyles.input}>
             <div className="d-flex flex-column flex-xl-row justify-content-between gap-3 mb-3">
               <div>
@@ -2651,12 +2667,14 @@ const ConfirmationWorkspace = () => {
                 <option value="miles-asc">Miles: Low to High</option>
                 <option value="rider-asc">Rider: A to Z</option>
                 <option value="rider-desc">Rider: Z to A</option>
-                <option value="trip-asc">Trip ID: A to Z</option>
-                <option value="trip-desc">Trip ID: Z to A</option>
+                <option value="tripId-asc">Trip ID: A to Z</option>
+                <option value="tripId-desc">Trip ID: Z to A</option>
                 <option value="phone-asc">Phone: A to Z</option>
                 <option value="phone-desc">Phone: Z to A</option>
-                <option value="pickup-asc">Pickup Time: Early to Late</option>
-                <option value="pickup-desc">Pickup Time: Late to Early</option>
+                <option value="pickupTime-asc">Pickup Time: Early to Late</option>
+                <option value="pickupTime-desc">Pickup Time: Late to Early</option>
+                <option value="dropoffTime-asc">Dropoff Time: Early to Late</option>
+                <option value="dropoffTime-desc">Dropoff Time: Late to Early</option>
                 <option value="leg-asc">Leg: A to Z</option>
                 <option value="leg-desc">Leg: Z to A</option>
                 <option value="type-asc">Type: A to Z</option>
@@ -2730,8 +2748,8 @@ const ConfirmationWorkspace = () => {
                 <div className="small text-secondary">{existingMilesRows.length} unique mile value(s)</div>
               </div>
               <div className="table-responsive" style={{ maxHeight: 420, overflowY: 'auto' }}>
-                <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap' }}>
-                  <thead className="table-light">
+                <Table size="sm" striped hover className="align-middle mb-0 small" style={{ ...surfaceStyles.table, whiteSpace: 'nowrap' }}>
+                  <thead style={surfaceStyles.tableHead}>
                     <tr>
                       <th>Miles</th>
                       <th>Trips Count</th>
@@ -2758,8 +2776,8 @@ const ConfirmationWorkspace = () => {
                 </Table>
               </div>
             </div> : <div className="table-responsive">
-            <Table hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', width: 'max-content' }}>
-              <thead className="table-light">
+            <Table size="sm" striped hover className="align-middle mb-0 small" style={{ ...surfaceStyles.table, whiteSpace: 'nowrap', width: 'max-content' }}>
+              <thead style={surfaceStyles.tableHead}>
                 <tr>
                   <th style={{ width: 48 }}>
                     <input
