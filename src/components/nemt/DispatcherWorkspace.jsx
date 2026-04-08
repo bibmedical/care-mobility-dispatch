@@ -32,7 +32,7 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 };
 
 const DISPATCHER_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW1_BLOCKS__';
-const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['trip-summary', 'status-filter', 'date-controls', 'trip-search', 'driver-select', 'secondary-driver', 'driver-assigned', 'selected-count'];
+const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'selected-count'];
 const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'toolbar-edit', 'columns', 'map-screen', 'trip-order'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
@@ -785,6 +785,13 @@ const DispatcherWorkspace = () => {
     key: 'pickup',
     direction: 'asc'
   });
+
+  useEffect(() => {
+    setSelectedDriverId(null);
+    setSelectedSecondaryDriverId('');
+    setDropoffZipFilter('');
+    setDoCityFilter('');
+  }, []);
   const [columnWidths, setColumnWidths] = useState({});
   const [draggingTripColumnKey, setDraggingTripColumnKey] = useState(null);
   const workspaceRef = useRef(null);
@@ -1144,7 +1151,6 @@ const DispatcherWorkspace = () => {
       case 'stats':
         return <>
             <Badge bg="primary">{filteredTrips.length} trips</Badge>
-            <Badge bg="info">{drivers.length} drivers</Badge>
             <Badge bg="secondary">{liveDrivers} live</Badge>
           </>;
       case 'toolbar-edit':
@@ -1195,11 +1201,6 @@ const DispatcherWorkspace = () => {
               <option value="">PU ZIP</option>
               {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
             </Form.Select>
-            <span className="text-muted small">→</span>
-            <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} disabled={mapLocked} style={{ width: 110 }} title="ZIP de destino">
-              <option value="">DO ZIP</option>
-              {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
-            </Form.Select>
             <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" disabled={mapLocked} style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
           </div>;
       case 'route-filter':
@@ -1209,12 +1210,7 @@ const DispatcherWorkspace = () => {
               <option value="">Origen</option>
               {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
             </Form.Select>
-            <span className="text-muted small">→</span>
-            <Form.Select size="sm" value={doCityFilter} onChange={e => setDoCityFilter(e.target.value)} disabled={mapLocked} style={{ width: 140 }} title="Ciudad de destino">
-              <option value="">Destino</option>
-              {availableDropoffCities.map(city => <option key={`do-${city}`} value={city}>{city}</option>)}
-            </Form.Select>
-            {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
+            {(puCityFilter || pickupZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setPickupZipFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
           </div>;
       case 'metric-miles':
         return routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
