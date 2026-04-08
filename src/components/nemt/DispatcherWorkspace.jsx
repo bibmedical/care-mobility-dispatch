@@ -799,6 +799,7 @@ const DispatcherWorkspace = () => {
   const tripTableBottomScrollerRef = useRef(null);
   const tripTableElementRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
+  const hasHydratedDefaultLayoutRef = useRef(false);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const [tripTableScrollLeft, setTripTableScrollLeft] = useState(0);
   const [tripTableMaxScrollLeft, setTripTableMaxScrollLeft] = useState(0);
@@ -904,12 +905,14 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     if (userPreferencesLoading) return;
-    const nextLayout = normalizeDispatcherLayout({
-      ...normalizeDispatcherLayout(userPreferences?.dispatcherLayout),
+    const baseLayout = normalizeDispatcherLayout(userPreferences?.dispatcherLayout);
+    const nextLayout = hasHydratedDefaultLayoutRef.current ? baseLayout : normalizeDispatcherLayout({
+      ...baseLayout,
       messagingVisible: false,
       actionsVisible: false
     });
     setDispatcherLayout(nextLayout);
+    hasHydratedDefaultLayoutRef.current = true;
   }, [userPreferences?.dispatcherLayout, userPreferencesLoading]);
 
   const persistDispatcherLayout = nextValue => {

@@ -285,6 +285,9 @@ const DispatcherMessagingPanel = ({
   const seenAlertIdsRef = useRef(new Set());
   const activeDriverIdRef = useRef(null);
   const hasLoadedAlertsRef = useRef(false);
+  const hasHydratedMessagingPrefsRef = useRef(false);
+  const lastSavedMessagingPrefsRef = useRef('');
+  const latestUserPreferencesRef = useRef(userPreferences);
 
   const allDrivers = useMemo(() => [
     ...drivers,
@@ -302,28 +305,46 @@ const DispatcherMessagingPanel = ({
   const visibleThreads = useMemo(() => normalizedThreads.filter(thread => !hiddenDriverIdSet.has(thread.driverId)), [hiddenDriverIdSet, normalizedThreads]);
 
   useEffect(() => {
-    if (userPreferencesLoading) return;
-    setHiddenDriverIds(Array.isArray(userPreferences?.dispatcherMessaging?.hiddenDriverIds) ? userPreferences.dispatcherMessaging.hiddenDriverIds : []);
-    setChatTheme(String(userPreferences?.dispatcherMessaging?.chatTheme || 'ocean').trim() || 'ocean');
-    setNotificationTone(String(userPreferences?.dispatcherMessaging?.notificationTone || 'classic').trim() || 'classic');
-    setCustomNotificationSoundName(String(userPreferences?.dispatcherMessaging?.customNotificationSoundName || '').trim());
-    setCustomNotificationSoundDataUrl(String(userPreferences?.dispatcherMessaging?.customNotificationSoundDataUrl || '').trim());
-  }, [userPreferences?.dispatcherMessaging?.chatTheme, userPreferences?.dispatcherMessaging?.customNotificationSoundDataUrl, userPreferences?.dispatcherMessaging?.customNotificationSoundName, userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferences?.dispatcherMessaging?.notificationTone, userPreferencesLoading]);
+    latestUserPreferencesRef.current = userPreferences;
+  }, [userPreferences]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
+    const normalizedDispatcherMessaging = {
+      hiddenDriverIds: Array.isArray(userPreferences?.dispatcherMessaging?.hiddenDriverIds) ? userPreferences.dispatcherMessaging.hiddenDriverIds : [],
+      chatTheme: String(userPreferences?.dispatcherMessaging?.chatTheme || 'ocean').trim() || 'ocean',
+      notificationTone: String(userPreferences?.dispatcherMessaging?.notificationTone || 'classic').trim() || 'classic',
+      customNotificationSoundName: String(userPreferences?.dispatcherMessaging?.customNotificationSoundName || '').trim(),
+      customNotificationSoundDataUrl: String(userPreferences?.dispatcherMessaging?.customNotificationSoundDataUrl || '').trim()
+    };
+
+    setHiddenDriverIds(normalizedDispatcherMessaging.hiddenDriverIds);
+    setChatTheme(normalizedDispatcherMessaging.chatTheme);
+    setNotificationTone(normalizedDispatcherMessaging.notificationTone);
+    setCustomNotificationSoundName(normalizedDispatcherMessaging.customNotificationSoundName);
+    setCustomNotificationSoundDataUrl(normalizedDispatcherMessaging.customNotificationSoundDataUrl);
+    lastSavedMessagingPrefsRef.current = JSON.stringify(normalizedDispatcherMessaging);
+    hasHydratedMessagingPrefsRef.current = true;
+  }, [userPreferences?.dispatcherMessaging?.chatTheme, userPreferences?.dispatcherMessaging?.customNotificationSoundDataUrl, userPreferences?.dispatcherMessaging?.customNotificationSoundName, userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferences?.dispatcherMessaging?.notificationTone, userPreferencesLoading]);
+
+  useEffect(() => {
+    if (userPreferencesLoading || !hasHydratedMessagingPrefsRef.current) return;
+    const nextDispatcherMessaging = {
+      ...latestUserPreferencesRef.current?.dispatcherMessaging,
+      hiddenDriverIds,
+      chatTheme,
+      notificationTone,
+      customNotificationSoundName,
+      customNotificationSoundDataUrl
+    };
+    const nextSerialized = JSON.stringify(nextDispatcherMessaging);
+    if (nextSerialized === lastSavedMessagingPrefsRef.current) return;
+    lastSavedMessagingPrefsRef.current = nextSerialized;
     void saveUserPreferences({
-      ...userPreferences,
-      dispatcherMessaging: {
-        ...userPreferences?.dispatcherMessaging,
-        hiddenDriverIds,
-        chatTheme,
-        notificationTone,
-        customNotificationSoundName,
-        customNotificationSoundDataUrl
-      }
+      ...latestUserPreferencesRef.current,
+      dispatcherMessaging: nextDispatcherMessaging
     });
-  }, [chatTheme, customNotificationSoundDataUrl, customNotificationSoundName, hiddenDriverIds, notificationTone, saveUserPreferences, userPreferences, userPreferencesLoading]);
+  }, [chatTheme, customNotificationSoundDataUrl, customNotificationSoundName, hiddenDriverIds, notificationTone, saveUserPreferences, userPreferencesLoading]);
   const normalizedSearch = driverSearch.trim().toLowerCase();
   const filteredThreads = useMemo(() => visibleThreads.filter(thread => {
     if (!normalizedSearch) return true;

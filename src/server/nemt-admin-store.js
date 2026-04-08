@@ -178,10 +178,41 @@ export const updateDriverLocation = async ({
   };
   const result = await query(
     `UPDATE admin_drivers
-     SET data = jsonb_set(data, '{tracking}', $1::jsonb, true),
+     SET data = jsonb_set(
+                  jsonb_set(
+                    jsonb_set(
+                      jsonb_set(
+                        jsonb_set(
+                          jsonb_set(
+                            jsonb_set(
+                              jsonb_set(data, '{tracking}', $1::jsonb, true),
+                              '{position}', jsonb_build_array(to_jsonb($2::float8), to_jsonb($3::float8)), true
+                            ),
+                            '{checkpoint}', to_jsonb($4::text), true
+                          ),
+                          '{trackingLastSeen}', to_jsonb($5::text), true
+                        ),
+                        '{trackingSource}', to_jsonb('android'::text), true
+                      ),
+                      '{heading}', to_jsonb($6::float8), true
+                    ),
+                    '{speed}', to_jsonb($7::float8), true
+                  ),
+                  '{accuracy}', to_jsonb($8::float8), true
+                ),
          updated_at = NOW()
-     WHERE id = $2`,
-    [JSON.stringify(tracking), String(driverId || '').trim()]
+     WHERE id = $9`,
+    [
+      JSON.stringify(tracking),
+      Number(latitude),
+      Number(longitude),
+      String(checkpoint || ''),
+      String(trackingLastSeen || ''),
+      Number.isFinite(Number(heading)) ? Number(heading) : null,
+      Number.isFinite(Number(speed)) ? Number(speed) : null,
+      Number.isFinite(Number(accuracy)) ? Number(accuracy) : null,
+      String(driverId || '').trim()
+    ]
   );
   return (result.rowCount ?? 0) > 0;
 };
