@@ -1129,7 +1129,13 @@ const TripDashboardWorkspace = () => {
           }
         }}>{showInlineMap ? 'Map screen' : 'Show map here'}</Button>;
       case 'layout':
-        return null;
+        return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            <span className="fw-semibold small">Layout</span>
+            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Normal</Button>
+            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)} disabled={!showInlineMap}>Focus right</Button>
+            <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.stacked)}>Stacked</Button>
+            {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
+          </div>;
       case 'panels':
         return null;
       case 'trip-order':
@@ -2799,8 +2805,8 @@ const TripDashboardWorkspace = () => {
                 <th className="py-1">Vehicle</th>
                 <th className="py-1">Driver</th>
                 <th className="py-1">Checkpoint</th>
-                <th className="py-1">Attendant</th>
-                <th className="py-1">Info</th>
+                {!isFocusRightLayout ? <th className="py-1">Attendant</th> : null}
+                {!isFocusRightLayout ? <th className="py-1">Info</th> : null}
                 <th className="py-1">Live</th>
               </tr>
             </thead>
@@ -2826,11 +2832,11 @@ const TripDashboardWorkspace = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td>
-                  <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td>
+                  {!isFocusRightLayout ? <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td> : null}
+                  {!isFocusRightLayout ? <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td> : null}
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.live}</td>
                 </tr>) : <tr>
-                  <td colSpan={9} className="text-center text-muted py-4">No drivers or vehicles loaded.</td>
+                  <td colSpan={isFocusRightLayout ? 7 : 9} className="text-center text-muted py-4">No drivers or vehicles loaded.</td>
                 </tr>}
             </tbody>
           </Table>
