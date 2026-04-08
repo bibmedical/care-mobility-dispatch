@@ -3201,25 +3201,21 @@ const TripDashboardWorkspace = () => {
                     </div>)}
                 </div>
               </div>
-              {aiPlannerCollapsed ? <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={{
-              position: 'absolute',
-              top: 118,
-              right: 10,
-              zIndex: 30,
-              writingMode: 'vertical-rl',
-              textOrientation: 'mixed',
-              borderRadius: 14,
-              border: '1px solid rgba(15, 23, 42, 0.18)',
-              background: 'linear-gradient(180deg, #eef2ff 0%, #dbeafe 100%)',
-              color: '#1e293b',
-              fontWeight: 800,
-              fontSize: 11,
-              letterSpacing: '0.08em',
-              padding: '12px 7px',
-              boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)'
-            }}>
-                  AI Route
-                </button> : <div className="mx-3 mb-3 p-3 rounded-3 border bg-light-subtle text-dark" style={{ borderColor: 'rgba(15, 23, 42, 0.12)' }}>
+              {aiPlannerCollapsed ? <div className="mx-3 mt-2 mb-2 d-flex align-items-center justify-content-start">
+                  <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={{
+                borderRadius: 10,
+                border: '1px solid rgba(15, 23, 42, 0.18)',
+                background: 'linear-gradient(180deg, #eef2ff 0%, #dbeafe 100%)',
+                color: '#1e293b',
+                fontWeight: 800,
+                fontSize: 11,
+                letterSpacing: '0.06em',
+                padding: '6px 12px',
+                boxShadow: '0 6px 14px rgba(15, 23, 42, 0.12)'
+              }}>
+                    AI Route
+                  </button>
+                </div> : <div className="mx-3 mb-3 p-3 rounded-3 border bg-light-subtle text-dark" style={{ borderColor: 'rgba(15, 23, 42, 0.12)' }}>
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                     <div>
                       <div className="fw-semibold">AI Smart Route</div>
@@ -3397,8 +3393,8 @@ const TripDashboardWorkspace = () => {
                   {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'scroll', overflowY: 'hidden', height: 20, marginBottom: 6, scrollbarGutter: 'stable', scrollbarWidth: 'thin', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
                     <div style={{ width: tripTableScrollWidth > 0 ? tripTableScrollWidth + 40 : 'calc(100% + 40px)', height: 18 }} />
                 </div> : null}
-              <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
-                <Table ref={tripTableElementRef} hover className="align-middle mb-0" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content' }}>
+              <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1 trip-dashboard-sheet-wrap" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
+                <Table ref={tripTableElementRef} hover className="align-middle mb-0 trip-dashboard-sheet-table" style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
                   <thead className="table-light" style={{ position: 'sticky', top: 0 }}>
                     <tr>
                       <th style={{ ...tripHeaderCellStyle, width: 48 }}>
@@ -3421,6 +3417,7 @@ const TripDashboardWorkspace = () => {
                       <th style={{ ...tripHeaderCellStyle, width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
                       <th style={{ ...tripHeaderCellStyle, width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
                       {visibleTripColumns.includes('trip') ? renderTripHeader('trip', 'Trip / Ride') : null}
+                      {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
                       {visibleTripColumns.includes('status') ? renderTripHeader('status', 'Status') : null}
                       {visibleTripColumns.includes('driver') ? renderTripHeader('driver', 'Driver') : null}
                       {visibleTripColumns.includes('pickup') ? renderTripHeader('pickup', 'PU') : null}
@@ -3432,7 +3429,6 @@ const TripDashboardWorkspace = () => {
                       {visibleTripColumns.includes('destination') ? renderTripHeader('destination', 'DO Address', 260) : null}
                       {visibleTripColumns.includes('doZip') ? renderTripHeader('doZip', 'DO ZIP') : null}
                       {visibleTripColumns.includes('phone') ? renderTripHeader('phone', 'Phone') : null}
-                      {visibleTripColumns.includes('vehicle') ? renderTripHeader('vehicle', 'Vehicle') : null}
                       {visibleTripColumns.includes('mobility') ? renderTripHeader('mobility', 'Mobility') : null}
                       {visibleTripColumns.includes('assistLevel') ? renderTripHeader('assistLevel', 'Assist') : null}
                       {visibleTripColumns.includes('serviceAnimal') ? renderTripHeader('serviceAnimal', 'Animal') : null}
@@ -3442,10 +3438,10 @@ const TripDashboardWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'section' ? <tr key={row.key} className="table-light">
-                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase text-muted">{row.label}</td>
-                      </tr> : row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={{ backgroundColor: '#1a1a2e', borderBottom: '1px solid #374151' }}>
-                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#60a5fa', paddingLeft: 10 }}>{row.label}</td>
+                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'section' ? <tr key={row.key} style={{ backgroundColor: '#edf6ee' }}>
+                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#365314' }}>{row.label}</td>
+                      </tr> : row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={{ backgroundColor: '#dcefdc', borderBottom: '1px solid #a7cfa7' }}>
+                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#14532d', paddingLeft: 10 }}>{row.label}</td>
                       </tr> : <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
                         <td>
                           <input
@@ -3498,6 +3494,15 @@ const TripDashboardWorkspace = () => {
                             {row.trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
                             {row.trip.mobilityType ? <Badge bg="light" text="dark" className="mt-1 border">{row.trip.mobilityType}</Badge> : null}
                           </td> : null}
+                        {visibleTripColumns.includes('vehicle') ? renderInlineEditableTripCell({
+                      trip: row.trip,
+                      columnKey: 'vehicle',
+                      displayValue: row.trip.vehicleType || '-',
+                      cellStyle: {
+                        whiteSpace: 'nowrap'
+                      },
+                      placeholder: 'Ambulatory'
+                    }) : null}
                         {visibleTripColumns.includes('status') ? <td style={{ whiteSpace: 'nowrap' }}>
                             <Badge bg={isTripAssignedToSelectedDriver(row.trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(row.trip))}>{isTripAssignedToSelectedDriver(row.trip) ? 'Assigned Here' : getEffectiveTripStatus(row.trip)}</Badge>
                             {row.trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
@@ -3593,15 +3598,6 @@ const TripDashboardWorkspace = () => {
                         whiteSpace: 'nowrap'
                       },
                       placeholder: '(407) 555-0000'
-                    }) : null}
-                        {visibleTripColumns.includes('vehicle') ? renderInlineEditableTripCell({
-                      trip: row.trip,
-                      columnKey: 'vehicle',
-                      displayValue: row.trip.vehicleType || '-',
-                      cellStyle: {
-                        whiteSpace: 'nowrap'
-                      },
-                      placeholder: 'Ambulatory'
                     }) : null}
                         {visibleTripColumns.includes('mobility') ? <td style={{ whiteSpace: 'nowrap' }}>{row.trip.mobilityType || '-'}</td> : null}
                         {visibleTripColumns.includes('assistLevel') ? <td style={{ whiteSpace: 'nowrap' }}>
@@ -3777,6 +3773,35 @@ const TripDashboardWorkspace = () => {
             <Button variant="primary" onClick={handleSaveTripNote}>Save Trip</Button>
           </Modal.Footer>
         </Modal>
+        <style jsx global>{`
+          .trip-dashboard-sheet-wrap {
+            background: #f8fbf8;
+          }
+
+          .trip-dashboard-sheet-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 6;
+            background: #d6ead8 !important;
+            color: #1f2937;
+            border-right: 1px solid #b7d0bb;
+            border-bottom: 1px solid #9fbea4;
+          }
+
+          .trip-dashboard-sheet-table tbody td {
+            border-right: 1px solid #d2ded5;
+            border-bottom: 1px solid #dbe7de;
+            background: #ffffff;
+            padding-top: 0.32rem;
+            padding-bottom: 0.32rem;
+            font-size: 0.79rem;
+            line-height: 1.15;
+          }
+
+          .trip-dashboard-sheet-table tbody tr:nth-child(even) td {
+            background: #f9fcf9;
+          }
+        `}</style>
       </div>
     </>;
 };
