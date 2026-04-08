@@ -708,6 +708,7 @@ const TripDashboardWorkspace = () => {
   const tripTableBottomScrollerRef = useRef(null);
   const tripTableElementRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
+  const lastMapScreenStatePayloadRef = useRef('');
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
   const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
@@ -1589,15 +1590,18 @@ const TripDashboardWorkspace = () => {
   };
 
   useEffect(() => {
-    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify({
+    const payload = {
       tripDateFilter,
       selectedTripIds,
       selectedDriverId,
       selectedRouteId,
       activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
-      routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
-      capturedAt: Date.now()
-    }));
+      routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean).sort((left, right) => left.localeCompare(right))
+    };
+    const payloadText = JSON.stringify(payload);
+    if (lastMapScreenStatePayloadRef.current === payloadText) return;
+    lastMapScreenStatePayloadRef.current = payloadText;
+    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, payloadText);
   }, [activeDateTripIdSet, routeTrips, selectedDriverId, selectedRouteId, selectedTripIds, tripDateFilter]);
 
   const routeStops = useMemo(() => {
@@ -2711,27 +2715,25 @@ const TripDashboardWorkspace = () => {
 
   const handleOpenMapWindow = () => {
     const mapUrl = `/map-screen?source=dashboard`;
-    window.localStorage.setItem('__CARE_MOBILITY_MAP_SCREEN_SOURCE__', 'dashboard');
-    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify({
+    const payload = {
       tripDateFilter,
       selectedTripIds,
       selectedDriverId,
       selectedRouteId,
       activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
-      routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
-      capturedAt: Date.now()
-    }));
+      routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean).sort((left, right) => left.localeCompare(right))
+    };
+    window.localStorage.setItem('__CARE_MOBILITY_MAP_SCREEN_SOURCE__', 'dashboard');
+    window.localStorage.setItem(MAP_SCREEN_DASHBOARD_STATE_KEY, JSON.stringify(payload));
     const popup = window.open(mapUrl, 'care-mobility-map', 'popup=yes,width=1600,height=900,resizable=yes,scrollbars=no');
     if (popup) {
       popup.focus();
       setShowInlineMap(false);
-      applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
       setStatusMessage('Map opened on another screen.');
       return;
     }
     window.open(mapUrl, '_blank', 'noopener,noreferrer');
     setShowInlineMap(false);
-    applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
     setStatusMessage('Map opened in another tab.');
   };
 

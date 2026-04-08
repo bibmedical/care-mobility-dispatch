@@ -212,22 +212,36 @@ const areStringArraysEqual = (left, right) => {
 const MapViewportController = ({ points, fitKey = '' }) => {
   const map = useMap();
   const lastFitKeyRef = useRef('');
+  const lastPointsSignatureRef = useRef('');
 
   useEffect(() => {
     if (!Array.isArray(points) || points.length === 0) return;
     const normalizedFitKey = String(fitKey || '').trim();
+    const pointsSignature = points.map(point => {
+      const latitude = Number(point?.[0]);
+      const longitude = Number(point?.[1]);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return 'invalid';
+      return `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+    }).join('|');
+
     if (normalizedFitKey && lastFitKeyRef.current === normalizedFitKey) return;
+    if (!normalizedFitKey && lastPointsSignatureRef.current === pointsSignature) return;
+
     if (normalizedFitKey) {
       lastFitKeyRef.current = normalizedFitKey;
     }
+    lastPointsSignatureRef.current = pointsSignature;
+
     if (points.length === 1) {
-      map.setView(points[0], 11, {
-        animate: true
+      map.setView(points[0], Math.max(map.getZoom(), 11), {
+        animate: false
       });
       return;
     }
+
     map.fitBounds(points, {
-      animate: true,
+      animate: false,
+      maxZoom: 14,
       padding: [48, 48]
     });
   }, [fitKey, map, points]);
@@ -681,18 +695,21 @@ const StandaloneDispatchMapScreen = () => {
       dashboardRouteStops.forEach(stop => {
         if (Array.isArray(stop.position)) points.push(stop.position);
       });
-      return points.length > 0 ? points : [DEFAULT_CENTER];
+      return points;
     }
     const points = [];
     if (originResult?.coordinates) points.push(originResult.coordinates);
     if (destinationResult?.coordinates) points.push(destinationResult.coordinates);
-    return points.length > 0 ? points : [DEFAULT_CENTER];
+    return points;
   }, [dashboardRouteStops, destinationResult, isDashboardMap, originResult, selectedDriver]);
 
   const mapViewportFitKey = useMemo(() => {
     if (isDashboardMap) {
-      const routeTripKey = routeTripSelectionIds.map(value => String(value || '').trim()).filter(Boolean).join('|');
-      const stopKey = dashboardRouteStops.map(stop => String(stop?.key || '').trim()).filter(Boolean).join('|');
+      const routeTripKey = Array.from(new Set(routeTripSelectionIds.map(value => String(value || '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right)).join('|');
+      const normalizedStopKeys = dashboardRouteStops.map(stop => String(stop?.key || '').trim()).filter(Boolean);
+      const firstStopKey = normalizedStopKeys[0] || '';
+      const lastStopKey = normalizedStopKeys[normalizedStopKeys.length - 1] || '';
+      const stopKey = `${normalizedStopKeys.length}:${firstStopKey}:${lastStopKey}`;
       return `dashboard:${dashboardViewMode}:${routeTripKey}:${stopKey}`;
     }
     const originLabel = String(originResult?.label || '').trim();
