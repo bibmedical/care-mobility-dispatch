@@ -829,6 +829,7 @@ const DispatcherMessagingPanel = ({
           <Badge bg="light" text="dark">{visibleThreads.length} threads</Badge>
           <Badge bg="warning" text="dark">{unreadCount} unread</Badge>
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
+          <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => onOpenLayout?.()}>Layout</Button>
         </div>
         <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 140, maxWidth: 250 }}>
           <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." style={messagingSurfaceStyles.input} spellCheck={false} autoComplete="off" />
@@ -843,9 +844,7 @@ const DispatcherMessagingPanel = ({
           </button>
         </div>
         <div className="d-flex gap-2 flex-wrap justify-content-end">
-          <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => onOpenLayout?.()}>Layout</Button>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
-          <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => handleSendMessage('ETA update sent from dispatch.')}>Quick ETA</Button>
         </div>
       </div>
       <div className="d-flex flex-grow-1" style={{ minHeight: 0, overflow: 'hidden' }}>
@@ -902,7 +901,10 @@ const DispatcherMessagingPanel = ({
                     <div className="flex-grow-1">
                       <button
                         type="button"
-                        onClick={() => handleSelectDriver(thread.driverId)}
+                        onClick={() => {
+                          handleSelectDriver(thread.driverId);
+                          if (hasGps) onLocateDriver?.(thread.driverId);
+                        }}
                         className={`w-100 text-start border-0 px-1 ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
                         style={{ backgroundColor: 'transparent' }}
                       >

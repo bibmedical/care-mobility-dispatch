@@ -882,18 +882,25 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     if (userPreferencesLoading) return;
+    const loadToolbarOrder = (storageKey, defaultOrder) => {
+      const storedValue = window.localStorage.getItem(storageKey);
+      if (!storedValue) return defaultOrder;
+      const parsed = JSON.parse(storedValue);
+      return Array.isArray(parsed) ? parsed : defaultOrder;
+    };
+
     try {
-      const normalizedRows = normalizeDispatcherToolbarRows(DISPATCHER_ROW1_DEFAULT_BLOCKS, DISPATCHER_ROW2_DEFAULT_BLOCKS, DISPATCHER_ROW3_DEFAULT_BLOCKS);
+      const loadedRow1 = userPreferences?.dispatcherToolbar?.row1?.length ? userPreferences.dispatcherToolbar.row1 : loadToolbarOrder(DISPATCHER_ROW1_BLOCKS_KEY, DISPATCHER_ROW1_DEFAULT_BLOCKS);
+      const loadedRow2 = userPreferences?.dispatcherToolbar?.row2?.length ? userPreferences.dispatcherToolbar.row2 : loadToolbarOrder(DISPATCHER_ROW2_BLOCKS_KEY, DISPATCHER_ROW2_DEFAULT_BLOCKS);
+      const loadedRow3 = userPreferences?.dispatcherToolbar?.row3?.length ? userPreferences.dispatcherToolbar.row3 : loadToolbarOrder(DISPATCHER_ROW3_BLOCKS_KEY, DISPATCHER_ROW3_DEFAULT_BLOCKS);
+      const normalizedRows = normalizeDispatcherToolbarRows(loadedRow1, loadedRow2, loadedRow3);
       setToolbarRow1Order(normalizedRows.row1);
       setToolbarRow2Order(normalizedRows.row2);
       setToolbarRow3Order(normalizedRows.row3);
-      window.localStorage.removeItem(DISPATCHER_ROW1_BLOCKS_KEY);
-      window.localStorage.removeItem(DISPATCHER_ROW2_BLOCKS_KEY);
-      window.localStorage.removeItem(DISPATCHER_ROW3_BLOCKS_KEY);
     } catch {
       // Ignore corrupted local toolbar layout preferences.
     }
-  }, [userPreferencesLoading]);
+  }, [userPreferences?.dispatcherToolbar?.row1, userPreferences?.dispatcherToolbar?.row2, userPreferences?.dispatcherToolbar?.row3, userPreferencesLoading]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
@@ -1175,7 +1182,7 @@ const DispatcherWorkspace = () => {
           </>;
       case 'toolbar-edit':
         return <>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} disabled title="Toolbar order is locked">Edit Toolbar</Button>
+            {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save Toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)} disabled={mapLocked}>Edit Toolbar</Button>}
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout} disabled={mapLocked}>Reset Toolbar</Button>
           </>;
       case 'columns':
