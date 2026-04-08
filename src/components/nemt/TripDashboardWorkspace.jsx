@@ -652,7 +652,7 @@ const TripDashboardWorkspace = () => {
   const [routeSearch, setRouteSearch] = useState('');
   const [showInfo, setShowInfo] = useState(false);
   const [showRoute, setShowRoute] = useState(true);
-  const [showBottomPanels, setShowBottomPanels] = useState(true);
+  const [showBottomPanels, setShowBottomPanels] = useState(false);
   const [showInlineMap, setShowInlineMap] = useState(true);
   const [showMapPane, setShowMapPane] = useState(true);
   const [mapLocked, setMapLocked] = useState(false);
@@ -677,7 +677,7 @@ const TripDashboardWorkspace = () => {
     direction: 'asc'
   });
   const [columnWidths, setColumnWidths] = useState({});
-  const [statusMessage, setStatusMessage] = useState('Trip dashboard ready with bottom panels anchored.');
+  const [statusMessage, setStatusMessage] = useState('Trip dashboard ready with map-only view and panel tab.');
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
   const [columnSplit, setColumnSplit] = useState(58);
   const [rowSplit, setRowSplit] = useState(68);
@@ -2585,10 +2585,10 @@ const TripDashboardWorkspace = () => {
     if (userPreferencesLoading || panelViewHydratedRef.current) return;
     const storedPanelView = window.localStorage.getItem(TRIP_DASHBOARD_PANEL_VIEW_KEY) || userPreferences?.tripDashboard?.panelView;
     if (storedPanelView && Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(storedPanelView)) {
-      void storedPanelView;
+      setPanelView(storedPanelView);
+    } else {
+      setPanelView(TRIP_DASHBOARD_PANEL_VIEWS.both);
     }
-    setPanelView(TRIP_DASHBOARD_PANEL_VIEWS.both);
-    setShowBottomPanels(true);
     panelViewHydratedRef.current = true;
   }, [userPreferences?.tripDashboard?.panelView, userPreferencesLoading]);
 
