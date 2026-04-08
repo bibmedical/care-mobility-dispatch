@@ -77,6 +77,17 @@ export async function POST(req) {
         clientType: 'web'
       });
     } catch (authError) {
+      const authMessage = String(authError?.message || '');
+      if (authMessage.includes('DATABASE_URL is not set')) {
+        return new Response(JSON.stringify({
+          error: 'Local database is not configured.',
+          message: 'Set DATABASE_URL in .env.local to enable local login with SQL users.'
+        }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
       await logLoginFailure({
         identifier: normalizedIdentifier,
         reason: authError?.message || 'Invalid credentials',
