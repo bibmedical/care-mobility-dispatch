@@ -31,6 +31,16 @@ export const MENU_ITEMS = [{
   icon: 'iconoir:view-grid',
   url: '/trip-dashboard'
 }, {
+  key: 'dispatching',
+  label: 'Dispatching',
+  icon: 'iconoir:message-text',
+  url: '/dispatching'
+}, {
+  key: 'dispatching-2',
+  label: 'Dispatching 2',
+  icon: 'iconoir:message-alert',
+  url: '/dispatching-2'
+}, {
   key: 'confirmation',
   label: 'Confirmation',
   icon: 'iconoir:check-circle',

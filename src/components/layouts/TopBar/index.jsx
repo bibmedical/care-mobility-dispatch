@@ -18,6 +18,9 @@ const quickLinks = [{
   keywords: ['dashboard'],
   href: '/trip-dashboard'
 }, {
+  keywords: ['dispatching', 'message center', 'messages'],
+  href: '/dispatching'
+}, {
   keywords: ['driver', 'application'],
   href: '/driver-applications'
 }, {
