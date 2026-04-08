@@ -1529,11 +1529,13 @@ const DispatcherWorkspace = () => {
   const routeTrips = useMemo(() => {
     const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
     const selectedRouteTripIdSet = new Set((Array.isArray(selectedRoute?.tripIds) ? selectedRoute.tripIds : []).map(id => String(id || '').trim()).filter(Boolean));
-    const baseTrips = selectedRoute ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim())) : selectedDriver ? trips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id)) : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
+    const baseTrips = selectedRoute
+      ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim()))
+      : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
     const scopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
     const term = deferredRouteSearch.trim().toLowerCase();
-    return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => value.toLowerCase().includes(term))));
-  }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedRoute, selectedTripIds, trips]);
+    return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => String(value || '').toLowerCase().includes(term))));
+  }, [activeDateTripIdSet, deferredRouteSearch, selectedRoute, selectedTripIds, trips]);
 
   const routeStops = useMemo(() => {
     if (!showRoute) return [];
@@ -1598,12 +1600,8 @@ const DispatcherWorkspace = () => {
       return routeTrips[0] ?? null;
     }
 
-    if (selectedDriver) {
-      return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
-    }
-
     return null;
-  }, [routeTrips, selectedDriver, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
+  }, [routeTrips, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const tripTableColumnCount = orderedVisibleTripColumns.length + 4;
   const selectedDriverSelectedTrip = useMemo(() => {
@@ -1612,12 +1610,8 @@ const DispatcherWorkspace = () => {
   }, [selectedDriver, selectedTripIdSet, trips]);
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
-    const selectedEnRouteTrip = selectedDriverSelectedTrip && isTripEnRoute(selectedDriverSelectedTrip) ? selectedDriverSelectedTrip : null;
-    if (selectedEnRouteTrip) return selectedEnRouteTrip;
-    const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
-    if (routeTrip) return routeTrip;
-    return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip)) ?? null;
-  }, [routeTrips, selectedDriver, selectedDriverSelectedTrip, trips]);
+    return selectedDriverSelectedTrip && isTripEnRoute(selectedDriverSelectedTrip) ? selectedDriverSelectedTrip : null;
+  }, [selectedDriver, selectedDriverSelectedTrip]);
   const selectedDriverEtaTrip = useMemo(() => {
     if (!selectedDriver) return null;
     if (selectedDriverSelectedTrip) return selectedDriverSelectedTrip;

@@ -1429,7 +1429,7 @@ const TripDashboardWorkspace = () => {
     const baseTrips = selectedDriver ? selectedDriverWorkingTrips : selectedRoute ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim())) : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
     const scopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
     const term = deferredRouteSearch.trim().toLowerCase();
-    return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => value.toLowerCase().includes(term))));
+    return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => String(value || '').toLowerCase().includes(term))));
   }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedDriverWorkingTrips, selectedRoute, selectedTripIds, trips]);
   const selectedRoutePanelTripIds = useMemo(() => routeTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean).filter(tripId => selectedTripIdSet.has(tripId)), [routeTrips, selectedTripIdSet]);
 
