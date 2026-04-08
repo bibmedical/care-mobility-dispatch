@@ -761,6 +761,7 @@ const TripDashboardWorkspace = () => {
   }), [routePlans, tripDateFilter, trips]);
   const selectedRoute = useMemo(() => filteredRoutePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [filteredRoutePlans, selectedRouteId]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const isDarkTheme = themeMode === 'dark';
   const mapQuickFilterControlStyle = themeMode === 'dark'
     ? {
       width: 150,
@@ -778,6 +779,17 @@ const TripDashboardWorkspace = () => {
     ...mapQuickFilterControlStyle,
     width: 130
   };
+  const compactToolbarOutlineVariant = isDarkTheme ? 'outline-light' : 'outline-dark';
+  const compactToolbarActiveVariant = isDarkTheme ? 'success' : 'dark';
+  const compactToolbarLabelStyle = isDarkTheme ? { color: '#cbd5e1' } : undefined;
+  const compactToolbarDestinationSelectStyle = isDarkTheme
+    ? {
+      width: 140,
+      backgroundColor: '#0f172a',
+      color: '#e5e7eb',
+      borderColor: '#334155'
+    }
+    : { width: 140 };
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const activeDateTripIdSet = useMemo(() => {
     if (tripDateFilter === 'all') return null;
@@ -3202,30 +3214,30 @@ const TripDashboardWorkspace = () => {
               }}>
                     AI Route
                   </button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
+                  <Button variant={compactToolbarOutlineVariant} size="sm" style={isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
+                  <Button variant={compactToolbarOutlineVariant} size="sm" style={isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
                   {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
                       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
                       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
                       <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
                       <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
                     </>}
-                  <span className="fw-semibold small ms-1">Leg</span>
-                  <Button variant={tripLegFilter === 'AL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'AL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="First leg to appointment">AL</Button>
-                  <Button variant={tripLegFilter === 'BL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'BL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
-                  <Button variant={tripLegFilter === 'CL' ? 'dark' : 'outline-dark'} size="sm" style={tripLegFilter === 'CL' ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Third or connector leg">CL</Button>
-                  <span className="fw-semibold small ms-1">Type</span>
-                  <Button variant={tripTypeFilter === 'A' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'A' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
-                  <Button variant={tripTypeFilter === 'W' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'W' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
-                  <Button variant={tripTypeFilter === 'STR' ? 'dark' : 'outline-dark'} size="sm" style={tripTypeFilter === 'STR' ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
-                  <Button variant={serviceAnimalOnly ? 'dark' : 'outline-dark'} size="sm" style={serviceAnimalOnly ? undefined : greenToolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
-                  <Form.Select size="sm" value={doCityFilter} onChange={event => setDoCityFilter(event.target.value)} style={{ width: 140 }} title="Dropoff city">
+                  <span className="fw-semibold small ms-1" style={compactToolbarLabelStyle}>Leg</span>
+                  <Button variant={tripLegFilter === 'AL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'AL' || isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="First leg to appointment">AL</Button>
+                  <Button variant={tripLegFilter === 'BL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'BL' || isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
+                  <Button variant={tripLegFilter === 'CL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'CL' || isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Third or connector leg">CL</Button>
+                  <span className="fw-semibold small ms-1" style={compactToolbarLabelStyle}>Type</span>
+                  <Button variant={tripTypeFilter === 'A' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'A' || isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
+                  <Button variant={tripTypeFilter === 'W' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'W' || isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
+                  <Button variant={tripTypeFilter === 'STR' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'STR' || isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
+                  <Button variant={serviceAnimalOnly ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={serviceAnimalOnly || isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
+                  <Form.Select size="sm" value={doCityFilter} onChange={event => setDoCityFilter(event.target.value)} style={compactToolbarDestinationSelectStyle} title="Dropoff city">
                     <option value="">Destination</option>
                     {availableDropoffCities.map(city => <option key={`do-inline-${city}`} value={city}>{city}</option>)}
                   </Form.Select>
-                  <Button variant={isActiveRouteClosed ? 'danger' : 'outline-dark'} size="sm" style={isActiveRouteClosed ? {
+                  <Button variant={isActiveRouteClosed ? 'danger' : compactToolbarOutlineVariant} size="sm" style={isActiveRouteClosed ? {
                 fontWeight: 700
-              } : greenToolbarButtonStyle} onClick={handleToggleClosedRoute} title="Lock route by driver/day. New trips added later will show who added them.">
+              } : isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={handleToggleClosedRoute} title="Lock route by driver/day. New trips added later will show who added them.">
                     {isActiveRouteClosed ? 'Route closed' : 'Close route'}
                   </Button>
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border bg-light-subtle text-dark" style={{ borderColor: 'rgba(15, 23, 42, 0.12)' }}>
