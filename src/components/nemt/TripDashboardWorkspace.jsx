@@ -2746,12 +2746,22 @@ const TripDashboardWorkspace = () => {
     if (popup) {
       popup.focus();
       setShowInlineMap(false);
-      setStatusMessage('Map opened on another screen.');
+      setLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
+      setShowMapPane(false);
+      setShowBottomPanels(true);
+      setRightPanelCollapsed(false);
+      setColumnSplit(current => clamp(current, 28, 40));
+      setStatusMessage('Map opened on another screen. Focus Right activated.');
       return;
     }
     window.open(mapUrl, '_blank', 'noopener,noreferrer');
     setShowInlineMap(false);
-    setStatusMessage('Map opened in another tab.');
+    setLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
+    setShowMapPane(false);
+    setShowBottomPanels(true);
+    setRightPanelCollapsed(false);
+    setColumnSplit(current => clamp(current, 28, 40));
+    setStatusMessage('Map opened in another tab. Focus Right activated.');
   };
 
   const applyLayoutMode = nextLayoutMode => {
@@ -2785,12 +2795,6 @@ const TripDashboardWorkspace = () => {
     setRowSplit(current => clamp(current, 48, 74));
     setStatusMessage('Stacked layout enabled in Trip Dashboard.');
   };
-
-  useEffect(() => {
-    if (showInlineMap || layoutMode !== TRIP_DASHBOARD_LAYOUTS.focusRight) return;
-    setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
-    setStatusMessage('Focus Right disabled while map is popped out.');
-  }, [layoutMode, showInlineMap]);
 
   const handlePanelViewChange = nextView => {
     void nextView;
