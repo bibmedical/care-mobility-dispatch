@@ -1628,9 +1628,13 @@ const DispatcherWorkspace = () => {
     };
   }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip, selectedDriverRouteMetrics]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
-  const activeDrivers = useMemo(() => {
-    const onlineDrivers = drivers.filter(driver => driver.live === 'Online');
-    return onlineDrivers.length > 0 ? onlineDrivers : drivers;
+  const quickReassignDrivers = useMemo(() => {
+    return [...drivers].sort((leftDriver, rightDriver) => {
+      const leftOnline = String(leftDriver?.live || '').trim().toLowerCase() === 'online' ? 1 : 0;
+      const rightOnline = String(rightDriver?.live || '').trim().toLowerCase() === 'online' ? 1 : 0;
+      if (leftOnline !== rightOnline) return rightOnline - leftOnline;
+      return String(leftDriver?.name || '').localeCompare(String(rightDriver?.name || ''));
+    });
   }, [drivers]);
   const noteModalTrip = useMemo(() => noteModalTripId ? trips.find(trip => trip.id === noteModalTripId) ?? null : null, [noteModalTripId, trips]);
 
@@ -2020,7 +2024,7 @@ const DispatcherWorkspace = () => {
 
   const handleQuickReassignSelectedTrips = () => {
     if (!quickReassignDriverId || selectedTripIds.length === 0) {
-      setStatusMessage('Escoge un chofer activo y al menos un trip abajo para reasignar.');
+      setStatusMessage('Escoge un chofer y al menos un trip abajo para reasignar.');
       return;
     }
 
@@ -3053,8 +3057,8 @@ const DispatcherWorkspace = () => {
                 </div>
                 <div className="d-flex gap-2 flex-wrap align-items-center justify-content-end">
                   <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220, ...dispatcherSurfaceStyles.select }}>
-                    <option value="">Reassign to active driver</option>
-                    {activeDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+                    <option value="">Reassign to driver</option>
+                    {quickReassignDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}{String(driver?.live || '').trim().toLowerCase() === 'online' ? '' : ' (offline)'}</option>)}
                   </Form.Select>
                   <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
                   <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>

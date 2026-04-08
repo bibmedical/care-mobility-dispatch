@@ -7,6 +7,7 @@ import { useNotificationContext } from '@/context/useNotificationContext';
 import { getDriverColor, withDriverAlpha } from '@/helpers/nemt-driver-colors';
 import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
 import { normalizePhoneDigits } from '@/helpers/system-users';
+import { openWhatsAppConversation } from '@/utils/whatsapp';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useSession } from 'next-auth/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -798,6 +799,34 @@ const DispatcherMessagingPanel = ({
 
   const activeDriver = allDrivers.find(driver => driver.id === activeDriverId) ?? null;
 
+  const handleOpenDriverWhatsApp = () => {
+    const phoneNumber = normalizePhoneDigits(activeDriver?.phone);
+    if (!activeDriver || phoneNumber.length < 10) {
+      setSmsStatus('WhatsApp unavailable: missing driver phone number.');
+      return;
+    }
+
+    const whatsappResult = openWhatsAppConversation({
+      phoneNumber,
+      message: ''
+    });
+
+    if (!whatsappResult.ok) {
+      if (whatsappResult.reason === 'missing-phone') {
+        setSmsStatus('WhatsApp unavailable: missing driver phone number.');
+        return;
+      }
+      if (whatsappResult.reason === 'popup-blocked') {
+        setSmsStatus('WhatsApp blocked by browser popup settings.');
+        return;
+      }
+      setSmsStatus('Unable to open WhatsApp right now.');
+      return;
+    }
+
+    setSmsStatus(`WhatsApp opened for ${activeDriver.name || 'driver'}.`);
+  };
+
   const handleAddDailyDriver = () => {
     const firstName = dailyForm.firstName.trim();
     const lastNameOrOrg = dailyForm.lastNameOrOrg.trim();
@@ -1097,6 +1126,16 @@ const DispatcherMessagingPanel = ({
                 title="Add document"
               >
                 <IconifyIcon icon="iconoir:page" />
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenDriverWhatsApp}
+                disabled={!activeDriver || isSendingMessage || normalizePhoneDigits(activeDriver?.phone).length < 10}
+                className="border-0 bg-transparent d-inline-flex align-items-center justify-content-center rounded-circle"
+                style={{ width: 32, height: 32, color: activeDriver ? '#16a34a' : '#94a3b8' }}
+                title="Open driver WhatsApp"
+              >
+                <IconifyIcon icon="mdi:whatsapp" />
               </button>
               <Form.Control value={draftMessage} onChange={event => setDraftMessage(event.target.value)} placeholder={activeDriver ? `Message ${activeDriver.name}` : 'Select a driver first'} disabled={!activeDriver || isSendingMessage} className="border-0 shadow-none" style={{ backgroundColor: 'transparent', color: messagingSurfaceStyles.shell.color }} onKeyDown={event => {
                 if (event.key === 'Enter') {
