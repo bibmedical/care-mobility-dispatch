@@ -198,6 +198,20 @@ const getImportedTripStatus = (statusValue, confirmationStatusValue) => {
   return 'Pending Confirmation';
 };
 
+const buildTripMatchKey = trip => {
+  const rideId = String(trip?.rideId || '').trim();
+  if (rideId) return `ride:${rideId}`;
+
+  const brokerTripId = String(trip?.brokerTripId || '').trim();
+  const rider = String(trip?.rider || '').trim().toLowerCase();
+  const pickup = String(trip?.pickup || '').trim().toLowerCase();
+  const address = String(trip?.address || '').trim().toLowerCase();
+  const destination = String(trip?.destination || '').trim().toLowerCase();
+  const serviceDate = String(getTripServiceDateKey(trip) || '').trim();
+  const composite = [brokerTripId, serviceDate, rider, pickup, address, destination].filter(Boolean).join('|');
+  return composite ? `composite:${composite}` : '';
+};
+
 const annotateSafeRideTrips = trips => {
   const groupedTrips = trips.reduce((accumulator, trip) => {
     const groupKey = trip.brokerTripId || trip.id;
@@ -345,6 +359,41 @@ const TripImportWorkspace = () => {
 
   const importedServiceDateKeys = useMemo(() => Array.from(new Set(pendingTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).sort(), [pendingTrips]);
 
+  const importReconciliation = useMemo(() => {
+    if (pendingTrips.length === 0 || importedServiceDateKeys.length === 0) {
+      return {
+        sourceRows: 0,
+        existingRows: 0,
+        matchedRows: 0,
+        newRows: 0,
+        missingFromSafeRide: 0
+      };
+    }
+
+    const targetServiceDates = new Set(importedServiceDateKeys);
+    const currentSameDayTrips = trips.filter(trip => targetServiceDates.has(getTripServiceDateKey(trip)));
+    const importedKeySet = new Set(pendingTrips.map(buildTripMatchKey).filter(Boolean));
+    const currentKeySet = new Set(currentSameDayTrips.map(buildTripMatchKey).filter(Boolean));
+
+    let matchedRows = 0;
+    importedKeySet.forEach(key => {
+      if (currentKeySet.has(key)) matchedRows += 1;
+    });
+
+    let missingFromSafeRide = 0;
+    currentKeySet.forEach(key => {
+      if (!importedKeySet.has(key)) missingFromSafeRide += 1;
+    });
+
+    return {
+      sourceRows: pendingTrips.length,
+      existingRows: currentSameDayTrips.length,
+      matchedRows,
+      newRows: Math.max(pendingTrips.length - matchedRows, 0),
+      missingFromSafeRide
+    };
+  }, [importedServiceDateKeys, pendingTrips, trips]);
+
   const stats = useMemo(() => [{
     label: 'Trips en sistema',
     value: String(trips.length)
@@ -470,6 +519,14 @@ const TripImportWorkspace = () => {
               <div className="small text-muted mb-3">{selectedFileName ? `Archivo seleccionado: ${selectedFileName}` : 'No hay archivo seleccionado.'}</div>
               <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Dias detectados en archivo: ${importedServiceDateKeys.join(', ')}` : 'Dias detectados en archivo: -'}</div>
               <div className="small text-muted mb-3">{message}</div>
+              {pendingTrips.length > 0 ? <Alert variant="light" className="small mb-3">
+                  <div className="fw-semibold mb-1">SafeRide Match Check (same day)</div>
+                  <div>SafeRide rows: {importReconciliation.sourceRows}</div>
+                  <div>Rows in system (same day): {importReconciliation.existingRows}</div>
+                  <div>Matched rows: {importReconciliation.matchedRows}</div>
+                  <div>New rows from SafeRide: {importReconciliation.newRows}</div>
+                  <div>Rows missing from SafeRide file: {importReconciliation.missingFromSafeRide}</div>
+                </Alert> : null}
               {pendingTrips.length > 0 ? <Alert variant="success" className="d-flex flex-wrap align-items-center justify-content-between gap-3">
                   <div>
                     <div className="fw-semibold">Archivo listo para importar</div>
