@@ -302,6 +302,12 @@ const getStatusBadge = status => {
   return 'secondary';
 };
 
+const getConfirmationBadgeVariant = confirmationStatus => {
+  if (confirmationStatus === 'Confirmed') return 'success';
+  if (confirmationStatus === 'Opted Out') return 'danger';
+  return 'secondary';
+};
+
 const getLegBadge = trip => {
   if (trip.legVariant && trip.legLabel) return {
     variant: trip.legVariant,
@@ -509,6 +515,8 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
       return trip.brokerTripId || trip.id;
     case 'status':
       return getEffectiveTripStatus(trip);
+    case 'confirmation':
+      return String(trip?.confirmation?.status || '').trim();
     case 'driver':
       return getDriverName(trip.driverId);
     case 'pickup':
@@ -1065,11 +1073,14 @@ const DispatcherWorkspace = () => {
       case 'status-filter':
         return <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 130 }}>
             <option value="all">All</option>
-            <option value="assigned">Assigned</option>
             <option value="unassigned">Unassigned</option>
+            <option value="assigned">Assigned</option>
+            <option value="inprogress">In progress</option>
             <option value="willcall">WillCall</option>
+            <option value="confirm">Confirmed</option>
+            <option value="unconfirm">Unconfirmed</option>
             <option value="cancelled">Cancelled</option>
-            <option value="block">Block</option>
+            <option value="block">Blocked</option>
           </Form.Select>;
       case 'date-controls':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
@@ -1255,8 +1266,10 @@ const DispatcherWorkspace = () => {
     const hasActiveBlacklistBlock = blockingState?.source === 'blacklist';
     const autoExcluded = !hasActiveBlacklistBlock && isPatientExclusionActiveForTripDate(trip, tripDateKey);
     const effectiveStatus = autoExcluded ? 'cancelled' : normalizedStatus;
+    const hasActiveHospitalRehab = Boolean(trip?.hospitalStatus?.startDate) && Boolean(trip?.hospitalStatus?.endDate) && todayDateKey >= String(trip.hospitalStatus.startDate) && todayDateKey <= String(trip.hospitalStatus.endDate);
+    const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(effectiveStatus) || hasActiveHospitalRehab;
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
-    const matchesStatus = tripStatusFilter === 'all' ? effectiveStatus !== 'cancelled' : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : effectiveStatus === tripStatusFilter;
+    const matchesStatus = tripStatusFilter === 'all' ? !isNonOperationalTrip : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationStatus === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationStatus === 'Not Sent' || String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase() === 'U' : effectiveStatus === tripStatusFilter;
     if (!matchesStatus) return false;
     if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) return false;
     return true;
@@ -1287,7 +1300,7 @@ const DispatcherWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, selectedDriverId, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, tripDateFilter, routePlans, tripBlockingMap, trips, zipFilter]);
+  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, selectedDriverId, todayDateKey, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, tripDateFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -1693,6 +1706,15 @@ const DispatcherWorkspace = () => {
             {trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
             {trip.safeRideStatus && getEffectiveTripStatus(trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{trip.safeRideStatus}</div> : null}
           </td>;
+      case 'confirmation': {
+        const blockingState = tripBlockingMap.get(trip.id);
+        const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
+        const confirmationCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
+        const confirmationLabel = confirmationCode === 'U' ? 'Unconfirmed' : confirmationStatus;
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>
+            <Badge bg={getConfirmationBadgeVariant(confirmationLabel === 'Unconfirmed' ? 'Not Sent' : confirmationLabel)}>{confirmationLabel}</Badge>
+          </td>;
+      }
       case 'driver':
         return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>
             <div>{getTripDriverDisplay(trip)}</div>

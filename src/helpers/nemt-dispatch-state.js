@@ -249,6 +249,9 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   key: 'status',
   label: 'Status'
 }, {
+  key: 'confirmation',
+  label: 'Confirmation'
+}, {
   key: 'driver',
   label: 'Driver'
 }, {
