@@ -16,6 +16,24 @@ const normalizeDriverIdentitySet = (...values) => {
     const normalized = normalizeLookupValue(value);
     if (normalized) identities.add(normalized);
   });
+  
+  // Also add split name parts for better matching
+  values.forEach(value => {
+    const stringValue = String(value || '').trim();
+    if (!stringValue) return;
+    const parts = stringValue.split(/\s+/);
+    if (parts.length >= 2) {
+      // Add first name and last name separately
+      parts.forEach(part => {
+        const normalizedPart = normalizeLookupValue(part);
+        if (normalizedPart) identities.add(normalizedPart);
+      });
+      // Add first + last combinations
+      identities.add(normalizeLookupValue(`${parts[0]} ${parts[parts.length - 1]}`));
+      identities.add(normalizeLookupValue(`${parts.slice(0, -1).join(' ')}`));
+    }
+  });
+  
   return identities;
 };
 
@@ -76,9 +94,22 @@ const safeReadVisibleSystemMessages = async driverIdentitySet => {
       const messageDriverName = String(message?.driverName || '').trim();
       if (!messageDriverId && !messageDriverName) return false;
       if (String(message?.status || '').trim().toLowerCase() === 'resolved') return false;
-      const matchesId = messageDriverId && driverIdentitySet.has(normalizeLookupValue(messageDriverId));
-      const matchesName = messageDriverName && driverIdentitySet.has(normalizeLookupValue(messageDriverName));
-      return matchesId || matchesName;
+      
+      const messageIdNormalized = normalizeLookupValue(messageDriverId);
+      const messageNameNormalized = normalizeLookupValue(messageDriverName);
+      
+      // Check if message driverId or driverName matches any driver identity
+      if (messageIdNormalized && driverIdentitySet.has(messageIdNormalized)) return true;
+      if (messageNameNormalized && driverIdentitySet.has(messageNameNormalized)) return true;
+      
+      // Also check if any part of the identity set matches message name/id
+      for (const identity of driverIdentitySet) {
+        if (messageIdNormalized && messageIdNormalized.includes(identity)) return true;
+        if (messageNameNormalized && messageNameNormalized.includes(identity)) return true;
+        if (identity && (identity.includes(messageIdNormalized) || identity.includes(messageNameNormalized))) return true;
+      }
+      
+      return false;
     }).slice(0, MOBILE_MESSAGES_MAX_ITEMS);
   } catch (error) {
     console.warn('[mobile/driver-messages] readSystemMessages failed, continuing with dispatch thread fallback:', error?.message || error);
