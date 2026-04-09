@@ -301,11 +301,22 @@ const DispatcherHistoryWorkspace = () => {
     return Array.from(optionMap.values()).sort((left, right) => left.label.localeCompare(right.label));
   }, [archive]);
 
+  const dayDriverOptions = useMemo(() => {
+    if (archiveDriverOptions.length > 0) return archiveDriverOptions;
+    return availableDrivers;
+  }, [archiveDriverOptions, availableDrivers]);
+
   const filteredDriverOptions = useMemo(() => {
     const term = driverSearch.trim().toLowerCase();
-    if (!term) return availableDrivers;
-    return availableDrivers.filter(option => [option?.label, option?.driverId].some(value => String(value || '').toLowerCase().includes(term)));
-  }, [availableDrivers, driverSearch]);
+    if (!term) return dayDriverOptions;
+    return dayDriverOptions.filter(option => [option?.label, option?.driverId].some(value => String(value || '').toLowerCase().includes(term)));
+  }, [dayDriverOptions, driverSearch]);
+
+  useEffect(() => {
+    if (filteredDriverOptions.length === 0) return;
+    if (filteredDriverOptions.some(option => option.driverId === selectedDriverId)) return;
+    setSelectedDriverId(filteredDriverOptions[0].driverId);
+  }, [filteredDriverOptions, selectedDriverId]);
 
   const selectedDriverArchiveDays = useMemo(() => {
     const matchingDriver = availableDrivers.find(option => option.driverId === selectedDriverId);
