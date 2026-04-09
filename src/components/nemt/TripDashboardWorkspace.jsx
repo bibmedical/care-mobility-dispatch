@@ -328,6 +328,17 @@ const getDropoffCity = trip => extractCityFromAddress(trip?.destination);
 const getPickupZip = trip => String(trip?.fromZipcode || trip?.fromZip || trip?.pickupZipcode || trip?.pickupZip || trip?.originZip || '').trim();
 const getDropoffZip = trip => String(trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.dropoffZip || trip?.destinationZip || '').trim();
 const normalizeCityValue = value => String(value || '').trim().toLowerCase();
+const normalizeZipValue = value => String(value || '').trim();
+const tripMatchesCity = (trip, cityValue) => {
+  const normalizedCity = normalizeCityValue(cityValue);
+  if (!normalizedCity) return true;
+  return normalizeCityValue(getPickupCity(trip)) === normalizedCity || normalizeCityValue(getDropoffCity(trip)) === normalizedCity;
+};
+const tripMatchesZip = (trip, zipValue) => {
+  const normalizedZip = normalizeZipValue(zipValue);
+  if (!normalizedZip) return true;
+  return normalizeZipValue(getPickupZip(trip)) === normalizedZip || normalizeZipValue(getDropoffZip(trip)) === normalizedZip;
+};
 const buildAiPlannerRoutePairKey = (pickupCity, dropoffCity) => `${String(pickupCity || '').trim()}|||${String(dropoffCity || '').trim()}`;
 const parseAiPlannerRoutePairKey = pairKey => {
   const [pickupCity = '', dropoffCity = ''] = String(pairKey || '').split('|||');
@@ -1293,12 +1304,10 @@ const TripDashboardWorkspace = () => {
     return tokens.every(token => haystack.includes(token));
   }).filter(trip => {
     const pickupZipValue = pickupZipFilter.trim();
-    if (!pickupZipValue) return true;
-    return getPickupZip(trip) === pickupZipValue;
+    return tripMatchesZip(trip, pickupZipValue);
   }).filter(trip => {
     const dropoffZipValue = dropoffZipFilter.trim();
-    if (!dropoffZipValue) return true;
-    return getDropoffZip(trip) === dropoffZipValue;
+    return tripMatchesZip(trip, dropoffZipValue);
   }).filter(trip => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
@@ -1306,28 +1315,26 @@ const TripDashboardWorkspace = () => {
   }), [dropoffZipFilter, pickupZipFilter, riderProfiles, serviceAnimalOnly, todayDateKey, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
-    return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffZip || getDropoffZip(trip) === targetDropoffZip).map(trip => getPickupZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return Array.from(new Set(cityOptionTrips.filter(trip => tripMatchesZip(trip, targetDropoffZip)).flatMap(trip => [getPickupZip(trip).trim(), getDropoffZip(trip).trim()]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [cityOptionTrips, dropoffZipFilter]);
   const availableDropoffZips = useMemo(() => {
     const targetPickupZip = pickupZipFilter.trim();
-    return Array.from(new Set(cityOptionTrips.filter(trip => !targetPickupZip || getPickupZip(trip) === targetPickupZip).map(trip => getDropoffZip(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return Array.from(new Set(cityOptionTrips.filter(trip => tripMatchesZip(trip, targetPickupZip)).flatMap(trip => [getPickupZip(trip).trim(), getDropoffZip(trip).trim()]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [cityOptionTrips, pickupZipFilter]);
   const availablePickupCities = useMemo(() => {
     const targetDropoffCity = doCityFilter.trim().toLowerCase();
-    return Array.from(new Set(cityOptionTrips.filter(trip => !targetDropoffCity || getDropoffCity(trip).toLowerCase() === targetDropoffCity).map(trip => getPickupCity(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return Array.from(new Set(cityOptionTrips.filter(trip => tripMatchesCity(trip, targetDropoffCity)).flatMap(trip => [getPickupCity(trip).trim(), getDropoffCity(trip).trim()]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [cityOptionTrips, doCityFilter]);
   const availableDropoffCities = useMemo(() => {
     const targetPickupCity = puCityFilter.trim().toLowerCase();
-    return Array.from(new Set(cityOptionTrips.filter(trip => !targetPickupCity || getPickupCity(trip).toLowerCase() === targetPickupCity).map(trip => getDropoffCity(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return Array.from(new Set(cityOptionTrips.filter(trip => tripMatchesCity(trip, targetPickupCity)).flatMap(trip => [getPickupCity(trip).trim(), getDropoffCity(trip).trim()]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [cityOptionTrips, puCityFilter]);
   const filteredTrips = useMemo(() => cityOptionTrips.filter(trip => {
     const pickupCityValue = puCityFilter.trim().toLowerCase();
-    if (!pickupCityValue) return true;
-    return getPickupCity(trip).toLowerCase() === pickupCityValue;
+    return tripMatchesCity(trip, pickupCityValue);
   }).filter(trip => {
     const dropoffCityValue = doCityFilter.trim().toLowerCase();
-    if (!dropoffCityValue) return true;
-    return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
+    return tripMatchesCity(trip, dropoffCityValue);
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
   const mapQuickCityOptions = useMemo(() => {
     const citySet = new Set();
@@ -1392,8 +1399,7 @@ const TripDashboardWorkspace = () => {
   const aiPlannerRoutePairSet = useMemo(() => new Set(aiPlannerRoutePairs), [aiPlannerRoutePairs]);
   const aiPlanningScopeTrips = useMemo(() => aiPlannerBaseScopeTrips.filter(trip => {
     const cityValue = aiPlannerCityFilter.trim().toLowerCase();
-    if (!cityValue) return true;
-    return getPickupCity(trip).toLowerCase() === cityValue || getDropoffCity(trip).toLowerCase() === cityValue;
+    return tripMatchesCity(trip, cityValue);
   }).filter(trip => {
     if (aiPlannerRoutePairSet.size === 0) return true;
     const pickupCity = getPickupCity(trip).trim();
