@@ -4,6 +4,7 @@ import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
 import { getDriverColor, withDriverAlpha } from '@/helpers/nemt-driver-colors';
 import { formatDispatchTime, formatTripDateLabel, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
+import { USER_SEED } from '@/helpers/system-users';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import styles from './DispatcherHistoryWorkspace.module.scss';
@@ -31,6 +32,28 @@ const toTitleCase = value => String(value || '')
   .join(' ')
   .trim();
 
+const normalizeLookupValue = value => String(value || '').trim().toLowerCase();
+
+const normalizeDriverNameKey = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+const getSystemUserFullName = userRecord => [userRecord?.firstName, userRecord?.lastName].map(part => String(part || '').trim()).filter(Boolean).join(' ').trim();
+
+const findSystemUserByDriverId = driverId => {
+  const normalizedDriverId = normalizeLookupValue(driverId);
+  if (!normalizedDriverId) return null;
+
+  const byUserSuffix = normalizedDriverId.match(/-user-(\d+)$/i);
+  if (byUserSuffix?.[1]) {
+    const userId = `user-${byUserSuffix[1]}`;
+    const foundById = USER_SEED.find(user => normalizeLookupValue(user?.id) === userId);
+    if (foundById) return foundById;
+  }
+
+  const usernameToken = normalizedDriverId.replace(/^drv-/i, '').replace(/-user-\d+$/i, '').replace(/^driver[-_]?/i, '').trim();
+  if (!usernameToken) return null;
+  return USER_SEED.find(user => normalizeLookupValue(user?.username) === usernameToken || normalizeLookupValue(user?.firstName) === usernameToken) || null;
+};
+
 const humanizeDriverId = driverId => {
   const raw = String(driverId || '').trim();
   if (!raw) return 'Driver';
@@ -45,6 +68,8 @@ const humanizeDriverId = driverId => {
 const resolveDriverDisplayLabel = (driverId, archive, fallbackLabel = '') => {
   const fromArchive = getDriverLabel(driverId, archive);
   if (fromArchive && fromArchive !== driverId) return fromArchive;
+  const fromSystemUser = getSystemUserFullName(findSystemUserByDriverId(driverId));
+  if (fromSystemUser) return fromSystemUser;
   const fallback = String(fallbackLabel || '').trim();
   if (fallback && !/^drv-/i.test(fallback) && !/-user-\d+$/i.test(fallback)) return fallback;
   return humanizeDriverId(driverId || fallback);
@@ -83,8 +108,32 @@ const getStatusBadge = status => {
 
 const normalizeDriverId = value => String(value || '').trim();
 
-const isTripOwnedByDriver = (trip, driverId) => {
+const buildDriverSelectionKey = driverId => {
   const normalizedDriverId = normalizeDriverId(driverId);
+  if (!normalizedDriverId) return '';
+  if (normalizedDriverId.startsWith('id:') || normalizedDriverId.startsWith('name:')) return normalizedDriverId;
+  return `id:${normalizedDriverId}`;
+};
+
+const extractDriverIdFromSelection = selectionKey => {
+  const normalized = normalizeDriverId(selectionKey);
+  if (!normalized) return '';
+  if (normalized.startsWith('id:')) return normalizeDriverId(normalized.slice(3));
+  if (normalized.startsWith('name:')) return '';
+  return normalized;
+};
+
+const isTripOwnedByDriver = (trip, driverId) => {
+  const selectionKey = normalizeDriverId(driverId);
+  if (!selectionKey) return false;
+
+  if (selectionKey.startsWith('name:')) {
+    const selectedName = normalizeDriverNameKey(selectionKey.slice(5));
+    if (!selectedName) return false;
+    return [trip?.driverName, trip?.secondaryDriverName, trip?.completedByDriverName, trip?.canceledByDriverName].some(name => normalizeDriverNameKey(name) === selectedName);
+  }
+
+  const normalizedDriverId = extractDriverIdFromSelection(selectionKey);
   if (!normalizedDriverId) return false;
   return normalizeDriverId(trip?.driverId) === normalizedDriverId || normalizeDriverId(trip?.secondaryDriverId) === normalizedDriverId;
 };
@@ -185,7 +234,8 @@ const DispatcherHistoryWorkspace = () => {
       const params = new URLSearchParams();
       params.set('limit', '180');
       if (nextDate) params.set('date', nextDate);
-      if (nextDriverId) params.set('driverId', nextDriverId);
+      const nextDriverQueryId = extractDriverIdFromSelection(nextDriverId);
+      if (nextDriverQueryId) params.set('driverId', nextDriverQueryId);
       const query = `?${params.toString()}`;
       const response = await fetch(`/api/nemt/dispatch-history${query}`, { cache: 'no-store' });
       const rawResponse = await response.text();
@@ -204,8 +254,12 @@ const DispatcherHistoryWorkspace = () => {
       setAvailableDates(Array.isArray(payload?.availableDates) ? payload.availableDates : []);
       setAvailableDrivers(Array.isArray(payload?.availableDrivers) ? payload.availableDrivers : []);
       setSelectedDate(String(payload?.selectedDateKey || nextDate || ''));
-      if (typeof payload?.selectedDriverId === 'string') {
-        setSelectedDriverId(payload.selectedDriverId);
+      const serverDriverId = buildDriverSelectionKey(payload?.selectedDriverId || '');
+      const localDriverId = buildDriverSelectionKey(nextDriverId || '');
+      if (serverDriverId) {
+        setSelectedDriverId(serverDriverId);
+      } else if (localDriverId) {
+        setSelectedDriverId(localDriverId);
       }
       setArchive(payload?.archive || null);
     } catch (error) {
@@ -237,7 +291,7 @@ const DispatcherHistoryWorkspace = () => {
       if (normalizeDriverId(thread?.driverId)) candidateDriverIds.add(normalizeDriverId(thread.driverId));
     });
     const firstDriverId = Array.from(candidateDriverIds.values())[0] || '';
-    if (firstDriverId) setSelectedDriverId(firstDriverId);
+    if (firstDriverId) setSelectedDriverId(buildDriverSelectionKey(firstDriverId));
   }, [archive, selectedDriverId]);
 
   const handleBackfill = async () => {
@@ -280,14 +334,16 @@ const DispatcherHistoryWorkspace = () => {
     (Array.isArray(archive?.dispatchThreads) ? archive.dispatchThreads : []).forEach(thread => {
       const driverId = normalizeDriverId(thread?.driverId);
       if (!driverId) return;
-      const previousEntry = optionMap.get(driverId) || {
-        driverId,
+      const entryKey = buildDriverSelectionKey(driverId);
+      const previousEntry = optionMap.get(entryKey) || {
+        driverId: entryKey,
+        rawDriverId: driverId,
         label: getDriverLabel(driverId, archive),
         routeCount: 0,
         tripCount: 0,
         messageCount: 0
       };
-      optionMap.set(driverId, {
+      optionMap.set(entryKey, {
         ...previousEntry,
         messageCount: previousEntry.messageCount + (Array.isArray(thread?.messages) ? thread.messages.length : 0)
       });
@@ -295,15 +351,35 @@ const DispatcherHistoryWorkspace = () => {
     (Array.isArray(archive?.trips) ? archive.trips : []).forEach(trip => {
       [trip?.driverId, trip?.secondaryDriverId].forEach(driverIdValue => {
         const driverId = normalizeDriverId(driverIdValue);
-        if (!driverId) return;
-        const previousEntry = optionMap.get(driverId) || {
-          driverId,
-          label: getDriverLabel(driverId, archive),
+        if (driverId) {
+          const entryKey = buildDriverSelectionKey(driverId);
+          const previousEntry = optionMap.get(entryKey) || {
+            driverId: entryKey,
+            rawDriverId: driverId,
+            label: getDriverLabel(driverId, archive),
+            routeCount: 0,
+            tripCount: 0,
+            messageCount: 0
+          };
+          optionMap.set(entryKey, {
+            ...previousEntry,
+            tripCount: previousEntry.tripCount + 1
+          });
+          return;
+        }
+
+        const tripDriverName = String(trip?.driverName || '').trim();
+        if (!tripDriverName) return;
+        const nameKey = `name:${normalizeDriverNameKey(tripDriverName)}`;
+        const previousEntry = optionMap.get(nameKey) || {
+          driverId: nameKey,
+          rawDriverId: '',
+          label: tripDriverName,
           routeCount: 0,
           tripCount: 0,
           messageCount: 0
         };
-        optionMap.set(driverId, {
+        optionMap.set(nameKey, {
           ...previousEntry,
           tripCount: previousEntry.tripCount + 1
         });
@@ -311,18 +387,39 @@ const DispatcherHistoryWorkspace = () => {
     });
     routeList.forEach(route => {
       const driverId = normalizeDriverId(route?.driverId) || normalizeDriverId((Array.isArray(route?.trips) ? route.trips[0]?.driverId : ''));
-      if (!driverId) return;
-      const previousEntry = optionMap.get(driverId) || {
-        driverId,
-        label: getDriverLabel(driverId, archive),
-        routeCount: 0,
-        tripCount: 0,
-        messageCount: 0
-      };
-      optionMap.set(driverId, {
-        ...previousEntry,
-        routeCount: previousEntry.routeCount + 1
-      });
+      if (driverId) {
+        const entryKey = buildDriverSelectionKey(driverId);
+        const previousEntry = optionMap.get(entryKey) || {
+          driverId: entryKey,
+          rawDriverId: driverId,
+          label: getDriverLabel(driverId, archive),
+          routeCount: 0,
+          tripCount: 0,
+          messageCount: 0
+        };
+        optionMap.set(entryKey, {
+          ...previousEntry,
+          routeCount: previousEntry.routeCount + 1
+        });
+      }
+
+      if (!driverId) {
+        const routeDriverName = String(route?.driverName || '').trim();
+        if (!routeDriverName) return;
+        const nameKey = `name:${normalizeDriverNameKey(routeDriverName)}`;
+        const previousEntry = optionMap.get(nameKey) || {
+          driverId: nameKey,
+          rawDriverId: '',
+          label: routeDriverName,
+          routeCount: 0,
+          tripCount: 0,
+          messageCount: 0
+        };
+        optionMap.set(nameKey, {
+          ...previousEntry,
+          routeCount: previousEntry.routeCount + 1
+        });
+      }
     });
     return Array.from(optionMap.values()).sort((left, right) => left.label.localeCompare(right.label));
   }, [archive]);
@@ -332,13 +429,16 @@ const DispatcherHistoryWorkspace = () => {
     const merged = new Map();
 
     (availableDrivers.length > 0 ? availableDrivers : archiveDriverOptions).forEach(option => {
-      const driverId = normalizeDriverId(option?.driverId);
-      if (!driverId) return;
+      const rawDriverId = normalizeDriverId(option?.driverId);
+      const driverId = buildDriverSelectionKey(rawDriverId);
+      if (!driverId && !rawDriverId) return;
+      const mergedKey = driverId || rawDriverId;
       const dayOption = byDay.get(driverId) || {};
-      merged.set(driverId, {
+      merged.set(mergedKey, {
         ...option,
-        driverId,
-        label: resolveDriverDisplayLabel(driverId, archive, option?.label),
+        driverId: mergedKey,
+        rawDriverId: rawDriverId || option?.rawDriverId || '',
+        label: resolveDriverDisplayLabel(rawDriverId || option?.rawDriverId || mergedKey, archive, option?.label),
         dayTripCount: Number(dayOption?.tripCount || 0),
         dayRouteCount: Number(dayOption?.routeCount || 0),
         archivedDayCount: Number(option?.archivedDayCount || 0),
@@ -355,7 +455,8 @@ const DispatcherHistoryWorkspace = () => {
         ...(previous || {}),
         ...option,
         driverId,
-        label: resolveDriverDisplayLabel(driverId, archive, previous?.label || option?.label),
+        rawDriverId: option?.rawDriverId || previous?.rawDriverId || '',
+        label: resolveDriverDisplayLabel(option?.rawDriverId || previous?.rawDriverId || driverId, archive, previous?.label || option?.label),
         dayTripCount: Number(option?.tripCount || 0),
         dayRouteCount: Number(option?.routeCount || 0),
         archivedDayCount: Number(previous?.archivedDayCount || option?.archivedDayCount || 0),
@@ -380,7 +481,8 @@ const DispatcherHistoryWorkspace = () => {
   }, [filteredDriverOptions, selectedDriverId]);
 
   const selectedDriverArchiveDays = useMemo(() => {
-    const matchingDriver = availableDrivers.find(option => option.driverId === selectedDriverId);
+    const selectedRawDriverId = extractDriverIdFromSelection(selectedDriverId);
+    const matchingDriver = availableDrivers.find(option => normalizeDriverId(option?.driverId) === selectedRawDriverId);
     return Array.isArray(matchingDriver?.days) ? matchingDriver.days : [];
   }, [availableDrivers, selectedDriverId]);
 
@@ -392,11 +494,18 @@ const DispatcherHistoryWorkspace = () => {
   const routeRows = useMemo(() => {
     const routeList = buildRouteTripMap(archive?.routePlans, archive?.trips);
     if (!selectedDriverId) return [];
-    return routeList.filter(route => route.trips.some(trip => isTripOwnedByDriver(trip, selectedDriverId)) || normalizeDriverId(route?.driverId) === selectedDriverId || String(route?.driverName || '').trim() === getDriverLabel(selectedDriverId, archive));
+    const selectedRawDriverId = extractDriverIdFromSelection(selectedDriverId);
+    const selectedNameKey = selectedDriverId.startsWith('name:') ? normalizeDriverNameKey(selectedDriverId.slice(5)) : '';
+    return routeList.filter(route => {
+      const routeDriverId = normalizeDriverId(route?.driverId);
+      const routeDriverName = normalizeDriverNameKey(route?.driverName);
+      return route.trips.some(trip => isTripOwnedByDriver(trip, selectedDriverId)) || (selectedRawDriverId && routeDriverId === selectedRawDriverId) || (selectedNameKey && routeDriverName === selectedNameKey);
+    });
   }, [archive, selectedDriverId]);
 
   const threadRows = useMemo(() => {
-    return (Array.isArray(archive?.dispatchThreads) ? archive.dispatchThreads : []).filter(thread => !selectedDriverId || normalizeDriverId(thread?.driverId) === selectedDriverId).map(thread => ({
+    const selectedRawDriverId = extractDriverIdFromSelection(selectedDriverId);
+    return (Array.isArray(archive?.dispatchThreads) ? archive.dispatchThreads : []).filter(thread => !selectedDriverId || normalizeDriverId(thread?.driverId) === selectedRawDriverId).map(thread => ({
       ...thread,
       driverLabel: getDriverLabel(thread.driverId, archive)
     })).sort((left, right) => left.driverLabel.localeCompare(right.driverLabel));
@@ -418,8 +527,12 @@ const DispatcherHistoryWorkspace = () => {
 
   const auditRows = useMemo(() => [...(Array.isArray(archive?.auditLog) ? archive.auditLog : [])].filter(item => {
     if (!selectedDriverId) return false;
+    const selectedRawDriverId = extractDriverIdFromSelection(selectedDriverId);
+    const selectedNameKey = selectedDriverId.startsWith('name:') ? normalizeDriverNameKey(selectedDriverId.slice(5)) : '';
     const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
-    return normalizeDriverId(metadata?.driverId) === selectedDriverId || normalizeDriverId(item?.entityId) === selectedDriverId || String(item?.summary || '').toLowerCase().includes(getDriverLabel(selectedDriverId, archive).toLowerCase());
+    return normalizeDriverId(metadata?.driverId) === selectedRawDriverId
+      || normalizeDriverId(item?.entityId) === selectedRawDriverId
+      || (selectedNameKey && normalizeDriverNameKey(item?.summary) .includes(selectedNameKey));
   }).sort((left, right) => String(right?.timestamp || '').localeCompare(String(left?.timestamp || ''))), [archive, selectedDriverId]);
 
   const photoGroups = useMemo(() => {
@@ -465,7 +578,7 @@ const DispatcherHistoryWorkspace = () => {
   };
 
   const selectedDriverSummary = mergedDriverOptions.find(option => option.driverId === selectedDriverId) || null;
-  const selectedDriverLabel = selectedDriverSummary?.label || (selectedDriverId ? resolveDriverDisplayLabel(selectedDriverId, archive, '') : '');
+  const selectedDriverLabel = selectedDriverSummary?.label || (selectedDriverId ? resolveDriverDisplayLabel(extractDriverIdFromSelection(selectedDriverId) || selectedDriverId.replace(/^name:/, ''), archive, '') : '');
   const selectedDriverColor = getDriverColor(selectedDriverSummary?.driverId || selectedDriverId || selectedDriverLabel);
   const selectedDaySummary = availableDates.find(item => item.dateKey === selectedDate) || null;
 
