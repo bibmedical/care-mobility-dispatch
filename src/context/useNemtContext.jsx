@@ -51,7 +51,7 @@ const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
-const DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS = 5000;
+const DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS = 2000;
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
   if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;

@@ -14,10 +14,10 @@ export const DRIVER_APP_CONFIG = {
   tripSyncIntervalMs: 8000,
   messageSyncIntervalMs: 3000,
   lateAlertThresholdMinutes: 5,
-  gpsDistanceIntervalMeters: 20,
-  gpsTimeIntervalMs: 15000,
-  backgroundGpsDistanceIntervalMeters: 25,
-  backgroundGpsTimeIntervalMs: 45000,
+  gpsDistanceIntervalMeters: 8,
+  gpsTimeIntervalMs: 5000,
+  backgroundGpsDistanceIntervalMeters: 12,
+  backgroundGpsTimeIntervalMs: 15000,
   backgroundLocationNotificationTitle: 'Florida Mobility Group tracking active',
   backgroundLocationNotificationBody: 'Dispatcher can keep seeing your live vehicle position while the app is in the background.'
 };
