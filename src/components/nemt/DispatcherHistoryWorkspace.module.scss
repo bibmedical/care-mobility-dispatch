@@ -131,7 +131,7 @@
 
 .historyShell {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -368,7 +368,7 @@
   border-radius: 16px;
   border: 1px solid rgba(129, 148, 185, 0.12);
   background: rgba(17, 24, 39, 0.9);
-  padding: 0.8rem 0.85rem;
+  padding: 0.7rem 0.75rem;
   transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
   color: #e8eefc;
 }
@@ -408,7 +408,7 @@
 }
 
 .sidebarItemMeta {
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   color: #8ea1bf;
   margin-top: 0.2rem;
 }

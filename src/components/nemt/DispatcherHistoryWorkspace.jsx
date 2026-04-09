@@ -24,6 +24,32 @@ const getDriverLabel = (driverId, archive) => {
   return normalizedDriverId;
 };
 
+const toTitleCase = value => String(value || '')
+  .split(/[-_\s]+/)
+  .filter(Boolean)
+  .map(token => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+  .join(' ')
+  .trim();
+
+const humanizeDriverId = driverId => {
+  const raw = String(driverId || '').trim();
+  if (!raw) return 'Driver';
+  const compact = raw.toLowerCase();
+  if (!compact.includes('drv-') && !compact.includes('-user-')) return toTitleCase(raw) || raw;
+  const withoutPrefix = raw.replace(/^drv-/i, '');
+  const withoutSuffix = withoutPrefix.replace(/-user-\d+$/i, '');
+  const cleaned = toTitleCase(withoutSuffix.replace(/^driver[-_]?/i, ''));
+  return cleaned || raw;
+};
+
+const resolveDriverDisplayLabel = (driverId, archive, fallbackLabel = '') => {
+  const fromArchive = getDriverLabel(driverId, archive);
+  if (fromArchive && fromArchive !== driverId) return fromArchive;
+  const fallback = String(fallbackLabel || '').trim();
+  if (fallback && !/^drv-/i.test(fallback) && !/-user-\d+$/i.test(fallback)) return fallback;
+  return humanizeDriverId(driverId || fallback);
+};
+
 const getRouteLabel = routePlan => String(routePlan?.name || routePlan?.routeName || routePlan?.driverName || routePlan?.id || 'Route').trim() || 'Route';
 
 const getTripPickupAddress = trip => String(trip?.address || trip?.fromAddress || trip?.pickupAddress || '').trim() || '--';
@@ -301,16 +327,51 @@ const DispatcherHistoryWorkspace = () => {
     return Array.from(optionMap.values()).sort((left, right) => left.label.localeCompare(right.label));
   }, [archive]);
 
-  const dayDriverOptions = useMemo(() => {
-    if (archiveDriverOptions.length > 0) return archiveDriverOptions;
-    return availableDrivers;
-  }, [archiveDriverOptions, availableDrivers]);
+  const mergedDriverOptions = useMemo(() => {
+    const byDay = new Map(archiveDriverOptions.map(option => [option.driverId, option]));
+    const merged = new Map();
+
+    (availableDrivers.length > 0 ? availableDrivers : archiveDriverOptions).forEach(option => {
+      const driverId = normalizeDriverId(option?.driverId);
+      if (!driverId) return;
+      const dayOption = byDay.get(driverId) || {};
+      merged.set(driverId, {
+        ...option,
+        driverId,
+        label: resolveDriverDisplayLabel(driverId, archive, option?.label),
+        dayTripCount: Number(dayOption?.tripCount || 0),
+        dayRouteCount: Number(dayOption?.routeCount || 0),
+        archivedDayCount: Number(option?.archivedDayCount || 0),
+        tripCount: Number(option?.tripCount || 0),
+        routeCount: Number(option?.routeCount || 0)
+      });
+    });
+
+    archiveDriverOptions.forEach(option => {
+      const driverId = normalizeDriverId(option?.driverId);
+      if (!driverId) return;
+      const previous = merged.get(driverId);
+      merged.set(driverId, {
+        ...(previous || {}),
+        ...option,
+        driverId,
+        label: resolveDriverDisplayLabel(driverId, archive, previous?.label || option?.label),
+        dayTripCount: Number(option?.tripCount || 0),
+        dayRouteCount: Number(option?.routeCount || 0),
+        archivedDayCount: Number(previous?.archivedDayCount || option?.archivedDayCount || 0),
+        tripCount: Number(previous?.tripCount || option?.tripCount || 0),
+        routeCount: Number(previous?.routeCount || option?.routeCount || 0)
+      });
+    });
+
+    return Array.from(merged.values()).sort((left, right) => String(left?.label || left?.driverId).localeCompare(String(right?.label || right?.driverId)));
+  }, [archive, archiveDriverOptions, availableDrivers]);
 
   const filteredDriverOptions = useMemo(() => {
     const term = driverSearch.trim().toLowerCase();
-    if (!term) return dayDriverOptions;
-    return dayDriverOptions.filter(option => [option?.label, option?.driverId].some(value => String(value || '').toLowerCase().includes(term)));
-  }, [dayDriverOptions, driverSearch]);
+    if (!term) return mergedDriverOptions;
+    return mergedDriverOptions.filter(option => [option?.label, option?.driverId].some(value => String(value || '').toLowerCase().includes(term)));
+  }, [mergedDriverOptions, driverSearch]);
 
   useEffect(() => {
     if (filteredDriverOptions.length === 0) return;
@@ -403,8 +464,8 @@ const DispatcherHistoryWorkspace = () => {
     auditCount: auditRows.length
   };
 
-  const selectedDriverSummary = availableDrivers.find(option => option.driverId === selectedDriverId) || archiveDriverOptions.find(option => option.driverId === selectedDriverId) || null;
-  const selectedDriverLabel = selectedDriverSummary?.label || (selectedDriverId ? getDriverLabel(selectedDriverId, archive) : '');
+  const selectedDriverSummary = mergedDriverOptions.find(option => option.driverId === selectedDriverId) || null;
+  const selectedDriverLabel = selectedDriverSummary?.label || (selectedDriverId ? resolveDriverDisplayLabel(selectedDriverId, archive, '') : '');
   const selectedDriverColor = getDriverColor(selectedDriverSummary?.driverId || selectedDriverId || selectedDriverLabel);
   const selectedDaySummary = availableDates.find(item => item.dateKey === selectedDate) || null;
 
@@ -473,16 +534,16 @@ const DispatcherHistoryWorkspace = () => {
                   <div className={styles.sectionTitle}>Drivers</div>
                   <div className={styles.sectionMeta}>Haz clic en un chofer para ver su ruta del dia a la derecha.</div>
                 </div>
-                <Badge bg="dark">{availableDrivers.length}</Badge>
+                <Badge bg="dark">{mergedDriverOptions.length}</Badge>
               </div>
               <Form.Control size="sm" className="mb-3" placeholder="Search driver" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} />
               <div className={styles.sidebarList}>
                 {filteredDriverOptions.length > 0 ? filteredDriverOptions.map(option => <button key={option.driverId} type="button" className={`${styles.sidebarItem} ${option.driverId === selectedDriverId ? styles.sidebarItemActive : ''}`} style={option.driverId === selectedDriverId ? { borderColor: getDriverColor(option.driverId), boxShadow: `0 0 0 1px ${withDriverAlpha(getDriverColor(option.driverId), 0.28)}` } : undefined} onClick={() => fetchHistory(selectedDate, option.driverId)}>
                     <div>
                       <div className={styles.sidebarItemTitle}><span className={styles.driverDot} style={{ backgroundColor: getDriverColor(option.driverId) }} />{option.label}</div>
-                      <div className={styles.sidebarItemMeta}>{option.routeCount} routes · {option.tripCount} trips · {option.archivedDayCount} days</div>
+                      <div className={styles.sidebarItemMeta}>{option.dayRouteCount} routes today · {option.dayTripCount} trips today · {option.archivedDayCount} days</div>
                     </div>
-                    <span className={styles.sidebarItemPill}>{option.tripCount}</span>
+                    <span className={styles.sidebarItemPill}>{option.dayTripCount}</span>
                   </button>) : <div className={styles.emptyState}>No drivers match that search.</div>}
               </div>
             </CardBody>
