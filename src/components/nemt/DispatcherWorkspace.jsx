@@ -2481,13 +2481,16 @@ const DispatcherWorkspace = () => {
         opacity: draggingTripColumnKey === columnKey ? 0.55 : 1
       }}
       draggable={draggableColumn && !mapLocked}
-      onDragStart={() => {
+      onDragStart={event => {
         if (!draggableColumn || mapLocked) return;
+        event.dataTransfer.setData('text/plain', columnKey);
+        event.dataTransfer.effectAllowed = 'move';
         setDraggingTripColumnKey(columnKey);
       }}
       onDragOver={event => {
         if (!draggableColumn || mapLocked) return;
         event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
       }}
       onDrop={event => {
         if (!draggableColumn || mapLocked) return;

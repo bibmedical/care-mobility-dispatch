@@ -2245,8 +2245,15 @@ const TripDashboardWorkspace = () => {
     const resolvedWidth = columnWidths[columnKey] ?? width;
     return <th
       draggable={draggableColumn}
-      onDragStart={draggableColumn ? () => setDraggingTripColumnKey(columnKey) : undefined}
-      onDragOver={draggableColumn ? event => event.preventDefault() : undefined}
+      onDragStart={draggableColumn ? event => {
+        event.dataTransfer.setData('text/plain', columnKey);
+        event.dataTransfer.effectAllowed = 'move';
+        setDraggingTripColumnKey(columnKey);
+      } : undefined}
+      onDragOver={draggableColumn ? event => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+      } : undefined}
       onDrop={draggableColumn ? event => {
         event.preventDefault();
         handleTripColumnDrop(columnKey);

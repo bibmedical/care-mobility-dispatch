@@ -422,7 +422,7 @@ export const NemtProvider = ({
     return () => {
       active = false;
     };
-  }, [session?.user?.id, state?.uiPreferences]);
+  }, [session?.user?.id]);
 
   const persistUserUiPreferences = async nextPreferences => {
     if (!session?.user?.id) return;
