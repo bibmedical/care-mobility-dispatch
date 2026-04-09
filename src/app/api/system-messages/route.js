@@ -56,11 +56,23 @@ const readDriverPushTokens = async driverId => {
 const sendExpoPush = async (pushTokens, message) => {
   if (!Array.isArray(pushTokens) || pushTokens.length === 0) return;
 
+  const normalizedSubject = String(message?.subject || '').trim().toLowerCase();
+  const normalizedBody = String(message?.body || '').trim().toLowerCase();
+  const isRouteTomorrowMessage = normalizedSubject.includes('route') && normalizedSubject.includes('tomorrow')
+    || normalizedBody.includes('route') && normalizedBody.includes('tomorrow');
+
+  const pushTitle = isRouteTomorrowMessage
+    ? 'Dispatch update'
+    : (message.subject || 'Dispatch update');
+  const pushBody = isRouteTomorrowMessage
+    ? 'You receive the route for tomorrow.'
+    : (message.body || 'You have a new message from dispatch.');
+
   const payload = pushTokens.map(to => ({
     to,
     sound: 'default',
-    title: message.subject || 'Dispatch update',
-    body: message.body || 'You have a new message from dispatch.',
+    title: pushTitle,
+    body: pushBody,
     data: {
       driverId: message.driverId || null,
       messageId: message.id
