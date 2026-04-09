@@ -468,7 +468,7 @@ export const NemtProvider = ({
     const isDispatchViewActive = () => {
       if (typeof window === 'undefined' || typeof document === 'undefined') return false;
       const path = String(window.location?.pathname || '').toLowerCase();
-      const inDispatchRoute = path.includes('/dispatch');
+      const inDispatchRoute = path.includes('/dispatch') || path.includes('/map-screen');
       return inDispatchRoute && document.visibilityState === 'visible' && document.hasFocus();
     };
 
@@ -534,7 +534,7 @@ export const NemtProvider = ({
     const isDispatchViewActive = () => {
       if (typeof window === 'undefined' || typeof document === 'undefined') return false;
       const path = String(window.location?.pathname || '').toLowerCase();
-      const inDispatchRoute = path.includes('/dispatch') || path.includes('/trip-dashboard');
+      const inDispatchRoute = path.includes('/dispatch') || path.includes('/trip-dashboard') || path.includes('/map-screen');
       return inDispatchRoute && document.visibilityState === 'visible' && document.hasFocus();
     };
 
