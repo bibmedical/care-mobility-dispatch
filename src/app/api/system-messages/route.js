@@ -11,6 +11,7 @@ import {
 } from '@/server/system-messages-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
+import { normalizeAuthValue } from '@/helpers/system-users';
 
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 const badRequest = message => NextResponse.json({ error: message }, { status: 400 });
@@ -19,6 +20,43 @@ const EXPO_PUSH_TIMEOUT_MS = 2500;
 const MAX_SUBJECT_LENGTH = 240;
 const MAX_BODY_LENGTH = 5000;
 const MAX_MEDIA_DATA_URL_LENGTH = 1_600_000;
+
+const normalizeLookupValue = value => normalizeAuthValue(String(value || '').trim());
+
+const buildDriverLookupSet = driver => {
+  const entries = [
+    driver?.id,
+    driver?.authUserId,
+    driver?.code,
+    driver?.portalUsername,
+    driver?.username,
+    driver?.email,
+    driver?.portalEmail,
+    driver?.name,
+    driver?.nickname,
+    `${driver?.firstName || ''} ${driver?.lastName || ''}`
+  ];
+
+  const set = new Set();
+  entries.forEach(entry => {
+    const normalized = normalizeLookupValue(entry);
+    if (normalized) set.add(normalized);
+  });
+  return set;
+};
+
+const resolveAdminDriverByLookup = (adminState, lookupDriverId, lookupDriverName = '') => {
+  const drivers = Array.isArray(adminState?.drivers) ? adminState.drivers : [];
+  const lookupValues = [lookupDriverId, lookupDriverName]
+    .map(normalizeLookupValue)
+    .filter(Boolean);
+  if (lookupValues.length === 0) return null;
+
+  return drivers.find(driver => {
+    const lookupSet = buildDriverLookupSet(driver);
+    return lookupValues.some(value => lookupSet.has(value));
+  }) || null;
+};
 
 const removeMessageMediaFromDispatchThreads = dispatchState => {
   let removed = false;
@@ -43,12 +81,11 @@ const removeMessageMediaFromDispatchThreads = dispatchState => {
   };
 };
 
-const readDriverPushTokens = async driverId => {
-  if (!driverId) return [];
+const readDriverPushTokens = async (driverId, driverName = '') => {
+  if (!driverId && !driverName) return [];
 
   const adminState = await readNemtAdminState();
-  const drivers = Array.isArray(adminState?.drivers) ? adminState.drivers : [];
-  const driver = drivers.find(item => String(item?.id || '').trim() === String(driverId).trim());
+  const driver = resolveAdminDriverByLookup(adminState, driverId, driverName);
   const tokens = Array.isArray(driver?.mobilePushTokens) ? driver.mobilePushTokens : [];
   return tokens.map(token => String(token || '').trim()).filter(Boolean);
 };
@@ -161,7 +198,7 @@ export async function POST(request) {
     };
 
     const saved = await upsertSystemMessage(msg);
-    const driverPushTokens = await readDriverPushTokens(saved.driverId);
+    const driverPushTokens = await readDriverPushTokens(saved.driverId, saved.driverName);
     await sendExpoPush(driverPushTokens, saved);
     return NextResponse.json({ message: saved });
   } catch (error) {

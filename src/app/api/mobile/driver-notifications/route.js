@@ -2,9 +2,32 @@ import { NextResponse } from 'next/server';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
+import { normalizeAuthValue } from '@/helpers/system-users';
 
 const normalizeDriverId = value => String(value || '').trim();
 const normalizePushToken = value => String(value || '').trim();
+const normalizeLookupValue = value => normalizeAuthValue(String(value || '').trim());
+
+const buildDriverLookupSet = driver => {
+  const entries = [
+    driver?.id,
+    driver?.authUserId,
+    driver?.code,
+    driver?.portalUsername,
+    driver?.username,
+    driver?.email,
+    driver?.portalEmail,
+    driver?.name,
+    driver?.nickname,
+    `${driver?.firstName || ''} ${driver?.lastName || ''}`
+  ];
+  const set = new Set();
+  entries.forEach(entry => {
+    const normalized = normalizeLookupValue(entry);
+    if (normalized) set.add(normalized);
+  });
+  return set;
+};
 
 export async function POST(request) {
   let body;
@@ -31,13 +54,15 @@ export async function POST(request) {
   const adminState = await readNemtAdminState();
   const drivers = Array.isArray(adminState?.drivers) ? adminState.drivers : [];
 
-  const driverExists = drivers.some(driver => normalizeDriverId(driver?.id) === driverId);
-  if (!driverExists) {
+  const matchedDriver = drivers.find(driver => buildDriverLookupSet(driver).has(normalizeLookupValue(driverId))) || null;
+  if (!matchedDriver) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
+  const canonicalDriverId = normalizeDriverId(matchedDriver?.id);
+
   const nextDrivers = drivers.map(driver => {
-    if (normalizeDriverId(driver?.id) !== driverId) return driver;
+    if (normalizeDriverId(driver?.id) !== canonicalDriverId) return driver;
 
     const currentTokens = Array.isArray(driver?.mobilePushTokens) ? driver.mobilePushTokens.map(normalizePushToken).filter(Boolean) : [];
     const nextTokens = [pushToken, ...currentTokens.filter(token => token !== pushToken)].slice(0, 5);
