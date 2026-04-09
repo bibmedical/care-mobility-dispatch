@@ -299,7 +299,9 @@ const readDashboardMapScreenState = source => {
   if (typeof window === 'undefined') return null;
   try {
     const storageKey = getMapScreenStateStorageKey(source);
-    const raw = window.localStorage.getItem(storageKey) || window.localStorage.getItem(MAP_SCREEN_LEGACY_STATE_KEY);
+    const normalizedSource = String(source || '').trim().toLowerCase();
+    const allowLegacyFallback = normalizedSource !== 'dispatcher' && normalizedSource !== 'dashboard';
+    const raw = window.localStorage.getItem(storageKey) || (allowLegacyFallback ? window.localStorage.getItem(MAP_SCREEN_LEGACY_STATE_KEY) : null);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
@@ -388,6 +390,10 @@ const StandaloneDispatchMapScreen = () => {
   }, [dashboardMapState?.activeDateTripIds, effectiveTripDateFilter, isDashboardMap]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const selectedDriver = useMemo(() => drivers.find(driver => String(driver.id || '').trim() === effectiveSelectedDriverId) ?? null, [drivers, effectiveSelectedDriverId]);
+  const selectedDriverHasPosition = useMemo(() => {
+    const position = selectedDriver?.position;
+    return Array.isArray(position) && position.length === 2 && Number.isFinite(Number(position[0])) && Number.isFinite(Number(position[1]));
+  }, [selectedDriver]);
   const selectedRoute = useMemo(() => routePlans.find(route => String(route.id || '').trim() === effectiveSelectedRouteId) ?? null, [effectiveSelectedRouteId, routePlans]);
   const normalizeTripId = tripId => String(tripId || '').trim();
   const selectedDashboardTripIds = useMemo(() => new Set((Array.isArray(effectiveSelectedTripIds) ? effectiveSelectedTripIds : EMPTY_ITEMS).map(value => normalizeTripId(value)).filter(Boolean)), [effectiveSelectedTripIds]);
@@ -404,7 +410,8 @@ const StandaloneDispatchMapScreen = () => {
     if (effectiveRouteTripIds.length > 0) {
       const lookup = new Map(trips.map(trip => [normalizeTripId(trip?.id), trip]));
       const fromSnapshot = effectiveRouteTripIds.map(id => lookup.get(normalizeTripId(id))).filter(Boolean);
-      return sortTripsByPickupTime(fromSnapshot);
+      const scopedSnapshot = dashboardActiveDateTripIdSet ? fromSnapshot.filter(trip => dashboardActiveDateTripIdSet.has(normalizeTripId(trip?.id))) : fromSnapshot;
+      return sortTripsByPickupTime(scopedSnapshot);
     }
     if (selectedDriver) {
       const mergedTrips = new Map();
@@ -535,19 +542,19 @@ const StandaloneDispatchMapScreen = () => {
     return activeDashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id) || dashboardRouteTrips.find(trip => trip.driverId === selectedDriver.id) || trips.find(trip => trip.driverId === selectedDriver.id) || null;
   }, [activeDashboardRouteTrips, dashboardDriverActiveTrip, dashboardRouteTrips, selectedDashboardTripIds, selectedDriver, trips]);
   const dashboardDriverEta = useMemo(() => {
-    if (!selectedDriver || !selectedDriver.hasRealLocation || !dashboardDriverActiveTrip) return null;
+    if (!selectedDriver || !selectedDriverHasPosition || !dashboardDriverActiveTrip) return null;
     const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(dashboardDriverActiveTrip));
     return {
       miles,
       label: formatEta(miles)
     };
-  }, [dashboardDriverActiveTrip, selectedDriver]);
+  }, [dashboardDriverActiveTrip, selectedDriver, selectedDriverHasPosition]);
   const dashboardRouteHealth = useMemo(() => {
     if (!selectedDriver || dashboardRouteTrips.length === 0) return null;
     const now = Date.now();
     const items = [];
-    let previousAvailableAt = selectedDriver.hasRealLocation ? now : null;
-    let previousDropoffPosition = selectedDriver.hasRealLocation ? selectedDriver.position : null;
+    let previousAvailableAt = selectedDriverHasPosition ? now : null;
+    let previousDropoffPosition = selectedDriverHasPosition ? selectedDriver.position : null;
 
     for (const trip of dashboardRouteTrips) {
       const scheduledStart = Number.isFinite(Number(trip.pickupSortValue)) ? Number(trip.pickupSortValue) : previousAvailableAt;
@@ -577,7 +584,7 @@ const StandaloneDispatchMapScreen = () => {
       lateCount: items.filter(item => item.late).length,
       candidateCount: items.filter(item => item.candidate).length
     };
-  }, [dashboardRouteTrips, effectiveSelectedDriverId, selectedDashboardTripIds, selectedDriver]);
+  }, [dashboardRouteTrips, effectiveSelectedDriverId, selectedDashboardTripIds, selectedDriver, selectedDriverHasPosition]);
   const dashboardRouteHealthItems = dashboardRouteHealth?.items ?? EMPTY_ITEMS;
   const dashboardVisibleTripItems = useMemo(() => {
     if (dashboardRouteHealthItems.length > 0) return dashboardRouteHealthItems;
@@ -967,13 +974,13 @@ const StandaloneDispatchMapScreen = () => {
             return <Polyline key={`solo-route-option-${routeOption.id}`} positions={routeOption.geometry} pathOptions={getDashboardRouteStyle(index === selectedDashboardRouteIndex, index)} />;
           }) : null}
             {activeDashboardViewMode !== 'route' && routeGeometry.length > 1 && !hideRoutes ? <Polyline positions={routeGeometry} pathOptions={{ color: '#f59e0b', weight: 4, dashArray: '10 8' }} /> : null}
-            {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createRouteStopIcon('D', 'driver')}>
+            {selectedDriverHasPosition ? <Marker position={selectedDriver.position} icon={createRouteStopIcon('D', 'driver')}>
                 <Popup>
                   <div className="fw-semibold">{selectedDriver.name}</div>
                   <div>{selectedDriver.live || 'Offline'}</div>
                 </Popup>
               </Marker> : null}
-            {activeDashboardViewMode !== 'addresses' && selectedDriver?.hasRealLocation && dashboardDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(dashboardDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+            {activeDashboardViewMode !== 'addresses' && selectedDriverHasPosition && dashboardDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(dashboardDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
             {filteredDashboardRouteStops.map(stop => <Marker key={`solo-${stop.key}`} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant, stop.timeLabel, showTimeLabels)}>
                 <Popup>
                   <div className="fw-semibold">{stop.title}</div>
@@ -1027,14 +1034,14 @@ const StandaloneDispatchMapScreen = () => {
               return <Polyline key={`route-option-${routeOption.id}`} positions={routeOption.geometry} pathOptions={getDashboardRouteStyle(index === selectedDashboardRouteIndex, index)} />;
             }) : null}
               {activeDashboardViewMode !== 'route' && routeGeometry.length > 1 && !hideRoutes ? <Polyline positions={routeGeometry} pathOptions={{ color: '#f59e0b', weight: 4, dashArray: '10 8' }} /> : null}
-              {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online' })}>
+              {selectedDriverHasPosition ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online' })}>
                   <Popup>
                     <div className="fw-semibold">{selectedDriver.name}</div>
                     <div>{selectedDriver.live || 'Offline'}</div>
                     <div className="small text-muted">{selectedDriver.trackingLastSeen ? new Date(selectedDriver.trackingLastSeen).toLocaleTimeString() : 'Live position'}</div>
                   </Popup>
                 </Marker> : null}
-              {activeDashboardViewMode !== 'addresses' && selectedDriver?.hasRealLocation && dashboardDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(dashboardDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+              {activeDashboardViewMode !== 'addresses' && selectedDriverHasPosition && dashboardDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(dashboardDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
               {activeDashboardViewMode !== 'route' ? filteredDashboardRouteStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant, stop.timeLabel, showTimeLabels)}>
                   <Popup>
                     <div className="fw-semibold">{stop.title}</div>
