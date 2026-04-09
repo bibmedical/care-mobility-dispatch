@@ -22,9 +22,9 @@ import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'rea
 import { useSession } from 'next-auth/react';
 
 const greenToolbarButtonStyle = {
-  color: '#ffffff',
-  borderColor: '#1f2937',
-  backgroundColor: '#1f2937'
+  color: '#08131a',
+  borderColor: 'rgba(8, 19, 26, 0.35)',
+  backgroundColor: 'transparent'
 };
 
 const addressClampStyle = {

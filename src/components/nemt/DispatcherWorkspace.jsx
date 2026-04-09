@@ -156,9 +156,9 @@ const normalizeDispatcherLayout = value => {
 };
 
 const greenToolbarButtonStyle = {
-  color: '#ffffff',
-  borderColor: '#1f2937',
-  backgroundColor: '#1f2937'
+  color: '#08131a',
+  borderColor: 'rgba(8, 19, 26, 0.35)',
+  backgroundColor: 'transparent'
 };
 
 const buildDispatcherSurfaceStyles = isDarkMode => ({
