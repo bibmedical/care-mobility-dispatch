@@ -459,7 +459,7 @@ const DispatcherHistoryWorkspace = () => {
             <CardBody className="p-3">
               <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
                 <div>
-                  <div className={styles.sectionTitle}>Archived days</div>
+                  <div className={styles.sectionTitle}>Days</div>
                   <div className={styles.sectionMeta}>Selecciona el día y la derecha cambia a esa jornada.</div>
                 </div>
                 <Badge bg="dark">{availableDates.length}</Badge>
@@ -467,10 +467,10 @@ const DispatcherHistoryWorkspace = () => {
               <div className={styles.sidebarList}>
                 {availableDates.map(item => <button key={item.dateKey} type="button" className={`${styles.sidebarItem} ${item.dateKey === selectedDate ? styles.sidebarItemActive : ''}`} onClick={() => fetchHistory(item.dateKey, selectedDriverId)}>
                     <div>
-                      <div className={styles.sidebarItemTitle}>{formatTripDateLabel(item.dateKey)}</div>
+                      <div className={styles.sidebarItemTitle}>{item.isLive ? '🟢 Today (live)' : formatTripDateLabel(item.dateKey)}</div>
                       <div className={styles.sidebarItemMeta}>{item.routeCount} routes · {item.tripCount} trips · {item.messageCount} messages</div>
                     </div>
-                    <span className={styles.sidebarItemPill}>{item.auditCount}</span>
+                    <span className={styles.sidebarItemPill}>{item.isLive ? item.tripCount : item.auditCount}</span>
                   </button>)}
               </div>
             </CardBody>
@@ -525,8 +525,8 @@ const DispatcherHistoryWorkspace = () => {
               <CardBody className="p-3 p-lg-4">
                 <div className={styles.detailHeader}>
                   <div>
-                    <div className={styles.sectionTitle}>{selectedDriverLabel || 'Select a driver'} · {archive?.dateKey ? formatTripDateLabel(archive.dateKey) : 'No archived day'}</div>
-                    <div className={styles.sectionMeta}>Aquí ves la ruta completa del día, las personas tarde, los mensajes y la actividad grabada en history.</div>
+                    <div className={styles.sectionTitle}>{selectedDriverLabel || 'Select a driver'} · {archive?.dateKey ? formatTripDateLabel(archive.dateKey) : 'No day'}{archive?.isLive ? ' 🟢 Live' : ''}</div>
+                    <div className={styles.sectionMeta}>{archive?.isLive ? 'Datos en vivo del día de hoy — viajes, choferes y rutas activas.' : 'Aquí ves la ruta completa del día, las personas tarde, los mensajes y la actividad grabada en history.'}</div>
                   </div>
                   <div className={styles.detailBadgeRow}>
                     {selectedDriverLabel ? <span className={styles.detailBadge} style={{ backgroundColor: withDriverAlpha(selectedDriverColor, 0.12), borderColor: withDriverAlpha(selectedDriverColor, 0.28), color: selectedDriverColor }}><span className={styles.driverDot} style={{ backgroundColor: selectedDriverColor }} />{selectedDriverLabel}</span> : null}
@@ -561,16 +561,16 @@ const DispatcherHistoryWorkspace = () => {
             </div>
           </div>
 
-          {archive ? <div className="small text-secondary">Archive total for {formatTripDateLabel(archive.dateKey)}: {archiveStats.routeCount} routes, {archiveStats.tripCount} trips, {archiveStats.messageCount} messages. Showing only {selectedDriverLabel || 'selected driver'}.</div> : null}
+          {archive ? <div className="small text-secondary">{archive?.isLive ? '🟢 Live —' : `Archive: ${formatTripDateLabel(archive.dateKey)} ·`} {archiveStats.routeCount} routes, {archiveStats.tripCount} trips, {archiveStats.messageCount} messages. Showing only {selectedDriverLabel || 'selected driver'}.</div> : null}
 
           {loading ? <Card className={styles.sectionCard}>
           <CardBody className="p-4 d-flex align-items-center gap-3">
             <Spinner animation="border" size="sm" />
-            <span>Loading archived dispatcher day...</span>
+            <span>Loading dispatcher day...</span>
           </CardBody>
         </Card> : !archive ? <Card className={styles.sectionCard}>
           <CardBody className="p-4">
-            <div className={styles.emptyState}>No archived dispatcher day was found for the selected date.</div>
+            <div className={styles.emptyState}>No trips found for the selected date. Try selecting a different day.</div>
           </CardBody>
         </Card> : !selectedDriverId ? <Card className={styles.sectionCard}>
           <CardBody className="p-4">
@@ -581,8 +581,8 @@ const DispatcherHistoryWorkspace = () => {
             <CardBody className="p-4">
               <div className="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-3">
                 <div>
-                  <div className={styles.sectionTitle}>{selectedDriverLabel} · Routes for {formatTripDateLabel(archive.dateKey)}</div>
-                  <div className={styles.sectionMeta}>Archived {new Date(archive.archivedAt).toLocaleString()} · Full route and trip window for the selected driver</div>
+                  <div className={styles.sectionTitle}>{selectedDriverLabel} · Routes for {formatTripDateLabel(archive.dateKey)}{archive?.isLive ? ' 🟢' : ''}</div>
+                  <div className={styles.sectionMeta}>{archive?.isLive ? 'Datos en vivo del día de hoy' : `Archived ${new Date(archive.archivedAt).toLocaleString()}`} · Full route and trip window for the selected driver</div>
                 </div>
               </div>
               <div className="table-responsive">

@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isAdminRole } from '@/helpers/system-users';
 import { readDispatchHistoryArchive, readDispatchHistoryArchiveIndex, readDispatchHistoryDriverIndex, runDispatchHistoryBackfill } from '@/server/dispatch-history-store';
+import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
+import { getLocalDateKey, getTripTimelineDateKey } from '@/helpers/nemt-dispatch-state';
 
 const normalizeDateKey = value => {
   const text = String(value || '').trim();
@@ -117,8 +119,67 @@ export async function GET(request) {
       console.error('[dispatch-history] Driver index fallback triggered:', driverIndexError);
     }
 
-    const selectedDateKey = requestedDateKey || selectedDriver?.days?.[0]?.dateKey || availableDates[0]?.dateKey || '';
-    const archive = selectedDateKey ? await readDispatchHistoryArchive(selectedDateKey) : null;
+    const todayKey = getLocalDateKey(new Date());
+    const selectedDateKey = requestedDateKey || selectedDriver?.days?.[0]?.dateKey || availableDates[0]?.dateKey || todayKey;
+    let archive = selectedDateKey ? await readDispatchHistoryArchive(selectedDateKey) : null;
+
+    // If no archive found, build a live snapshot from dispatch state (for today or any date not yet archived)
+    if (!archive) {
+      try {
+        const liveState = await readNemtDispatchState({ includePastDates: true });
+        const allTrips = Array.isArray(liveState?.trips) ? liveState.trips : [];
+        const allRoutePlans = Array.isArray(liveState?.routePlans) ? liveState.routePlans : [];
+        const allThreads = Array.isArray(liveState?.dispatchThreads) ? liveState.dispatchThreads : [];
+        const allDailyDrivers = Array.isArray(liveState?.dailyDrivers) ? liveState.dailyDrivers : [];
+        const allAuditLog = Array.isArray(liveState?.auditLog) ? liveState.auditLog : [];
+        const dateToFilter = selectedDateKey || todayKey;
+        const dayTrips = allTrips.filter(trip => {
+          const tripDateKey = getTripTimelineDateKey(trip, allRoutePlans, allTrips);
+          return tripDateKey === dateToFilter;
+        });
+        const dayRoutes = allRoutePlans.filter(route => {
+          const svcDate = String(route?.serviceDate || route?.service_date || route?.date || '').trim().slice(0, 10);
+          return svcDate === dateToFilter;
+        });
+        const tripDriverIds = new Set(dayTrips.flatMap(trip => [String(trip?.driverId || '').trim(), String(trip?.secondaryDriverId || '').trim()].filter(Boolean)));
+        const routeDriverIds = new Set(dayRoutes.flatMap(route => [String(route?.driverId || '').trim(), String(route?.secondaryDriverId || '').trim()].filter(Boolean)));
+        const dayDriverIds = new Set([...tripDriverIds, ...routeDriverIds]);
+        const dayThreads = allThreads.filter(thread => dayDriverIds.has(String(thread?.driverId || '').trim()));
+        const dayAuditLog = allAuditLog.filter(entry => {
+          const entryDate = getLocalDateKey(Number(entry?.occurredAt || entry?.timestamp || 0) || new Date(String(entry?.occurredAt || entry?.timestamp || '')));
+          return entryDate === dateToFilter;
+        });
+        if (dayTrips.length > 0 || dayRoutes.length > 0) {
+          archive = {
+            dateKey: dateToFilter,
+            trips: dayTrips,
+            routePlans: dayRoutes,
+            dispatchThreads: dayThreads,
+            dailyDrivers: allDailyDrivers,
+            auditLog: dayAuditLog,
+            uiPreferences: liveState?.uiPreferences || {},
+            archivedAt: null,
+            isLive: true,
+            summary: {
+              tripCount: dayTrips.length,
+              routeCount: dayRoutes.length,
+              threadCount: dayThreads.length,
+              messageCount: dayThreads.reduce((sum, t) => sum + (Array.isArray(t?.messages) ? t.messages.length : 0), 0),
+              auditCount: dayAuditLog.length
+            }
+          };
+        }
+      } catch (liveError) {
+        console.error('[dispatch-history] Live fallback failed:', liveError);
+      }
+    }
+
+    // Add today as first available date (live) if not already in archived list
+    const todayInList = availableDates.some(d => d.dateKey === todayKey);
+    const availableDatesWithToday = todayInList ? availableDates : [
+      { dateKey: todayKey, label: 'Today (live)', tripCount: archive?.isLive ? archive.trips.length : 0, routeCount: archive?.isLive ? archive.routePlans.length : 0, messageCount: 0, auditCount: 0, isLive: true },
+      ...availableDates
+    ];
 
     if (availableDrivers.length === 0 && archive) {
       availableDrivers = buildArchiveDriverFallback(archive);
@@ -129,7 +190,7 @@ export async function GET(request) {
       ok: true,
       selectedDateKey,
       selectedDriverId: requestedDriverId,
-      availableDates,
+      availableDates: availableDatesWithToday,
       availableDrivers,
       archive
     });
