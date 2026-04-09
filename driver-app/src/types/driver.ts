@@ -27,11 +27,20 @@ export type DriverTrip = {
   destination: string;
   dropoffZip?: string;
   notes?: string;
+  note?: string;
   patientPhoneNumber?: string;
   assistanceNeeds?: string;
   mobilityType?: string;
+  subMobilityType?: string;
   assistLevel?: string;
   hasServiceAnimal?: boolean;
+  wheelChairIsXL?: boolean;
+  wheelChairFoldable?: boolean;
+  confirmationStatus?: string;
+  confirmationSentAt?: string;
+  confirmationRespondedAt?: string;
+  createdAt?: number | string | null;
+  updatedAt?: number | string | null;
   status?: string;
   vehicleType?: string;
   miles?: number;
@@ -44,19 +53,46 @@ export type DriverTrip = {
   isNextDayTrip?: boolean;
   enRouteAt?: number | null;
   arrivedAt?: number | null;
+  patientOnboardAt?: number | null;
+  startTripAt?: number | null;
+  arrivedDestinationAt?: number | null;
   completedAt?: number | null;
   riderSignatureName?: string;
   riderSignedAt?: number | null;
+  canceledAt?: number | null;
+  canceledByDriverId?: string;
+  canceledByDriverName?: string;
+  cancellationReason?: string;
+  cancellationPhotoDataUrl?: string;
+  completionPhotoDataUrl?: string;
   driverWorkflow?: {
     status?: string;
     acceptedAt?: number | null;
     acceptedTimeLabel?: string;
     departureAt?: number | null;
     departureTimeLabel?: string;
+    departureToPickupAt?: number | null;
+    departureToPickupTimeLabel?: string;
     departureLocationSnapshot?: LocationSnapshot | null;
     arrivalAt?: number | null;
     arrivalTimeLabel?: string;
+    arrivedPickupAt?: number | null;
+    arrivedPickupTimeLabel?: string;
     arrivalLocationSnapshot?: LocationSnapshot | null;
+    patientOnboardAt?: number | null;
+    patientOnboardTimeLabel?: string;
+    pickupAt?: number | null;
+    pickupTimeLabel?: string;
+    startTripAt?: number | null;
+    startTripTimeLabel?: string;
+    destinationDepartureAt?: number | null;
+    destinationDepartureTimeLabel?: string;
+    destinationDepartureLocationSnapshot?: LocationSnapshot | null;
+    arrivedDestinationAt?: number | null;
+    arrivedDestinationTimeLabel?: string;
+    destinationArrivalAt?: number | null;
+    destinationArrivalTimeLabel?: string;
+    destinationArrivalLocationSnapshot?: LocationSnapshot | null;
     completedAt?: number | null;
     completedTimeLabel?: string;
     completionLocationSnapshot?: LocationSnapshot | null;
@@ -130,6 +166,27 @@ export type DriverMessage = {
   deliveryMethod?: string;
   mediaUrl?: string | null;
   mediaType?: string | null;
+};
+
+export type DriverReviewItem = {
+  id: string;
+  tripId: string;
+  rating: number;
+  comment: string;
+  riderName: string;
+  createdAt?: string | null;
+};
+
+export type DriverReviewSummary = {
+  driverId: string;
+  driverName: string;
+  vehicle: string;
+  totalReviews: number;
+  averageRating: number;
+  completedTrips: number;
+  yearsWithCompany: number;
+  ratingBreakdown: Record<number, number>;
+  recentReviews: DriverReviewItem[];
 };
 
 export type RoadmapVersion = {

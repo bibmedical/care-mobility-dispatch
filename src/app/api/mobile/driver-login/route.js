@@ -7,6 +7,7 @@ import { readNemtAdminState } from '@/server/nemt-admin-store';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors } from '@/server/mobile-api-cors';
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
+const isLocalPasswordlessDriverLoginEnabled = () => process.env.NODE_ENV !== 'production';
 
 const buildDriverCode = (driver, state) => {
   const dispatchDriver = mapAdminDataToDispatchDrivers({
@@ -100,6 +101,40 @@ export async function POST(request) {
 
   const state = await readNemtAdminState();
   const normalizedDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(normalizeDriverTracking);
+
+  if (identifier && !password && !pin && isLocalPasswordlessDriverLoginEnabled()) {
+    const driver = normalizedDrivers.find(item => matchesDriverIdentifier(item, state, identifier));
+
+    if (!driver) {
+      return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
+    }
+
+    const profileStatus = normalizeLookupValue(driver.profileStatus || 'active');
+    if (profileStatus !== 'active') {
+      return jsonWithMobileCors(request, { ok: false, error: 'Driver profile is not active.' }, { status: 403 });
+    }
+
+    const driverCode = buildDriverCode(driver, state);
+
+    try {
+      return jsonWithMobileCors(request, {
+        ok: true,
+        session: await buildDriverSessionPayload(driver, {
+          driverId: driver.id,
+          driverCode,
+          name: getFullName(driver),
+          username: driver.portalUsername || driver.username || '',
+          email: driver.portalEmail || driver.email || '',
+          phone: normalizePhoneDigits(driver.phone),
+          vehicleId: driver.vehicleId || '',
+          passwordResetRequired: Boolean(driver.passwordResetRequired)
+        }, deviceId)
+      });
+    } catch (error) {
+      const sessionError = error?.code ? error : buildDriverSessionError('Unable to create driver session.', 500, 'driver-session-create-failed');
+      return jsonWithMobileCors(request, { ok: false, error: sessionError.message, code: sessionError.code }, { status: Number(sessionError.status) || 500 });
+    }
+  }
 
   // Primary auth path: same credentials as web (identifier + password).
   if (identifier && password) {

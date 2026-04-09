@@ -1,14 +1,13 @@
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { driverSharedStyles, driverTheme } from './driverTheme';
 
 type Props = {
   runtime: DriverRuntime;
 };
-
-const getInitials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0).toUpperCase()).join('') || 'DR';
 
 const getDocumentUri = (value: unknown) => {
   if (!value) return '';
@@ -34,39 +33,76 @@ export const DriverProfileSection = ({ runtime }: Props) => {
     setDraftPhone(runtime.driverSession?.phone || '');
   }, [runtime.driverCode, runtime.driverSession]);
 
-  const pickProfilePhoto = async () => {
-    setAvatarUploadError('');
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permission.status !== 'granted') {
-      setAvatarUploadError('Allow photo access to upload the driver photo.');
+  const uploadSelectedAsset = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!asset.uri) {
+      setAvatarUploadError('Could not read selected image. Try another photo.');
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-      allowsEditing: true,
-      aspect: [1, 1],
-      base64: true
+    const targetWidth = Number(asset.width) > 0 ? Math.min(Number(asset.width), 960) : 960;
+    const optimized = await ImageManipulator.manipulateAsync(asset.uri, [{ resize: { width: targetWidth } }], {
+      compress: 0.55,
+      format: ImageManipulator.SaveFormat.JPEG
     });
 
-    if (result.canceled || !result.assets?.[0]?.base64) return;
-
-    const asset = result.assets[0];
-    const mimeType = asset.mimeType || 'image/jpeg';
-    const fileName = asset.fileName || `profile-photo-${Date.now()}.jpg`;
-    const uploaded = await runtime.uploadDriverDocument('profilePhoto', `data:${mimeType};base64,${asset.base64}`, fileName);
+    const fileName = `profile-photo-${Date.now()}.jpg`;
+    const uploaded = await runtime.uploadDriverDocumentFile('profilePhoto', optimized.uri, 'image/jpeg', fileName);
 
     if (!uploaded) {
       setAvatarUploadError(runtime.documentsError || 'Unable to upload profile photo.');
     }
   };
 
+  const pickProfilePhotoFromCamera = async () => {
+    const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+    if (cameraPermission.status !== 'granted') {
+      setAvatarUploadError('No camera permission available.');
+      return;
+    }
+
+    const cameraResult = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.55,
+      allowsEditing: true,
+      aspect: [1, 1]
+    });
+
+    if (cameraResult.canceled || !cameraResult.assets?.[0]) return;
+    await uploadSelectedAsset(cameraResult.assets[0]);
+  };
+
+  const pickProfilePhoto = async () => {
+    if (runtime.isUploadingDocument) return;
+    setAvatarUploadError('');
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.55,
+        allowsEditing: true,
+        aspect: [1, 1],
+        selectionLimit: 1
+      });
+
+      if (result.canceled || !result.assets?.[0]) return;
+
+      await uploadSelectedAsset(result.assets[0]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to choose photo.';
+      if (/permission|access|denied|not granted/i.test(message)) {
+        await pickProfilePhotoFromCamera();
+      } else {
+        setAvatarUploadError(message);
+      }
+    }
+  };
+
   return <View style={driverSharedStyles.card}>
       <View style={styles.headerBlock}>
-        <Pressable style={styles.avatarButton} onPress={() => void pickProfilePhoto()}>
+        <Pressable style={[styles.avatarButton, runtime.isUploadingDocument ? styles.avatarButtonDisabled : null]} onPress={() => void pickProfilePhoto()} disabled={runtime.isUploadingDocument}>
           <View style={styles.avatarBubble}>
-            {resolvedProfilePhotoUrl ? <Image source={{ uri: resolvedProfilePhotoUrl }} style={styles.avatarImage} resizeMode="cover" /> : <Text style={styles.avatarText}>{getInitials(name)}</Text>}
+            {resolvedProfilePhotoUrl
+              ? <Image source={{ uri: resolvedProfilePhotoUrl }} style={styles.avatarImage} resizeMode="cover" />
+              : <Image source={require('../../../assets/iconnew-cropped.png')} style={styles.avatarLogoFallback} resizeMode="contain" />}
           </View>
           <View style={styles.avatarBadge}>
             {runtime.isUploadingDocument ? <ActivityIndicator color="#ffffff" size="small" /> : <Text style={styles.avatarBadgeText}>Photo</Text>}
@@ -126,25 +162,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10
   },
+  avatarButtonDisabled: {
+    opacity: 0.7
+  },
   avatarBubble: {
     width: 84,
     height: 84,
     borderRadius: 42,
-    backgroundColor: driverTheme.colors.surfaceElevated,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     borderWidth: 3,
-    borderColor: driverTheme.colors.primary
+    borderColor: '#ffffff'
   },
   avatarImage: {
     width: '100%',
     height: '100%'
   },
-  avatarText: {
-    color: '#2d3b4c',
-    fontSize: 30,
-    fontWeight: '800'
+  avatarLogoFallback: {
+    width: 62,
+    height: 62
   },
   avatarBadge: {
     minWidth: 72,

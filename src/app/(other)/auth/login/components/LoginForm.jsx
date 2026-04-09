@@ -7,6 +7,8 @@ import { Alert, Button, Card, CardBody, Col, Form, FormControl, FormGroup, FormL
 import { useState } from 'react';
 import useSignIn, { PAGE_OPTIONS } from '../useSignIn';
 
+const isLocalPasswordlessWebEnabled = process.env.NODE_ENV !== 'production';
+
 const shellStyles = {
   border: '1px solid rgba(19, 28, 45, 0.12)',
   borderRadius: 20,
@@ -88,12 +90,13 @@ const LoginForm = () => {
             <FormGroup className="mb-2">
               <FormLabel>Password</FormLabel>
               <div className="input-group">
-                <FormControl type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" />
+                <FormControl type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder={isLocalPasswordlessWebEnabled ? 'Optional in local development' : 'Enter your password'} autoComplete="current-password" />
                 <button type="button" className="btn btn-outline-secondary" onClick={() => setShowPassword(v => !v)} tabIndex={-1}>
                   <IconifyIcon icon={showPassword ? 'fa6-solid:eye-slash' : 'fa6-solid:eye'} />
                 </button>
               </div>
             </FormGroup>
+            {isLocalPasswordlessWebEnabled ? <div className="small text-muted mb-3">Local development: you can sign in with username only.</div> : null}
             <div className="text-end mb-3">
               <Link href="/auth/reset-pass" className="text-muted font-13">Forgot password?</Link>
             </div>

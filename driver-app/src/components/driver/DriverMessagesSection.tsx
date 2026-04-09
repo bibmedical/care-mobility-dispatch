@@ -2,7 +2,6 @@ import { ActivityIndicator, Image, Keyboard, KeyboardAvoidingView, Modal, Platfo
 import { useEffect, useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
-import { DRIVER_APP_CONFIG } from '../../config/driverAppConfig';
 import { formatShortClock } from './driverUtils';
 import { DriverMessage } from '../../types/driver';
 import { driverTheme } from './driverTheme';
@@ -17,8 +16,6 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
   const [previewImageUrl, setPreviewImageUrl] = useState('');
   const [keyboardInset, setKeyboardInset] = useState(0);
   const pinnedDispatchers = ['Lexy', 'Balbino', 'Robert', 'Carlos'];
-  const syncLabel = runtime.lastMessageSyncAt ? formatShortClock(new Date(runtime.lastMessageSyncAt).toISOString()) : 'never';
-  const baseUrlLabel = DRIVER_APP_CONFIG.apiBaseUrl.replace(/^https?:\/\//, '');
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -114,21 +111,10 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
 
         <View style={styles.debugCard}>
           <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>API</Text>
-            <Text numberOfLines={1} style={styles.debugValue}>{baseUrlLabel}</Text>
-          </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>Driver</Text>
-            <Text style={styles.debugValue}>{runtime.driverSession?.driverId || 'none'}</Text>
-          </View>
-          <View style={styles.debugRow}>
             <Text style={styles.debugLabel}>Messages</Text>
             <Text style={styles.debugValue}>{String(runtime.messages.length)}</Text>
           </View>
-          <View style={styles.debugRow}>
-            <Text style={styles.debugLabel}>Last sync</Text>
-            <Text style={styles.debugValue}>{runtime.isLoadingMessages ? 'syncing...' : syncLabel}</Text>
-          </View>
+          {runtime.isLoadingMessages ? <Text style={styles.syncingText}>Syncing messages...</Text> : null}
           <Pressable style={styles.debugRefreshButton} onPress={() => void runtime.reloadMessages()}>
             <Text style={styles.debugRefreshText}>Refresh messages</Text>
           </Pressable>
@@ -272,6 +258,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'right'
+  },
+  syncingText: {
+    color: driverTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700'
   },
   debugRefreshButton: {
     marginTop: 2,

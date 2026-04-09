@@ -1,6 +1,9 @@
-import { buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
+import { readFile } from 'fs/promises';
+import { buildInitialAdminData, buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
+import { getStorageFilePath } from '@/server/storage-paths';
 
 let ensureAdminSchemaPromise = null;
 
@@ -87,22 +90,47 @@ const normalizeState = value => ({
   groupings: Array.isArray(value?.groupings) ? value.groupings : []
 });
 
+const NEMT_ADMIN_STORAGE_FILE = getStorageFilePath('nemt-admin.json');
+
+const readLocalNemtAdminState = async () => {
+  try {
+    const raw = await readFile(NEMT_ADMIN_STORAGE_FILE, 'utf8');
+    return normalizeState(JSON.parse(raw));
+  } catch {
+    return normalizeState(buildInitialAdminData());
+  }
+};
+
+const writeLocalNemtAdminState = async state => {
+  const normalized = normalizeState(state);
+  await writeJsonFileWithSnapshots({
+    filePath: NEMT_ADMIN_STORAGE_FILE,
+    nextValue: normalized,
+    backupName: 'nemt-admin-local'
+  });
+  return normalized;
+};
+
 // ─── READ ─────────────────────────────────────────────────────────────────────
 
 export const readNemtAdminState = async () => {
-  await ensureAdminSchema();
-  const [driversRes, vehiclesRes, attendantsRes, groupingsRes] = await Promise.all([
-    query(`SELECT data FROM admin_drivers ORDER BY updated_at DESC LIMIT 500`),
-    query(`SELECT data FROM admin_vehicles ORDER BY updated_at DESC LIMIT 200`),
-    query(`SELECT data FROM admin_attendants ORDER BY updated_at DESC LIMIT 200`),
-    query(`SELECT data FROM admin_groupings ORDER BY updated_at DESC LIMIT 50`)
-  ]);
-  return normalizeState({
-    drivers: driversRes.rows.map(r => r.data),
-    vehicles: vehiclesRes.rows.map(r => r.data),
-    attendants: attendantsRes.rows.map(r => r.data),
-    groupings: groupingsRes.rows.map(r => r.data)
-  });
+  try {
+    await ensureAdminSchema();
+    const [driversRes, vehiclesRes, attendantsRes, groupingsRes] = await Promise.all([
+      query(`SELECT data FROM admin_drivers ORDER BY updated_at DESC LIMIT 500`),
+      query(`SELECT data FROM admin_vehicles ORDER BY updated_at DESC LIMIT 200`),
+      query(`SELECT data FROM admin_attendants ORDER BY updated_at DESC LIMIT 200`),
+      query(`SELECT data FROM admin_groupings ORDER BY updated_at DESC LIMIT 50`)
+    ]);
+    return normalizeState({
+      drivers: driversRes.rows.map(r => r.data),
+      vehicles: vehiclesRes.rows.map(r => r.data),
+      attendants: attendantsRes.rows.map(r => r.data),
+      groupings: groupingsRes.rows.map(r => r.data)
+    });
+  } catch {
+    return await readLocalNemtAdminState();
+  }
 };
 
 // ─── WRITE ────────────────────────────────────────────────────────────────────
@@ -127,17 +155,21 @@ const upsertEntities = async (client, table, entities) => {
 };
 
 export const writeNemtAdminState = async nextState => {
-  await ensureAdminSchema();
   const currentState = await readNemtAdminState();
   const mergedState = mergePreservedDriverData(currentState, nextState);
   const normalized = normalizeState(mergedState);
 
-  await withTransaction(async client => {
-    await upsertEntities(client, 'admin_drivers', normalized.drivers);
-    await upsertEntities(client, 'admin_vehicles', normalized.vehicles);
-    await upsertEntities(client, 'admin_attendants', normalized.attendants);
-    await upsertEntities(client, 'admin_groupings', normalized.groupings);
-  });
+  try {
+    await ensureAdminSchema();
+    await withTransaction(async client => {
+      await upsertEntities(client, 'admin_drivers', normalized.drivers);
+      await upsertEntities(client, 'admin_vehicles', normalized.vehicles);
+      await upsertEntities(client, 'admin_attendants', normalized.attendants);
+      await upsertEntities(client, 'admin_groupings', normalized.groupings);
+    });
+  } catch {
+    await writeLocalNemtAdminState(normalized);
+  }
 
   return normalized;
 };

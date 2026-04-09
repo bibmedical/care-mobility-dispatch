@@ -1,6 +1,8 @@
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { DriverRuntime } from '../hooks/useDriverRuntime';
 import { driverTheme } from '../components/driver/driverTheme';
+
+const isLocalPasswordlessDriverLoginEnabled = __DEV__;
 
 type Props = {
   runtime: DriverRuntime;
@@ -10,18 +12,13 @@ export const DriverLoginScreen = ({ runtime }: Props) => {
   return (
     <KeyboardAvoidingView style={styles.kavContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.heroShell}>
-          <View style={styles.heroBadge}>
-            <Text style={styles.heroBadgeText}>CM</Text>
-          </View>
-          <Text style={styles.heroTitle}>Driver Access</Text>
-          <Text style={styles.heroSubtitle}>Login with the same driver account used in the portal.</Text>
+        <View style={styles.loginLogoWrap}>
+          <Image source={require('../../assets/logonew.png')} style={styles.loginLogo} resizeMode="contain" />
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardEyebrow}>Driver Login</Text>
           <Text style={styles.cardTitle}>Sign in</Text>
-          <Text style={styles.cardText}>Use the same driver credentials you use on the web portal.</Text>
           {runtime.isRestoringSession ? (
             <View style={styles.restoreNotice}>
               <ActivityIndicator color="#3263ff" />
@@ -29,10 +26,10 @@ export const DriverLoginScreen = ({ runtime }: Props) => {
             </View>
           ) : null}
           <TextInput value={runtime.driverCode} onChangeText={runtime.setDriverCode} placeholder="Email" placeholderTextColor="#7f8ca8" style={styles.input} autoCapitalize="none" keyboardType="email-address" />
-          <TextInput value={runtime.password} onChangeText={runtime.setPassword} placeholder="Password" placeholderTextColor="#7f8ca8" style={styles.input} secureTextEntry autoCapitalize="none" />
+          <TextInput value={runtime.password} onChangeText={runtime.setPassword} placeholder={isLocalPasswordlessDriverLoginEnabled ? 'Password optional in local app' : 'Password'} placeholderTextColor="#7f8ca8" style={styles.input} secureTextEntry autoCapitalize="none" />
           {runtime.authError ? <Text style={styles.errorText}>{runtime.authError}</Text> : null}
           <Pressable style={[styles.primaryButton, runtime.isSigningIn ? styles.primaryButtonDisabled : null]} onPress={() => void runtime.signIn()} disabled={runtime.isSigningIn}>
-            {runtime.isSigningIn ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Open Driver App</Text>}
+            {runtime.isSigningIn ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Log In</Text>}
           </Pressable>
         </View>
       </ScrollView>
@@ -43,45 +40,14 @@ export const DriverLoginScreen = ({ runtime }: Props) => {
 const styles = StyleSheet.create({
   kavContainer: {
     flex: 1,
-    backgroundColor: driverTheme.colors.appBg
+    backgroundColor: '#ffffff'
   },
   scrollContent: {
     padding: 20,
+    paddingTop: 10,
     gap: 16,
     flexGrow: 1,
-    justifyContent: 'center'
-  },
-  heroShell: {
-    backgroundColor: driverTheme.colors.surface,
-    borderRadius: driverTheme.radius.sm,
-    padding: 24,
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: 1,
-    borderColor: driverTheme.colors.border
-  },
-  heroBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: driverTheme.radius.sm,
-    backgroundColor: driverTheme.colors.headerBg,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  heroBadgeText: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: '800'
-  },
-  heroTitle: {
-    color: driverTheme.colors.text,
-    fontSize: 30,
-    fontWeight: '800'
-  },
-  heroSubtitle: {
-    color: driverTheme.colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 21
+    justifyContent: 'flex-start'
   },
   card: {
     backgroundColor: driverTheme.colors.surface,
@@ -90,6 +56,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: driverTheme.colors.border,
     gap: 14
+  },
+  loginLogoWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 4,
+    paddingBottom: 2
+  },
+  loginLogo: {
+    width: 300,
+    height: 180,
+    opacity: 0.96
   },
   cardEyebrow: {
     color: driverTheme.colors.primaryText,
@@ -103,10 +80,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700'
   },
-  cardText: {
-    color: driverTheme.colors.textMuted,
-    lineHeight: 21
-  },
   restoreNotice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -117,7 +90,7 @@ const styles = StyleSheet.create({
     color: driverTheme.colors.textMuted
   },
   input: {
-    backgroundColor: driverTheme.colors.surfaceMuted,
+    backgroundColor: '#ffffff',
     borderColor: driverTheme.colors.border,
     borderWidth: 1,
     color: driverTheme.colors.text,
@@ -127,7 +100,7 @@ const styles = StyleSheet.create({
     fontSize: 16
   },
   primaryButton: {
-    backgroundColor: driverTheme.colors.primary,
+    backgroundColor: '#1f2937',
     borderRadius: driverTheme.radius.sm,
     paddingVertical: 15,
     alignItems: 'center'

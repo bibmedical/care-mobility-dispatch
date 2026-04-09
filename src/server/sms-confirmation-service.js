@@ -45,14 +45,13 @@ const ACTION_MAP = {
 };
 
 export const SMS_PROVIDER_PORTALS = PROVIDER_PORTALS;
-export const normalizeSmsPhoneNumber = normalizePhoneNumber;
-
 const normalizePhoneNumber = (value, defaultCountryCode = '1') => {
   const digits = String(value ?? '').replace(/\D/g, '');
   if (!digits) return '';
   if (digits.length === 10) return `${defaultCountryCode}${digits}`;
   return digits;
 };
+export const normalizeSmsPhoneNumber = normalizePhoneNumber;
 
 const buildConfirmationCode = () => `${Date.now().toString(36).slice(-3)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
 

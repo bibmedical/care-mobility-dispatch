@@ -36,37 +36,39 @@ const ensureTables = async () => {
 };
 
 export const appendTripWorkflowEvent = async event => {
-  await ensureTables();
   const compliance = event?.compliance && typeof event.compliance === 'object' ? event.compliance : {};
   const locationSnapshot = event?.locationSnapshot && typeof event.locationSnapshot === 'object' ? event.locationSnapshot : {};
   const metadata = event?.metadata && typeof event.metadata === 'object' ? event.metadata : {};
-  await query(
-    `INSERT INTO trip_workflow_events (
-      event_id,
-      trip_id,
-      driver_id,
-      action,
-      timestamp_ms,
-      time_label,
-      rider_signature_name,
-      compliance,
-      location_snapshot,
-      metadata
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    ON CONFLICT (event_id) DO NOTHING`,
-    [
-      event?.id,
-      event?.tripId,
-      event?.driverId || null,
-      event?.action,
-      Number(event?.timestamp) || Date.now(),
-      event?.timeLabel || null,
-      event?.riderSignatureName || null,
-      JSON.stringify(compliance),
-      JSON.stringify(locationSnapshot),
-      JSON.stringify(metadata)
-    ]
-  );
+  try {
+    await ensureTables();
+    await query(
+      `INSERT INTO trip_workflow_events (
+        event_id,
+        trip_id,
+        driver_id,
+        action,
+        timestamp_ms,
+        time_label,
+        rider_signature_name,
+        compliance,
+        location_snapshot,
+        metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (event_id) DO NOTHING`,
+      [
+        event?.id,
+        event?.tripId,
+        event?.driverId || null,
+        event?.action,
+        Number(event?.timestamp) || Date.now(),
+        event?.timeLabel || null,
+        event?.riderSignatureName || null,
+        JSON.stringify(compliance),
+        JSON.stringify(locationSnapshot),
+        JSON.stringify(metadata)
+      ]
+    );
+  } catch {}
   return {
     ...event,
     compliance,
@@ -76,31 +78,33 @@ export const appendTripWorkflowEvent = async event => {
 };
 
 export const logTripArrivalEvent = async event => {
-  await ensureTables();
   const notificationSummary = event?.notificationSummary && typeof event.notificationSummary === 'object' ? event.notificationSummary : {};
-  await query(
-    `INSERT INTO trip_arrival_events (
-      event_id,
-      trip_id,
-      driver_id,
-      rider,
-      pickup_address,
-      actual_pickup,
-      arrival_timestamp_ms,
-      notification_summary
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-    ON CONFLICT (event_id) DO NOTHING`,
-    [
-      event?.id,
-      event?.tripId,
-      event?.driverId || null,
-      event?.rider || null,
-      event?.pickupAddress || null,
-      event?.actualPickup || null,
-      Number(event?.arrivalTimestamp) || Date.now(),
-      JSON.stringify(notificationSummary)
-    ]
-  );
+  try {
+    await ensureTables();
+    await query(
+      `INSERT INTO trip_arrival_events (
+        event_id,
+        trip_id,
+        driver_id,
+        rider,
+        pickup_address,
+        actual_pickup,
+        arrival_timestamp_ms,
+        notification_summary
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (event_id) DO NOTHING`,
+      [
+        event?.id,
+        event?.tripId,
+        event?.driverId || null,
+        event?.rider || null,
+        event?.pickupAddress || null,
+        event?.actualPickup || null,
+        Number(event?.arrivalTimestamp) || Date.now(),
+        JSON.stringify(notificationSummary)
+      ]
+    );
+  } catch {}
   return {
     ...event,
     notificationSummary
@@ -108,13 +112,18 @@ export const logTripArrivalEvent = async event => {
 };
 
 export const readTripWorkflowEventsByTripIds = async tripIds => {
-  await ensureTables();
   const normalizedTripIds = Array.from(new Set((Array.isArray(tripIds) ? tripIds : []).map(value => String(value || '').trim()).filter(Boolean)));
   if (normalizedTripIds.length === 0) return new Map();
-  const result = await query(
-    `SELECT * FROM trip_workflow_events WHERE trip_id = ANY($1::text[]) ORDER BY timestamp_ms ASC, created_at ASC`,
-    [normalizedTripIds]
-  );
+  let result;
+  try {
+    await ensureTables();
+    result = await query(
+      `SELECT * FROM trip_workflow_events WHERE trip_id = ANY($1::text[]) ORDER BY timestamp_ms ASC, created_at ASC`,
+      [normalizedTripIds]
+    );
+  } catch {
+    return new Map();
+  }
   const grouped = new Map();
   result.rows.forEach(row => {
     const current = grouped.get(row.trip_id) || [];
@@ -137,7 +146,6 @@ export const readTripWorkflowEventsByTripIds = async tripIds => {
 };
 
 export const readRecentTripWorkflowEvents = async ({ tripId = '', driverId = '', limit = 200 } = {}) => {
-  await ensureTables();
   const clauses = [];
   const params = [];
   if (String(tripId || '').trim()) {
@@ -150,10 +158,16 @@ export const readRecentTripWorkflowEvents = async ({ tripId = '', driverId = '',
   }
   params.push(Math.max(1, Math.min(Number(limit) || 200, 1000)));
   const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-  const result = await query(
-    `SELECT * FROM trip_workflow_events ${whereClause} ORDER BY timestamp_ms DESC, created_at DESC LIMIT $${params.length}`,
-    params
-  );
+  let result;
+  try {
+    await ensureTables();
+    result = await query(
+      `SELECT * FROM trip_workflow_events ${whereClause} ORDER BY timestamp_ms DESC, created_at DESC LIMIT $${params.length}`,
+      params
+    );
+  } catch {
+    return [];
+  }
   return result.rows.map(row => ({
     id: row.event_id,
     tripId: row.trip_id,
@@ -170,7 +184,6 @@ export const readRecentTripWorkflowEvents = async ({ tripId = '', driverId = '',
 };
 
 export const readTripArrivalEvents = async ({ tripId = '', driverId = '', limit = 200 } = {}) => {
-  await ensureTables();
   const clauses = [];
   const params = [];
   if (String(tripId || '').trim()) {
@@ -183,10 +196,16 @@ export const readTripArrivalEvents = async ({ tripId = '', driverId = '', limit 
   }
   params.push(Math.max(1, Math.min(Number(limit) || 200, 1000)));
   const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-  const result = await query(
-    `SELECT * FROM trip_arrival_events ${whereClause} ORDER BY arrival_timestamp_ms DESC, created_at DESC LIMIT $${params.length}`,
-    params
-  );
+  let result;
+  try {
+    await ensureTables();
+    result = await query(
+      `SELECT * FROM trip_arrival_events ${whereClause} ORDER BY arrival_timestamp_ms DESC, created_at DESC LIMIT $${params.length}`,
+      params
+    );
+  } catch {
+    return [];
+  }
   return result.rows.map(row => ({
     id: row.event_id,
     tripId: row.trip_id,

@@ -3,6 +3,8 @@ import { query, queryOne } from '@/server/db';
 
 const DRIVER_MOBILE_SESSION_TTL_MS = 1000 * 60 * 60 * 18; // 18 hours (3AM-9PM operational window)
 
+const canOverrideDriverSessionInLocalDev = () => process.env.NODE_ENV !== 'production';
+
 // In-memory fallback sessions for when DB is unavailable (local dev without DATABASE_URL)
 const _memSessions = new Map();
 
@@ -72,7 +74,9 @@ export const claimDriverMobileSession = async ({ driverId, driverName = '', devi
 
     const activeSession = existing && !isSessionExpired(existing) ? existing : null;
     if (activeSession && String(activeSession.device_id || '').trim() !== normalizedDeviceId) {
-      throw buildDriverSessionError('This driver account is already active on another device.', 409, 'driver-session-conflict');
+      if (!canOverrideDriverSessionInLocalDev()) {
+        throw buildDriverSessionError('This driver account is already active on another device.', 409, 'driver-session-conflict');
+      }
     }
 
     const sessionToken = randomBytes(32).toString('hex');
@@ -102,7 +106,9 @@ export const claimDriverMobileSession = async ({ driverId, driverName = '', devi
     const existing = _memSessions.get(normalizedDriverId);
     const isExpired = !existing || isSessionExpired(existing);
     if (!isExpired && String(existing.device_id || '').trim() !== normalizedDeviceId) {
-      throw buildDriverSessionError('This driver account is already active on another device.', 409, 'driver-session-conflict');
+      if (!canOverrideDriverSessionInLocalDev()) {
+        throw buildDriverSessionError('This driver account is already active on another device.', 409, 'driver-session-conflict');
+      }
     }
 
     const sessionToken = randomBytes(32).toString('hex');

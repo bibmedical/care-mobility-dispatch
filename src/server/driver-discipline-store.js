@@ -1,6 +1,11 @@
+import { readFile } from 'fs/promises';
 import { query } from '@/server/db';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
+import { getStorageFilePath } from '@/server/storage-paths';
 
 let tableReady = false;
+
+const DRIVER_DISCIPLINE_STORAGE_FILE = getStorageFilePath('driver-discipline-events.json');
 
 const ensureTable = async () => {
   if (tableReady) return;
@@ -26,51 +31,77 @@ const ensureTable = async () => {
   tableReady = true;
 };
 
+const readLocalDriverDisciplineEvents = async () => {
+  try {
+    const raw = await readFile(DRIVER_DISCIPLINE_STORAGE_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeLocalDriverDisciplineEvents = async events => {
+  await writeJsonFileWithSnapshots({
+    filePath: DRIVER_DISCIPLINE_STORAGE_FILE,
+    nextValue: events,
+    backupName: 'driver-discipline-local'
+  });
+  return events;
+};
+
 export const upsertDriverDisciplineEvent = async event => {
-  await ensureTable();
   const data = event?.data && typeof event.data === 'object' ? event.data : {};
-  await query(
-    `INSERT INTO driver_discipline_events (
-      event_id,
-      driver_id,
-      trip_id,
-      event_type,
-      severity,
-      status,
-      summary,
-      body,
-      source_message_id,
-      data,
-      occurred_at,
-      resolved_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-    ON CONFLICT (event_id) DO UPDATE SET
-      driver_id = EXCLUDED.driver_id,
-      trip_id = EXCLUDED.trip_id,
-      event_type = EXCLUDED.event_type,
-      severity = EXCLUDED.severity,
-      status = EXCLUDED.status,
-      summary = EXCLUDED.summary,
-      body = EXCLUDED.body,
-      source_message_id = EXCLUDED.source_message_id,
-      data = EXCLUDED.data,
-      occurred_at = EXCLUDED.occurred_at,
-      resolved_at = EXCLUDED.resolved_at`,
-    [
-      event?.id,
-      event?.driverId,
-      event?.tripId || null,
-      event?.eventType,
-      event?.severity || 'normal',
-      event?.status || 'logged',
-      event?.summary || null,
-      event?.body || null,
-      event?.sourceMessageId || null,
-      JSON.stringify(data),
-      event?.occurredAt ? new Date(event.occurredAt) : new Date(),
-      event?.resolvedAt ? new Date(event.resolvedAt) : null
-    ]
-  );
+  try {
+    await ensureTable();
+    await query(
+      `INSERT INTO driver_discipline_events (
+        event_id,
+        driver_id,
+        trip_id,
+        event_type,
+        severity,
+        status,
+        summary,
+        body,
+        source_message_id,
+        data,
+        occurred_at,
+        resolved_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      ON CONFLICT (event_id) DO UPDATE SET
+        driver_id = EXCLUDED.driver_id,
+        trip_id = EXCLUDED.trip_id,
+        event_type = EXCLUDED.event_type,
+        severity = EXCLUDED.severity,
+        status = EXCLUDED.status,
+        summary = EXCLUDED.summary,
+        body = EXCLUDED.body,
+        source_message_id = EXCLUDED.source_message_id,
+        data = EXCLUDED.data,
+        occurred_at = EXCLUDED.occurred_at,
+        resolved_at = EXCLUDED.resolved_at`,
+      [
+        event?.id,
+        event?.driverId,
+        event?.tripId || null,
+        event?.eventType,
+        event?.severity || 'normal',
+        event?.status || 'logged',
+        event?.summary || null,
+        event?.body || null,
+        event?.sourceMessageId || null,
+        JSON.stringify(data),
+        event?.occurredAt ? new Date(event.occurredAt) : new Date(),
+        event?.resolvedAt ? new Date(event.resolvedAt) : null
+      ]
+    );
+  } catch {
+    const events = await readLocalDriverDisciplineEvents();
+    const nextEvents = events.filter(item => String(item?.id || '').trim() !== String(event?.id || '').trim());
+    nextEvents.unshift({ ...event, data });
+    await writeLocalDriverDisciplineEvents(nextEvents);
+  }
   return {
     ...event,
     data
@@ -78,15 +109,22 @@ export const upsertDriverDisciplineEvent = async event => {
 };
 
 export const resolveDriverDisciplineEventById = async eventId => {
-  await ensureTable();
-  await query(
-    `UPDATE driver_discipline_events SET status = 'resolved', resolved_at = NOW() WHERE event_id = $1`,
-    [eventId]
-  );
+  try {
+    await ensureTable();
+    await query(
+      `UPDATE driver_discipline_events SET status = 'resolved', resolved_at = NOW() WHERE event_id = $1`,
+      [eventId]
+    );
+  } catch {
+    const events = await readLocalDriverDisciplineEvents();
+    const nextEvents = events.map(event => String(event?.id || '').trim() === String(eventId || '').trim()
+      ? { ...event, status: 'resolved', resolvedAt: new Date().toISOString() }
+      : event);
+    await writeLocalDriverDisciplineEvents(nextEvents);
+  }
 };
 
 export const readDriverDisciplineEvents = async ({ driverId = '', activeOnly = false, limit = 500 } = {}) => {
-  await ensureTable();
   const clauses = [];
   const params = [];
   if (String(driverId || '').trim()) {
@@ -98,10 +136,20 @@ export const readDriverDisciplineEvents = async ({ driverId = '', activeOnly = f
   }
   params.push(Math.max(1, Math.min(Number(limit) || 500, 5000)));
   const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-  const result = await query(
-    `SELECT * FROM driver_discipline_events ${whereClause} ORDER BY occurred_at DESC LIMIT $${params.length}`,
-    params
-  );
+  let result;
+  try {
+    await ensureTable();
+    result = await query(
+      `SELECT * FROM driver_discipline_events ${whereClause} ORDER BY occurred_at DESC LIMIT $${params.length}`,
+      params
+    );
+  } catch {
+    const normalizedDriverId = String(driverId || '').trim();
+    return (await readLocalDriverDisciplineEvents())
+      .filter(event => !normalizedDriverId || String(event?.driverId || '').trim() === normalizedDriverId)
+      .filter(event => !activeOnly || String(event?.status || '').trim() === 'active')
+      .slice(0, Math.max(1, Math.min(Number(limit) || 500, 5000)));
+  }
   return result.rows.map(row => ({
     id: row.event_id,
     driverId: row.driver_id,

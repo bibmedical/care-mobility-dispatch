@@ -30,6 +30,8 @@ export const PAGE_OPTIONS = [{
   href: '/rates'
 }];
 
+const isLocalPasswordlessWebEnabled = process.env.NODE_ENV !== 'production';
+
 const useSignIn = () => {
   const [loading, setLoading] = useState(false);
   const [loginMode, setLoginMode] = useState('credentials'); // 'credentials' or 'email'
@@ -61,7 +63,7 @@ const useSignIn = () => {
       return false;
     }
 
-    if (!normalizedPassword) {
+    if (!normalizedPassword && !isLocalPasswordlessWebEnabled) {
       showNotification({
         message: 'Please enter your password',
         variant: 'danger'

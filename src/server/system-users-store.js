@@ -1,7 +1,10 @@
+import { readFile } from 'fs/promises';
 import { buildStableDriverId, createBlankDriver, getFullName } from '@/helpers/nemt-admin-model';
 import { DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED, authorizeSystemUser, buildPasswordForUser, enrichSystemUser, getUserSyncStatus, isAdminRole, isDriverRole, isProtectedSystemUser, normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { query } from '@/server/db';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
+import { getStorageFilePath } from '@/server/storage-paths';
 
 const normalizeUserRecord = user => ({
   id: user?.id || `user-${Date.now()}`,
@@ -57,6 +60,33 @@ const normalizeUsersState = value => {
     protectedUserIds: normalizeProtectedIds(value?.protectedUserIds, users),
     users
   };
+};
+
+const SYSTEM_USERS_STORAGE_FILE = getStorageFilePath('system-users.json');
+
+const readLocalUsersState = async () => {
+  try {
+    const raw = await readFile(SYSTEM_USERS_STORAGE_FILE, 'utf8');
+    return normalizeUsersState(JSON.parse(raw));
+  } catch {
+    const seedUsers = USER_SEED.map(normalizeUserRecord);
+    const seedProtected = normalizeProtectedIds(DEFAULT_PROTECTED_SYSTEM_USER_IDS, seedUsers);
+    return normalizeUsersState({
+      version: 6,
+      protectedUserIds: seedProtected,
+      users: seedUsers
+    });
+  }
+};
+
+const writeLocalUsersState = async state => {
+  const normalized = normalizeUsersState(state);
+  await writeJsonFileWithSnapshots({
+    filePath: SYSTEM_USERS_STORAGE_FILE,
+    nextValue: normalized,
+    backupName: 'system-users-local'
+  });
+  return normalized;
 };
 
 const findLinkedDriverIndex = (drivers, user) => drivers.findIndex(driver => driver.authUserId === user.id || normalizeAuthValue(driver.username) === normalizeAuthValue(user.username) || normalizeAuthValue(driver.email) === normalizeAuthValue(user.email));
@@ -198,23 +228,37 @@ const ensureTable = async () => {
 };
 
 export const readSystemUsersState = async () => {
-  await ensureTable();
-  const result = await query(`SELECT version, protected_user_ids, users FROM system_users_state WHERE id = 'singleton'`);
-  const row = result.rows[0];
-  const effectiveState = normalizeUsersState({
-    version: row?.version,
-    protectedUserIds: row?.protected_user_ids,
-    users: row?.users
-  });
+  let effectiveState;
+
+  try {
+    await ensureTable();
+    const result = await query(`SELECT version, protected_user_ids, users FROM system_users_state WHERE id = 'singleton'`);
+    const row = result.rows[0];
+    effectiveState = normalizeUsersState({
+      version: row?.version,
+      protectedUserIds: row?.protected_user_ids,
+      users: row?.users
+    });
+  } catch {
+    effectiveState = await readLocalUsersState();
+  }
 
   if (effectiveState.users.length === 0) {
     const seedUsers = USER_SEED.map(normalizeUserRecord);
     const seedProtected = normalizeProtectedIds(DEFAULT_PROTECTED_SYSTEM_USER_IDS, seedUsers);
 
-    await query(
-      `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
-      [6, JSON.stringify(seedProtected), JSON.stringify(seedUsers)]
-    );
+    try {
+      await query(
+        `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
+        [6, JSON.stringify(seedProtected), JSON.stringify(seedUsers)]
+      );
+    } catch {
+      await writeLocalUsersState({
+        version: 6,
+        protectedUserIds: seedProtected,
+        users: seedUsers
+      });
+    }
 
     return normalizeUsersState({
       version: 6,
@@ -246,10 +290,18 @@ export const readSystemUsersState = async () => {
 
     const recoveredProtected = normalizeProtectedIds(effectiveState.protectedUserIds, recoveredUsers);
 
-    await query(
-      `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
-      [6, JSON.stringify(recoveredProtected), JSON.stringify(recoveredUsers)]
-    );
+    try {
+      await query(
+        `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
+        [6, JSON.stringify(recoveredProtected), JSON.stringify(recoveredUsers)]
+      );
+    } catch {
+      await writeLocalUsersState({
+        version: 6,
+        protectedUserIds: recoveredProtected,
+        users: recoveredUsers
+      });
+    }
 
     return normalizeUsersState({
       version: 6,
@@ -316,15 +368,34 @@ export const findPersistedSystemUserByEmail = async email => {
   return findPersistedSystemUserByEmailInPayload(payload, email);
 };
 
+export const findPersistedSystemUserByIdentifier = async identifier => {
+  const normalizedIdentifier = normalizeAuthValue(identifier);
+  if (!normalizedIdentifier) return null;
+
+  const payload = await readSystemUsersPayload();
+  const users = Array.isArray(payload?.users) ? payload.users : [];
+  return users.find(user => {
+    const username = normalizeAuthValue(user?.username);
+    const email = normalizeAuthValue(user?.email);
+    return username === normalizedIdentifier || email === normalizedIdentifier;
+  }) || null;
+};
+
 export const writeSystemUsersState = async nextState => {
-  await ensureTable();
   const currentState = await readSystemUsersState();
   const normalized = normalizeUsersState(nextState);
   ensureAtLeastOneAdminRemains(normalized.users);
-  await query(
-    `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
-    [normalized.version, JSON.stringify(normalized.protectedUserIds), JSON.stringify(normalized.users)]
-  );
+
+  try {
+    await ensureTable();
+    await query(
+      `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
+      [normalized.version, JSON.stringify(normalized.protectedUserIds), JSON.stringify(normalized.users)]
+    );
+  } catch {
+    await writeLocalUsersState(normalized);
+  }
+
   await syncUsersToAdminState(normalized.users.map(user => enrichSystemUser(user, normalized.protectedUserIds)), currentState.users.map(user => enrichSystemUser(user, currentState.protectedUserIds)));
   return buildUsersPayload(normalized);
 };

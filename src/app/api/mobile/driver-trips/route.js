@@ -141,6 +141,12 @@ const buildDriverWorkflowState = (trip, workflowEvents = []) => {
 const mapTripForDriver = (trip, workflowEvents = []) => {
   const normalizedTrip = normalizeTripRecord(trip);
   const effectiveStatus = getEffectiveTripStatus(normalizedTrip);
+  const rawNotes = String(normalizedTrip.notes || normalizedTrip.note || normalizedTrip.comments || '').trim();
+  const subMobilityType = String(normalizedTrip.subMobilityType || '').trim();
+  const wheelText = `${normalizedTrip.mobilityType || ''} ${normalizedTrip.vehicleType || ''} ${subMobilityType} ${rawNotes}`.toLowerCase();
+  const wheelChairIsXL = /(\bxl\b|extra\s*large)/i.test(wheelText);
+  const wheelChairFoldable = /(fold|foldable|can\s*fold|foldo)/i.test(wheelText);
+  const confirmationStatus = String(normalizedTrip?.confirmation?.status || '').trim();
 
   return {
     id: normalizedTrip.id,
@@ -157,12 +163,21 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
     pickupZip: normalizedTrip.pickupZip || normalizedTrip.fromZipcode || '',
     destination: normalizedTrip.destination || '',
     dropoffZip: normalizedTrip.destinationZip || normalizedTrip.doZip || '',
-    notes: String(normalizedTrip.notes || normalizedTrip.note || normalizedTrip.comments || '').trim(),
+    notes: rawNotes,
+    note: rawNotes,
     patientPhoneNumber: normalizedTrip.patientPhoneNumber || '',
     assistanceNeeds: normalizedTrip.assistanceNeeds || '',
     mobilityType: normalizedTrip.mobilityType || '',
+    subMobilityType,
     assistLevel: normalizedTrip.assistLevel || '',
     hasServiceAnimal: Boolean(normalizedTrip.hasServiceAnimal),
+    wheelChairIsXL,
+    wheelChairFoldable,
+    confirmationStatus,
+    confirmationSentAt: String(normalizedTrip?.confirmation?.sentAt || '').trim() || '',
+    confirmationRespondedAt: String(normalizedTrip?.confirmation?.respondedAt || '').trim() || '',
+    createdAt: normalizedTrip.createdAt || null,
+    updatedAt: normalizedTrip.updatedAt || null,
     status: effectiveStatus,
     vehicleType: normalizedTrip.vehicleType || '',
     miles: Number(normalizedTrip.miles) || 0,
@@ -174,9 +189,18 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
     isWillCall: effectiveStatus === 'WillCall',
     enRouteAt: normalizedTrip.enRouteAt || null,
     arrivedAt: normalizedTrip.arrivedAt || null,
+    patientOnboardAt: normalizedTrip.patientOnboardAt || normalizedTrip.driverWorkflow?.patientOnboardAt || null,
+    startTripAt: normalizedTrip.startTripAt || normalizedTrip.driverWorkflow?.startTripAt || null,
+    arrivedDestinationAt: normalizedTrip.arrivedDestinationAt || normalizedTrip.driverWorkflow?.arrivedDestinationAt || null,
     completedAt: normalizedTrip.completedAt || null,
     riderSignatureName: String(normalizedTrip.riderSignatureName || '').trim(),
     riderSignedAt: normalizedTrip.riderSignedAt || null,
+    canceledAt: normalizedTrip.canceledAt || null,
+    canceledByDriverId: String(normalizedTrip.canceledByDriverId || '').trim(),
+    canceledByDriverName: String(normalizedTrip.canceledByDriverName || '').trim(),
+    cancellationReason: String(normalizedTrip.cancellationReason || '').trim(),
+    cancellationPhotoDataUrl: String(normalizedTrip.cancellationPhotoDataUrl || '').trim(),
+    completionPhotoDataUrl: String(normalizedTrip.completionPhotoDataUrl || '').trim(),
     driverWorkflow: buildDriverWorkflowState(normalizedTrip, workflowEvents)
   };
 };

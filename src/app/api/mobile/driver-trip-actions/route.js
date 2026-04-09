@@ -4,6 +4,7 @@ import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripServiceDateKey, par
 import { getActiveMessageForDriver, resolveSystemMessageById } from '@/server/system-messages-store';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
 import { sendTripArrivalNotifications } from '@/server/sms-confirmation-service';
+import { sendCustomSmsRequests } from '@/server/sms-confirmation-service';
 import { upsertDriverDisciplineEvent, resolveDriverDisciplineEventById } from '@/server/driver-discipline-store';
 import { appendTripWorkflowEvent, logTripArrivalEvent } from '@/server/trip-workflow-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
@@ -12,6 +13,8 @@ import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
 
 const buildAutoNoDepartureAlertId = (driverId, tripId) => `auto-no-departure-${driverId}-${tripId}`;
+
+const generateReviewToken = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
@@ -70,7 +73,7 @@ const getCurrentClockMinutes = timestamp => {
 };
 
 const getScheduledMinutesForAction = (trip, action) => {
-  if (action === 'complete') return parseTripClockMinutes(trip?.scheduledDropoff || trip?.dropoff);
+  if (['arrived-destination', 'complete'].includes(action)) return parseTripClockMinutes(trip?.scheduledDropoff || trip?.dropoff);
   return parseTripClockMinutes(trip?.scheduledPickup || trip?.pickup);
 };
 
@@ -115,7 +118,13 @@ const buildWorkflowEvent = ({ tripId, action, timestamp, timeLabel, locationSnap
 
 const buildDisciplineEventForAction = ({ trip, driverId, action, timestamp, compliance }) => {
   if (!compliance?.measured || !compliance?.isLate) return null;
-  const eventType = action === 'en-route' ? 'late-start' : action === 'arrived' ? 'late-pickup' : action === 'complete' ? 'late-dropoff' : '';
+  const eventType = action === 'en-route'
+    ? 'late-start'
+    : action === 'arrived'
+      ? 'late-pickup'
+      : ['arrived-destination', 'complete'].includes(action)
+        ? 'late-dropoff'
+        : '';
   if (!eventType) return null;
   const lateByMinutes = Math.max(0, Number(compliance?.lateByMinutes) || 0);
   return {
@@ -195,6 +204,8 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
           status: 'en-route',
           departureAt: timestamp,
           departureTimeLabel: timeLabel,
+          departureToPickupAt: timestamp,
+          departureToPickupTimeLabel: timeLabel,
           departureLocationSnapshot: locationSnapshot,
           startedLate: Boolean(compliance.isLate),
           startLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null
@@ -213,15 +224,16 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
     return {
       patch: {
         status: 'Arrived',
-        driverTripStatus: 'Arrived',
+        driverTripStatus: 'Arrived Pickup',
         arrivedAt: timestamp,
         arrivalLocationSnapshot: locationSnapshot,
-        actualPickup: trip?.actualPickup || timeLabel,
         driverWorkflow: {
           ...nextWorkflow,
-          status: 'arrived',
+          status: 'arrived-pickup',
           arrivalAt: timestamp,
           arrivalTimeLabel: timeLabel,
+          arrivedPickupAt: timestamp,
+          arrivedPickupTimeLabel: timeLabel,
           arrivalLocationSnapshot: locationSnapshot,
           pickupLate: Boolean(compliance.isLate),
           pickupLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null
@@ -236,13 +248,94 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
     };
   }
 
+  if (action === 'patient-onboard') {
+    return {
+      patch: {
+        status: 'In Progress',
+        driverTripStatus: 'Patient Onboard',
+        actualPickup: trip?.actualPickup || timeLabel,
+        patientOnboardAt: timestamp,
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'patient-onboard',
+          patientOnboardAt: timestamp,
+          patientOnboardTimeLabel: timeLabel,
+          pickupAt: timestamp,
+          pickupTimeLabel: timeLabel
+        },
+        updatedAt: timestamp
+      },
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
+    };
+  }
+
+  if (action === 'start-trip') {
+    return {
+      patch: {
+        status: 'In Progress',
+        driverTripStatus: 'To Destination',
+        startTripAt: timestamp,
+        destinationDepartureLocationSnapshot: locationSnapshot,
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'to-destination',
+          startTripAt: timestamp,
+          startTripTimeLabel: timeLabel,
+          destinationDepartureAt: timestamp,
+          destinationDepartureTimeLabel: timeLabel,
+          destinationDepartureLocationSnapshot: locationSnapshot
+        },
+        updatedAt: timestamp
+      },
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
+    };
+  }
+
+  if (action === 'arrived-destination') {
+    return {
+      patch: {
+        status: 'Arrived',
+        driverTripStatus: 'Arrived Destination',
+        arrivedDestinationAt: timestamp,
+        destinationArrivalLocationSnapshot: locationSnapshot,
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'arrived-destination',
+          arrivedDestinationAt: timestamp,
+          arrivedDestinationTimeLabel: timeLabel,
+          destinationArrivalAt: timestamp,
+          destinationArrivalTimeLabel: timeLabel,
+          destinationArrivalLocationSnapshot: locationSnapshot,
+          dropoffLate: Boolean(compliance.isLate),
+          dropoffLateMinutes: compliance.measured ? Math.max(0, compliance.lateByMinutes) : null
+        },
+        updatedAt: timestamp
+      },
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
+    };
+  }
+
   if (action === 'complete') {
+    const completionPhotoDataUrl = String(options.completionPhotoDataUrl || '').trim();
     return {
       patch: {
         status: 'Completed',
         driverTripStatus: 'Completed',
         completedAt: timestamp,
         completionLocationSnapshot: locationSnapshot,
+        completionPhotoDataUrl,
         actualDropoff: trip?.actualDropoff || timeLabel,
         riderSignatureName,
         riderSignedAt: riderSignatureName ? timestamp : trip?.riderSignedAt || null,
@@ -267,6 +360,30 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
     };
   }
 
+  if (action === 'cancel') {
+    const cancellationReason = String(options.cancellationReason || '').trim();
+    const cancellationPhotoDataUrl = String(options.cancellationPhotoDataUrl || '').trim();
+    return {
+      patch: {
+        status: 'Cancelled',
+        driverTripStatus: 'Cancelled by rider',
+        canceledAt: timestamp,
+        cancellationReason,
+        cancellationPhotoDataUrl,
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'cancelled'
+        },
+        updatedAt: timestamp
+      },
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
+    };
+  }
+
   return null;
 };
 
@@ -279,6 +396,9 @@ export async function POST(request) {
   const driverId = String(body?.driverId || '').trim();
   const action = normalizeLookupValue(body?.action);
   const riderSignatureName = String(body?.riderSignatureName || '').trim();
+  const cancellationReason = String(body?.cancellationReason || '').trim();
+  const cancellationPhotoDataUrl = String(body?.cancellationPhotoDataUrl || '').trim();
+  const completionPhotoDataUrl = String(body?.completionPhotoDataUrl || '').trim();
   const riderSignatureData = normalizeRiderSignatureData(body?.riderSignatureData);
 
   if (!tripId || !driverId || !action) {
@@ -304,22 +424,50 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark En Route before Arrived.' }, { status: 400 });
   }
 
-  if (action === 'complete' && !currentTrip?.arrivedAt) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived before Complete.' }, { status: 400 });
+  if (action === 'patient-onboard' && !currentTrip?.arrivedAt) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived Pickup before Patient Onboard.' }, { status: 400 });
   }
 
-  if (action === 'accept' && !riderSignatureName && !riderSignatureData) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Rider signature is required before accepting the trip.' }, { status: 400 });
+  if (action === 'start-trip' && !currentTrip?.patientOnboardAt && !currentTrip?.actualPickup) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Patient Onboard before Start Trip.' }, { status: 400 });
   }
 
-  if (action === 'complete' && !riderSignatureName && !riderSignatureData) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Rider signature is required before completing the trip.' }, { status: 400 });
+  if (action === 'arrived-destination' && !currentTrip?.startTripAt && !currentTrip?.driverWorkflow?.destinationDepartureAt) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Start Trip before Arrived Destination.' }, { status: 400 });
+  }
+
+  if (action === 'complete' && !currentTrip?.arrivedDestinationAt && !currentTrip?.driverWorkflow?.destinationArrivalAt) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived Destination before Complete.' }, { status: 400 });
+  }
+
+  if (action === 'complete' && !completionPhotoDataUrl) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Completion photo is required before closing the trip.' }, { status: 400 });
+  }
+
+  if (action === 'cancel') {
+    const arrivedPickup = Boolean(currentTrip?.arrivedAt || currentTrip?.driverWorkflow?.arrivedPickupAt || currentTrip?.driverWorkflow?.arrivalAt);
+    const alreadyMoved = Boolean(currentTrip?.patientOnboardAt || currentTrip?.startTripAt || currentTrip?.arrivedDestinationAt || currentTrip?.completedAt || currentTrip?.driverWorkflow?.patientOnboardAt || currentTrip?.driverWorkflow?.startTripAt || currentTrip?.driverWorkflow?.arrivedDestinationAt || currentTrip?.driverWorkflow?.completedAt);
+    if (!arrivedPickup) {
+      return jsonWithMobileCors(request, { ok: false, error: 'Cancel is only allowed after Arrived Pickup.' }, { status: 400 });
+    }
+    if (alreadyMoved) {
+      return jsonWithMobileCors(request, { ok: false, error: 'Cancel is only allowed before Patient Onboard.' }, { status: 400 });
+    }
+    if (!cancellationReason) {
+      return jsonWithMobileCors(request, { ok: false, error: 'Cancellation reason is required.' }, { status: 400 });
+    }
+    if (!cancellationPhotoDataUrl) {
+      return jsonWithMobileCors(request, { ok: false, error: 'Cancellation photo is required.' }, { status: 400 });
+    }
   }
 
   const timestamp = Date.now();
   const actionUpdate = buildTripActionUpdate(currentTrip, action, timestamp, {
     locationSnapshot: body?.locationSnapshot,
-    riderSignatureName
+    riderSignatureName,
+    cancellationReason,
+    cancellationPhotoDataUrl,
+    completionPhotoDataUrl
   });
   if (!actionUpdate?.patch) {
     return jsonWithMobileCors(request, { ok: false, error: 'Unsupported action.' }, { status: 400 });
@@ -333,9 +481,19 @@ export async function POST(request) {
   if (action === 'complete') {
     const adminPayload = await readNemtAdminPayload();
     const currentDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
+    patch.reviewRequestToken = generateReviewToken();
+    patch.reviewRequestStatus = 'pending';
+    patch.reviewRequestSentAt = null;
     patch.completedByDriverId = driverId;
     patch.completedByDriverName = String(currentDriver?.name || currentTrip?.driverName || '').trim() || driverId;
     patch.riderSignatureData = riderSignatureData;
+  }
+
+  if (action === 'cancel') {
+    const adminPayload = await readNemtAdminPayload();
+    const currentDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
+    patch.canceledByDriverId = driverId;
+    patch.canceledByDriverName = String(currentDriver?.name || currentTrip?.driverName || '').trim() || driverId;
   }
 
   const nextTrips = trips.map(trip => String(trip?.id || '').trim() === tripId ? {
@@ -369,6 +527,7 @@ export async function POST(request) {
   }
 
   let arrivalNotifications = null;
+  let reviewRequest = null;
   if (action === 'arrived' && !currentTrip?.arrivedAt) {
     try {
       const adminPayload = await readNemtAdminPayload();
@@ -400,7 +559,72 @@ export async function POST(request) {
     }
   }
 
-  if (['en-route', 'arrived', 'complete'].includes(action)) {
+  if (action === 'arrived-destination' && !(currentTrip?.arrivedDestinationAt || currentTrip?.driverWorkflow?.destinationArrivalAt)) {
+    try {
+      await logTripArrivalEvent({
+        id: `arrival-destination-${tripId}-${timestamp}`,
+        tripId,
+        driverId,
+        rider: currentTrip?.rider || '',
+        pickupAddress: currentTrip?.destination || '',
+        actualPickup: actionUpdate.timeLabel,
+        arrivalTimestamp: timestamp,
+        notificationSummary: {
+          ok: true,
+          skipped: true,
+          reason: 'Destination arrival logged.'
+        }
+      });
+    } catch {
+      // Ignore destination arrival logging failure to avoid blocking trip state updates.
+    }
+  }
+
+  if (action === 'complete') {
+    const reviewToken = String(patch.reviewRequestToken || '').trim();
+    const reviewTripId = String(currentTrip?.id || '').trim();
+    const apiOrigin = new URL(request.url).origin;
+    const reviewLink = `${apiOrigin}/api/mobile/driver-reviews?tripId=${encodeURIComponent(reviewTripId)}&token=${encodeURIComponent(reviewToken)}`;
+    const driverDisplayName = String(patch.completedByDriverName || currentTrip?.driverName || 'your driver').trim();
+    const reviewMessage = `Thanks for riding with ${driverDisplayName}. Please rate your trip from 1 to 5 stars here: ${reviewLink}`;
+
+    try {
+      const smsResult = await sendCustomSmsRequests({
+        tripIds: [reviewTripId],
+        message: reviewMessage
+      });
+      const sent = Number(smsResult?.sentCount || 0) > 0;
+      reviewRequest = {
+        ok: sent,
+        sent,
+        providerResult: smsResult
+      };
+
+      if (sent) {
+        const refreshedState = await readNemtDispatchState({ includePastDates: true });
+        const refreshedTrips = Array.isArray(refreshedState?.trips) ? refreshedState.trips : [];
+        const nextTripsWithReviewFlag = refreshedTrips.map(trip => String(trip?.id || '').trim() === reviewTripId ? {
+          ...trip,
+          reviewRequestStatus: 'sent',
+          reviewRequestSentAt: new Date().toISOString(),
+          updatedAt: Date.now()
+        } : trip);
+
+        await writeNemtDispatchState({
+          ...refreshedState,
+          trips: nextTripsWithReviewFlag
+        });
+      }
+    } catch (error) {
+      reviewRequest = {
+        ok: false,
+        sent: false,
+        error: error instanceof Error ? error.message : 'Unable to send review request SMS.'
+      };
+    }
+  }
+
+  if (['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination', 'complete', 'cancel'].includes(action)) {
     await resolveSystemMessageById(buildAutoNoDepartureAlertId(driverId, tripId));
     await resolveDriverDisciplineEventById(buildAutoNoDepartureAlertId(driverId, tripId));
     const activeNoDepartureAlert = await getActiveMessageForDriver(driverId, AUTO_NO_DEPARTURE_ALERT_TYPE);
@@ -410,7 +634,7 @@ export async function POST(request) {
     }
   }
 
-  return jsonWithMobileCors(request, { ok: true, tripId, action, updatedAt: timestamp, arrivalNotifications });
+  return jsonWithMobileCors(request, { ok: true, tripId, action, updatedAt: timestamp, arrivalNotifications, reviewRequest });
   } catch (error) {
     return internalError(request, error);
   }

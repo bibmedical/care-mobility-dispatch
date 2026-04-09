@@ -46,17 +46,40 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  let payload;
-  try {
-    payload = await request.json();
-  } catch {
-    return jsonWithMobileCors(request, { ok: false, error: 'Invalid request body.' }, { status: 400 });
-  }
+  let driverId, documentKey, fileDataUrl, fileName;
 
-  const driverId = String(payload?.driverId || '').trim();
-  const documentKey = String(payload?.documentKey || '').trim();
-  const fileDataUrl = String(payload?.fileDataUrl || '').trim();
-  const fileName = String(payload?.fileName || '').trim();
+  const contentType = String(request.headers.get('content-type') || '');
+  if (contentType.includes('multipart/form-data')) {
+    let formData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return jsonWithMobileCors(request, { ok: false, error: 'Invalid form data.' }, { status: 400 });
+    }
+    driverId = String(formData.get('driverId') || '').trim();
+    documentKey = String(formData.get('documentKey') || '').trim();
+    fileName = String(formData.get('fileName') || '').trim();
+    const file = formData.get('file');
+    if (file && typeof file.arrayBuffer === 'function') {
+      const buffer = await file.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      const mimeType = file.type || 'image/jpeg';
+      fileDataUrl = `data:${mimeType};base64,${base64}`;
+    } else {
+      fileDataUrl = '';
+    }
+  } else {
+    let payload;
+    try {
+      payload = await request.json();
+    } catch {
+      return jsonWithMobileCors(request, { ok: false, error: 'Invalid request body.' }, { status: 400 });
+    }
+    driverId = String(payload?.driverId || '').trim();
+    documentKey = String(payload?.documentKey || '').trim();
+    fileDataUrl = String(payload?.fileDataUrl || '').trim();
+    fileName = String(payload?.fileName || '').trim();
+  }
 
   if (!driverId || !documentKey || !fileDataUrl) {
     return jsonWithMobileCors(request, { ok: false, error: 'driverId, documentKey, and fileDataUrl are required.' }, { status: 400 });

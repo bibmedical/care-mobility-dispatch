@@ -3,7 +3,6 @@ import { DriverAlertsSection } from '../components/driver/DriverAlertsSection';
 import { DriverControlSection } from '../components/driver/DriverControlSection';
 import { DriverDashboardSection } from '../components/driver/DriverDashboardSection';
 import { DriverDocumentsSection } from '../components/driver/DriverDocumentsSection';
-import { DriverDrawerMenu } from '../components/driver/DriverDrawerMenu';
 import { DriverGpsSection } from '../components/driver/DriverGpsSection';
 import { DriverHelpSection } from '../components/driver/DriverHelpSection';
 import { DriverHistorySection } from '../components/driver/DriverHistorySection';
@@ -14,7 +13,6 @@ import { getDriverAccentColor, withDriverAccentAlpha } from '../components/drive
 import { driverSharedStyles, driverTheme } from '../components/driver/driverTheme';
 import { DriverRuntime } from '../hooks/useDriverRuntime';
 import { DriverAppTab } from '../types/driver';
-import { useState } from 'react';
 
 type Props = {
   runtime: DriverRuntime;
@@ -34,11 +32,11 @@ const SCREEN_TITLES: Record<DriverAppTab, string> = {
 };
 
 export const DriverOperationsScreen = ({ runtime }: Props) => {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const driverAccent = getDriverAccentColor({
     id: runtime.driverSession?.driverId,
     name: runtime.driverSession?.name || runtime.driverCode
   });
+  const showTopBar = runtime.activeTab !== 'home';
 
   const renderBody = () => {
     if (runtime.activeTab === 'home') return <DriverDashboardSection runtime={runtime} />;
@@ -53,24 +51,38 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
     return <DriverControlSection runtime={runtime} />;
   };
 
-  const useStaticBodyWrap = runtime.activeTab === 'messages' || runtime.activeTab === 'trips';
+  // Messages and trips already contain their own section layouts, but only messages
+  // need a fixed wrapper. Trips should stay scrollable to keep action buttons reachable.
+  const useStaticBodyWrap = runtime.activeTab === 'messages';
+  const logoutButton = <Pressable style={styles.logoutButton} onPress={() => void runtime.signOut()}>
+      <Text style={styles.logoutButtonText}>Logout</Text>
+    </Pressable>;
 
   return <View style={styles.screen}>
-      <View style={[styles.topBar, { borderBottomColor: withDriverAccentAlpha(driverAccent, 0.2) }]}>
-        <Pressable style={[styles.menuButton, { backgroundColor: driverAccent, borderColor: withDriverAccentAlpha(driverAccent, 0.55) }]} onPress={() => setIsDrawerOpen(true)}>
-          <Text style={styles.menuButtonText}>Menu</Text>
-        </Pressable>
+      {showTopBar ? <View style={[styles.topBar, { borderBottomColor: withDriverAccentAlpha(driverAccent, 0.2) }]}>
+        {runtime.activeTab !== 'home' ? <Pressable style={[styles.homeBackButton, { backgroundColor: driverAccent }]} onPress={() => runtime.setActiveTab('home')}>
+            <Text style={styles.homeBackButtonText}>{'← Home'}</Text>
+          </Pressable> : null}
         <View style={styles.titleBlock}>
-          <Text style={[styles.titleEyebrow, { color: driverAccent }]}>Driver App</Text>
-          <Text style={styles.titleText}>{SCREEN_TITLES[runtime.activeTab]}</Text>
+          {runtime.activeTab !== 'trips' ? <Text style={styles.titleText}>{SCREEN_TITLES[runtime.activeTab]}</Text> : null}
         </View>
-      </View>
+        <View style={styles.topBarRightActions}>
+          {runtime.activeTab === 'trips' ? <View style={styles.todayBadge}>
+              <Text style={styles.todayBadgeText}>Today</Text>
+            </View> : null}
+          {logoutButton}
+        </View>
+      </View> : null}
+
+      {!showTopBar ? <View style={styles.homeLogoutWrap}>
+          {logoutButton}
+        </View> : null}
 
       {useStaticBodyWrap ? <View style={styles.messagesBodyWrap}>{renderBody()}</View> : <ScrollView contentContainerStyle={driverSharedStyles.screen}>
           {renderBody()}
         </ScrollView>}
 
-      {isDrawerOpen ? <DriverDrawerMenu activeTab={runtime.activeTab} onChange={runtime.setActiveTab} onClose={() => setIsDrawerOpen(false)} driverName={runtime.driverSession?.name || runtime.driverCode || 'Driver'} driverKey={runtime.driverSession?.driverId || runtime.driverSession?.name || runtime.driverCode || 'driver'} /> : null}
+
     </View>;
 };
 
@@ -103,15 +115,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.5
   },
+  homeBackButton: {
+    borderRadius: driverTheme.radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 9
+  },
+  homeBackButtonText: {
+    color: '#ffffff',
+    fontWeight: '800',
+    fontSize: 13
+  },
   titleBlock: {
     flex: 1
   },
-  titleEyebrow: {
-    color: driverTheme.colors.primary,
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2
+  topBarRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  logoutButton: {
+    backgroundColor: '#111827',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  logoutButtonText: {
+    color: '#ffffff',
+    fontWeight: '800',
+    fontSize: 12
+  },
+  homeLogoutWrap: {
+    position: 'absolute',
+    right: 12,
+    top: 10,
+    zIndex: 20
   },
   titleText: {
     color: driverTheme.colors.text,
@@ -121,5 +158,17 @@ const styles = StyleSheet.create({
   messagesBodyWrap: {
     flex: 1,
     padding: 12
+  },
+  todayBadge: {
+    backgroundColor: driverTheme.colors.primary,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  todayBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5
   }
 });
