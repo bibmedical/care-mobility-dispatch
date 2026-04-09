@@ -69,3 +69,44 @@ File: App Css
 .breadcrumb {
   margin-bottom: 0;
 }
+
+/* Global palette override: replace green accents with dark gray. */
+:root {
+  --bs-success: #1f2937;
+  --bs-success-rgb: 31, 41, 55;
+}
+
+.bg-success,
+.btn-success,
+.btn-outline-success:hover,
+.btn-outline-success:active,
+.btn-outline-success:focus,
+.badge.bg-success,
+.text-bg-success {
+  background-color: #1f2937 !important;
+  border-color: #1f2937 !important;
+  color: #ffffff !important;
+}
+
+.btn-outline-success,
+.border-success,
+.text-success {
+  color: #ffffff !important;
+  border-color: #1f2937 !important;
+}
+
+.bg-success .text-dark,
+.bg-success.text-dark,
+.bg-success * {
+  color: #ffffff !important;
+}
+
+/* Login primary action in dark gray. */
+.btn-primary,
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: #1f2937 !important;
+  border-color: #1f2937 !important;
+  color: #ffffff !important;
+}
