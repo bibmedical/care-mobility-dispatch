@@ -1135,6 +1135,7 @@ const DispatcherWorkspace = () => {
             <option value="unassigned">Unassigned</option>
             <option value="assigned">Assigned</option>
             <option value="inprogress">In progress</option>
+            <option value="completed">Completed</option>
             <option value="willcall">WillCall</option>
             <option value="confirm">Confirmed</option>
             <option value="unconfirm">Unconfirmed</option>
