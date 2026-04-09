@@ -92,10 +92,6 @@ export const MENU_ITEMS = [{
     label: 'Email Templates',
     url: '/settings/email-templates'
   }, {
-    key: 'preferences',
-    label: 'Logo',
-    url: '/preferences'
-  }, {
     key: 'configuraciones-office',
     label: 'Office',
     url: '/settings/office'
