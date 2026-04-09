@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Vibration } from 'react-native';
+import { Linking, Platform, Vibration } from 'react-native';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { DRIVER_APP_CONFIG } from '../config/driverAppConfig';
 import { DriverNotificationMode, clearStoredDriverSession, readOrCreateDriverDeviceId, readStoredDriverSession, readStoredNotificationMode, readStoredTrackingPreference, writeStoredDriverSession, writeStoredNotificationMode, writeStoredTrackingPreference } from '../services/driverSessionStorage';
 import { isBackgroundLocationTrackingActive, startBackgroundLocationTracking, stopBackgroundLocationTracking } from '../services/driverBackgroundLocation';
-import { DriverAppTab, DriverDocuments, DriverMessage, DriverSession, DriverShiftState, DriverTrip, LocationSnapshot } from '../types/driver';
+import { DriverAppTab, DriverDocuments, DriverMessage, DriverReviewSummary, DriverSession, DriverShiftState, DriverTrip, LocationSnapshot } from '../types/driver';
 
 const formatDateTime = (value: number | null) => {
   if (!value) return 'No update yet';
@@ -15,6 +15,17 @@ const formatDateTime = (value: number | null) => {
 
 const SESSION_RESTORE_TIMEOUT_MS = 2500;
 const NETWORK_TIMEOUT_MS = 45000;
+const isLocalPasswordlessDriverLoginEnabled = __DEV__;
+const DRIVER_RENDER_API_BASE_URL = 'https://care-mobility-dispatch-web.onrender.com';
+const shouldRegisterRemotePushToken = Platform.OS !== 'android';
+
+const buildLoginApiBaseCandidates = () => {
+  const candidates = [DRIVER_APP_CONFIG.apiBaseUrl, DRIVER_RENDER_API_BASE_URL]
+    .map(value => String(value || '').trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+  return Array.from(new Set(candidates));
+};
 
 const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> => {
   return await Promise.race([
@@ -119,6 +130,7 @@ const getDocumentUri = (value: unknown) => {
 };
 
 export const useDriverRuntime = () => {
+  const [tripDateFilter, setTripDateFilter] = useState<'all' | 'today' | 'next-day'>('all');
   const [driverCode, setDriverCode] = useState('');
   const [password, setPassword] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
@@ -143,6 +155,9 @@ export const useDriverRuntime = () => {
   const [tripSyncError, setTripSyncError] = useState('');
   const [lastTripSyncAt, setLastTripSyncAt] = useState<number | null>(null);
   const [messages, setMessages] = useState<DriverMessage[]>([]);
+  const [readIncomingMessageIds, setReadIncomingMessageIds] = useState<string[]>([]);
+  const [driverReviewSummary, setDriverReviewSummary] = useState<DriverReviewSummary | null>(null);
+  const [driverReviewError, setDriverReviewError] = useState('');
   const [messageDraft, setMessageDraft] = useState('');
   const [messagesError, setMessagesError] = useState('');
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -168,11 +183,15 @@ export const useDriverRuntime = () => {
     setDriverSession(null);
     setTrackingEnabled(false);
     setActiveTab('home');
+    setTripDateFilter('all');
     setShiftState('available');
     setLocationSnapshot(null);
     setWatchError('');
     setTripSyncError('');
     setMessages([]);
+    setReadIncomingMessageIds([]);
+    setDriverReviewSummary(null);
+    setDriverReviewError('');
     setMessageDraft('');
     seenMessageIdsRef.current.clear();
     setDriverDocuments(EMPTY_DRIVER_DOCUMENTS);
@@ -253,6 +272,26 @@ export const useDriverRuntime = () => {
     }
   };
 
+  const loadDriverReviewSummary = async (signalActive = true) => {
+    if (!loggedIn || !driverSession?.driverId) return;
+    try {
+      const query = `driverId=${encodeURIComponent(driverSession.driverId)}`;
+      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-reviews?${query}`, {
+        headers: getDriverAuthHeaders(driverSession),
+        cache: 'no-store'
+      });
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
+      if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to load driver reviews.'));
+      if (!signalActive) return;
+      setDriverReviewSummary(payload?.summary || null);
+      setDriverReviewError('');
+    } catch (error) {
+      if (!signalActive) return;
+      setDriverReviewSummary(null);
+      setDriverReviewError(error instanceof Error ? error.message : 'Unable to load driver reviews.');
+    }
+  };
+
   const loadDriverDocuments = async (signalActive = true) => {
     if (!loggedIn || !driverSession?.driverId) return;
     setIsLoadingDocuments(true);
@@ -311,6 +350,7 @@ export const useDriverRuntime = () => {
   }, []);
 
   useEffect(() => {
+    if (!shouldRegisterRemotePushToken) return;
     if (!loggedIn || !driverSession?.driverId || !notificationPermissionGranted || isRegisteringPushToken) return;
 
     let active = true;
@@ -547,6 +587,7 @@ export const useDriverRuntime = () => {
   useEffect(() => {
     if (!loggedIn || !driverSession?.driverId) {
       setMessages([]);
+      setReadIncomingMessageIds([]);
       setMessagesError('');
       setLastMessageSyncAt(null);
       return;
@@ -558,6 +599,41 @@ export const useDriverRuntime = () => {
     const intervalId = setInterval(() => {
       void loadMessages(active);
     }, DRIVER_APP_CONFIG.messageSyncIntervalMs);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, [driverSession?.driverId, loggedIn]);
+
+  useEffect(() => {
+    if (!loggedIn || activeTab !== 'messages') return;
+    const incomingIds = messages
+      .filter(message => String(message.source || '').toLowerCase() !== 'mobile-driver-app')
+      .map(message => String(message.id || '').trim())
+      .filter(Boolean);
+
+    if (incomingIds.length === 0) return;
+
+    setReadIncomingMessageIds(current => {
+      const merged = new Set([...current, ...incomingIds]);
+      return Array.from(merged);
+    });
+  }, [activeTab, loggedIn, messages]);
+
+  useEffect(() => {
+    if (!loggedIn || !driverSession?.driverId) {
+      setDriverReviewSummary(null);
+      setDriverReviewError('');
+      return;
+    }
+
+    let active = true;
+
+    void loadDriverReviewSummary(active);
+    const intervalId = setInterval(() => {
+      void loadDriverReviewSummary(active);
+    }, DRIVER_APP_CONFIG.tripSyncIntervalMs);
+
     return () => {
       active = false;
       clearInterval(intervalId);
@@ -717,12 +793,24 @@ export const useDriverRuntime = () => {
     return null;
   }, [lateRiskTrip]);
 
+  const unreadIncomingMessageCount = useMemo(() => {
+    if (!loggedIn) return 0;
+    const readSet = new Set(readIncomingMessageIds);
+    return messages.filter(message => {
+      const incoming = String(message.source || '').toLowerCase() !== 'mobile-driver-app';
+      if (!incoming) return false;
+      const messageId = String(message.id || '').trim();
+      if (!messageId) return false;
+      return !readSet.has(messageId);
+    }).length;
+  }, [loggedIn, messages, readIncomingMessageIds]);
+
   const signIn = async () => {
     if (!driverCode.trim()) {
       setAuthError('Enter your email or username first.');
       return false;
     }
-    if (!password.trim()) {
+    if (!password.trim() && !isLocalPasswordlessDriverLoginEnabled) {
       setAuthError('Enter your password.');
       return false;
     }
@@ -731,21 +819,54 @@ export const useDriverRuntime = () => {
 
     try {
       const deviceId = await readOrCreateDriverDeviceId();
-      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          identifier: driverCode.trim(),
-          password: password.trim(),
-          pin: password.trim(),
-          deviceId
-        })
-      });
+      const loginApiBaseCandidates = buildLoginApiBaseCandidates();
+      let response: Response | null = null;
+      let payload: any = null;
+      let lastError: Error | null = null;
 
-      if (!response.ok || !payload?.session) {
-        throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to sign in.'));
+      for (const [index, baseUrl] of loginApiBaseCandidates.entries()) {
+        const isLastCandidate = index >= loginApiBaseCandidates.length - 1;
+
+        try {
+          const loginResult = await fetchJsonWithTimeout(`${baseUrl}/api/mobile/driver-login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              identifier: driverCode.trim(),
+              password: password.trim(),
+              pin: password.trim(),
+              deviceId
+            })
+          });
+
+          response = loginResult.response;
+          payload = loginResult.payload;
+
+          if (!response.ok || !payload?.session) {
+            const errorMessage = payload?.error || getMobileApiErrorMessage(response, 'Unable to sign in.');
+            lastError = new Error(errorMessage);
+            const shouldTryNext = !isLastCandidate && (response.status === 404 || response.status >= 500);
+            if (shouldTryNext) continue;
+            throw lastError;
+          }
+
+          DRIVER_APP_CONFIG.apiBaseUrl = baseUrl;
+          break;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '';
+          const canRetryWithNextBase = !isLastCandidate && /unable to reach the driver api|failed to fetch|network request failed/i.test(message);
+          if (canRetryWithNextBase) {
+            lastError = error instanceof Error ? error : new Error('Unable to sign in.');
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      if (!response || !response.ok || !payload?.session) {
+        throw lastError || new Error('Unable to sign in.');
       }
 
       setAuthError('');
@@ -830,25 +951,36 @@ export const useDriverRuntime = () => {
     void writeStoredNotificationMode(mode);
   };
 
-  const submitTripAction = async (action: 'accept' | 'en-route' | 'arrived' | 'complete', options: {
+  const submitTripAction = async (action: 'accept' | 'en-route' | 'arrived' | 'patient-onboard' | 'start-trip' | 'arrived-destination' | 'complete' | 'cancel', options: {
+    tripId?: string;
     riderSignatureName?: string;
     riderSignatureData?: {
       points: Array<{ x: number; y: number }>;
       width: number;
       height: number;
     };
+    cancellationReason?: string;
+    cancellationPhotoDataUrl?: string;
+    completionPhotoDataUrl?: string;
   } = {}) => {
-    if (!driverSession?.driverId || !activeTrip?.id) return false;
+    const targetTripId = String(options.tripId || activeTrip?.id || '').trim();
+    if (!driverSession?.driverId || !targetTripId) return false;
 
     setActiveTripAction(action);
     setTripActionError('');
 
-    const optimisticStatus = action === 'accept' ? 'In Progress' : action === 'en-route' ? 'In Progress' : action === 'arrived' ? 'Arrived' : 'Completed';
-    setAssignedTrips(current => current.map(trip => trip.id === activeTrip.id ? {
+    const optimisticStatus = action === 'complete'
+      ? 'Completed'
+      : action === 'cancel'
+        ? 'Cancelled'
+      : action === 'arrived' || action === 'arrived-destination'
+        ? 'Arrived'
+        : 'In Progress';
+    setAssignedTrips(current => current.map(trip => trip.id === targetTripId ? {
       ...trip,
       status: optimisticStatus
     } : trip));
-    setActiveTrip(current => current?.id === activeTrip.id ? {
+    setActiveTrip(current => current?.id === targetTripId ? {
       ...current,
       status: optimisticStatus
     } : current);
@@ -863,10 +995,13 @@ export const useDriverRuntime = () => {
         },
         body: JSON.stringify({
           driverId: driverSession.driverId,
-          tripId: activeTrip.id,
+          tripId: targetTripId,
           action,
           riderSignatureName: String(options.riderSignatureName || '').trim() || undefined,
           riderSignatureData: options.riderSignatureData || undefined,
+          cancellationReason: String(options.cancellationReason || '').trim() || undefined,
+          cancellationPhotoDataUrl: String(options.cancellationPhotoDataUrl || '').trim() || undefined,
+          completionPhotoDataUrl: String(options.completionPhotoDataUrl || '').trim() || undefined,
           locationSnapshot: locationSnapshot || undefined
         })
       });
@@ -876,8 +1011,13 @@ export const useDriverRuntime = () => {
       if (action === 'accept') setShiftState('available');
       if (action === 'en-route') setShiftState('en-route');
       if (action === 'arrived') setShiftState('arrived');
+      if (action === 'start-trip') setShiftState('en-route');
+      if (action === 'arrived-destination') setShiftState('arrived');
       if (action === 'complete') setShiftState('completed');
+      if (action === 'cancel') setShiftState('available');
       await reloadTrips();
+      await loadDriverReviewSummary(true);
+      if (action === 'complete' || action === 'cancel') setActiveTab('history');
       return true;
     } catch (error) {
       setTripActionError(error instanceof Error ? error.message : 'Unable to update trip.');
@@ -1109,8 +1249,58 @@ export const useDriverRuntime = () => {
     }
   };
 
+  const uploadDriverDocumentFile = async (documentKey: keyof DriverDocuments, fileUri: string, mimeType: string, fileName: string): Promise<boolean> => {
+    if (!driverSession?.driverId || !fileUri) return false;
+    setIsUploadingDocument(true);
+    try {
+      const formData = new FormData();
+      formData.append('driverId', driverSession.driverId);
+      formData.append('documentKey', documentKey);
+      formData.append('fileName', fileName);
+      // React Native supports file URI in FormData without reading to base64
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      formData.append('file', { uri: fileUri, type: mimeType, name: fileName } as any);
+      const authHeaders = getDriverAuthHeaders(driverSession);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), NETWORK_TIMEOUT_MS);
+      let response: Response;
+      let payload: Record<string, unknown>;
+      try {
+        response = await fetch(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-documents`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: formData,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+      } catch (fetchErr) {
+        clearTimeout(timeoutId);
+        throw fetchErr;
+      }
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) throw new Error(String(payload?.error || '') || getMobileApiErrorMessage(response, 'Unable to upload document.'));
+      setDriverDocuments((payload?.documents as DriverDocuments) || driverDocuments);
+      const profilePhotoUrl = String(payload?.profilePhotoUrl || getDocumentUri((payload?.documents as DriverDocuments)?.profilePhoto) || '').trim();
+      setDriverSession(current => current ? { ...current, profilePhotoUrl: profilePhotoUrl || current.profilePhotoUrl || '' } : current);
+      setDocumentsError('');
+      return true;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setDocumentsError('Upload took too long and was stopped. Please try a smaller photo.');
+      } else {
+        setDocumentsError(error instanceof Error ? error.message : 'Unable to upload document.');
+      }
+      return false;
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  };
+
   return {
     driverCode,
+    tripDateFilter,
+    setTripDateFilter,
     setDriverCode,
     password,
     setPassword,
@@ -1141,6 +1331,9 @@ export const useDriverRuntime = () => {
     tripSyncError,
     lastTripSyncAt,
     messages,
+    unreadIncomingMessageCount,
+    driverReviewSummary,
+    driverReviewError,
     messageDraft,
     setMessageDraft,
     messagesError,
@@ -1173,7 +1366,9 @@ export const useDriverRuntime = () => {
     sendPresetDriverAlert,
     updateDriverProfile,
     uploadDriverDocument,
+    uploadDriverDocumentFile,
     reloadDriverDocuments: () => loadDriverDocuments(true),
+    reloadDriverReviewSummary: () => loadDriverReviewSummary(true),
     reloadMessages: () => loadMessages(true),
     formatDateTime
   };
