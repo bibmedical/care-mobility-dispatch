@@ -73,9 +73,12 @@ const safeReadVisibleSystemMessages = async driverIdentitySet => {
     const messages = await readSystemMessages();
     return messages.filter(message => {
       const messageDriverId = String(message?.driverId || '').trim();
-      if (!messageDriverId) return false;
+      const messageDriverName = String(message?.driverName || '').trim();
+      if (!messageDriverId && !messageDriverName) return false;
       if (String(message?.status || '').trim().toLowerCase() === 'resolved') return false;
-      return driverIdentitySet.has(normalizeLookupValue(messageDriverId));
+      const matchesId = messageDriverId && driverIdentitySet.has(normalizeLookupValue(messageDriverId));
+      const matchesName = messageDriverName && driverIdentitySet.has(normalizeLookupValue(messageDriverName));
+      return matchesId || matchesName;
     }).slice(0, MOBILE_MESSAGES_MAX_ITEMS);
   } catch (error) {
     console.warn('[mobile/driver-messages] readSystemMessages failed, continuing with dispatch thread fallback:', error?.message || error);
