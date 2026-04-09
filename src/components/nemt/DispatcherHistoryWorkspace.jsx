@@ -349,6 +349,10 @@ const DispatcherHistoryWorkspace = () => {
       });
     });
     (Array.isArray(archive?.trips) ? archive.trips : []).forEach(trip => {
+      const tripStatus = String(trip?.status || '').trim().toLowerCase();
+      const isInactiveStatus = ['completed', 'cancelled', 'canceled'].includes(tripStatus);
+      if (isInactiveStatus) return;
+
       [trip?.driverId, trip?.secondaryDriverId, trip?.canceledByDriverId].forEach(driverIdValue => {
         const driverId = normalizeDriverId(driverIdValue);
         if (driverId) {
