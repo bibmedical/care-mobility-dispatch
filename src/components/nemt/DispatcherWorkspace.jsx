@@ -1547,8 +1547,7 @@ const DispatcherWorkspace = () => {
       : hasDriverScope
         ? trips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id))
       : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
-    const dateScopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
-    const scopedTrips = hasDriverScope && !selectedRoute && selectedTripIds.length === 0 && dateScopedTrips.length === 0 ? baseTrips : dateScopedTrips;
+    const scopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
     const term = deferredRouteSearch.trim().toLowerCase();
     return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => String(value || '').toLowerCase().includes(term))));
   }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedRoute, selectedTripIds, trips]);
@@ -1617,7 +1616,7 @@ const DispatcherWorkspace = () => {
     }
 
     if (isManualDriverScope && selectedDriver) {
-      return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
+      return routeTrips[0] ?? null;
     }
 
     return null;
@@ -1635,7 +1634,7 @@ const DispatcherWorkspace = () => {
     if (!isManualDriverScope) return null;
     const routeTrip = routeTrips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip));
     if (routeTrip) return routeTrip;
-    return trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id) && isTripEnRoute(trip)) ?? null;
+    return null;
   }, [isManualDriverScope, routeTrips, selectedDriver, selectedDriverSelectedTrip, trips]);
   const selectedDriverEtaTrip = useMemo(() => {
     if (!selectedDriver) return null;
