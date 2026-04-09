@@ -378,12 +378,7 @@ const StandaloneDispatchMapScreen = () => {
 
   const effectiveTripDateFilter = isDashboardMap ? String(dashboardMapState?.tripDateFilter || 'all') : 'all';
   const effectiveSelectedTripIds = isDashboardMap ? (Array.isArray(dashboardMapState?.selectedTripIds) ? dashboardMapState.selectedTripIds : EMPTY_ITEMS) : contextSelectedTripIds;
-  const dashboardDriverScopeMode = isDashboardMap ? String(dashboardMapState?.driverScopeMode || 'manual').trim().toLowerCase() : 'manual';
-  const effectiveSelectedDriverId = isDashboardMap
-    ? source === 'dispatcher' && dashboardDriverScopeMode !== 'manual'
-      ? ''
-      : String(dashboardMapState?.selectedDriverId || '')
-    : String(contextSelectedDriverId || '');
+  const effectiveSelectedDriverId = isDashboardMap ? String(dashboardMapState?.selectedDriverId || '') : String(contextSelectedDriverId || '');
   const effectiveSelectedRouteId = isDashboardMap ? String(dashboardMapState?.selectedRouteId || '') : String(contextSelectedRouteId || '');
   const effectiveRouteTripIds = isDashboardMap ? (Array.isArray(dashboardMapState?.routeTripIds) ? dashboardMapState.routeTripIds : EMPTY_ITEMS) : EMPTY_ITEMS;
   const dashboardActiveDateTripIdSet = useMemo(() => {

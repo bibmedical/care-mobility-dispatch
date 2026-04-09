@@ -713,7 +713,7 @@ const DispatcherWorkspace = () => {
   const isDarkMode = themeMode === 'dark';
   const dispatcherSurfaceStyles = useMemo(() => buildDispatcherSurfaceStyles(isDarkMode), [isDarkMode]);
   const { data: smsData } = useSmsIntegrationApi();
-  const { data: blacklistData } = useBlacklistApi();
+  const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
   const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const {
     drivers,
@@ -2114,7 +2114,7 @@ const DispatcherWorkspace = () => {
     setStatusMessage(`Trip ${tripId} desasignado.`);
   };
 
-  const handleBlockSelectedTrips = () => {
+  const handleBlockSelectedTrips = async () => {
     if (selectedTripIds.length === 0) {
       setStatusMessage('Selecciona al menos un trip para bloquear.');
       return;
@@ -2130,6 +2130,7 @@ const DispatcherWorkspace = () => {
     }
 
     const endDate = shiftTripDateKey(todayDateKey, 14) || todayDateKey;
+    const nowIso = new Date().toISOString();
     selectedTripIds.forEach(tripId => {
       updateTripRecord(tripId, {
         hospitalStatus: {
@@ -2140,6 +2141,64 @@ const DispatcherWorkspace = () => {
         }
       });
     });
+
+    const selectedTrips = selectedTripIds.map(tripId => trips.find(trip => String(trip?.id || '').trim() === String(tripId || '').trim())).filter(Boolean);
+    if (selectedTrips.length > 0) {
+      const existingEntries = Array.isArray(blacklistData?.entries) ? blacklistData.entries : [];
+      const nextEntries = [...existingEntries];
+      const holdLabel = blockType === 'hospital' ? 'HOSPITAL' : 'REHAB';
+
+      selectedTrips.forEach(trip => {
+        const normalizedTripPhone = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
+        const normalizedTripName = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const matchingIndex = nextEntries.findIndex(entry => {
+          const entryPhone = String(entry?.phone || '').replace(/\D/g, '');
+          const entryName = String(entry?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+          if (entryPhone && normalizedTripPhone && entryPhone === normalizedTripPhone) return true;
+          if (entryName && normalizedTripName && entryName === normalizedTripName) return true;
+          return false;
+        });
+
+        const noteText = `[${holdLabel}] Blocked from Dispatcher until ${endDate}`;
+        if (matchingIndex >= 0) {
+          const existingEntry = nextEntries[matchingIndex];
+          const mergedNotes = [String(existingEntry?.notes || '').trim(), noteText].filter(Boolean).join(' | ');
+          nextEntries[matchingIndex] = {
+            ...existingEntry,
+            category: 'Medical Hold',
+            status: 'Active',
+            holdUntil: endDate,
+            notes: mergedNotes,
+            source: 'Dispatcher Block',
+            updatedAt: nowIso
+          };
+          return;
+        }
+
+        nextEntries.unshift({
+          id: `bl-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+          name: String(trip?.rider || '').trim(),
+          phone: String(trip?.patientPhoneNumber || '').trim(),
+          category: 'Medical Hold',
+          status: 'Active',
+          holdUntil: endDate,
+          notes: noteText,
+          source: 'Dispatcher Block',
+          createdAt: nowIso,
+          updatedAt: nowIso
+        });
+      });
+
+      try {
+        await saveBlacklistData({
+          version: blacklistData?.version ?? 1,
+          entries: nextEntries
+        });
+      } catch {
+        setStatusMessage(`Trips bloqueados como ${blockType}, pero no se pudo guardar blacklist.`);
+        return;
+      }
+    }
 
     setStatusMessage(`${selectedTripIds.length} trip(s) bloqueados como ${blockType}.`);
   };
