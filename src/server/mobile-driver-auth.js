@@ -9,11 +9,29 @@ export const buildMobileDriverAuthErrorResponse = error => {
 };
 
 export const authorizeMobileDriverRequest = async (request, driverId, options = {}) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  const deviceIdHeader = String(request.headers.get('x-driver-device-id') || '').trim();
+  const sessionTokenHeader = String(request.headers.get('x-driver-session-token') || '').trim();
+  const allowLegacyWithoutSession = options.allowLegacyWithoutSession === true;
+
+  if (allowLegacyWithoutSession && normalizedDriverId && (!deviceIdHeader || !sessionTokenHeader)) {
+    return {
+      session: {
+        driverId: normalizedDriverId,
+        driverName: '',
+        deviceId: '',
+        sessionToken: '',
+        createdAt: '',
+        lastSeenAt: ''
+      }
+    };
+  }
+
   try {
     const session = await validateDriverMobileSession({
-      driverId,
-      deviceId: request.headers.get('x-driver-device-id'),
-      sessionToken: request.headers.get('x-driver-session-token'),
+      driverId: normalizedDriverId,
+      deviceId: deviceIdHeader,
+      sessionToken: sessionTokenHeader,
       touch: options.touch !== false
     });
     return { session };

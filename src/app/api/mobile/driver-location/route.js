@@ -23,7 +23,9 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'driverId, latitude, and longitude are required.' }, { status: 400 });
   }
 
-  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  const authResult = await authorizeMobileDriverRequest(request, driverId, {
+    allowLegacyWithoutSession: true
+  });
   if (authResult.response) return withMobileCors(authResult.response, request);
 
   const trackingLastSeen = Number.isFinite(sourceTimestamp) ? new Date(sourceTimestamp).toISOString() : new Date().toISOString();

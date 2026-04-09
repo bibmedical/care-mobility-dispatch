@@ -106,7 +106,9 @@ export async function GET(request) {
       return jsonWithMobileCors(request, { ok: false, error: 'driverId or driverCode is required.' }, { status: 400 });
     }
 
-    const authResult = await authorizeMobileDriverRequest(request, driverLookup);
+    const authResult = await authorizeMobileDriverRequest(request, driverLookup, {
+      allowLegacyWithoutSession: true
+    });
     if (authResult.response) return withMobileCors(authResult.response, request);
 
     const driver = await resolveDriverByLookup(driverLookup);
@@ -162,7 +164,9 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'driverId or driverCode and at least one of body/mediaUrl are required.' }, { status: 400 });
   }
 
-  const authResult = await authorizeMobileDriverRequest(request, driverLookup);
+  const authResult = await authorizeMobileDriverRequest(request, driverLookup, {
+    allowLegacyWithoutSession: true
+  });
   if (authResult.response) return withMobileCors(authResult.response, request);
 
   const driver = await resolveDriverByLookup(driverLookup);
