@@ -68,34 +68,44 @@ const mapDispatchThreadMessageToMobileMessage = (entry, normalizedDriverId, driv
   };
 };
 
-const safeReadVisibleSystemMessages = async driverIdentitySet => {
+const safeReadVisibleSystemMessages = async ({ driverIdentitySet, normalizedDriverId }) => {
   try {
     const messages = await readSystemMessages();
-    return messages.filter(message => {
+    const visible = [];
+
+    for (const message of messages) {
       const messageDriverId = String(message?.driverId || '').trim();
       const messageDriverName = String(message?.driverName || '').trim();
-      if (!messageDriverId && !messageDriverName) return false;
-      if (String(message?.status || '').trim().toLowerCase() === 'resolved') return false;
-      
-      // Exact match first
-      if (messageDriverId && driverIdentitySet.has(normalizeLookupValue(messageDriverId))) return true;
-      if (messageDriverName && driverIdentitySet.has(normalizeLookupValue(messageDriverName))) return true;
-      
-      // Fallback: case-insensitive substring match for partial names
-      const messageNameNormalized = normalizeLookupValue(messageDriverName);
-      const messageIdNormalized = normalizeLookupValue(messageDriverId);
-      
-      for (const identity of driverIdentitySet) {
-        if (!identity) continue;
-        // Match if message name/id contains any identity part, but avoid very short matches
-        if (identity.length >= 3) {
-          if (messageNameNormalized && messageNameNormalized.includes(identity)) return true;
-          if (identity && messageNameNormalized && identity.includes(messageNameNormalized)) return true;
-        }
+      if (!messageDriverId && !messageDriverName) continue;
+      if (String(message?.status || '').trim().toLowerCase() === 'resolved') continue;
+
+      const normalizedMessageDriverId = normalizeLookupValue(messageDriverId);
+      const normalizedMessageDriverName = normalizeLookupValue(messageDriverName);
+      const directIdentityMatch = (normalizedMessageDriverId && driverIdentitySet.has(normalizedMessageDriverId))
+        || (normalizedMessageDriverName && driverIdentitySet.has(normalizedMessageDriverName));
+
+      if (directIdentityMatch) {
+        visible.push(message);
+        continue;
       }
-      
-      return false;
-    }).slice(0, MOBILE_MESSAGES_MAX_ITEMS);
+
+      let canonicalMatch = false;
+      if (messageDriverId) {
+        const resolvedById = await resolveDriverByLookup(messageDriverId);
+        canonicalMatch = String(resolvedById?.id || '').trim() === normalizedDriverId;
+      }
+
+      if (!canonicalMatch && messageDriverName) {
+        const resolvedByName = await resolveDriverByLookup(messageDriverName);
+        canonicalMatch = String(resolvedByName?.id || '').trim() === normalizedDriverId;
+      }
+
+      if (canonicalMatch) {
+        visible.push(message);
+      }
+    }
+
+    return visible.slice(0, MOBILE_MESSAGES_MAX_ITEMS);
   } catch (error) {
     console.warn('[mobile/driver-messages] readSystemMessages failed, continuing with dispatch thread fallback:', error?.message || error);
     return [];
@@ -149,7 +159,7 @@ export async function GET(request) {
     );
 
     const [visibleSystemMessages, mappedThreadMessages] = await Promise.all([
-      safeReadVisibleSystemMessages(driverIdentitySet),
+      safeReadVisibleSystemMessages({ driverIdentitySet, normalizedDriverId }),
       safeReadMappedThreadMessages({ driverIdentitySet, normalizedDriverId, driverName: driver?.name })
     ]);
 
