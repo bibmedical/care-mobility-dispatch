@@ -50,7 +50,6 @@ export default withAuth(
     callbacks: {
       authorized: ({ req, token }) => {
         const pathname = req.nextUrl.pathname;
-        const reauthWindowMinutes = 30;
 
         if (AUTH_ROUTES.some(route => pathname.startsWith(route))) {
           return true;
@@ -76,8 +75,9 @@ export default withAuth(
           return false;
         }
 
-        const sessionAgeMs = Date.now() - authenticatedAt;
-        return sessionAgeMs <= reauthWindowMinutes * 60 * 1000;
+        // Keep middleware focused on token validity + IP binding. Inactivity and
+        // explicit timeout are handled by app-level inactivity logout.
+        return true;
       }
     },
     pages: {

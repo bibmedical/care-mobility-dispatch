@@ -1,8 +1,10 @@
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { randomBytes } from 'crypto';
-import { authorizePersistedSystemUser } from '@/server/system-users-store';
+import { authorizePersistedSystemUser, findPersistedSystemUserByIdentifier } from '@/server/system-users-store';
 import { logLoginFailure } from '@/server/login-failures-store';
 import { logLoginEvent } from '@/server/activity-logs-store';
+
+const isLocalPasswordlessWebEnabled = () => process.env.NODE_ENV !== 'production';
 
 const normalizeIp = value => {
   const raw = String(value ?? '').split(',')[0].trim();
@@ -40,11 +42,16 @@ export const options = {
     async authorize(credentials, req) {
       try {
         const requestIp = getRequestIp(req);
-        const result = await authorizePersistedSystemUser({
-          identifier: credentials?.identifier,
-          password: credentials?.password,
-          clientType: credentials?.clientType ?? 'web'
-        });
+        const clientType = credentials?.clientType ?? 'web';
+        const identifier = String(credentials?.identifier || '').trim();
+        const password = String(credentials?.password || '').trim();
+        const result = !password && clientType === 'web' && isLocalPasswordlessWebEnabled()
+          ? await findPersistedSystemUserByIdentifier(identifier)
+          : await authorizePersistedSystemUser({
+            identifier,
+            password,
+            clientType
+          });
 
         if (!result) {
           // Log failed attempt
@@ -177,8 +184,10 @@ export const options = {
     }
   },
   session: {
-    maxAge: 15 * 60,
-    updateAge: 0,
+    // Inactivity is enforced in-app; keep auth session long enough to avoid
+    // hard sign-outs during normal navigation between modules.
+    maxAge: 12 * 60 * 60,
+    updateAge: 5 * 60,
     generateSessionToken: () => {
       return randomBytes(32).toString('hex');
     }
