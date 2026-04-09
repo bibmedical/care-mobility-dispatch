@@ -431,7 +431,17 @@ const StandaloneDispatchMapScreen = () => {
 
   useEffect(() => {
     const availableIds = dashboardRouteTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean);
+    const selectedIdsFromDashboard = availableIds.filter(id => selectedDashboardTripIds.has(id));
     setRouteTripSelectionIds(current => {
+      if (source === 'dispatcher') {
+        if (selectedIdsFromDashboard.length > 0) {
+          return areStringArraysEqual(selectedIdsFromDashboard, current) ? current : selectedIdsFromDashboard;
+        }
+        if (effectiveRouteTripIds.length === 0) {
+          return current.length === 0 ? current : [];
+        }
+      }
+
       const kept = current.filter(id => availableIds.includes(id));
       if (kept.length > 0) {
         return areStringArraysEqual(kept, current) ? current : kept;
@@ -441,7 +451,7 @@ const StandaloneDispatchMapScreen = () => {
       }
       return areStringArraysEqual(availableIds, current) ? current : availableIds;
     });
-  }, [dashboardRouteTrips, shouldAutoSelectRouteTrips]);
+  }, [dashboardRouteTrips, effectiveRouteTripIds.length, selectedDashboardTripIds, shouldAutoSelectRouteTrips, source]);
 
   useEffect(() => {
     if (!dashboardSidebarHidden) return;
