@@ -459,8 +459,30 @@ const DispatcherHistoryWorkspace = () => {
             <CardBody className="p-3">
               <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
                 <div>
+                  <div className={styles.sectionTitle}>Drivers</div>
+                  <div className={styles.sectionMeta}>Haz clic en un chofer para ver su ruta del dia a la derecha.</div>
+                </div>
+                <Badge bg="dark">{availableDrivers.length}</Badge>
+              </div>
+              <Form.Control size="sm" className="mb-3" placeholder="Search driver" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} />
+              <div className={styles.sidebarList}>
+                {filteredDriverOptions.length > 0 ? filteredDriverOptions.map(option => <button key={option.driverId} type="button" className={`${styles.sidebarItem} ${option.driverId === selectedDriverId ? styles.sidebarItemActive : ''}`} style={option.driverId === selectedDriverId ? { borderColor: getDriverColor(option.driverId), boxShadow: `0 0 0 1px ${withDriverAlpha(getDriverColor(option.driverId), 0.28)}` } : undefined} onClick={() => fetchHistory(selectedDate, option.driverId)}>
+                    <div>
+                      <div className={styles.sidebarItemTitle}><span className={styles.driverDot} style={{ backgroundColor: getDriverColor(option.driverId) }} />{option.label}</div>
+                      <div className={styles.sidebarItemMeta}>{option.routeCount} routes · {option.tripCount} trips · {option.archivedDayCount} days</div>
+                    </div>
+                    <span className={styles.sidebarItemPill}>{option.tripCount}</span>
+                  </button>) : <div className={styles.emptyState}>No drivers match that search.</div>}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className={styles.sidebarCard}>
+            <CardBody className="p-3">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <div>
                   <div className={styles.sectionTitle}>Days</div>
-                  <div className={styles.sectionMeta}>Selecciona el día y la derecha cambia a esa jornada.</div>
+                  <div className={styles.sectionMeta}>Selecciona el dia para filtrar el historial y rutas.</div>
                 </div>
                 <Badge bg="dark">{availableDates.length}</Badge>
               </div>
@@ -472,28 +494,6 @@ const DispatcherHistoryWorkspace = () => {
                     </div>
                     <span className={styles.sidebarItemPill}>{item.isLive ? item.tripCount : item.auditCount}</span>
                   </button>)}
-              </div>
-            </CardBody>
-          </Card>
-
-          <Card className={styles.sidebarCard}>
-            <CardBody className="p-3">
-              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
-                <div>
-                  <div className={styles.sectionTitle}>Drivers</div>
-                  <div className={styles.sectionMeta}>Selecciona a Harold u otro chofer para ver sólo su día.</div>
-                </div>
-                <Badge bg="dark">{availableDrivers.length}</Badge>
-              </div>
-              <Form.Control size="sm" className="mb-3" placeholder="Search driver" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} />
-              <div className={styles.sidebarList}>
-                {filteredDriverOptions.length > 0 ? filteredDriverOptions.map(option => <button key={option.driverId} type="button" className={`${styles.sidebarItem} ${option.driverId === selectedDriverId ? styles.sidebarItemActive : ''}`} style={option.driverId === selectedDriverId ? { borderColor: getDriverColor(option.driverId), boxShadow: `0 0 0 1px ${withDriverAlpha(getDriverColor(option.driverId), 0.28)}` } : undefined} onClick={() => fetchHistory('', option.driverId)}>
-                    <div>
-                      <div className={styles.sidebarItemTitle}><span className={styles.driverDot} style={{ backgroundColor: getDriverColor(option.driverId) }} />{option.label}</div>
-                      <div className={styles.sidebarItemMeta}>{option.archivedDayCount} days · {option.routeCount} routes · {option.tripCount} trips</div>
-                    </div>
-                    <span className={styles.sidebarItemPill}>{option.archivedDayCount}</span>
-                  </button>) : <div className={styles.emptyState}>No drivers match that search.</div>}
               </div>
             </CardBody>
           </Card>
