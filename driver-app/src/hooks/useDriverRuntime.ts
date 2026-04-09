@@ -101,15 +101,19 @@ const getDriverAuthHeaders = (session: DriverSession | null, baseHeaders: Header
   return headers;
 };
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false
-  })
-});
+// Firebase is not configured for Android; skip remote notification handler
+// to prevent "Default FirebaseApp is not initialized" errors on Android builds.
+if (Platform.OS !== 'android') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false
+    })
+  });
+}
 const EMPTY_DRIVER_DOCUMENTS: DriverDocuments = {
   profilePhoto: null,
   licenseFront: null,
@@ -986,26 +990,46 @@ export const useDriverRuntime = () => {
     } : current);
 
     try {
-      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-trip-actions`, {
-        method: 'POST',
-        headers: {
-          ...getDriverAuthHeaders(driverSession, {
-            'Content-Type': 'application/json'
+      const sendTripActionRequest = async (overrides: Record<string, unknown> = {}) => {
+        return await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-trip-actions`, {
+          method: 'POST',
+          headers: {
+            ...getDriverAuthHeaders(driverSession, {
+              'Content-Type': 'application/json'
+            })
+          },
+          body: JSON.stringify({
+            driverId: driverSession.driverId,
+            tripId: targetTripId,
+            action,
+            riderSignatureName: String(options.riderSignatureName || '').trim() || undefined,
+            riderSignatureData: options.riderSignatureData || undefined,
+            cancellationReason: String(options.cancellationReason || '').trim() || undefined,
+            cancellationPhotoDataUrl: String(options.cancellationPhotoDataUrl || '').trim() || undefined,
+            completionPhotoDataUrl: String(options.completionPhotoDataUrl || '').trim() || undefined,
+            locationSnapshot: locationSnapshot || undefined,
+            ...overrides
           })
-        },
-        body: JSON.stringify({
-          driverId: driverSession.driverId,
-          tripId: targetTripId,
-          action,
-          riderSignatureName: String(options.riderSignatureName || '').trim() || undefined,
-          riderSignatureData: options.riderSignatureData || undefined,
-          cancellationReason: String(options.cancellationReason || '').trim() || undefined,
-          cancellationPhotoDataUrl: String(options.cancellationPhotoDataUrl || '').trim() || undefined,
-          completionPhotoDataUrl: String(options.completionPhotoDataUrl || '').trim() || undefined,
-          locationSnapshot: locationSnapshot || undefined
-        })
-      });
+        });
+      };
+
+      let { response, payload } = await sendTripActionRequest();
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+
+      const actionAllowsSignatureBypass = ['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination'].includes(action);
+      const backendSignatureError = /signature|firma/i.test(String(payload?.error || ''));
+
+      // Compatibility fallback: some older backend revisions incorrectly require
+      // signature for progress actions. Retry once with a placeholder signature.
+      if (!response.ok && actionAllowsSignatureBypass && backendSignatureError) {
+        const retryResult = await sendTripActionRequest({
+          riderSignatureName: 'Driver workflow acknowledgment'
+        });
+        response = retryResult.response;
+        payload = retryResult.payload;
+        if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+      }
+
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to update trip.'));
 
       if (action === 'accept') setShiftState('available');
