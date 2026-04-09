@@ -92,6 +92,10 @@ export const MENU_ITEMS = [{
     label: 'Email Templates',
     url: '/settings/email-templates'
   }, {
+    key: 'configuraciones-gps',
+    label: 'GPS',
+    url: '/settings/gps'
+  }, {
     key: 'configuraciones-office',
     label: 'Office',
     url: '/settings/office'

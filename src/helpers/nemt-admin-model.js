@@ -5,6 +5,30 @@ const ALERT_WINDOW_DAYS = 30;
 const ONLINE_WINDOW_MINUTES = 5;
 const ROUTE_ROSTER_DEFAULT_START = '12:00 AM';
 const ROUTE_ROSTER_DEFAULT_END = '11:59 PM';
+const DRIVER_GPS_DEFAULTS = {
+  mapRadiusMeters: 800,
+  fgTimeIntervalMs: 5000,
+  fgDistanceIntervalMeters: 8,
+  bgTimeIntervalMs: 15000,
+  bgDistanceIntervalMeters: 12
+};
+
+const clampNumeric = (value, min, max, fallback) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, numeric));
+};
+
+export const normalizeDriverGpsSettings = value => {
+  const settings = value && typeof value === 'object' ? value : {};
+  return {
+    mapRadiusMeters: clampNumeric(settings.mapRadiusMeters, 100, 5000, DRIVER_GPS_DEFAULTS.mapRadiusMeters),
+    fgTimeIntervalMs: clampNumeric(settings.fgTimeIntervalMs, 2000, 30000, DRIVER_GPS_DEFAULTS.fgTimeIntervalMs),
+    fgDistanceIntervalMeters: clampNumeric(settings.fgDistanceIntervalMeters, 3, 100, DRIVER_GPS_DEFAULTS.fgDistanceIntervalMeters),
+    bgTimeIntervalMs: clampNumeric(settings.bgTimeIntervalMs, 5000, 120000, DRIVER_GPS_DEFAULTS.bgTimeIntervalMs),
+    bgDistanceIntervalMeters: clampNumeric(settings.bgDistanceIntervalMeters, 5, 200, DRIVER_GPS_DEFAULTS.bgDistanceIntervalMeters)
+  };
+};
 
 const VEHICLE_SEED = [{
   id: 'veh-1',
@@ -294,6 +318,7 @@ export const createBlankDriver = () => ({
   trackingSource: '',
   trackingLastSeen: '',
   position: ORLANDO_CENTER,
+  gpsSettings: normalizeDriverGpsSettings(null),
   routeRoster: normalizeRouteRoster(null),
   documents: {
     profilePhoto: null,
@@ -641,6 +666,8 @@ export const mapAdminDataToDispatchDrivers = state => {
     routeRoster: normalizedDriver.routeRoster,
     position: Array.isArray(normalizedDriver.position) ? normalizedDriver.position : ORLANDO_CENTER,
     hasRealLocation: isLiveTracking && Array.isArray(normalizedDriver.position) && normalizedDriver.position.length === 2,
+    gpsSettings: normalizeDriverGpsSettings(normalizedDriver?.gpsSettings),
+    gpsAreaRadiusMeters: normalizeDriverGpsSettings(normalizedDriver?.gpsSettings).mapRadiusMeters,
     trackingSource: normalizedDriver.trackingSource || '',
     trackingLastSeen: normalizedDriver.trackingLastSeen || '',
     heading: normalizedDriver.heading == null ? null : Number(normalizedDriver.heading),

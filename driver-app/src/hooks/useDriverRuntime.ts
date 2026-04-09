@@ -161,6 +161,18 @@ export const useDriverRuntime = () => {
   const [messages, setMessages] = useState<DriverMessage[]>([]);
   const [readIncomingMessageIds, setReadIncomingMessageIds] = useState<string[]>([]);
   const [driverReviewSummary, setDriverReviewSummary] = useState<DriverReviewSummary | null>(null);
+
+  const effectiveForegroundGpsTimeIntervalMs = useMemo(() => {
+    const configured = Number(driverSession?.gpsSettings?.fgTimeIntervalMs);
+    if (Number.isFinite(configured) && configured > 0) return configured;
+    return DRIVER_APP_CONFIG.gpsTimeIntervalMs;
+  }, [driverSession?.gpsSettings?.fgTimeIntervalMs]);
+
+  const effectiveForegroundGpsDistanceIntervalMeters = useMemo(() => {
+    const configured = Number(driverSession?.gpsSettings?.fgDistanceIntervalMeters);
+    if (Number.isFinite(configured) && configured > 0) return configured;
+    return DRIVER_APP_CONFIG.gpsDistanceIntervalMeters;
+  }, [driverSession?.gpsSettings?.fgDistanceIntervalMeters]);
   const [driverReviewError, setDriverReviewError] = useState('');
   const [messageDraft, setMessageDraft] = useState('');
   const [messagesError, setMessagesError] = useState('');
@@ -454,8 +466,8 @@ export const useDriverRuntime = () => {
 
       subscription = await Location.watchPositionAsync({
         accuracy: Location.Accuracy.Highest,
-        distanceInterval: DRIVER_APP_CONFIG.gpsDistanceIntervalMeters,
-        timeInterval: DRIVER_APP_CONFIG.gpsTimeIntervalMs
+        distanceInterval: effectiveForegroundGpsDistanceIntervalMeters,
+        timeInterval: effectiveForegroundGpsTimeIntervalMs
       }, update => {
         setLocationSnapshot({
           latitude: update.coords.latitude,
@@ -475,7 +487,7 @@ export const useDriverRuntime = () => {
     return () => {
       subscription?.remove();
     };
-  }, [loggedIn, trackingEnabled]);
+  }, [effectiveForegroundGpsDistanceIntervalMeters, effectiveForegroundGpsTimeIntervalMs, loggedIn, trackingEnabled]);
 
   useEffect(() => {
     let active = true;

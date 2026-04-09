@@ -70,10 +70,16 @@ export const startBackgroundLocationTracking = async () => {
   const alreadyRunning = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
   if (alreadyRunning) return true;
 
+  const session = await readStoredDriverSession();
+  const configuredBgDistance = Number(session?.gpsSettings?.bgDistanceIntervalMeters);
+  const configuredBgTime = Number(session?.gpsSettings?.bgTimeIntervalMs);
+  const distanceInterval = Number.isFinite(configuredBgDistance) && configuredBgDistance > 0 ? configuredBgDistance : DRIVER_APP_CONFIG.backgroundGpsDistanceIntervalMeters;
+  const timeInterval = Number.isFinite(configuredBgTime) && configuredBgTime > 0 ? configuredBgTime : DRIVER_APP_CONFIG.backgroundGpsTimeIntervalMs;
+
   await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
     accuracy: Location.Accuracy.Highest,
-    distanceInterval: DRIVER_APP_CONFIG.backgroundGpsDistanceIntervalMeters,
-    timeInterval: DRIVER_APP_CONFIG.backgroundGpsTimeIntervalMs,
+    distanceInterval,
+    timeInterval,
     activityType: Location.ActivityType.AutomotiveNavigation,
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { authorizePersistedSystemUser } from '@/server/system-users-store';
 import { buildDriverSessionError, claimDriverMobileSession } from '@/server/driver-mobile-session-store';
 import { isDriverRole, normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
-import { getFullName, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
+import { getFullName, mapAdminDataToDispatchDrivers, normalizeDriverGpsSettings, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors } from '@/server/mobile-api-cors';
 
@@ -127,7 +127,8 @@ export async function POST(request) {
           email: driver.portalEmail || driver.email || '',
           phone: normalizePhoneDigits(driver.phone),
           vehicleId: driver.vehicleId || '',
-          passwordResetRequired: Boolean(driver.passwordResetRequired)
+          passwordResetRequired: Boolean(driver.passwordResetRequired),
+          gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
         }, deviceId)
       });
     } catch (error) {
@@ -179,7 +180,8 @@ export async function POST(request) {
           email: authUser?.email || driver.portalEmail || driver.email || '',
           phone: normalizePhoneDigits(driver.phone),
           vehicleId: driver.vehicleId || '',
-          passwordResetRequired: Boolean(driver.passwordResetRequired)
+          passwordResetRequired: Boolean(driver.passwordResetRequired),
+          gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
         }, deviceId)
       });
     } catch (error) {
@@ -228,7 +230,8 @@ export async function POST(request) {
         email: driver.portalEmail || driver.email || '',
         phone: normalizePhoneDigits(driver.phone),
         vehicleId: driver.vehicleId || '',
-        passwordResetRequired: Boolean(driver.passwordResetRequired)
+        passwordResetRequired: Boolean(driver.passwordResetRequired),
+        gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
       }, deviceId)
     });
   } catch (error) {

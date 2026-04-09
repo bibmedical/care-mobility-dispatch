@@ -131,6 +131,13 @@ export type DriverSession = {
   deviceId: string;
   sessionToken: string;
   profilePhotoUrl?: string;
+  gpsSettings?: {
+    mapRadiusMeters?: number;
+    fgTimeIntervalMs?: number;
+    fgDistanceIntervalMeters?: number;
+    bgTimeIntervalMs?: number;
+    bgDistanceIntervalMeters?: number;
+  };
 };
 
 export type DriverDocumentValue = {
