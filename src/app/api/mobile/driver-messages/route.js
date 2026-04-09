@@ -16,24 +16,6 @@ const normalizeDriverIdentitySet = (...values) => {
     const normalized = normalizeLookupValue(value);
     if (normalized) identities.add(normalized);
   });
-  
-  // Also add split name parts for better matching
-  values.forEach(value => {
-    const stringValue = String(value || '').trim();
-    if (!stringValue) return;
-    const parts = stringValue.split(/\s+/);
-    if (parts.length >= 2) {
-      // Add first name and last name separately
-      parts.forEach(part => {
-        const normalizedPart = normalizeLookupValue(part);
-        if (normalizedPart) identities.add(normalizedPart);
-      });
-      // Add first + last combinations
-      identities.add(normalizeLookupValue(`${parts[0]} ${parts[parts.length - 1]}`));
-      identities.add(normalizeLookupValue(`${parts.slice(0, -1).join(' ')}`));
-    }
-  });
-  
   return identities;
 };
 
@@ -95,18 +77,21 @@ const safeReadVisibleSystemMessages = async driverIdentitySet => {
       if (!messageDriverId && !messageDriverName) return false;
       if (String(message?.status || '').trim().toLowerCase() === 'resolved') return false;
       
-      const messageIdNormalized = normalizeLookupValue(messageDriverId);
+      // Exact match first
+      if (messageDriverId && driverIdentitySet.has(normalizeLookupValue(messageDriverId))) return true;
+      if (messageDriverName && driverIdentitySet.has(normalizeLookupValue(messageDriverName))) return true;
+      
+      // Fallback: case-insensitive substring match for partial names
       const messageNameNormalized = normalizeLookupValue(messageDriverName);
+      const messageIdNormalized = normalizeLookupValue(messageDriverId);
       
-      // Check if message driverId or driverName matches any driver identity
-      if (messageIdNormalized && driverIdentitySet.has(messageIdNormalized)) return true;
-      if (messageNameNormalized && driverIdentitySet.has(messageNameNormalized)) return true;
-      
-      // Also check if any part of the identity set matches message name/id
       for (const identity of driverIdentitySet) {
-        if (messageIdNormalized && messageIdNormalized.includes(identity)) return true;
-        if (messageNameNormalized && messageNameNormalized.includes(identity)) return true;
-        if (identity && (identity.includes(messageIdNormalized) || identity.includes(messageNameNormalized))) return true;
+        if (!identity) continue;
+        // Match if message name/id contains any identity part, but avoid very short matches
+        if (identity.length >= 3) {
+          if (messageNameNormalized && messageNameNormalized.includes(identity)) return true;
+          if (identity && messageNameNormalized && identity.includes(messageNameNormalized)) return true;
+        }
       }
       
       return false;
