@@ -135,7 +135,7 @@ const isTripOwnedByDriver = (trip, driverId) => {
 
   const normalizedDriverId = extractDriverIdFromSelection(selectionKey);
   if (!normalizedDriverId) return false;
-  return normalizeDriverId(trip?.driverId) === normalizedDriverId || normalizeDriverId(trip?.secondaryDriverId) === normalizedDriverId;
+  return normalizeDriverId(trip?.driverId) === normalizedDriverId || normalizeDriverId(trip?.secondaryDriverId) === normalizedDriverId || normalizeDriverId(trip?.canceledByDriverId) === normalizedDriverId;
 };
 
 const getTimestampMinutes = (timestamp, timeZone) => {
@@ -349,7 +349,7 @@ const DispatcherHistoryWorkspace = () => {
       });
     });
     (Array.isArray(archive?.trips) ? archive.trips : []).forEach(trip => {
-      [trip?.driverId, trip?.secondaryDriverId].forEach(driverIdValue => {
+      [trip?.driverId, trip?.secondaryDriverId, trip?.canceledByDriverId].forEach(driverIdValue => {
         const driverId = normalizeDriverId(driverIdValue);
         if (driverId) {
           const entryKey = buildDriverSelectionKey(driverId);

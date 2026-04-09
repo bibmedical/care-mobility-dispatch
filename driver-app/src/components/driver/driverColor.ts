@@ -1,4 +1,4 @@
-const DRIVER_ACCENT_COLOR = '#27b96a';
+const DRIVER_ACCENT_COLOR = '#374151';
 
 type DriverColorInput = string | { id?: string | null; driverId?: string | null; name?: string | null } | null | undefined;
 
@@ -23,7 +23,7 @@ export const getDriverAccentColor = (driver: DriverColorInput) => {
 
 export const withDriverAccentAlpha = (hexColor: string, alpha = 1) => {
   const normalizedHex = String(hexColor || '').trim().replace('#', '');
-  if (!/^[0-9a-fA-F]{6}$/.test(normalizedHex)) return `rgba(39, 185, 106, ${alpha})`;
+  if (!/^[0-9a-fA-F]{6}$/.test(normalizedHex)) return `rgba(55, 65, 81, ${alpha})`;
   const red = Number.parseInt(normalizedHex.slice(0, 2), 16);
   const green = Number.parseInt(normalizedHex.slice(2, 4), 16);
   const blue = Number.parseInt(normalizedHex.slice(4, 6), 16);

@@ -859,6 +859,8 @@ export const NemtProvider = ({
       selectedTripIds: selectedTripIds.filter(id => !targetTripIds.includes(id)),
       trips: trips.map(trip => targetTripIds.includes(trip.id) ? {
         ...trip,
+        canceledByDriverId: String(trip.driverId || trip.canceledByDriverId || '').trim() || null,
+        canceledByDriverName: String(trip.driverName || trip.canceledByDriverName || '').trim() || null,
         driverId: null,
         secondaryDriverId: null,
         routeId: null,
