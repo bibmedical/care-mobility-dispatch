@@ -2,8 +2,20 @@ import path from 'path';
 import fs from 'fs';
 
 const fallbackStorageRoot = path.join(process.cwd(), 'storage');
+const renderDiskRoot = '/var/data/care-mobility';
+const renderDiskStorageRoot = path.join(renderDiskRoot, 'storage');
 
 let cachedRoot = null;
+
+const isBuildProcess = () => {
+  const lifecycleEvent = String(process.env.npm_lifecycle_event || '').toLowerCase();
+  if (lifecycleEvent === 'build') return true;
+
+  return process.argv.some(argument => {
+    const value = String(argument || '').toLowerCase();
+    return value === 'build' || value.includes('next build');
+  });
+};
 
 const canUseStorageRoot = rootPath => {
   try {
@@ -20,9 +32,15 @@ export const getStorageRoot = () => {
   if (cachedRoot) return cachedRoot;
 
   const configuredRoot = process.env.STORAGE_ROOT?.trim();
-  const preferredRoot = configuredRoot ? path.resolve(configuredRoot) : fallbackStorageRoot;
-  const usingConfiguredRoot = configuredRoot && canUseStorageRoot(preferredRoot);
-  const root = usingConfiguredRoot ? preferredRoot : fallbackStorageRoot;
+  const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
+  const preferredRoots = [
+    configuredRoot ? path.resolve(configuredRoot) : null,
+    isRender ? renderDiskStorageRoot : null,
+    isRender ? renderDiskRoot : null,
+    fallbackStorageRoot,
+  ].filter(Boolean);
+
+  const root = preferredRoots.find(canUseStorageRoot);
 
   if (!canUseStorageRoot(root)) {
     throw new Error(`Unable to initialize storage directory: ${root}`);
@@ -31,10 +49,21 @@ export const getStorageRoot = () => {
   // Information log (only once per process)
   if (!cachedRoot) {
     const isProduction = process.env.NODE_ENV === 'production';
-    const usingPersistent = Boolean(usingConfiguredRoot);
+    const buildProcess = isBuildProcess();
+    const usingPersistent = root.startsWith(renderDiskRoot);
+    const storageSource = configuredRoot && root === path.resolve(configuredRoot)
+      ? 'STORAGE_ROOT'
+      : root === renderDiskStorageRoot
+        ? 'Render disk default (/var/data/care-mobility/storage)'
+        : root === renderDiskRoot
+          ? 'Render disk default (/var/data/care-mobility)'
+          : 'local fallback';
     console.log(`[Storage] Initialized: ${root}`);
+    console.log(`[Storage] Source: ${storageSource}`);
     console.log(`[Storage] Persistent disk: ${usingPersistent ? 'YES (Render)' : 'NO (Ephemeral)'}`);
-    if (!usingPersistent && isProduction) {
+    if (!usingPersistent && isProduction && buildProcess) {
+      console.warn(`[Storage] Build-time fallback detected. Runtime may still use the persistent disk when the service starts.`);
+    } else if (!usingPersistent && isProduction) {
       console.warn(`[Storage] WARNING: Using ephemeral storage in production! Data will be lost on redeploy.`);
     }
   }

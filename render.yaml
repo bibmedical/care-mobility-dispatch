@@ -40,7 +40,7 @@ services:
     disk:
       name: care-mobility-storage
       mountPath: /var/data/care-mobility
-      sizeGB: 5
+      sizeGB: 50
 
   - type: cron
     name: care-mobility-license-check

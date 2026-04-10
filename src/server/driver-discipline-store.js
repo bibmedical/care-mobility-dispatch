@@ -5,7 +5,7 @@ import { getStorageFilePath } from '@/server/storage-paths';
 
 let tableReady = false;
 
-const DRIVER_DISCIPLINE_STORAGE_FILE = getStorageFilePath('driver-discipline-events.json');
+const getDriverDisciplineStorageFile = () => getStorageFilePath('driver-discipline-events.json');
 
 const ensureTable = async () => {
   if (tableReady) return;
@@ -33,7 +33,7 @@ const ensureTable = async () => {
 
 const readLocalDriverDisciplineEvents = async () => {
   try {
-    const raw = await readFile(DRIVER_DISCIPLINE_STORAGE_FILE, 'utf8');
+    const raw = await readFile(getDriverDisciplineStorageFile(), 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -43,7 +43,7 @@ const readLocalDriverDisciplineEvents = async () => {
 
 const writeLocalDriverDisciplineEvents = async events => {
   await writeJsonFileWithSnapshots({
-    filePath: DRIVER_DISCIPLINE_STORAGE_FILE,
+    filePath: getDriverDisciplineStorageFile(),
     nextValue: events,
     backupName: 'driver-discipline-local'
   });

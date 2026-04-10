@@ -83,11 +83,11 @@ const normalizeUsersState = value => {
   };
 };
 
-const SYSTEM_USERS_STORAGE_FILE = getStorageFilePath('system-users.json');
+const getSystemUsersStorageFile = () => getStorageFilePath('system-users.json');
 
 const readLocalUsersState = async () => {
   try {
-    const raw = await readFile(SYSTEM_USERS_STORAGE_FILE, 'utf8');
+    const raw = await readFile(getSystemUsersStorageFile(), 'utf8');
     return normalizeUsersState(JSON.parse(raw));
   } catch {
     const seedUsers = USER_SEED.map(normalizeUserRecord);
@@ -103,7 +103,7 @@ const readLocalUsersState = async () => {
 const writeLocalUsersState = async state => {
   const normalized = normalizeUsersState(state);
   await writeJsonFileWithSnapshots({
-    filePath: SYSTEM_USERS_STORAGE_FILE,
+    filePath: getSystemUsersStorageFile(),
     nextValue: normalized,
     backupName: 'system-users-local'
   });

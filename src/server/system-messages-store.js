@@ -7,7 +7,7 @@ const MEDIA_RETENTION_DAYS = 60;
 
 let tableReady = false;
 
-const SYSTEM_MESSAGES_STORAGE_FILE = getStorageFilePath('system-messages.json');
+const getSystemMessagesStorageFile = () => getStorageFilePath('system-messages.json');
 
 const ensureTable = async () => {
   if (tableReady) return;
@@ -31,7 +31,7 @@ const ensureTable = async () => {
 
 const readLocalSystemMessages = async () => {
   try {
-    const raw = await readFile(SYSTEM_MESSAGES_STORAGE_FILE, 'utf8');
+    const raw = await readFile(getSystemMessagesStorageFile(), 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : Array.isArray(parsed?.messages) ? parsed.messages : [];
   } catch {
@@ -41,7 +41,7 @@ const readLocalSystemMessages = async () => {
 
 const writeLocalSystemMessages = async messages => {
   await writeJsonFileWithSnapshots({
-    filePath: SYSTEM_MESSAGES_STORAGE_FILE,
+    filePath: getSystemMessagesStorageFile(),
     nextValue: messages,
     backupName: 'system-messages-local'
   });

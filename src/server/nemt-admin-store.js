@@ -90,11 +90,11 @@ const normalizeState = value => ({
   groupings: Array.isArray(value?.groupings) ? value.groupings : []
 });
 
-const NEMT_ADMIN_STORAGE_FILE = getStorageFilePath('nemt-admin.json');
+const getNemtAdminStorageFile = () => getStorageFilePath('nemt-admin.json');
 
 const readLocalNemtAdminState = async () => {
   try {
-    const raw = await readFile(NEMT_ADMIN_STORAGE_FILE, 'utf8');
+    const raw = await readFile(getNemtAdminStorageFile(), 'utf8');
     return normalizeState(JSON.parse(raw));
   } catch {
     return normalizeState(buildInitialAdminData());
@@ -104,7 +104,7 @@ const readLocalNemtAdminState = async () => {
 const writeLocalNemtAdminState = async state => {
   const normalized = normalizeState(state);
   await writeJsonFileWithSnapshots({
-    filePath: NEMT_ADMIN_STORAGE_FILE,
+    filePath: getNemtAdminStorageFile(),
     nextValue: normalized,
     backupName: 'nemt-admin-local'
   });

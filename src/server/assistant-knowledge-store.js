@@ -5,8 +5,7 @@ import { query, queryOne } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
-const STORAGE_DIR = getStorageRoot();
-const KNOWLEDGE_FILES_DIR = path.join(STORAGE_DIR, 'assistant-knowledge', 'files');
+const getKnowledgeFilesDir = () => path.join(getStorageRoot(), 'assistant-knowledge', 'files');
 
 const normalizeText = value => String(value ?? '').replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 
@@ -52,7 +51,7 @@ const normalizeState = value => ({
 
 const ensureStorage = async () => {
   await runMigrations();
-  await mkdir(KNOWLEDGE_FILES_DIR, { recursive: true });
+  await mkdir(getKnowledgeFilesDir(), { recursive: true });
 };
 
 const getSafeExtension = (fileName, mimeType) => {

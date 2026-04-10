@@ -9,7 +9,7 @@ import { getStorageFilePath } from '@/server/storage-paths';
 let ensureDispatchSchemaPromise = null;
 let lastKnownDispatchState = null;
 
-const DISPATCH_STORAGE_FILE = getStorageFilePath('nemt-dispatch.json');
+const getDispatchStorageFile = () => getStorageFilePath('nemt-dispatch.json');
 
 const ensureDispatchSchema = async () => {
   if (ensureDispatchSchemaPromise) return ensureDispatchSchemaPromise;
@@ -22,7 +22,7 @@ const ensureDispatchSchema = async () => {
 
 const readLocalDispatchState = async () => {
   try {
-    const raw = await readFile(DISPATCH_STORAGE_FILE, 'utf8');
+    const raw = await readFile(getDispatchStorageFile(), 'utf8');
     return normalizePersistentDispatchState(JSON.parse(raw));
   } catch {
     return normalizePersistentDispatchState({});
@@ -41,7 +41,7 @@ const hasMeaningfulDispatchData = state => {
 const writeLocalDispatchState = async nextState => {
   const normalized = normalizePersistentDispatchState(nextState);
   await writeJsonFileWithSnapshots({
-    filePath: DISPATCH_STORAGE_FILE,
+    filePath: getDispatchStorageFile(),
     nextValue: normalized,
     backupName: 'nemt-dispatch-local'
   });
