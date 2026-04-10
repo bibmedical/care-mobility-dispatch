@@ -14,9 +14,8 @@ import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
@@ -783,6 +782,8 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const DispatcherWorkspace = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDetachedMapMode = searchParams?.get('detachedMap') === '1';
   const { themeMode } = useLayoutContext();
   const isDarkMode = themeMode === 'dark';
   const dispatcherSurfaceStyles = useMemo(() => buildDispatcherSurfaceStyles(isDarkMode), [isDarkMode]);
@@ -877,6 +878,48 @@ const DispatcherWorkspace = () => {
   });
 
   useEffect(() => {
+    if (!isDetachedMapMode || typeof window === 'undefined') return;
+
+    const applySnapshot = () => {
+      try {
+        const raw = window.localStorage.getItem(MAP_SCREEN_DISPATCHER_STATE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return;
+
+        const nextTripDateFilter = String(parsed.tripDateFilter || 'all');
+        const nextSelectedTripIds = Array.isArray(parsed.selectedTripIds)
+          ? parsed.selectedTripIds.map(value => String(value || '').trim()).filter(Boolean)
+          : [];
+        const nextSelectedDriverId = String(parsed.selectedDriverId || '').trim() || null;
+        const nextSelectedRouteId = String(parsed.selectedRouteId || '').trim() || null;
+        const nextDriverScopeMode = String(parsed.driverScopeMode || '').trim().toLowerCase();
+
+        setTripDateFilter(nextTripDateFilter);
+        setSelectedTripIds(nextSelectedTripIds);
+        setSelectedDriverId(nextSelectedDriverId);
+        setSelectedRouteId(nextSelectedRouteId);
+        setIsManualDriverScope(nextDriverScopeMode === 'manual');
+        setShowInlineMap(true);
+      } catch {}
+    };
+
+    applySnapshot();
+    const handleStorage = event => {
+      if (event?.key && event.key !== MAP_SCREEN_DISPATCHER_STATE_KEY) return;
+      applySnapshot();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    const pollId = window.setInterval(applySnapshot, 500);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.clearInterval(pollId);
+    };
+  }, [isDetachedMapMode]);
+
+  useEffect(() => {
     setSelectedDriverId(null);
     setIsManualDriverScope(false);
     setSelectedSecondaryDriverId('');
@@ -930,79 +973,13 @@ const DispatcherWorkspace = () => {
 
     detachedMapClosingRef.current = false;
 
-    const popupWindow = window.open('', 'care-mobility-dispatch-map', 'popup=yes,width=1500,height=900,left=80,top=60,resizable=yes,scrollbars=no');
+    const popupUrl = new URL('/dispatcher?detachedMap=1', window.location.origin).toString();
+    const popupWindow = window.open(popupUrl, 'care-mobility-dispatch-map', 'popup=yes,width=1500,height=900,left=80,top=60,resizable=yes,scrollbars=no');
     if (!popupWindow) {
       setStatusMessage('Popup blocked. Allow popups to open Dispatch map on another screen.');
       setIsDispatchMapDetached(false);
       return;
     }
-
-    const sourceStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'));
-    sourceStyles.forEach(styleNode => {
-      if (styleNode.tagName === 'LINK') {
-        const href = styleNode.getAttribute('href');
-        if (!href) return;
-        const nextLink = popupWindow.document.createElement('link');
-        nextLink.setAttribute('rel', 'stylesheet');
-        nextLink.setAttribute('href', new URL(href, window.location.href).href);
-        const media = styleNode.getAttribute('media');
-        if (media) nextLink.setAttribute('media', media);
-        popupWindow.document.head.appendChild(nextLink);
-        return;
-      }
-
-      if (styleNode.tagName === 'STYLE') {
-        const nextStyle = popupWindow.document.createElement('style');
-        nextStyle.textContent = styleNode.textContent || '';
-        popupWindow.document.head.appendChild(nextStyle);
-      }
-    });
-
-    const leafletCssLink = popupWindow.document.createElement('link');
-    leafletCssLink.setAttribute('rel', 'stylesheet');
-    leafletCssLink.setAttribute('href', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
-    popupWindow.document.head.appendChild(leafletCssLink);
-
-    popupWindow.document.title = 'Dispatch Map';
-    popupWindow.document.documentElement.style.height = '100%';
-    popupWindow.document.body.style.margin = '0';
-    popupWindow.document.body.style.height = '100%';
-    popupWindow.document.body.style.width = '100%';
-    popupWindow.document.body.style.overflow = 'hidden';
-    popupWindow.document.body.style.backgroundColor = '#0f172a';
-    popupWindow.document.body.style.pointerEvents = 'auto';
-    popupWindow.document.body.style.userSelect = 'none';
-
-    const interactionFixStyle = popupWindow.document.createElement('style');
-    interactionFixStyle.textContent = `
-      html, body {
-        pointer-events: auto !important;
-      }
-      .leaflet-container,
-      .leaflet-pane,
-      .leaflet-map-pane,
-      .leaflet-overlay-pane,
-      .leaflet-marker-pane,
-      .leaflet-shadow-pane,
-      .leaflet-tooltip-pane,
-      .leaflet-popup-pane,
-      .leaflet-control-container,
-      .leaflet-top,
-      .leaflet-bottom,
-      .leaflet-control {
-        pointer-events: auto !important;
-      }
-    `;
-    popupWindow.document.head.appendChild(interactionFixStyle);
-
-    const mountNode = popupWindow.document.createElement('div');
-    mountNode.id = 'detached-dispatch-map-root';
-    mountNode.style.width = '100vw';
-    mountNode.style.height = '100vh';
-    mountNode.style.overflow = 'hidden';
-    mountNode.style.pointerEvents = 'auto';
-    popupWindow.document.body.appendChild(mountNode);
-    const popupRoot = createRoot(mountNode);
 
     const handlePopupClose = () => {
       if (detachedMapClosingRef.current) return;
@@ -1012,32 +989,17 @@ const DispatcherWorkspace = () => {
       detachedMapWindowRef.current = null;
     };
 
-    const handlePopupResize = () => {
-      setDetachedMapResizeTick(current => current + 1);
-    };
-
     popupWindow.addEventListener('beforeunload', handlePopupClose);
-    popupWindow.addEventListener('resize', handlePopupResize);
     popupWindow.focus();
 
     detachedMapWindowRef.current = popupWindow;
-    detachedMapPortalContainerRef.current = mountNode;
-    detachedMapReactRootRef.current = popupRoot;
-    window.setTimeout(() => {
-      setDetachedMapResizeTick(current => current + 1);
-    }, 60);
-    window.setTimeout(() => {
-      setDetachedMapResizeTick(current => current + 1);
-    }, 260);
-    setStatusMessage('Dispatch map moved to external window.');
+    detachedMapPortalContainerRef.current = null;
+    detachedMapReactRootRef.current = null;
+    setStatusMessage('Dispatch map opened in external window.');
 
     return () => {
       try {
         popupWindow.removeEventListener('beforeunload', handlePopupClose);
-        popupWindow.removeEventListener('resize', handlePopupResize);
-        if (detachedMapReactRootRef.current) {
-          detachedMapReactRootRef.current.unmount();
-        }
       } catch {}
       detachedMapReactRootRef.current = null;
     };
@@ -1658,6 +1620,7 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (isDetachedMapMode) return;
 
     const activeDateTripIds = activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [];
     const routeTripIds = selectedRoute && Array.isArray(selectedRoute.tripIds) ? selectedRoute.tripIds.map(value => String(value || '').trim()).filter(Boolean) : [];
@@ -1672,7 +1635,7 @@ const DispatcherWorkspace = () => {
     };
 
     window.localStorage.setItem(MAP_SCREEN_DISPATCHER_STATE_KEY, JSON.stringify(payload));
-  }, [activeDateTripIdSet, isManualDriverScope, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds, tripDateFilter]);
+  }, [activeDateTripIdSet, isDetachedMapMode, isManualDriverScope, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds, tripDateFilter]);
 
   const hasSelectedTrips = selectedTripIds.length > 0;
   const isTripAssignedToSelectedDriver = trip => isTripAssignedToDriver(trip, selectedDriverId);
@@ -3115,7 +3078,7 @@ const DispatcherWorkspace = () => {
             {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
             <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
             <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
-            <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
+            {!isDetachedMapMode ? <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button> : null}
           </div> : null}
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%', cursor: mapInteractionLocked ? 'not-allowed' : 'grab' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}-${detachedMapResizeTick}`} />
@@ -3197,12 +3160,11 @@ const DispatcherWorkspace = () => {
       </CardBody>
     </Card>;
 
-  useEffect(() => {
-    if (!isDispatchMapDetached || !detachedMapReactRootRef.current) return;
-    detachedMapReactRootRef.current.render(<div style={{ width: '100vw', height: '100vh', padding: 6 }}>
+  if (isDetachedMapMode) {
+    return <div style={{ width: '100vw', height: '100vh', padding: 6, backgroundColor: '#0f172a' }}>
         {renderDispatchMapPanel()}
-      </div>);
-  });
+      </div>;
+  }
 
   return <>
       <div style={{
