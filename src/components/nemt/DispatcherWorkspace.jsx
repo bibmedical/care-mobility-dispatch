@@ -2870,7 +2870,7 @@ const DispatcherWorkspace = () => {
     }}>
         <Button variant="outline-info" size="sm" onClick={handleRestoreLayout} style={compactControlButtonStyle}>Restore Factory</Button>
         {hasHiddenDispatcherPanels ? <>
-            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>HIDDEN:</span>
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>PANELS:</span>
             {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)} style={compactControlButtonStyle}>{panel.label}</Button>)}
           </> : null}
       </div>

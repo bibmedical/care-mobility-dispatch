@@ -2811,7 +2811,7 @@ const ConfirmationWorkspace = () => {
                       </tr>
                       <tr>
                         <td colSpan={confirmationTableColumnCount} className="pt-0 border-0">
-                          <div className="d-flex gap-1 flex-wrap justify-content-end py-2">
+                          <div className="d-flex gap-1 flex-wrap justify-content-center py-2">
                             <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 90 }}>
                               {confirmationStatus === 'Confirmed' ? 'Unconfirm' : 'Confirm'}
                             </Button>
