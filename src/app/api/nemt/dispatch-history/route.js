@@ -120,7 +120,7 @@ export async function GET(request) {
     }
 
     const todayKey = getLocalDateKey(new Date());
-    const selectedDateKey = requestedDateKey || selectedDriver?.days?.[0]?.dateKey || availableDates[0]?.dateKey || todayKey;
+    const selectedDateKey = requestedDateKey || selectedDriver?.days?.[0]?.dateKey || todayKey || availableDates[0]?.dateKey;
     let archive = selectedDateKey ? await readDispatchHistoryArchive(selectedDateKey) : null;
 
     // If no archive found, build a live snapshot from dispatch state (for today or any date not yet archived)

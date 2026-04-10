@@ -702,7 +702,7 @@ const DispatcherHistoryWorkspace = () => {
               </div>
               <Form.Control size="sm" className="mb-3" placeholder="Search driver" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} />
               <div className={styles.sidebarList}>
-                {filteredDriverOptions.length > 0 ? filteredDriverOptions.map(option => <button key={option.driverId} type="button" className={`${styles.sidebarItem} ${option.driverId === selectedDriverId ? styles.sidebarItemActive : ''}`} style={option.driverId === selectedDriverId ? { borderColor: getDriverColor(option.driverId), boxShadow: `0 0 0 1px ${withDriverAlpha(getDriverColor(option.driverId), 0.28)}` } : undefined} onClick={() => fetchHistory(selectedDate, option.driverId)}>
+                {filteredDriverOptions.length > 0 ? filteredDriverOptions.map(option => <button key={option.driverId} type="button" className={`${styles.sidebarItem} ${option.driverId === selectedDriverId ? styles.sidebarItemActive : ''}`} style={option.driverId === selectedDriverId ? { borderColor: getDriverColor(option.driverId), boxShadow: `0 0 0 1px ${withDriverAlpha(getDriverColor(option.driverId), 0.28)}` } : undefined} onClick={() => fetchHistory('', option.driverId)}>
                     <div>
                       <div className={styles.sidebarItemTitle}><span className={styles.driverDot} style={{ backgroundColor: getDriverColor(option.driverId) }} />{option.label}</div>
                       <div className={styles.sidebarItemMeta}>{option.dayRouteCount} routes today · {option.dayTripCount} trips today · {option.archivedDayCount} days</div>

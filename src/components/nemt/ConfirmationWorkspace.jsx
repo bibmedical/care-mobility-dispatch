@@ -2809,27 +2809,22 @@ const ConfirmationWorkspace = () => {
                       </td>
                       {confirmationTableColumns.map(columnKey => <React.Fragment key={`${trip.id}-${columnKey}`}>{renderConfirmationDataCell(trip, columnKey, confirmationStatus, isOptedOut, riderProfile)}</React.Fragment>)}
                       <td>
-                        <div className="d-flex gap-1 flex-column">
-                          <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 96 }}>
-                            {getTripConfirmActionLabel(trip, confirmationStatus)}
+                        <div className="d-flex gap-1 flex-wrap" style={{ justifyContent: 'flex-end' }}>
+                          <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 70 }}>
+                            {confirmationStatus === 'Confirmed' ? 'Unconfirm' : 'Confirm'}
                           </Button>
-                          <Button size="sm" variant="outline-danger" onClick={() => handleCancelWithNote(trip)} title="Cancel with note" style={{ minWidth: 80 }}>
+                          <Button size="sm" variant="outline-danger" onClick={() => handleCancelWithNote(trip)} title="Cancel with note" style={{ minWidth: 65 }}>
                             Cancel
                           </Button>
-                          <Button size="sm" variant="outline-info" onClick={() => handleOpenTripUpdateModal(trip)} title="Update confirmation, schedule and notes" style={{ minWidth: 80 }}>
+                          <Button size="sm" variant="outline-info" onClick={() => handleOpenTripUpdateModal(trip)} title="Update confirmation, schedule and notes" style={{ minWidth: 65 }}>
                             Update
                           </Button>
-                          <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 80 }} onClick={() => handleToggleOptOut(trip)}>{isOptedOut ? 'Allow' : 'Block'}</Button>
-                          {trip.hospitalStatus && (
-                            <Button size="sm" variant="outline-warning" onClick={() => handleRemoveHospitalRehab(trip)} title="Remove hospital/rehab status" style={{ minWidth: 80 }}>
-                              Remove RH
-                            </Button>
-                          )}
+                          <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 60 }} onClick={() => handleToggleOptOut(trip)}>{isOptedOut ? 'Allow' : 'Block'}</Button>
                           <Button
                             size="sm"
                             variant={trip.clonedFromTripId ? 'danger' : 'outline-danger'}
                             title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
-                            style={{ minWidth: 110, fontWeight: trip.clonedFromTripId ? 700 : undefined }}
+                            style={{ minWidth: 60 }}
                             onClick={() => {
                               const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
                               if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
@@ -2837,7 +2832,7 @@ const ConfirmationWorkspace = () => {
                               }
                             }}
                           >
-                            {trip.clonedFromTripId ? 'Delete Cloned' : 'Delete'}
+                            Delete
                           </Button>
                         </div>
                       </td>
