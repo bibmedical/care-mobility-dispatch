@@ -1654,6 +1654,7 @@ const DispatcherWorkspace = () => {
     };
   }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip, selectedDriverRouteMetrics]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
+  const showAllLiveDriversOnMap = !selectedDriverId || !selectedDriver?.hasRealLocation;
   const quickReassignDrivers = useMemo(() => {
     return [...drivers].sort((leftDriver, rightDriver) => {
       const leftOnline = String(leftDriver?.live || '').trim().toLowerCase() === 'online' ? 1 : 0;
@@ -2793,8 +2794,8 @@ const DispatcherWorkspace = () => {
                         <div>{getDriverMapLocationLabel(selectedDriver)}</div>
                       </Tooltip>
                     </Marker> : null}
-                  {!selectedDriverId ? driversWithRealLocation.map(driver => <Circle key={`driver-area-${driver.id}`} center={driver.position} radius={Math.max(100, Number(driver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: getDriverColor(driver.id || driver.name), weight: 1.5, opacity: 0.25, fillOpacity: 0.03 }} />) : null}
-                  {!selectedDriverId ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online', driverKey: driver.id || driver.name })}>
+                  {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Circle key={`driver-area-${driver.id}`} center={driver.position} radius={Math.max(100, Number(driver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: getDriverColor(driver.id || driver.name), weight: 1.5, opacity: 0.25, fillOpacity: 0.03 }} />) : null}
+                  {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online', driverKey: driver.id || driver.name })}>
                       <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                         <div className="fw-semibold">{driver.name}</div>
                         <div>{getDriverMapLocationLabel(driver)}</div>
