@@ -341,7 +341,7 @@ export const readSystemUsersState = async () => {
     return driverRoleUsers.some(user => user.id === authUserId || normalizeAuthValue(user.username) === username || normalizeAuthValue(user.email) === email);
   }).length;
 
-  if (driverRoleUsers.length > 0 && linkedDriverCount === 0) {
+  if (driverRoleUsers.length > 0 && linkedDriverCount < driverRoleUsers.length) {
     await syncUsersToAdminState(effectiveState.users.map(user => enrichSystemUser(user, effectiveState.protectedUserIds)), []);
   }
 

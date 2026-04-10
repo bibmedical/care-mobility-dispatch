@@ -99,8 +99,8 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Device ID is required.', code: 'driver-session-device-required' }, { status: 400 });
   }
 
-  const state = await readNemtAdminState();
-  const normalizedDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(normalizeDriverTracking);
+  let state = await readNemtAdminState();
+  let normalizedDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(normalizeDriverTracking);
 
   if (identifier && !password && !pin && isLocalPasswordlessDriverLoginEnabled()) {
     const driver = normalizedDrivers.find(item => matchesDriverIdentifier(item, state, identifier));
@@ -153,6 +153,18 @@ export async function POST(request) {
       } catch (authError) {
         driver = findDriverFromDirectCredentials(normalizedDrivers, state, identifier, password);
         if (!driver) throw authError;
+      }
+
+      if (!driver) {
+        // System users sync may have just rebuilt drivers; re-read admin state before failing.
+        const refreshedState = await readNemtAdminState();
+        const refreshedDrivers = (Array.isArray(refreshedState?.drivers) ? refreshedState.drivers : []).map(normalizeDriverTracking);
+        const refreshedAuthDriver = findDriverFromAuthUser(refreshedDrivers, authUser);
+        const refreshedDirectDriver = findDriverFromDirectCredentials(refreshedDrivers, refreshedState, identifier, password);
+        const refreshedIdentifierDriver = refreshedDrivers.find(item => matchesDriverIdentifier(item, refreshedState, identifier));
+        driver = refreshedAuthDriver || refreshedDirectDriver || refreshedIdentifierDriver || null;
+        state = refreshedState;
+        normalizedDrivers = refreshedDrivers;
       }
 
       if (!driver) {
