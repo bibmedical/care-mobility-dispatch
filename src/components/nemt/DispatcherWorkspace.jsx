@@ -340,6 +340,31 @@ const PauseFollowOnMapInteractionController = ({ enabled, onPause }) => {
   return null;
 };
 
+const DispatchMapInteractionController = ({ enabled }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (enabled) {
+      map.dragging.enable();
+      map.scrollWheelZoom.enable();
+      map.doubleClickZoom.enable();
+      map.touchZoom.enable();
+      map.boxZoom.enable();
+      map.keyboard.enable();
+      return;
+    }
+
+    map.dragging.disable();
+    map.scrollWheelZoom.disable();
+    map.doubleClickZoom.disable();
+    map.touchZoom.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+  }, [enabled, map]);
+
+  return null;
+};
+
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
   if (status === 'In Progress') return 'success';
@@ -3044,6 +3069,7 @@ const DispatcherWorkspace = () => {
           </div>
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}-${detachedMapResizeTick}`} />
+            <DispatchMapInteractionController enabled={!mapInteractionLocked} />
             <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
             <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapInteractionLocked} onPause={() => {
             setFollowSelectedDriver(false);
