@@ -2856,8 +2856,7 @@ const DispatcherWorkspace = () => {
     const loadRouteGeometry = async () => {
       try {
         const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
-          signal: abortController.signal,
-          cache: 'no-store'
+          signal: abortController.signal
         });
         if (!response.ok) throw new Error('Routing service unavailable');
         const payload = await response.json();
@@ -2904,8 +2903,7 @@ const DispatcherWorkspace = () => {
     const loadSelectedDriverRoute = async () => {
       try {
         const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
-          signal: abortController.signal,
-          cache: 'no-store'
+          signal: abortController.signal
         });
         if (!response.ok) throw new Error('Routing service unavailable');
         const payload = await response.json();

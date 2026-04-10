@@ -64,6 +64,8 @@ export async function GET(request) {
         durationMinutes: toMinutes(route.duration),
         alternatives,
         isFallback: false
+      }, {
+        headers: { 'Cache-Control': 'public, max-age=1800, s-maxage=1800' }
       });
     } catch {
       // Try the next provider.
@@ -77,5 +79,7 @@ export async function GET(request) {
     durationMinutes: null,
     alternatives: [],
     isFallback: true
+  }, {
+    headers: { 'Cache-Control': 'public, max-age=300, s-maxage=300' }
   });
 }
