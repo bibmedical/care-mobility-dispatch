@@ -174,6 +174,53 @@ const getTomorrowDateKey = () => {
   return tomorrow.toISOString().slice(0, 10);
 };
 
+const mergeDispatchThreadsForSync = (localThreads, serverThreads) => {
+  const localList = Array.isArray(localThreads) ? localThreads.map(normalizeDispatchThreadRecord) : [];
+  const serverList = Array.isArray(serverThreads) ? serverThreads.map(normalizeDispatchThreadRecord) : [];
+  const localThreadsByDriverId = new Map(localList.map(thread => [String(thread?.driverId || '').trim(), thread]));
+
+  const mergedServerThreads = serverList.map(serverThread => {
+    const driverId = String(serverThread?.driverId || '').trim();
+    const localThread = localThreadsByDriverId.get(driverId);
+    if (!localThread) return serverThread;
+
+    const localMessagesById = new Map((Array.isArray(localThread.messages) ? localThread.messages : []).map(message => [String(message?.id || '').trim(), normalizeDispatchMessageRecord(message)]));
+    const mergedMessages = (Array.isArray(serverThread.messages) ? serverThread.messages : []).map(serverMessage => {
+      const normalizedServerMessage = normalizeDispatchMessageRecord(serverMessage);
+      const localMessage = localMessagesById.get(String(normalizedServerMessage?.id || '').trim());
+      if (!localMessage) return normalizedServerMessage;
+
+      const localStatus = String(localMessage?.status || '').trim().toLowerCase();
+      const serverStatus = String(normalizedServerMessage?.status || '').trim().toLowerCase();
+      const shouldPreserveLocalStatus = localStatus && localStatus !== 'sending' && (!serverStatus || serverStatus === 'sending');
+
+      return shouldPreserveLocalStatus ? {
+        ...normalizedServerMessage,
+        status: localMessage.status
+      } : normalizedServerMessage;
+    });
+
+    const mergedMessageIds = new Set(mergedMessages.map(message => String(message?.id || '').trim()).filter(Boolean));
+    const localOnlyMessages = (Array.isArray(localThread.messages) ? localThread.messages : []).filter(message => {
+      const messageId = String(message?.id || '').trim();
+      return messageId && !mergedMessageIds.has(messageId);
+    }).map(normalizeDispatchMessageRecord);
+
+    return normalizeDispatchThreadRecord({
+      ...serverThread,
+      messages: [...mergedMessages, ...localOnlyMessages]
+    });
+  });
+
+  const mergedDriverIds = new Set(mergedServerThreads.map(thread => String(thread?.driverId || '').trim()).filter(Boolean));
+  const localOnlyThreads = localList.filter(thread => {
+    const driverId = String(thread?.driverId || '').trim();
+    return driverId && !mergedDriverIds.has(driverId);
+  });
+
+  return [...mergedServerThreads, ...localOnlyThreads];
+};
+
 export const useNemtContext = () => {
   const context = use(NemtContext);
   if (!context) {
@@ -456,11 +503,11 @@ export const NemtProvider = ({
       });
       if (!response.ok) return;
       const payload = await response.json();
-      const nextThreads = Array.isArray(payload?.dispatchThreads) ? payload.dispatchThreads : [];
-      const nextThreadsJson = JSON.stringify(nextThreads);
       startTransition(() => {
         setState(currentState => {
           const localState = buildClientState(currentState ?? createInitialState());
+          const nextThreads = mergeDispatchThreadsForSync(localState.dispatchThreads, Array.isArray(payload?.dispatchThreads) ? payload.dispatchThreads : []);
+          const nextThreadsJson = JSON.stringify(nextThreads);
           const currentThreadsJson = JSON.stringify(Array.isArray(localState.dispatchThreads) ? localState.dispatchThreads : []);
           if (currentThreadsJson === nextThreadsJson) return localState;
           return {
