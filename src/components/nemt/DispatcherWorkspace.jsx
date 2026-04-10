@@ -37,10 +37,30 @@ const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-
 const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'toolbar-edit', 'columns', 'map-screen', 'trip-order'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
-const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['zip-filter', 'route-filter', 'metric-miles', 'metric-duration'];
+const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['zip-filter', 'route-filter', 'table-view-mode', 'metric-miles', 'metric-duration'];
 const MAP_SCREEN_DISPATCHER_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DISPATCHER_STATE__';
 const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
 const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+
+const DISPATCHER_TABLE_VIEW_MODES = [{
+  value: 'default',
+  label: 'Default'
+}, {
+  value: 'no-time-miles',
+  label: 'No time/miles'
+}, {
+  value: 'time-only',
+  label: 'Time only'
+}, {
+  value: 'miles-only',
+  label: 'Miles only'
+}];
+
+const DISPATCHER_TABLE_VIEW_MODE_COLUMNS = {
+  'no-time-miles': ['rider', 'address', 'puZip', 'destination', 'doZip', 'mobility'],
+  'time-only': ['rider', 'pickup', 'address', 'puZip', 'dropoff', 'destination', 'doZip', 'mobility'],
+  'miles-only': ['rider', 'address', 'puZip', 'destination', 'doZip', 'miles', 'mobility']
+};
 
 const normalizeDispatcherToolbarRows = (row1Value, row2Value, row3Value) => {
   const normalizeRow = value => (Array.isArray(value) ? value : []).map(item => canonicalizeToolbarBlockId(item)).filter(Boolean);
@@ -802,6 +822,7 @@ const DispatcherWorkspace = () => {
   const [toolbarRow2Order, setToolbarRow2Order] = useState(DISPATCHER_ROW2_DEFAULT_BLOCKS);
   const [toolbarRow3Order, setToolbarRow3Order] = useState(DISPATCHER_ROW3_DEFAULT_BLOCKS);
   const [dispatcherLayout, setDispatcherLayout] = useState(DEFAULT_DISPATCHER_LAYOUT);
+  const [dispatcherTableViewMode, setDispatcherTableViewMode] = useState('default');
   const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
   const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
@@ -963,6 +984,7 @@ const DispatcherWorkspace = () => {
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const [tripTableScrollLeft, setTripTableScrollLeft] = useState(0);
   const [tripTableMaxScrollLeft, setTripTableMaxScrollLeft] = useState(0);
+  const dispatcherTableViewBackupRef = useRef(null);
   const deferredRouteSearch = useDeferredValue(routeSearch);
   const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
   const riderProfiles = useMemo(() => smsData?.sms?.riderProfiles || {}, [smsData?.sms?.riderProfiles]);
@@ -1152,7 +1174,55 @@ const DispatcherWorkspace = () => {
       }
     });
     setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
+    dispatcherTableViewBackupRef.current = null;
+    setDispatcherTableViewMode('default');
     setStatusMessage('Dispatcher restaurado a fábrica: 4 bloques + mapa, columnas originales, control de mapa reintegrado.');
+  };
+
+  const handleDispatcherTableViewModeChange = nextMode => {
+    const normalizedMode = String(nextMode || 'default').trim().toLowerCase();
+    if (!DISPATCHER_TABLE_VIEW_MODES.some(option => option.value === normalizedMode)) return;
+    if (normalizedMode === dispatcherTableViewMode) return;
+
+    if (normalizedMode === 'default') {
+      const backup = dispatcherTableViewBackupRef.current;
+      if (backup?.layout) {
+        persistDispatcherLayout(backup.layout);
+      }
+      if (Array.isArray(backup?.columns) && backup.columns.length > 0) {
+        setDispatcherVisibleTripColumns(backup.columns);
+      }
+      dispatcherTableViewBackupRef.current = null;
+      setDispatcherTableViewMode('default');
+      setStatusMessage('Vista de tabla restaurada a tu configuracion anterior.');
+      return;
+    }
+
+    if (!dispatcherTableViewBackupRef.current) {
+      dispatcherTableViewBackupRef.current = {
+        layout: {
+          preset: dispatcherLayout.preset,
+          mapVisible: dispatcherLayout.mapVisible,
+          tripsVisible: dispatcherLayout.tripsVisible,
+          messagingVisible: dispatcherLayout.messagingVisible,
+          actionsVisible: dispatcherLayout.actionsVisible
+        },
+        columns: [...orderedVisibleTripColumns]
+      };
+    }
+
+    const nextColumns = DISPATCHER_TABLE_VIEW_MODE_COLUMNS[normalizedMode] || dispatcherTableViewBackupRef.current?.columns || DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS;
+    persistDispatcherLayout({
+      ...dispatcherLayout,
+      mapVisible: false,
+      tripsVisible: true,
+      messagingVisible: false,
+      actionsVisible: false,
+      preset: 'custom'
+    });
+    setDispatcherVisibleTripColumns(nextColumns);
+    setDispatcherTableViewMode(normalizedMode);
+    setStatusMessage(`Modo ${DISPATCHER_TABLE_VIEW_MODES.find(option => option.value === normalizedMode)?.label || normalizedMode} activado.`);
   };
 
   const hiddenDispatcherPanels = [{
@@ -1491,6 +1561,10 @@ const DispatcherWorkspace = () => {
             </Form.Select>
             {(puCityFilter || pickupZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setPickupZipFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
           </div>;
+      case 'table-view-mode':
+        return <Form.Select size="sm" value={dispatcherTableViewMode} onChange={event => handleDispatcherTableViewModeChange(event.target.value)} disabled={mapLocked} style={{ width: 138 }} title="Modo rapido de tabla">
+            {DISPATCHER_TABLE_VIEW_MODES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Form.Select>;
       case 'metric-miles':
         return routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
       case 'metric-duration':
@@ -2942,34 +3016,36 @@ const DispatcherWorkspace = () => {
     });
   };
 
+  const mapInteractionLocked = mapLocked && !isDispatchMapDetached;
+
   const renderDispatchMapPanel = () => <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
       <CardBody className="p-0">
         {showInlineMap ? <div className="position-relative h-100">
           <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
-            <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapLocked}>Clear</Button>
-            <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
+            <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapInteractionLocked}>Clear</Button>
+            <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
               <option value="">City</option>
               {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
             </Form.Select>
-            <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 130, ...dispatcherSurfaceStyles.select }}>
+            <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 130, ...dispatcherSurfaceStyles.select }}>
               <option value="">ZIP Code</option>
               {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
             </Form.Select>
-            <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
+            <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
               <option value="auto">Map: Auto</option>
               <option value="openstreetmap">Map: OSM</option>
               <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
             </Form.Select>
-            <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked}>All drivers</Button>
-            {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
-            <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
-            <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
-            <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
+            <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapInteractionLocked}>All drivers</Button>
+            {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
+            <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
+            <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
+            <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
           </div>
-          <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+          <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}-${detachedMapResizeTick}`} />
             <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
-            <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapLocked} onPause={() => {
+            <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapInteractionLocked} onPause={() => {
             setFollowSelectedDriver(false);
             setStatusMessage('Auto-follow paused. You can pan and zoom the map freely.');
           }} />
