@@ -544,6 +544,10 @@ const DispatcherHistoryWorkspace = () => {
       || (selectedNameKey && normalizeDriverNameKey(item?.summary) .includes(selectedNameKey));
   }).sort((left, right) => String(right?.timestamp || '').localeCompare(String(left?.timestamp || ''))), [archive, selectedDriverId]);
 
+  const selectedDriverSummary = mergedDriverOptions.find(option => option.driverId === selectedDriverId) || null;
+  const selectedDriverLabel = selectedDriverSummary?.label || (selectedDriverId ? resolveDriverDisplayLabel(extractDriverIdFromSelection(selectedDriverId) || selectedDriverId.replace(/^name:/, ''), archive, '') : '');
+  const selectedDriverColor = getDriverColor(selectedDriverSummary?.driverId || selectedDriverId || selectedDriverLabel);
+
   const photoGroups = useMemo(() => {
     const timeZone = archive?.uiPreferences?.timeZone;
     const groups = new Map();
@@ -627,10 +631,6 @@ const DispatcherHistoryWorkspace = () => {
     messageCount: threadRows.reduce((sum, thread) => sum + (Array.isArray(thread?.messages) ? thread.messages.length : 0), 0),
     auditCount: auditRows.length
   };
-
-  const selectedDriverSummary = mergedDriverOptions.find(option => option.driverId === selectedDriverId) || null;
-  const selectedDriverLabel = selectedDriverSummary?.label || (selectedDriverId ? resolveDriverDisplayLabel(extractDriverIdFromSelection(selectedDriverId) || selectedDriverId.replace(/^name:/, ''), archive, '') : '');
-  const selectedDriverColor = getDriverColor(selectedDriverSummary?.driverId || selectedDriverId || selectedDriverLabel);
   const selectedDaySummary = availableDates.find(item => item.dateKey === selectedDate) || null;
 
   const archiveStats = archive?.summary || {
