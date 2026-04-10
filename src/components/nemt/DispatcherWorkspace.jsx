@@ -16,7 +16,7 @@ import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whats
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
@@ -838,6 +838,7 @@ const DispatcherWorkspace = () => {
   const detachedMapDragOffsetRef = useRef({ x: 0, y: 0 });
   const detachedMapWindowRef = useRef(null);
   const detachedMapPortalContainerRef = useRef(null);
+  const detachedMapReactRootRef = useRef(null);
   const detachedMapClosingRef = useRef(false);
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -909,6 +910,12 @@ const DispatcherWorkspace = () => {
   useEffect(() => {
     if (!isDispatchMapDetached) {
       detachedMapClosingRef.current = true;
+      if (detachedMapReactRootRef.current) {
+        try {
+          detachedMapReactRootRef.current.unmount();
+        } catch {}
+      }
+      detachedMapReactRootRef.current = null;
       if (detachedMapWindowRef.current && !detachedMapWindowRef.current.closed) {
         detachedMapWindowRef.current.close();
       }
@@ -969,6 +976,7 @@ const DispatcherWorkspace = () => {
     mountNode.style.height = '100vh';
     mountNode.style.overflow = 'hidden';
     popupWindow.document.body.appendChild(mountNode);
+    const popupRoot = createRoot(mountNode);
 
     const handlePopupClose = () => {
       if (detachedMapClosingRef.current) return;
@@ -982,59 +990,13 @@ const DispatcherWorkspace = () => {
       setDetachedMapResizeTick(current => current + 1);
     };
 
-    const relayMouseEvent = type => event => {
-      const forwardedEvent = new MouseEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        view: window,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        screenX: event.screenX,
-        screenY: event.screenY,
-        button: event.button,
-        buttons: event.buttons,
-        ctrlKey: event.ctrlKey,
-        shiftKey: event.shiftKey,
-        altKey: event.altKey,
-        metaKey: event.metaKey
-      });
-      document.dispatchEvent(forwardedEvent);
-    };
-
-    let relayFrameId = 0;
-    let latestMoveEvent = null;
-    const flushRelayedMove = () => {
-      relayFrameId = 0;
-      if (!latestMoveEvent) return;
-      relayMouseEvent('mousemove')(latestMoveEvent);
-      latestMoveEvent = null;
-    };
-
-    const relayMouseMove = event => {
-      if ((event.buttons || 0) === 0) return;
-      latestMoveEvent = event;
-      if (relayFrameId) return;
-      relayFrameId = window.requestAnimationFrame(flushRelayedMove);
-    };
-
-    const relayMouseDown = relayMouseEvent('mousedown');
-    const relayPointerDown = relayMouseEvent('mousedown');
-    const relayMouseUp = relayMouseEvent('mouseup');
-    const relayPointerUp = relayMouseEvent('mouseup');
-    const relayMouseReleaseOnBlur = relayMouseEvent('mouseup');
-
     popupWindow.addEventListener('beforeunload', handlePopupClose);
     popupWindow.addEventListener('resize', handlePopupResize);
-    popupWindow.document.addEventListener('mousedown', relayMouseDown, true);
-    popupWindow.document.addEventListener('pointerdown', relayPointerDown, true);
-    popupWindow.document.addEventListener('mousemove', relayMouseMove, true);
-    popupWindow.document.addEventListener('mouseup', relayMouseUp, true);
-    popupWindow.document.addEventListener('pointerup', relayPointerUp, true);
-    popupWindow.addEventListener('blur', relayMouseReleaseOnBlur, true);
     popupWindow.focus();
 
     detachedMapWindowRef.current = popupWindow;
     detachedMapPortalContainerRef.current = mountNode;
+    detachedMapReactRootRef.current = popupRoot;
     window.setTimeout(() => {
       setDetachedMapResizeTick(current => current + 1);
     }, 60);
@@ -1047,16 +1009,11 @@ const DispatcherWorkspace = () => {
       try {
         popupWindow.removeEventListener('beforeunload', handlePopupClose);
         popupWindow.removeEventListener('resize', handlePopupResize);
-        popupWindow.removeEventListener('blur', relayMouseReleaseOnBlur, true);
-        if (!popupWindow.closed && popupWindow.document) {
-          popupWindow.document.removeEventListener('mousedown', relayMouseDown, true);
-          popupWindow.document.removeEventListener('pointerdown', relayPointerDown, true);
-          popupWindow.document.removeEventListener('mousemove', relayMouseMove, true);
-          popupWindow.document.removeEventListener('mouseup', relayMouseUp, true);
-          popupWindow.document.removeEventListener('pointerup', relayPointerUp, true);
+        if (detachedMapReactRootRef.current) {
+          detachedMapReactRootRef.current.unmount();
         }
       } catch {}
-      if (relayFrameId) window.cancelAnimationFrame(relayFrameId);
+      detachedMapReactRootRef.current = null;
     };
   }, [isDispatchMapDetached]);
 
@@ -3214,9 +3171,12 @@ const DispatcherWorkspace = () => {
       </CardBody>
     </Card>;
 
-  const detachedMapPortal = isDispatchMapDetached && detachedMapPortalContainerRef.current ? createPortal(<div style={{ width: '100vw', height: '100vh', padding: 6 }}>
-      {renderDispatchMapPanel()}
-    </div>, detachedMapPortalContainerRef.current) : null;
+  useEffect(() => {
+    if (!isDispatchMapDetached || !detachedMapReactRootRef.current) return;
+    detachedMapReactRootRef.current.render(<div style={{ width: '100vw', height: '100vh', padding: 6 }}>
+        {renderDispatchMapPanel()}
+      </div>);
+  });
 
   return <>
       <div style={{
@@ -3239,9 +3199,6 @@ const DispatcherWorkspace = () => {
             {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)} style={compactControlButtonStyle}>{panel.label}</Button>)}
           </> : null}
       </div>
-
-      {detachedMapPortal}
-
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', ...mapPanelPositionStyle }}>
           {renderDispatchMapPanel()}
