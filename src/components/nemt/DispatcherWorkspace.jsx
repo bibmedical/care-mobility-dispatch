@@ -789,6 +789,7 @@ const DispatcherWorkspace = () => {
   const [isDispatchMapDetached, setIsDispatchMapDetached] = useState(false);
   const [detachedMapPosition, setDetachedMapPosition] = useState({ x: 18, y: 96 });
   const [isDraggingDetachedMap, setIsDraggingDetachedMap] = useState(false);
+  const [detachedMapResizeTick, setDetachedMapResizeTick] = useState(0);
   const detachedMapDragOffsetRef = useRef({ x: 0, y: 0 });
   const detachedMapWindowRef = useRef(null);
   const detachedMapPortalContainerRef = useRef(null);
@@ -865,6 +866,7 @@ const DispatcherWorkspace = () => {
       }
       detachedMapWindowRef.current = null;
       detachedMapPortalContainerRef.current = null;
+      setDetachedMapResizeTick(0);
       return;
     }
 
@@ -875,9 +877,17 @@ const DispatcherWorkspace = () => {
       return;
     }
 
+    const sourceStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'));
+    sourceStyles.forEach(styleNode => {
+      popupWindow.document.head.appendChild(styleNode.cloneNode(true));
+    });
+
     popupWindow.document.title = 'Dispatch Map';
+    popupWindow.document.documentElement.style.height = '100%';
     popupWindow.document.body.style.margin = '0';
-    popupWindow.document.body.style.height = '100vh';
+    popupWindow.document.body.style.height = '100%';
+    popupWindow.document.body.style.width = '100%';
+    popupWindow.document.body.style.overflow = 'hidden';
     popupWindow.document.body.style.backgroundColor = '#0f172a';
 
     const mountNode = popupWindow.document.createElement('div');
@@ -892,15 +902,24 @@ const DispatcherWorkspace = () => {
       detachedMapWindowRef.current = null;
     };
 
+    const handlePopupResize = () => {
+      setDetachedMapResizeTick(current => current + 1);
+    };
+
     popupWindow.addEventListener('beforeunload', handlePopupClose);
+    popupWindow.addEventListener('resize', handlePopupResize);
     popupWindow.focus();
 
     detachedMapWindowRef.current = popupWindow;
     detachedMapPortalContainerRef.current = mountNode;
+    window.setTimeout(() => {
+      setDetachedMapResizeTick(current => current + 1);
+    }, 30);
     setStatusMessage('Dispatch map moved to external window.');
 
     return () => {
       popupWindow.removeEventListener('beforeunload', handlePopupClose);
+      popupWindow.removeEventListener('resize', handlePopupResize);
     };
   }, [isDispatchMapDetached]);
 
@@ -2924,7 +2943,7 @@ const DispatcherWorkspace = () => {
             <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
           </div>
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
-            <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}`} />
+            <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}-${detachedMapResizeTick}`} />
             <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
             <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapLocked} onPause={() => {
             setFollowSelectedDriver(false);
