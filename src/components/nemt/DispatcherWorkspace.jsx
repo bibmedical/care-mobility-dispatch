@@ -307,6 +307,13 @@ const FollowDriverMapController = ({ enabled, position, zoom = 14 }) => {
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
   if (status === 'In Progress') return 'success';
+  if (status === 'Accepted') return 'success';
+  if (status === 'En Route') return 'success';
+  if (status === 'Arrived Pickup') return 'warning';
+  if (status === 'Patient Onboard') return 'success';
+  if (status === 'To Destination') return 'success';
+  if (status === 'Arrived Destination') return 'warning';
+  if (status === 'Completed') return 'success';
   if (status === 'WillCall') return 'danger';
   if (status === 'Cancelled') return 'danger';
   return 'secondary';
@@ -625,12 +632,17 @@ const getEffectiveTripStatus = trip => {
   const normalizedStatus = String(trip?.status || '').trim();
   const normalizedStatusToken = normalizedStatus.toLowerCase().replace(/\s+/g, '');
   const normalizedOverride = String(trip?.willCallOverride || '').trim().toLowerCase();
+  const normalizedDriverStatus = String(trip?.driverTripStatus || '').trim();
+  const normalizedDriverStatusToken = normalizedDriverStatus.toLowerCase().replace(/\s+/g, '');
   if (['cancelled', 'canceled'].includes(normalizedStatusToken)) return 'Cancelled';
   if (normalizedOverride === 'off') return normalizedStatusToken === 'willcall' ? 'Unassigned' : normalizedStatus || 'Unassigned';
   if (normalizedOverride === 'manual') return 'WillCall';
   if (normalizedStatusToken === 'willcall') return 'WillCall';
   if (hasWillCallPickupMarker(trip)) return 'WillCall';
   if (getTripLegFilterKey(trip) !== 'AL' && hasMissingTripTime(trip)) return 'WillCall';
+  if (normalizedDriverStatus && ['accepted', 'enroute', 'arrivedpickup', 'patientonboard', 'todestination', 'arriveddestination', 'completed'].includes(normalizedDriverStatusToken)) {
+    return normalizedDriverStatus;
+  }
   return normalizedStatus || 'Unassigned';
 };
 
@@ -1670,8 +1682,9 @@ const DispatcherWorkspace = () => {
   const selectedDriverEtaTrip = useMemo(() => {
     if (!selectedDriver) return null;
     if (selectedDriverSelectedTrip) return selectedDriverSelectedTrip;
+    if (selectedDriverActiveTrip) return selectedDriverActiveTrip;
     return null;
-  }, [selectedDriver, selectedDriverSelectedTrip]);
+  }, [selectedDriver, selectedDriverActiveTrip, selectedDriverSelectedTrip]);
   const selectedDriverEta = useMemo(() => {
     if (!dispatcherLayout.mapVisible || !selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverEtaTrip) return null;
     const target = getSelectedDriverEtaTarget(selectedDriverEtaTrip);
