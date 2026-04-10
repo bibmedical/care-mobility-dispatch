@@ -973,8 +973,36 @@ const DispatcherWorkspace = () => {
       setDetachedMapResizeTick(current => current + 1);
     };
 
+    const relayMouseEvent = type => event => {
+      const forwardedEvent = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        button: event.button,
+        buttons: event.buttons,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey
+      });
+      document.dispatchEvent(forwardedEvent);
+    };
+
+    const relayMouseMove = relayMouseEvent('mousemove');
+    const relayMouseUp = relayMouseEvent('mouseup');
+    const relayPointerMove = relayMouseEvent('mousemove');
+    const relayPointerUp = relayMouseEvent('mouseup');
+
     popupWindow.addEventListener('beforeunload', handlePopupClose);
     popupWindow.addEventListener('resize', handlePopupResize);
+    popupWindow.document.addEventListener('mousemove', relayMouseMove, true);
+    popupWindow.document.addEventListener('mouseup', relayMouseUp, true);
+    popupWindow.document.addEventListener('pointermove', relayPointerMove, true);
+    popupWindow.document.addEventListener('pointerup', relayPointerUp, true);
     popupWindow.focus();
 
     detachedMapWindowRef.current = popupWindow;
@@ -990,6 +1018,10 @@ const DispatcherWorkspace = () => {
     return () => {
       popupWindow.removeEventListener('beforeunload', handlePopupClose);
       popupWindow.removeEventListener('resize', handlePopupResize);
+      popupWindow.document.removeEventListener('mousemove', relayMouseMove, true);
+      popupWindow.document.removeEventListener('mouseup', relayMouseUp, true);
+      popupWindow.document.removeEventListener('pointermove', relayPointerMove, true);
+      popupWindow.document.removeEventListener('pointerup', relayPointerUp, true);
     };
   }, [isDispatchMapDetached]);
 
