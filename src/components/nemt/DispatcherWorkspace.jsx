@@ -16,6 +16,7 @@ import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whats
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
@@ -929,13 +930,53 @@ const DispatcherWorkspace = () => {
 
     detachedMapClosingRef.current = false;
 
-    const popupUrl = new URL('/map-screen?source=dispatcher', window.location.origin).toString();
-    const popupWindow = window.open(popupUrl, 'care-mobility-dispatch-map', 'popup=yes,width=1500,height=900,left=80,top=60,resizable=yes,scrollbars=no');
+    const popupWindow = window.open('', 'care-mobility-dispatch-map', 'popup=yes,width=1500,height=900,left=80,top=60,resizable=yes,scrollbars=no');
     if (!popupWindow) {
       setStatusMessage('Popup blocked. Allow popups to open Dispatch map on another screen.');
       setIsDispatchMapDetached(false);
       return;
     }
+
+    const sourceStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'));
+    sourceStyles.forEach(styleNode => {
+      if (styleNode.tagName === 'LINK') {
+        const href = styleNode.getAttribute('href');
+        if (!href) return;
+        const nextLink = popupWindow.document.createElement('link');
+        nextLink.setAttribute('rel', 'stylesheet');
+        nextLink.setAttribute('href', new URL(href, window.location.href).href);
+        const media = styleNode.getAttribute('media');
+        if (media) nextLink.setAttribute('media', media);
+        popupWindow.document.head.appendChild(nextLink);
+        return;
+      }
+
+      if (styleNode.tagName === 'STYLE') {
+        const nextStyle = popupWindow.document.createElement('style');
+        nextStyle.textContent = styleNode.textContent || '';
+        popupWindow.document.head.appendChild(nextStyle);
+      }
+    });
+
+    const leafletCssLink = popupWindow.document.createElement('link');
+    leafletCssLink.setAttribute('rel', 'stylesheet');
+    leafletCssLink.setAttribute('href', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+    popupWindow.document.head.appendChild(leafletCssLink);
+
+    popupWindow.document.title = 'Dispatch Map';
+    popupWindow.document.documentElement.style.height = '100%';
+    popupWindow.document.body.style.margin = '0';
+    popupWindow.document.body.style.height = '100%';
+    popupWindow.document.body.style.width = '100%';
+    popupWindow.document.body.style.overflow = 'hidden';
+    popupWindow.document.body.style.backgroundColor = '#0f172a';
+
+    const mountNode = popupWindow.document.createElement('div');
+    mountNode.style.width = '100vw';
+    mountNode.style.height = '100vh';
+    mountNode.style.overflow = 'hidden';
+    popupWindow.document.body.appendChild(mountNode);
+    const popupRoot = createRoot(mountNode);
 
     const handlePopupClose = () => {
       if (detachedMapClosingRef.current) return;
@@ -945,26 +986,32 @@ const DispatcherWorkspace = () => {
       detachedMapWindowRef.current = null;
     };
 
-    // Some browsers do not reliably fire beforeunload across popup navigations.
-    const closePollInterval = window.setInterval(() => {
-      if (popupWindow.closed) {
-        window.clearInterval(closePollInterval);
-        handlePopupClose();
-      }
-    }, 500);
+    const handlePopupResize = () => {
+      setDetachedMapResizeTick(current => current + 1);
+    };
 
     popupWindow.addEventListener('beforeunload', handlePopupClose);
+    popupWindow.addEventListener('resize', handlePopupResize);
     popupWindow.focus();
 
     detachedMapWindowRef.current = popupWindow;
-    detachedMapPortalContainerRef.current = null;
-    detachedMapReactRootRef.current = null;
-    setStatusMessage('Dispatch map opened in external window.');
+    detachedMapPortalContainerRef.current = mountNode;
+    detachedMapReactRootRef.current = popupRoot;
+    window.setTimeout(() => {
+      setDetachedMapResizeTick(current => current + 1);
+    }, 60);
+    window.setTimeout(() => {
+      setDetachedMapResizeTick(current => current + 1);
+    }, 260);
+    setStatusMessage('Dispatch map moved to external window.');
 
     return () => {
       try {
-        window.clearInterval(closePollInterval);
         popupWindow.removeEventListener('beforeunload', handlePopupClose);
+        popupWindow.removeEventListener('resize', handlePopupResize);
+        if (detachedMapReactRootRef.current) {
+          detachedMapReactRootRef.current.unmount();
+        }
       } catch {}
       detachedMapReactRootRef.current = null;
     };
