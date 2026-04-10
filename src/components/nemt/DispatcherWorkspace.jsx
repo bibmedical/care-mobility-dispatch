@@ -357,6 +357,7 @@ const getDriverMapLocationLabel = driver => {
   const checkpoint = String(driver?.checkpoint || '').trim();
   if (checkpoint && !COORDINATE_LIKE_TEXT.test(checkpoint)) return checkpoint;
   if (String(driver?.live || '').trim().toLowerCase() === 'online') return 'Live location';
+  if (Array.isArray(driver?.position) && driver.position.length === 2) return 'Last known location';
   return 'Location unavailable';
 };
 
@@ -1695,6 +1696,19 @@ const DispatcherWorkspace = () => {
       label: selectedDriverRouteMetrics?.durationMinutes != null ? formatDriveMinutes(selectedDriverRouteMetrics.durationMinutes) : formatEta(miles)
     };
   }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip, selectedDriverRouteMetrics]);
+  const driverEtaPreviewById = useMemo(() => {
+    const etaByDriver = new Map();
+    drivers.forEach(driver => {
+      if (!driver?.hasRealLocation || !Array.isArray(driver.position) || driver.position.length !== 2) return;
+      const activeTrip = trips.find(trip => isTripAssignedToDriver(trip, driver.id) && isTripEnRoute(trip));
+      if (!activeTrip) return;
+      const target = getSelectedDriverEtaTarget(activeTrip);
+      if (!Array.isArray(target?.position) || target.position.length !== 2) return;
+      const miles = getDistanceMiles(driver.position, target.position);
+      etaByDriver.set(String(driver.id || '').trim(), formatEta(miles));
+    });
+    return etaByDriver;
+  }, [drivers, trips]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
   const showAllLiveDriversOnMap = !selectedDriverId || !selectedDriver?.hasRealLocation;
   const quickReassignDrivers = useMemo(() => {
@@ -2856,12 +2870,14 @@ const DispatcherWorkspace = () => {
                       <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                         <div className="fw-semibold">{selectedDriver.name}</div>
                         <div>{getDriverMapLocationLabel(selectedDriver)}</div>
+                        <div className="small text-muted">ETA: {selectedDriverEta?.label || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim()) || 'ETA unavailable'}</div>
                       </Tooltip>
                     </Marker> : null}
                   {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Circle key={`driver-area-${driver.id}`} center={driver.position} radius={Math.max(100, Number(driver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: getDriverColor(driver.id || driver.name), weight: 1.5, opacity: 0.25, fillOpacity: 0.03 }} />) : null}
                   {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online', driverKey: driver.id || driver.name })}>
                       <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                         <div className="fw-semibold">{driver.name}</div>
+                        <div className="small text-muted">ETA: {driverEtaPreviewById.get(String(driver.id || '').trim()) || 'ETA unavailable'}</div>
                         <div>{getDriverMapLocationLabel(driver)}</div>
                         <div className="small text-muted">{driver.live}</div>
                       </Tooltip>
