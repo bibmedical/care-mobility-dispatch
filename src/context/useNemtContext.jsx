@@ -112,6 +112,73 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
   });
 };
 
+const DRIVER_RUNTIME_TRIP_FIELDS = [
+  'status',
+  'driverTripStatus',
+  'acceptedAt',
+  'enRouteAt',
+  'arrivedAt',
+  'patientOnboardAt',
+  'startTripAt',
+  'arrivedDestinationAt',
+  'completedAt',
+  'actualPickup',
+  'actualDropoff',
+  'departureLocationSnapshot',
+  'arrivalLocationSnapshot',
+  'destinationDepartureLocationSnapshot',
+  'destinationArrivalLocationSnapshot',
+  'completionLocationSnapshot',
+  'cancellationReason',
+  'cancellationPhotoDataUrl',
+  'completionPhotoDataUrl',
+  'reviewRequestToken',
+  'reviewRequestStatus',
+  'reviewRequestSentAt',
+  'completedByDriverId',
+  'completedByDriverName',
+  'canceledByDriverId',
+  'canceledByDriverName',
+  'riderSignatureName',
+  'riderSignedAt',
+  'riderSignatureData',
+  'driverWorkflow',
+  'updatedAt'
+];
+
+const mergeRemoteDriverTripRuntime = (localTrips, serverTrips) => {
+  const serverTripLookup = new Map();
+
+  (Array.isArray(serverTrips) ? serverTrips : []).forEach(serverTrip => {
+    getTripLookupKeys(serverTrip).forEach(key => {
+      if (!serverTripLookup.has(key)) {
+        serverTripLookup.set(key, serverTrip);
+      }
+    });
+  });
+
+  return normalizeTripRecords((Array.isArray(localTrips) ? localTrips : []).map(localTrip => {
+    const matchingServerTrip = getTripLookupKeys(localTrip).map(key => serverTripLookup.get(key)).find(Boolean);
+    if (!matchingServerTrip) return localTrip;
+
+    const localUpdatedAt = Number(localTrip?.updatedAt) || 0;
+    const serverUpdatedAt = Number(matchingServerTrip?.updatedAt) || 0;
+    if (serverUpdatedAt > 0 && localUpdatedAt > serverUpdatedAt) return localTrip;
+
+    const runtimePatch = DRIVER_RUNTIME_TRIP_FIELDS.reduce((accumulator, field) => {
+      if (Object.prototype.hasOwnProperty.call(matchingServerTrip, field)) {
+        accumulator[field] = matchingServerTrip[field];
+      }
+      return accumulator;
+    }, {});
+
+    return {
+      ...localTrip,
+      ...runtimePatch
+    };
+  }));
+};
+
 const dedupeImportedTripBatch = trips => {
   const dedupedTrips = [];
   const lookupToTripIndex = new Map();
@@ -478,7 +545,7 @@ export const NemtProvider = ({
           const useLocalPreferences = !forceServer && (JSON.stringify(localColumns) !== JSON.stringify(serverColumns) || localMapProvider !== serverMapProvider || JSON.stringify(localPrintSetup) !== JSON.stringify(serverPrintSetup));
           const nextState = buildClientState({
             ...localState,
-            trips: useLocalTrips ? localState.trips : payload.trips,
+            trips: useLocalTrips ? mergeRemoteDriverTripRuntime(localState.trips, payload.trips) : payload.trips,
             routePlans: useLocalRoutes ? localState.routePlans : payload.routePlans,
             dispatchThreads: useLocalDispatchThreads ? localState.dispatchThreads : payload.dispatchThreads,
             dailyDrivers: useLocalDailyDrivers ? localState.dailyDrivers : payload.dailyDrivers,
