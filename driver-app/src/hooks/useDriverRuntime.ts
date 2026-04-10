@@ -17,6 +17,7 @@ const SESSION_RESTORE_TIMEOUT_MS = 2500;
 const NETWORK_TIMEOUT_MS = 45000;
 const isLocalPasswordlessDriverLoginEnabled = __DEV__;
 const DRIVER_RENDER_API_BASE_URL = 'https://care-mobility-dispatch-web.onrender.com';
+const DRIVER_ALERT_CHANNEL_ID = 'driver-alerts';
 const shouldRegisterRemotePushToken = true;
 
 const buildLoginApiBaseCandidates = () => {
@@ -101,19 +102,15 @@ const getDriverAuthHeaders = (session: DriverSession | null, baseHeaders: Header
   return headers;
 };
 
-// Firebase is not configured for Android; skip remote notification handler
-// to prevent "Default FirebaseApp is not initialized" errors on Android builds.
-if (Platform.OS !== 'android') {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false
-    })
-  });
-}
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false
+  })
+});
 const EMPTY_DRIVER_DOCUMENTS: DriverDocuments = {
   profilePhoto: null,
   licenseFront: null,
@@ -363,6 +360,22 @@ export const useDriverRuntime = () => {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    void Notifications.setNotificationChannelAsync(DRIVER_ALERT_CHANNEL_ID, {
+      name: 'Dispatcher Alerts',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 300, 120, 300],
+      enableVibrate: true,
+      enableLights: true,
+      lightColor: '#16a34a',
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      sound: 'default',
+      showBadge: true
+    });
   }, []);
 
   useEffect(() => {
@@ -758,7 +771,7 @@ export const useDriverRuntime = () => {
     const notify = async () => {
       if (!notificationPermissionGranted) return;
 
-      if (notificationMode === 'vibrate') {
+      if (notificationMode !== 'silent') {
         Vibration.vibrate([0, 300, 120, 300]);
       }
 
@@ -768,7 +781,8 @@ export const useDriverRuntime = () => {
         content: {
           title: latest.subject || 'New dispatch message',
           body: latest.body || 'You have a new dispatcher message.',
-          sound: notificationMode === 'sound' ? 'default' : undefined
+          sound: notificationMode === 'sound' ? 'default' : undefined,
+          channelId: DRIVER_ALERT_CHANNEL_ID
         },
         trigger: null
       });
