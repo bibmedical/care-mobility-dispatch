@@ -1160,6 +1160,14 @@ const ConfirmationWorkspace = () => {
     const details = blockReasonNote.trim();
     const reasonText = details ? `${reasonLabel}: ${details}` : reasonLabel;
 
+    if (blockReasonType === 'hospital-rehab') {
+      setBlockReasonModalTrip(null);
+      setHospitalRehabModal(trip);
+      if (details) setHospitalRehabNotes(details);
+      setCustomStatus('Complete the Hospital/Rehab modal to finish blocking this patient.');
+      return;
+    }
+
     const nowIso = new Date().toISOString();
     const normalizedTripPhone = String(trip.patientPhoneNumber || '').replace(/\D/g, '');
     const normalizedRider = String(trip.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -1211,45 +1219,49 @@ const ConfirmationWorkspace = () => {
       nextRiderProfiles[patientKey] = nextProfile;
     }
 
-    await Promise.all([
-      saveBlacklistData({
-        version: blacklistData?.version ?? 1,
-        entries: nextBlacklistEntries
-      }),
-      saveSmsData({
-        sms: {
-          ...(smsData?.sms || {}),
-          optOutList: cleanedOptOutList,
-          riderProfiles: nextRiderProfiles
-        }
-      })
-    ]);
+    try {
+      await Promise.all([
+        saveBlacklistData({
+          version: blacklistData?.version ?? 1,
+          entries: nextBlacklistEntries
+        }),
+        saveSmsData({
+          sms: {
+            ...(smsData?.sms || {}),
+            optOutList: cleanedOptOutList,
+            riderProfiles: nextRiderProfiles
+          }
+        })
+      ]);
 
-    updateTripRecord(trip.id, {
-      confirmation: {
-        ...(trip.confirmation || {}),
-        status: 'Opted Out',
-        provider: 'block',
-        respondedAt: new Date().toISOString(),
-        lastResponseText: `Blocked: ${reasonText}`,
-        lastResponseCode: 'B'
-      },
-      confirmationSignal: {
-        status: 'Opted Out',
-        provider: 'block',
-        methodCode: 'B',
-        message: `Blocked: ${reasonText}`,
-        eventType: 'block',
-        source: 'confirmation-workspace',
-        updatedAt: new Date().toISOString()
-      },
-      notes: [String(trip.notes || '').trim(), `[BLOCK] ${new Date().toLocaleString()}: ${reasonText}`].filter(Boolean).join('\n')
-    });
+      updateTripRecord(trip.id, {
+        confirmation: {
+          ...(trip.confirmation || {}),
+          status: 'Opted Out',
+          provider: 'block',
+          respondedAt: new Date().toISOString(),
+          lastResponseText: `Blocked: ${reasonText}`,
+          lastResponseCode: 'B'
+        },
+        confirmationSignal: {
+          status: 'Opted Out',
+          provider: 'block',
+          methodCode: 'B',
+          message: `Blocked: ${reasonText}`,
+          eventType: 'block',
+          source: 'confirmation-workspace',
+          updatedAt: new Date().toISOString()
+        },
+        notes: [String(trip.notes || '').trim(), `[BLOCK] ${new Date().toLocaleString()}: ${reasonText}`].filter(Boolean).join('\n')
+      });
 
-    setBlockReasonModalTrip(null);
-    setBlockReasonType('other');
-    setBlockReasonNote('');
-    setCustomStatus('Patient blocked in Black List. Future trips will stay visible, but confirmation remains blocked until manually removed.');
+      setBlockReasonModalTrip(null);
+      setBlockReasonType('other');
+      setBlockReasonNote('');
+      setCustomStatus('Patient blocked in Black List. Future trips will stay visible, but confirmation remains blocked until manually removed.');
+    } catch (error) {
+      setCustomStatus(`Could not block patient: ${error?.message || 'Unknown error'}`);
+    }
   };
 
   const handleSendCustomMessage = async () => {
