@@ -992,12 +992,29 @@ const DispatcherWorkspace = () => {
       document.dispatchEvent(forwardedEvent);
     };
 
+    let relayFrameId = 0;
+    let latestMoveEvent = null;
+    const flushRelayedMove = () => {
+      relayFrameId = 0;
+      if (!latestMoveEvent) return;
+      relayMouseEvent('mousemove')(latestMoveEvent);
+      latestMoveEvent = null;
+    };
+
+    const relayMouseMove = event => {
+      if ((event.buttons || 0) === 0) return;
+      latestMoveEvent = event;
+      if (relayFrameId) return;
+      relayFrameId = window.requestAnimationFrame(flushRelayedMove);
+    };
+
     const relayMouseUp = relayMouseEvent('mouseup');
     const relayPointerUp = relayMouseEvent('mouseup');
     const relayMouseReleaseOnBlur = relayMouseEvent('mouseup');
 
     popupWindow.addEventListener('beforeunload', handlePopupClose);
     popupWindow.addEventListener('resize', handlePopupResize);
+    popupWindow.document.addEventListener('mousemove', relayMouseMove, true);
     popupWindow.document.addEventListener('mouseup', relayMouseUp, true);
     popupWindow.document.addEventListener('pointerup', relayPointerUp, true);
     popupWindow.addEventListener('blur', relayMouseReleaseOnBlur, true);
@@ -1016,9 +1033,11 @@ const DispatcherWorkspace = () => {
     return () => {
       popupWindow.removeEventListener('beforeunload', handlePopupClose);
       popupWindow.removeEventListener('resize', handlePopupResize);
+      popupWindow.document.removeEventListener('mousemove', relayMouseMove, true);
       popupWindow.document.removeEventListener('mouseup', relayMouseUp, true);
       popupWindow.document.removeEventListener('pointerup', relayPointerUp, true);
       popupWindow.removeEventListener('blur', relayMouseReleaseOnBlur, true);
+      if (relayFrameId) window.cancelAnimationFrame(relayFrameId);
     };
   }, [isDispatchMapDetached]);
 
