@@ -1336,7 +1336,7 @@ const ConfirmationWorkspace = () => {
     internalNotes: 'Notes'
   }), []);
   const confirmationTableColumns = useMemo(() => outputColumns.filter(columnKey => Boolean(confirmationColumnLabels[columnKey])), [confirmationColumnLabels, outputColumns]);
-  const confirmationTableColumnCount = 2 + confirmationTableColumns.length;
+  const confirmationTableColumnCount = 1 + confirmationTableColumns.length;
 
   const handleToggleOutputColumn = columnKey => {
     setOutputColumns(current => {
@@ -2789,7 +2789,6 @@ const ConfirmationWorkspace = () => {
                     />
                   </th>
                     {confirmationTableColumns.map(columnKey => renderConfirmationHeaderCell(columnKey))}
-                    <th style={{ width: CONFIRMATION_TABLE_COLUMN_WIDTHS.action, minWidth: CONFIRMATION_TABLE_COLUMN_WIDTHS.action, maxWidth: CONFIRMATION_TABLE_COLUMN_WIDTHS.action }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -2798,45 +2797,49 @@ const ConfirmationWorkspace = () => {
                   const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
                   const isOptedOut = blockingState.isBlocked;
                   const riderProfile = getRiderProfile(trip);
-                  return <tr key={trip.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selectedTripIds.includes(trip.id)}
-                          onChange={() => toggleTripSelection(trip.id)}
-                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#22c55e' }}
-                        />
-                      </td>
-                      {confirmationTableColumns.map(columnKey => <React.Fragment key={`${trip.id}-${columnKey}`}>{renderConfirmationDataCell(trip, columnKey, confirmationStatus, isOptedOut, riderProfile)}</React.Fragment>)}
-                      <td>
-                        <div className="d-flex gap-1 flex-wrap" style={{ justifyContent: 'flex-end' }}>
-                          <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 70 }}>
-                            {confirmationStatus === 'Confirmed' ? 'Unconfirm' : 'Confirm'}
-                          </Button>
-                          <Button size="sm" variant="outline-danger" onClick={() => handleCancelWithNote(trip)} title="Cancel with note" style={{ minWidth: 65 }}>
-                            Cancel
-                          </Button>
-                          <Button size="sm" variant="outline-info" onClick={() => handleOpenTripUpdateModal(trip)} title="Update confirmation, schedule and notes" style={{ minWidth: 65 }}>
-                            Update
-                          </Button>
-                          <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 60 }} onClick={() => handleToggleOptOut(trip)}>{isOptedOut ? 'Allow' : 'Block'}</Button>
-                          <Button
-                            size="sm"
-                            variant={trip.clonedFromTripId ? 'danger' : 'outline-danger'}
-                            title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
-                            style={{ minWidth: 60 }}
-                            onClick={() => {
-                              const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
-                              if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
-                                deleteTripRecord(trip.id);
-                              }
-                            }}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>;
+                  return <React.Fragment key={trip.id}>
+                      <tr>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedTripIds.includes(trip.id)}
+                            onChange={() => toggleTripSelection(trip.id)}
+                            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#22c55e' }}
+                          />
+                        </td>
+                        {confirmationTableColumns.map(columnKey => <React.Fragment key={`${trip.id}-${columnKey}`}>{renderConfirmationDataCell(trip, columnKey, confirmationStatus, isOptedOut, riderProfile)}</React.Fragment>)}
+                      </tr>
+                      <tr>
+                        <td colSpan={confirmationTableColumnCount} className="pt-0 border-0">
+                          <div className="d-flex gap-1 flex-wrap justify-content-end py-2">
+                            <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 90 }}>
+                              {confirmationStatus === 'Confirmed' ? 'Unconfirm' : 'Confirm'}
+                            </Button>
+                            <Button size="sm" variant="outline-danger" onClick={() => handleCancelWithNote(trip)} title="Cancel with note" style={{ minWidth: 80 }}>
+                              Cancel
+                            </Button>
+                            <Button size="sm" variant="outline-info" onClick={() => handleOpenTripUpdateModal(trip)} title="Update confirmation, schedule and notes" style={{ minWidth: 80 }}>
+                              Update
+                            </Button>
+                            <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 72 }} onClick={() => handleToggleOptOut(trip)}>{isOptedOut ? 'Allow' : 'Block'}</Button>
+                            <Button
+                              size="sm"
+                              variant={trip.clonedFromTripId ? 'danger' : 'outline-danger'}
+                              title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
+                              style={{ minWidth: 72 }}
+                              onClick={() => {
+                                const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
+                                if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
+                                  deleteTripRecord(trip.id);
+                                }
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    </React.Fragment>;
                 }) : <tr>
                     <td colSpan={confirmationTableColumnCount} className="text-center text-muted py-4">No confirmation records match the current filter.</td>
                   </tr>}
