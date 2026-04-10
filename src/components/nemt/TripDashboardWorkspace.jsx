@@ -2879,11 +2879,12 @@ const TripDashboardWorkspace = () => {
   const isStackedLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked && showBottomPanels;
   const isStandardLayout = !isFocusRightLayout && !isStackedLayout;
   const isPeekPanelMode = isStandardLayout && showMapPane && rightPanelCollapsed && !showBottomPanels;
+  const hasVisibleDockPanels = showDriversPanel || showRoutesPanel;
   const focusRightColumnSplit = clamp(columnSplit, 28, 40);
   const collapsedPanelWidth = TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH;
   const workspaceGridStyle = {
     display: 'grid',
-    gridTemplateColumns: isFocusRightLayout ? `${focusRightColumnSplit}% ${dividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${dividerSize}px - ${collapsedPanelWidth}px)) ${dividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
+    gridTemplateColumns: isFocusRightLayout ? hasVisibleDockPanels ? `${focusRightColumnSplit}% ${dividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : '0px 0px minmax(0, 1fr)' : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${dividerSize}px - ${collapsedPanelWidth}px)) ${dividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
     gridTemplateRows: isFocusRightLayout ? '1fr' : isStackedLayout ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : showBottomPanels ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
     height: workspaceHeight,
     minHeight: workspaceHeight,
@@ -3453,12 +3454,12 @@ const TripDashboardWorkspace = () => {
           </Card>
         </div>
 
-        <div onMouseDown={() => showMapPane && !isPeekPanelMode || isFocusRightLayout ? setDragMode('column') : undefined} style={{
+        <div onMouseDown={() => showTripsPanel && (showMapPane && !isPeekPanelMode || isFocusRightLayout && hasVisibleDockPanels) ? setDragMode('column') : undefined} style={{
         ...dividerBaseStyle,
         cursor: showMapPane && isPeekPanelMode ? 'default' : 'col-resize',
         gridColumn: 2,
         gridRow: isFocusRightLayout ? 1 : '1 / span 3',
-        display: showMapPane || isFocusRightLayout ? 'block' : 'none'
+        display: showTripsPanel && (showMapPane || isFocusRightLayout && hasVisibleDockPanels) ? 'block' : 'none'
       }}>
           <div className="position-absolute start-50 translate-middle-x rounded-pill" style={{ top: 10, bottom: 10, width: 6, backgroundColor: '#6b7280' }} />
         </div>
@@ -3467,7 +3468,8 @@ const TripDashboardWorkspace = () => {
         minWidth: 0,
         minHeight: 0,
         gridColumn: isFocusRightLayout ? 3 : showMapPane ? 3 : isStackedLayout ? 1 : '1 / span 3',
-        gridRow: isFocusRightLayout ? '1 / span 3' : 1
+        gridRow: isFocusRightLayout ? '1 / span 3' : 1,
+        display: showTripsPanel ? 'block' : 'none'
       }}>
           {isPeekPanelMode ? <Card className="h-100 overflow-hidden">
               <CardBody className="p-0 d-flex justify-content-center align-items-center" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)' }}>
@@ -3489,6 +3491,17 @@ const TripDashboardWorkspace = () => {
             </Card> : <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+                <div className="d-flex justify-content-end">
+                  <Button variant="outline-danger" size="sm" onClick={() => {
+                  setShowTripsPanel(false);
+                  if (!showMapPane) {
+                    setShowMapPane(true);
+                  }
+                  setStatusMessage('Trips panel hidden.');
+                }}>
+                    ✕ Hide Trips
+                  </Button>
+                </div>
                 {shouldShowPinnedToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap">
                     {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
                     <Button variant="dark" size="sm" onClick={handleResetToolbarLayout}>Restore toolbar</Button>
