@@ -168,6 +168,12 @@ const getActorIdentity = session => {
   };
 };
 
+const getTomorrowDateKey = () => {
+  const now = new Date();
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return tomorrow.toISOString().slice(0, 10);
+};
+
 export const useNemtContext = () => {
   const context = use(NemtContext);
   if (!context) {
@@ -194,6 +200,46 @@ export const NemtProvider = ({
   const pendingAllowTripShrinkRef = useRef(false);
   const allowTripShrinkReasonNextPersistRef = useRef('');
   const pendingAllowTripShrinkReasonRef = useRef('');
+
+  const sendRoutePushMessage = async ({
+    driverId,
+    routeName,
+    serviceDate,
+    reason = 'route-update'
+  }) => {
+    const normalizedDriverId = String(driverId || '').trim();
+    if (!normalizedDriverId) return;
+
+    const normalizedDate = String(serviceDate || '').trim();
+    const isTomorrowRoute = normalizedDate && normalizedDate === getTomorrowDateKey();
+    const normalizedRouteName = String(routeName || '').trim() || 'your route';
+
+    const subject = isTomorrowRoute ? 'Route for tomorrow' : 'Route update from dispatch';
+    const body = isTomorrowRoute
+      ? `You receive the route for tomorrow. Route: ${normalizedRouteName}.`
+      : `Dispatch assigned/updated ${normalizedRouteName}${normalizedDate ? ` for ${normalizedDate}` : ''}.`;
+
+    try {
+      await fetch('/api/system-messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type: 'dispatch-message',
+          priority: 'high',
+          audience: 'Driver',
+          subject,
+          body,
+          driverId: normalizedDriverId,
+          source: reason,
+          deliveryMethod: 'push'
+        })
+      });
+    } catch {
+      // Route notification failures should not block dispatcher assignments.
+    }
+  };
 
   const flushPersistQueue = async () => {
     if (persistInFlightRef.current) return;
@@ -920,7 +966,12 @@ export const NemtProvider = ({
     tripIds,
     notes,
     serviceDate
-  }) => updateState(currentState => {
+  }) => {
+    const normalizedDriverId = String(driverId || '').trim();
+    const normalizedRouteName = String(name || '').trim() || 'Route';
+    const normalizedServiceDate = String(serviceDate || '').trim();
+
+    const result = updateState(currentState => {
     const targetTripIds = (Array.isArray(tripIds) && tripIds.length > 0 ? tripIds : currentState.selectedTripIds)
       .map(value => String(value || '').trim())
       .filter(Boolean);
@@ -967,6 +1018,18 @@ export const NemtProvider = ({
       metadata: { driverId, tripIds, serviceDate }
     })
   });
+
+    if (normalizedDriverId) {
+      void sendRoutePushMessage({
+        driverId: normalizedDriverId,
+        routeName: normalizedRouteName,
+        serviceDate: normalizedServiceDate,
+        reason: 'route-create'
+      });
+    }
+
+    return result;
+  };
 
   const deleteRoute = routeId => updateState(currentState => {
     const normalizedRouteId = String(routeId || '').trim();
@@ -1026,7 +1089,12 @@ export const NemtProvider = ({
     })
   });
 
-  const assignRoutePrimaryDriver = (routeId, driverId) => updateState(currentState => {
+  const assignRoutePrimaryDriver = (routeId, driverId) => {
+    const normalizedRouteId = String(routeId || '').trim();
+    const normalizedDriverId = String(driverId || '').trim();
+    const existingRoute = (Array.isArray(state?.routePlans) ? state.routePlans : []).find(routePlan => String(routePlan?.id || '').trim() === normalizedRouteId);
+
+    const result = updateState(currentState => {
     const normalizedRouteId = String(routeId || '').trim();
     const normalizedDriverId = String(driverId || '').trim();
     if (!normalizedRouteId || !normalizedDriverId) return currentState;
@@ -1061,6 +1129,18 @@ export const NemtProvider = ({
       summary: `Changed primary driver on route ${String(routeId || '').trim()} to ${String(driverId || '').trim()}`
     })
   });
+
+    if (normalizedRouteId && normalizedDriverId) {
+      void sendRoutePushMessage({
+        driverId: normalizedDriverId,
+        routeName: String(existingRoute?.name || normalizedRouteId).trim(),
+        serviceDate: String(existingRoute?.serviceDate || '').trim(),
+        reason: 'route-primary-driver'
+      });
+    }
+
+    return result;
+  };
 
   const assignRouteSecondaryDriver = (routeId, driverId) => updateState(currentState => {
     const normalizedRouteId = String(routeId || '').trim();
