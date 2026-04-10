@@ -1666,7 +1666,7 @@ const DispatcherWorkspace = () => {
     return null;
   }, [isManualDriverScope, routeTrips, selectedDriver, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
-  const tripTableColumnCount = orderedVisibleTripColumns.length + 4;
+  const tripTableColumnCount = orderedVisibleTripColumns.length + 5;
   const selectedDriverSelectedTrip = useMemo(() => {
     if (!selectedDriver) return null;
     return trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
@@ -3083,6 +3083,7 @@ const DispatcherWorkspace = () => {
                     <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
                     <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
                     <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                    <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
                     {orderedVisibleTripColumns.map(columnKey => {
                     const metadata = tripColumnMeta[columnKey];
                     const fallbackWidth = columnKey === 'address' || columnKey === 'destination' ? 260 : undefined;
@@ -3117,6 +3118,7 @@ const DispatcherWorkspace = () => {
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
                       <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>WC</th>
+                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Alert</th>
                       {orderedVisibleTripColumns.map(columnKey => {
                     const metadata = tripColumnMeta[columnKey];
                     if (!metadata) return null;
