@@ -985,6 +985,35 @@ const DispatcherWorkspace = () => {
     setStatusMessage(nextLayout.messagingVisible ? 'Paneles inferiores visibles (SMS + acciones).' : 'Paneles inferiores ocultos.');
   };
 
+  const handleHideAllPanels = () => {
+    // Keep one panel visible to avoid an unusable workspace.
+    const nextLayout = persistDispatcherLayout({
+      ...dispatcherLayout,
+      mapVisible: false,
+      messagingVisible: false,
+      actionsVisible: false,
+      tripsVisible: true,
+      preset: 'custom'
+    });
+    setStatusMessage(nextLayout.tripsVisible ? 'Layout compacto activado. Solo Trips visible.' : 'Layout actualizado.');
+  };
+
+  const hiddenDispatcherPanels = [{
+    key: 'mapVisible',
+    label: 'Map'
+  }, {
+    key: 'tripsVisible',
+    label: 'Trips'
+  }, {
+    key: 'messagingVisible',
+    label: 'SMS'
+  }, {
+    key: 'actionsVisible',
+    label: 'Actions'
+  }].filter(item => !dispatcherLayout[item.key]);
+
+  const hasHiddenDispatcherPanels = hiddenDispatcherPanels.length > 0;
+
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
     const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
     const normalizedToBlockId = canonicalizeToolbarBlockId(toBlockId);
@@ -2746,6 +2775,28 @@ const DispatcherWorkspace = () => {
   };
 
   return <>
+      <div style={{
+      position: 'fixed',
+      top: 12,
+      right: 16,
+      zIndex: 1200,
+      display: 'flex',
+      gap: 8,
+      alignItems: 'center',
+      backgroundColor: 'rgba(15, 23, 42, 0.95)',
+      border: '1px solid rgba(100, 116, 139, 0.35)',
+      padding: '8px 12px',
+      borderRadius: 8,
+      backdropFilter: 'blur(10px)'
+    }}>
+        <Button variant="outline-warning" size="sm" onClick={handleHideAllPanels}>Hide All</Button>
+        <Button variant="outline-secondary" size="sm" onClick={() => applyDispatcherLayoutPreset('full')}>Restore</Button>
+        {hasHiddenDispatcherPanels ? <>
+            <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>HIDDEN:</span>
+            {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)}>{panel.label}</Button>)}
+          </> : null}
+      </div>
+
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
