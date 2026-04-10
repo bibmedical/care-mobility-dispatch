@@ -3051,11 +3051,20 @@ const DispatcherWorkspace = () => {
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={dispatcherSurfaceStyles.groupRow}>
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: dispatcherSurfaceStyles.groupLabelColor }}>{row.label}</td>
-                      </tr> : <tr key={row.trip.id} style={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? dispatcherSurfaceStyles.rowSelected : isTripAssignedToSelectedDriver(row.trip) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault}>
+                      </tr> : <tr key={row.trip.id} onClick={() => {
+                        if (mapLocked) return;
+                        setSelectedTripIds([row.trip.id]);
+                        setSelectedRouteId(row.trip.routeId);
+                        setStatusMessage(`Trip ${row.trip.id} seleccionado.`);
+                      }} style={{
+                        ...(selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? dispatcherSurfaceStyles.rowSelected : isTripAssignedToSelectedDriver(row.trip) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault),
+                        cursor: mapLocked ? 'not-allowed' : 'pointer'
+                      }}>
                         <td>
                           <input
                             type="checkbox"
                             checked={selectedTripIdSet.has(normalizeTripId(row.trip.id))}
+                            onClick={event => event.stopPropagation()}
                             onChange={() => handleTripSelectionToggle(row.trip.id)}
                             disabled={mapLocked}
                             style={{
@@ -3072,7 +3081,8 @@ const DispatcherWorkspace = () => {
                         </td>
                         <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
-                            <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => {
+                            <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={event => {
+                          event.stopPropagation();
                           setSelectedTripIds([row.trip.id]);
                           setSelectedDriverId(row.trip.driverId ?? selectedDriverId);
                           setSelectedRouteId(row.trip.routeId);
@@ -3200,10 +3210,17 @@ const DispatcherWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} style={selectedTripIdSet.has(normalizeTripId(trip.id)) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault}>
+                    {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} onClick={() => {
+                      if (mapLocked) return;
+                      setSelectedTripIds([trip.id]);
+                      setStatusMessage(`Trip ${trip.id} seleccionado.`);
+                    }} style={{
+                      ...(selectedTripIdSet.has(normalizeTripId(trip.id)) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault),
+                      cursor: mapLocked ? 'not-allowed' : 'pointer'
+                    }}>
                         <td>
                           <div className="d-flex align-items-center gap-1">
-                            <Form.Check checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => handleTripSelectionToggle(trip.id)} disabled={mapLocked} />
+                            <Form.Check checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onClick={event => event.stopPropagation()} onChange={() => handleTripSelectionToggle(trip.id)} disabled={mapLocked} />
                             <Badge bg={getEffectiveTripStatus(trip) === 'Assigned' ? 'primary' : getStatusBadge(getEffectiveTripStatus(trip))}>{getEffectiveTripStatus(trip) === 'Assigned' ? 'A' : getEffectiveTripStatus(trip) === 'WillCall' ? 'WC' : 'U'}</Badge>
                           </div>
                         </td>
