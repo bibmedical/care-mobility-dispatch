@@ -1203,6 +1203,13 @@ const TripDashboardWorkspace = () => {
             <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.normal ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Normal</Button>
             <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)} disabled={!showInlineMap}>Focus right</Button>
             <Button variant={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? 'dark' : 'outline-dark'} size="sm" style={layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked ? undefined : greenToolbarButtonStyle} onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.stacked)}>Stacked</Button>
+            <Button variant="outline-danger" size="sm" onClick={() => {
+            setShowTripsPanel(false);
+            if (!showMapPane) {
+              setShowMapPane(true);
+            }
+            setStatusMessage('Trips panel hidden.');
+          }}>✕ Hide Trips</Button>
             {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
           </div>;
       case 'panels':
@@ -3577,20 +3584,6 @@ const TripDashboardWorkspace = () => {
             </Card> : <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
-                <div className="d-flex justify-content-end gap-2">
-                  {tripStatusFilter === 'cancelled' ? null : <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips} title="Cancel selected trips">
-                      C
-                    </Button>}
-                  <Button variant="outline-danger" size="sm" onClick={() => {
-                  setShowTripsPanel(false);
-                  if (!showMapPane) {
-                    setShowMapPane(true);
-                  }
-                  setStatusMessage('Trips panel hidden.');
-                }}>
-                    ✕ Hide Trips
-                  </Button>
-                </div>
                 {shouldShowPinnedToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap">
                     {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
                     <Button variant="dark" size="sm" onClick={handleResetToolbarLayout}>Restore toolbar</Button>
@@ -3746,6 +3739,7 @@ const TripDashboardWorkspace = () => {
                       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
                       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
                       <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
+                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
                     </>}
                   <span className="fw-semibold small ms-1" style={compactToolbarLabelStyle}>Leg</span>
                   <Button variant={tripLegFilter === 'AL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'AL' || isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="First leg to appointment">AL</Button>
