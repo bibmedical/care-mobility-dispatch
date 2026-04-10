@@ -82,16 +82,36 @@ const removeMessageMediaFromDispatchThreads = dispatchState => {
 };
 
 const readDriverPushTokens = async (driverId, driverName = '') => {
-  if (!driverId && !driverName) return [];
+  if (!driverId && !driverName) {
+    console.log('[PUSH DEBUG] readDriverPushTokens: No driverId or driverName provided');
+    return [];
+  }
 
   const adminState = await readNemtAdminState();
   const driver = resolveAdminDriverByLookup(adminState, driverId, driverName);
+  
+  console.log('[PUSH DEBUG] readDriverPushTokens', {
+    driverId,
+    driverName,
+    foundDriver: driver ? driver.id : null,
+    foundDriverName: driver ? driver.displayName : null,
+    tokenCount: driver?.mobilePushTokens?.length || 0,
+    tokens: driver?.mobilePushTokens || []
+  });
+
   const tokens = Array.isArray(driver?.mobilePushTokens) ? driver.mobilePushTokens : [];
   return tokens.map(token => String(token || '').trim()).filter(Boolean);
 };
 
 const sendExpoPush = async (pushTokens, message) => {
-  if (!Array.isArray(pushTokens) || pushTokens.length === 0) return;
+  if (!Array.isArray(pushTokens) || pushTokens.length === 0) {
+    console.log('[PUSH DEBUG] No tokens to send', {
+      tokensCount: pushTokens?.length,
+      messageId: message?.id,
+      driverId: message?.driverId
+    });
+    return;
+  }
 
   const normalizedSubject = String(message?.subject || '').trim().toLowerCase();
   const normalizedBody = String(message?.body || '').trim().toLowerCase();
@@ -116,12 +136,20 @@ const sendExpoPush = async (pushTokens, message) => {
     }
   }));
 
+  console.log('[PUSH DEBUG] Sending to Expo', {
+    tokenCount: pushTokens.length,
+    tokens: pushTokens,
+    messageId: message?.id,
+    driverId: message?.driverId,
+    payloadSize: JSON.stringify(payload).length
+  });
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), EXPO_PUSH_TIMEOUT_MS);
 
     try {
-      await fetch('https://exp.host/--/api/v2/push/send', {
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -129,11 +157,24 @@ const sendExpoPush = async (pushTokens, message) => {
         body: JSON.stringify(payload),
         signal: controller.signal
       });
+
+      const responseData = await response.json().catch(() => ({}));
+      console.log('[PUSH DEBUG] Expo response', {
+        status: response.status,
+        statusText: response.statusText,
+        data: responseData,
+        messageId: message?.id
+      });
     } finally {
       clearTimeout(timeoutId);
     }
-  } catch {
+  } catch (error) {
     // Push delivery failures should not block dispatch message creation.
+    console.error('[PUSH DEBUG] Error sending push', {
+      error: error?.message,
+      messageId: message?.id,
+      driverId: message?.driverId
+    });
   }
 };
 
