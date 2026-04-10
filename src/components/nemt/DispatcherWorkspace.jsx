@@ -16,6 +16,7 @@ import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whats
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
@@ -789,6 +790,8 @@ const DispatcherWorkspace = () => {
   const [detachedMapPosition, setDetachedMapPosition] = useState({ x: 18, y: 96 });
   const [isDraggingDetachedMap, setIsDraggingDetachedMap] = useState(false);
   const detachedMapDragOffsetRef = useRef({ x: 0, y: 0 });
+  const detachedMapWindowRef = useRef(null);
+  const detachedMapPortalContainerRef = useRef(null);
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -854,6 +857,58 @@ const DispatcherWorkspace = () => {
       window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDraggingDetachedMap]);
+
+  useEffect(() => {
+    if (!isDispatchMapDetached) {
+      if (detachedMapWindowRef.current && !detachedMapWindowRef.current.closed) {
+        detachedMapWindowRef.current.close();
+      }
+      detachedMapWindowRef.current = null;
+      detachedMapPortalContainerRef.current = null;
+      return;
+    }
+
+    const popupWindow = window.open('', 'care-mobility-dispatch-map', 'popup=yes,width=1500,height=900,left=80,top=60,resizable=yes,scrollbars=no');
+    if (!popupWindow) {
+      setStatusMessage('Popup blocked. Allow popups to open Dispatch map on another screen.');
+      setIsDispatchMapDetached(false);
+      return;
+    }
+
+    popupWindow.document.title = 'Dispatch Map';
+    popupWindow.document.body.style.margin = '0';
+    popupWindow.document.body.style.height = '100vh';
+    popupWindow.document.body.style.backgroundColor = '#0f172a';
+
+    const mountNode = popupWindow.document.createElement('div');
+    mountNode.style.width = '100vw';
+    mountNode.style.height = '100vh';
+    mountNode.style.overflow = 'hidden';
+    popupWindow.document.body.appendChild(mountNode);
+
+    const handlePopupClose = () => {
+      setIsDispatchMapDetached(false);
+      detachedMapPortalContainerRef.current = null;
+      detachedMapWindowRef.current = null;
+    };
+
+    popupWindow.addEventListener('beforeunload', handlePopupClose);
+    popupWindow.focus();
+
+    detachedMapWindowRef.current = popupWindow;
+    detachedMapPortalContainerRef.current = mountNode;
+    setStatusMessage('Dispatch map moved to external window.');
+
+    return () => {
+      popupWindow.removeEventListener('beforeunload', handlePopupClose);
+    };
+  }, [isDispatchMapDetached]);
+
+  useEffect(() => () => {
+    if (detachedMapWindowRef.current && !detachedMapWindowRef.current.closed) {
+      detachedMapWindowRef.current.close();
+    }
+  }, []);
   const [columnWidths, setColumnWidths] = useState({});
   const [draggingTripColumnKey, setDraggingTripColumnKey] = useState(null);
   const workspaceRef = useRef(null);
@@ -2795,7 +2850,7 @@ const DispatcherWorkspace = () => {
   const workspaceHeight = 'calc(100dvh - 12px)';
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
-  const inlineMapVisible = dispatcherLayout.mapVisible && showInlineMap;
+  const inlineMapVisible = dispatcherLayout.mapVisible && showInlineMap && !isDispatchMapDetached;
   const actionsPanelVisible = dispatcherLayout.actionsVisible;
   const hasLeftColumn = inlineMapVisible || dispatcherLayout.messagingVisible;
   const hasRightColumn = dispatcherLayout.tripsVisible || actionsPanelVisible;
@@ -2831,16 +2886,7 @@ const DispatcherWorkspace = () => {
     fontSize: '0.68rem',
     lineHeight: 1.05
   };
-  const mapPanelPositionStyle = isDispatchMapDetached ? {
-    position: 'fixed',
-    left: detachedMapPosition.x,
-    top: detachedMapPosition.y,
-    width: '46vw',
-    minWidth: 520,
-    height: '44vh',
-    minHeight: 320,
-    zIndex: 1305
-  } : {
+  const mapPanelPositionStyle = {
     gridColumn: 1,
     gridRow: mapPanelGridRow
   };
@@ -2852,6 +2898,113 @@ const DispatcherWorkspace = () => {
       return nextValue;
     });
   };
+
+  const renderDispatchMapPanel = () => <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
+      <CardBody className="p-0">
+        {showInlineMap ? <div className="position-relative h-100">
+          <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
+            <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapLocked}>Clear</Button>
+            <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
+              <option value="">City</option>
+              {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
+            </Form.Select>
+            <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 130, ...dispatcherSurfaceStyles.select }}>
+              <option value="">ZIP Code</option>
+              {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
+            </Form.Select>
+            <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
+              <option value="auto">Map: Auto</option>
+              <option value="openstreetmap">Map: OSM</option>
+              <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
+            </Form.Select>
+            <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked}>All drivers</Button>
+            {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
+            <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
+            <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
+            <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
+          </div>
+          <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+            <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}`} />
+            <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
+            <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapLocked} onPause={() => {
+            setFollowSelectedDriver(false);
+            setStatusMessage('Auto-follow paused. You can pan and zoom the map freely.');
+          }} />
+            <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
+            <ZoomControl position="bottomleft" />
+            {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
+            {selectedDriver?.hasRealLocation && selectedDriverEtaTrip && selectedDriverEta ? <>
+                <Polyline positions={selectedDriverRouteGeometry.length > 1 ? selectedDriverRouteGeometry : [selectedDriver.position, getTripTargetPosition(selectedDriverEtaTrip)]} pathOptions={{ color: selectedDriverColor, weight: 4, dashArray: selectedDriverRouteGeometry.length > 1 && selectedDriverRouteMetrics?.isFallback !== true ? undefined : '10 8', opacity: 0.95 }} />
+                <Marker position={getTripTargetPosition(selectedDriverEtaTrip)} icon={createRouteStopIcon(selectedDriverEta?.target?.stage === 'dropoff' ? 'DO' : 'PU', selectedDriverEta?.target?.stage === 'dropoff' ? 'dropoff' : 'pickup')}>
+                  <Popup>
+                    <div className="fw-semibold">{selectedDriverEta?.target?.label || 'Trip target'}</div>
+                    <div>{selectedDriverEtaTrip.rider}</div>
+                    <div className="small text-muted">{selectedDriverEta?.target?.detail || 'Location pending'}</div>
+                  </Popup>
+                </Marker>
+              </> : null}
+            {selectedDriver?.hasRealLocation ? <Circle center={selectedDriver.position} radius={Math.max(100, Number(selectedDriver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: selectedDriverColor, weight: 2, opacity: 0.35, fillOpacity: 0.05 }} /> : null}
+            {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online', driverKey: selectedDriver.id || selectedDriver.name })}>
+                <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
+                  <div className="fw-semibold">{selectedDriver.name}</div>
+                  <div>{getDriverMapLocationLabel(selectedDriver)}</div>
+                  <div className="small text-muted">ETA: {selectedDriverEta?.label || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim()) || 'ETA unavailable'}</div>
+                </Tooltip>
+              </Marker> : null}
+            {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Circle key={`driver-area-${driver.id}`} center={driver.position} radius={Math.max(100, Number(driver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: getDriverColor(driver.id || driver.name), weight: 1.5, opacity: 0.25, fillOpacity: 0.03 }} />) : null}
+            {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online', driverKey: driver.id || driver.name })}>
+                <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
+                  <div className="fw-semibold">{driver.name}</div>
+                  <div className="small text-muted">ETA: {driverEtaPreviewById.get(String(driver.id || '').trim()) || 'ETA unavailable'}</div>
+                  <div>{getDriverMapLocationLabel(driver)}</div>
+                  <div className="small text-muted">{driver.live}</div>
+                </Tooltip>
+              </Marker>) : null}
+            {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
+            const points = [{
+              key: `${trip.id}-pickup-mapquick`,
+              tripId: trip.id,
+              position: trip.position,
+              color: '#0ea5e9',
+              label: `PU ${trip.pickup}`
+            }, {
+              key: `${trip.id}-dropoff-mapquick`,
+              tripId: trip.id,
+              position: trip.destinationPosition ?? trip.position,
+              color: '#22c55e',
+              label: `DO ${trip.dropoff}`
+            }];
+            return points;
+          }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
+            click: () => toggleTripSelection(point.tripId)
+          }}>
+                <Popup>{point.label}</Popup>
+              </CircleMarker>) : null}
+            {hasSelectedTrips ? routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
+                <Popup>
+                  <div className="fw-semibold">{stop.title}</div>
+                  <div>{stop.detail}</div>
+                </Popup>
+              </Marker>) : null}
+            {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).map(trip => <CircleMarker key={trip.id} center={trip.position} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
+              click: () => toggleTripSelection(trip.id)
+            }}>
+                <Popup>{`${trip.brokerTripId || trip.id} | ${trip.legLabel || 'Ride'} | ${trip.rider} | ${trip.pickup}`}</Popup>
+              </CircleMarker>) : null}
+          </MapContainer>
+        </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
+            <div className="fw-semibold fs-5">Mapa oculto en dispatcher</div>
+            <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Activa Show Map para volver a usar el mismo mapa conectado del panel.</div>
+            <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
+              <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
+            </div>
+          </div>}
+      </CardBody>
+    </Card>;
+
+  const detachedMapPortal = isDispatchMapDetached && detachedMapPortalContainerRef.current ? createPortal(<div style={{ width: '100vw', height: '100vh', padding: 6 }}>
+      {renderDispatchMapPanel()}
+    </div>, detachedMapPortalContainerRef.current) : null;
 
   return <>
       <div style={{
@@ -2875,117 +3028,11 @@ const DispatcherWorkspace = () => {
           </> : null}
       </div>
 
+      {detachedMapPortal}
+
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', ...mapPanelPositionStyle }}>
-          <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
-            <CardBody className="p-0">
-              {showInlineMap ? <div className="position-relative h-100">
-                <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
-                  {isDispatchMapDetached ? <Button variant="warning" size="sm" style={{ ...compactControlButtonStyle, cursor: 'move' }} onMouseDown={event => {
-                  detachedMapDragOffsetRef.current = {
-                    x: event.clientX - detachedMapPosition.x,
-                    y: event.clientY - detachedMapPosition.y
-                  };
-                  setIsDraggingDetachedMap(true);
-                }}>Drag</Button> : null}
-                  <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapLocked}>Clear</Button>
-                  <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
-                    <option value="">City</option>
-                    {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
-                  </Form.Select>
-                  <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 130, ...dispatcherSurfaceStyles.select }}>
-                    <option value="">ZIP Code</option>
-                    {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
-                  </Form.Select>
-                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
-                    <option value="auto">Map: Auto</option>
-                    <option value="openstreetmap">Map: OSM</option>
-                    <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
-                  </Form.Select>
-                  <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked}>All drivers</Button>
-                  {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
-                  <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
-                  <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
-                  <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
-                </div>
-                <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
-                  <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
-                  <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
-                  <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapLocked} onPause={() => {
-                  setFollowSelectedDriver(false);
-                  setStatusMessage('Auto-follow paused. You can pan and zoom the map freely.');
-                }} />
-                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
-                  <ZoomControl position="bottomleft" />
-                  {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-                  {selectedDriver?.hasRealLocation && selectedDriverEtaTrip && selectedDriverEta ? <>
-                      <Polyline positions={selectedDriverRouteGeometry.length > 1 ? selectedDriverRouteGeometry : [selectedDriver.position, getTripTargetPosition(selectedDriverEtaTrip)]} pathOptions={{ color: selectedDriverColor, weight: 4, dashArray: selectedDriverRouteGeometry.length > 1 && selectedDriverRouteMetrics?.isFallback !== true ? undefined : '10 8', opacity: 0.95 }} />
-                      <Marker position={getTripTargetPosition(selectedDriverEtaTrip)} icon={createRouteStopIcon(selectedDriverEta?.target?.stage === 'dropoff' ? 'DO' : 'PU', selectedDriverEta?.target?.stage === 'dropoff' ? 'dropoff' : 'pickup')}>
-                        <Popup>
-                          <div className="fw-semibold">{selectedDriverEta?.target?.label || 'Trip target'}</div>
-                          <div>{selectedDriverEtaTrip.rider}</div>
-                          <div className="small text-muted">{selectedDriverEta?.target?.detail || 'Location pending'}</div>
-                        </Popup>
-                      </Marker>
-                    </> : null}
-                  {selectedDriver?.hasRealLocation ? <Circle center={selectedDriver.position} radius={Math.max(100, Number(selectedDriver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: selectedDriverColor, weight: 2, opacity: 0.35, fillOpacity: 0.05 }} /> : null}
-                  {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online', driverKey: selectedDriver.id || selectedDriver.name })}>
-                      <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
-                        <div className="fw-semibold">{selectedDriver.name}</div>
-                        <div>{getDriverMapLocationLabel(selectedDriver)}</div>
-                        <div className="small text-muted">ETA: {selectedDriverEta?.label || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim()) || 'ETA unavailable'}</div>
-                      </Tooltip>
-                    </Marker> : null}
-                  {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Circle key={`driver-area-${driver.id}`} center={driver.position} radius={Math.max(100, Number(driver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: getDriverColor(driver.id || driver.name), weight: 1.5, opacity: 0.25, fillOpacity: 0.03 }} />) : null}
-                  {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({ heading: driver.heading, isOnline: driver.live === 'Online', driverKey: driver.id || driver.name })}>
-                      <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
-                        <div className="fw-semibold">{driver.name}</div>
-                        <div className="small text-muted">ETA: {driverEtaPreviewById.get(String(driver.id || '').trim()) || 'ETA unavailable'}</div>
-                        <div>{getDriverMapLocationLabel(driver)}</div>
-                        <div className="small text-muted">{driver.live}</div>
-                      </Tooltip>
-                    </Marker>) : null}
-                  {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
-                  const points = [{
-                    key: `${trip.id}-pickup-mapquick`,
-                    tripId: trip.id,
-                    position: trip.position,
-                    color: '#0ea5e9',
-                    label: `PU ${trip.pickup}`
-                  }, {
-                    key: `${trip.id}-dropoff-mapquick`,
-                    tripId: trip.id,
-                    position: trip.destinationPosition ?? trip.position,
-                    color: '#22c55e',
-                    label: `DO ${trip.dropoff}`
-                  }];
-                  return points;
-                }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
-                  click: () => toggleTripSelection(point.tripId)
-                }}>
-                      <Popup>{point.label}</Popup>
-                    </CircleMarker>) : null}
-                  {hasSelectedTrips ? routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
-                      <Popup>
-                        <div className="fw-semibold">{stop.title}</div>
-                        <div>{stop.detail}</div>
-                      </Popup>
-                    </Marker>) : null}
-                  {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).map(trip => <CircleMarker key={trip.id} center={trip.position} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
-                    click: () => toggleTripSelection(trip.id)
-                  }}>
-                      <Popup>{`${trip.brokerTripId || trip.id} | ${trip.legLabel || 'Ride'} | ${trip.rider} | ${trip.pickup}`}</Popup>
-                    </CircleMarker>) : null}
-                </MapContainer>
-              </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
-                  <div className="fw-semibold fs-5">Mapa oculto en dispatcher</div>
-                  <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Activa Show Map para volver a usar el mismo mapa conectado del panel.</div>
-                  <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
-                    <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
-                  </div>
-                </div>}
-            </CardBody>
-          </Card>
+          {renderDispatchMapPanel()}
         </div>
 
         <div onMouseDown={() => hasColumnSplit ? setDragMode('column') : undefined} style={{
