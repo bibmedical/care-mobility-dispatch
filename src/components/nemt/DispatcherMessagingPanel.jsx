@@ -264,9 +264,12 @@ const DispatcherMessagingPanel = ({
   const [customNotificationSoundName, setCustomNotificationSoundName] = useState('');
   const [customNotificationSoundDataUrl, setCustomNotificationSoundDataUrl] = useState('');
   const [dailyForm, setDailyForm] = useState({ firstName: '', lastNameOrOrg: '' });
+  const [officialDriverForm, setOfficialDriverForm] = useState({ firstName: '', lastName: '', phone: '' });
   const [draftMessage, setDraftMessage] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
   const [showAddDriver, setShowAddDriver] = useState(false);
+  const [showAddOfficialDriver, setShowAddOfficialDriver] = useState(false);
+  const [isSavingOfficialDriver, setIsSavingOfficialDriver] = useState(false);
   const [driverAlerts, setDriverAlerts] = useState([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [alertsError, setAlertsError] = useState('');
@@ -842,6 +845,115 @@ const DispatcherMessagingPanel = ({
     setShowAddDriver(false);
   };
 
+  const handleAddOfficialDriver = async () => {
+    const firstName = officialDriverForm.firstName.trim();
+    const lastName = officialDriverForm.lastName.trim();
+    const phone = normalizePhoneDigits(officialDriverForm.phone);
+    if (!firstName || isSavingOfficialDriver) return;
+
+    setIsSavingOfficialDriver(true);
+    try {
+      const response = await fetch('/api/nemt/admin', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      const payload = await readJsonResponse(response);
+      if (!response.ok) throw new Error(payload?.error || 'Unable to load admin drivers.');
+
+      const existingDrivers = Array.isArray(payload?.drivers) ? payload.drivers : [];
+      const nowIso = new Date().toISOString();
+      const nextDriver = {
+        id: `drv-official-${Date.now()}`,
+        firstName,
+        middleInitial: '',
+        lastName,
+        displayName: [firstName, lastName].filter(Boolean).join(' ').trim(),
+        username: '',
+        email: '',
+        phone,
+        role: 'Driver(Driver)',
+        attendantId: '',
+        vehicleId: '',
+        groupingId: 'grp-3',
+        companyName: 'Florida Mobility Group',
+        taxId: '',
+        brokerId: '',
+        notes: 'Created from Dispatcher Messaging panel (Official Driver).',
+        profileStatus: 'Active',
+        portalUsername: '',
+        portalEmail: '',
+        mobilePin: phone.length >= 4 ? phone.slice(-4) : '',
+        mfaEnabled: false,
+        passwordResetRequired: false,
+        backgroundCheckStatus: 'Pending',
+        drugScreenStatus: 'Pending',
+        cprCertified: false,
+        defensiveDrivingCertified: false,
+        hipaaCertified: false,
+        nemtCertified: false,
+        licenseNumber: '',
+        licenseClass: '',
+        licenseState: 'FL',
+        licenseIssueDate: '',
+        licenseExpirationDate: '',
+        medCardExpirationDate: '',
+        chauffeurPermit: '',
+        dmvVerified: false,
+        insuranceAccredited: false,
+        insuranceCarrier: '',
+        insurancePolicyNumber: '',
+        insuranceExpirationDate: '',
+        workersCompPolicyNumber: '',
+        workersCompExpirationDate: '',
+        taxIdVerified: false,
+        w9OnFile: false,
+        checkpoint: 'Official onboarding',
+        live: 'Offline',
+        trackingSource: '',
+        trackingLastSeen: '',
+        position: [28.5383, -81.3792],
+        gpsSettings: { enabled: true, intervalSeconds: 120, geofenceRadiusMeters: 300, geofenceAlerts: true },
+        routeRoster: { mode: 'off', days: [] },
+        documents: {
+          profilePhoto: null,
+          licenseFront: null,
+          licenseBack: null,
+          insuranceCertificate: null,
+          w9Document: null,
+          trainingCertificate: null
+        },
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+
+      const saveResponse = await fetch('/api/nemt/admin', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          ...payload,
+          drivers: [...existingDrivers, nextDriver]
+        })
+      });
+      const savePayload = await readJsonResponse(saveResponse);
+      if (!saveResponse.ok) throw new Error(savePayload?.error || 'Unable to save official driver.');
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('nemt-admin-updated'));
+      }
+      await refreshDispatchState({ forceServer: true });
+      setOfficialDriverForm({ firstName: '', lastName: '', phone: '' });
+      setShowAddOfficialDriver(false);
+      setSmsStatus('Official driver saved in system.');
+    } catch (error) {
+      setSmsStatus(error?.message || 'Unable to save official driver.');
+    } finally {
+      setIsSavingOfficialDriver(false);
+    }
+  };
+
   const handleDeleteDailyDriver = driverId => {
     removeDailyDriver(driverId);
     if (driverId === activeDriverId) {
@@ -895,6 +1007,7 @@ const DispatcherMessagingPanel = ({
         </div>
         <div className="d-flex gap-2 flex-wrap justify-content-end">
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
+          <Button variant="dark" size="sm" onClick={() => setShowAddOfficialDriver(current => !current)}>{showAddOfficialDriver ? 'Cancelar oficial' : 'Official Driver'}</Button>
         </div>
       </div>
       <div className="d-flex flex-grow-1" style={{ minHeight: 0, overflow: 'hidden' }}>
@@ -923,6 +1036,41 @@ const DispatcherMessagingPanel = ({
                 />
                 <Button size="sm" variant="success" onClick={handleAddDailyDriver} disabled={!dailyForm.firstName.trim()}>
                   Agregar
+                </Button>
+              </div>
+            ) : null}
+            {showAddOfficialDriver ? (
+              <div className="mt-3 border rounded p-2" style={{ backgroundColor: messagingSurfaceStyles.input.backgroundColor, borderColor: messagingSurfaceStyles.sidebar.borderColor }}>
+                <div className="fw-semibold small mb-2">Official Driver (se guarda en sistema)</div>
+                <Form.Control
+                  size="sm"
+                  className="mb-2"
+                  style={messagingSurfaceStyles.input}
+                  placeholder="First name *"
+                  value={officialDriverForm.firstName}
+                  onChange={event => setOfficialDriverForm(current => ({ ...current, firstName: event.target.value }))}
+                  onKeyDown={event => { if (event.key === 'Enter') void handleAddOfficialDriver(); }}
+                />
+                <Form.Control
+                  size="sm"
+                  className="mb-2"
+                  style={messagingSurfaceStyles.input}
+                  placeholder="Last name"
+                  value={officialDriverForm.lastName}
+                  onChange={event => setOfficialDriverForm(current => ({ ...current, lastName: event.target.value }))}
+                  onKeyDown={event => { if (event.key === 'Enter') void handleAddOfficialDriver(); }}
+                />
+                <Form.Control
+                  size="sm"
+                  className="mb-2"
+                  style={messagingSurfaceStyles.input}
+                  placeholder="Phone"
+                  value={officialDriverForm.phone}
+                  onChange={event => setOfficialDriverForm(current => ({ ...current, phone: event.target.value }))}
+                  onKeyDown={event => { if (event.key === 'Enter') void handleAddOfficialDriver(); }}
+                />
+                <Button size="sm" variant="primary" onClick={() => void handleAddOfficialDriver()} disabled={!officialDriverForm.firstName.trim() || isSavingOfficialDriver}>
+                  {isSavingOfficialDriver ? 'Saving...' : 'Save Official Driver'}
                 </Button>
               </div>
             ) : null}
