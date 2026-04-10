@@ -946,17 +946,10 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     if (userPreferencesLoading) return;
-    const loadToolbarOrder = (storageKey, defaultOrder) => {
-      const storedValue = window.localStorage.getItem(storageKey);
-      if (!storedValue) return defaultOrder;
-      const parsed = JSON.parse(storedValue);
-      return Array.isArray(parsed) ? parsed : defaultOrder;
-    };
-
     try {
-      const loadedRow1 = userPreferences?.dispatcherToolbar?.row1?.length ? userPreferences.dispatcherToolbar.row1 : loadToolbarOrder(DISPATCHER_ROW1_BLOCKS_KEY, DISPATCHER_ROW1_DEFAULT_BLOCKS);
-      const loadedRow2 = userPreferences?.dispatcherToolbar?.row2?.length ? userPreferences.dispatcherToolbar.row2 : loadToolbarOrder(DISPATCHER_ROW2_BLOCKS_KEY, DISPATCHER_ROW2_DEFAULT_BLOCKS);
-      const loadedRow3 = userPreferences?.dispatcherToolbar?.row3?.length ? userPreferences.dispatcherToolbar.row3 : loadToolbarOrder(DISPATCHER_ROW3_BLOCKS_KEY, DISPATCHER_ROW3_DEFAULT_BLOCKS);
+      const loadedRow1 = userPreferences?.dispatcherToolbar?.row1?.length ? userPreferences.dispatcherToolbar.row1 : DISPATCHER_ROW1_DEFAULT_BLOCKS;
+      const loadedRow2 = userPreferences?.dispatcherToolbar?.row2?.length ? userPreferences.dispatcherToolbar.row2 : DISPATCHER_ROW2_DEFAULT_BLOCKS;
+      const loadedRow3 = userPreferences?.dispatcherToolbar?.row3?.length ? userPreferences.dispatcherToolbar.row3 : DISPATCHER_ROW3_DEFAULT_BLOCKS;
       const normalizedRows = normalizeDispatcherToolbarRows(loadedRow1, loadedRow2, loadedRow3);
       setToolbarRow1Order(normalizedRows.row1);
       setToolbarRow2Order(normalizedRows.row2);
@@ -1042,17 +1035,26 @@ const DispatcherWorkspace = () => {
     setStatusMessage(nextLayout.messagingVisible ? 'Paneles inferiores visibles (SMS + acciones).' : 'Paneles inferiores ocultos.');
   };
 
-  const handleHideAllPanels = () => {
-    // Keep one panel visible to avoid an unusable workspace.
-    const nextLayout = persistDispatcherLayout({
-      ...dispatcherLayout,
-      mapVisible: false,
-      messagingVisible: false,
-      actionsVisible: false,
-      tripsVisible: true,
-      preset: 'custom'
+  const handleRestoreLayout = () => {
+    const normalizedRows = normalizeDispatcherToolbarRows(DISPATCHER_ROW1_DEFAULT_BLOCKS, DISPATCHER_ROW2_DEFAULT_BLOCKS, DISPATCHER_ROW3_DEFAULT_BLOCKS);
+    setToolbarRow1Order(normalizedRows.row1);
+    setToolbarRow2Order(normalizedRows.row2);
+    setToolbarRow3Order(normalizedRows.row3);
+    const restoredLayout = persistDispatcherLayout(DEFAULT_DISPATCHER_LAYOUT);
+    setIsDispatchMapDetached(false);
+    setDetachedMapPosition({ x: 18, y: 96 });
+    void saveUserPreferences({
+      ...userPreferences,
+      dispatcherLayout: restoredLayout,
+      dispatcherVisibleTripColumns: DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS,
+      dispatcherToolbar: {
+        row1: normalizedRows.row1,
+        row2: normalizedRows.row2,
+        row3: normalizedRows.row3
+      }
     });
-    setStatusMessage(nextLayout.tripsVisible ? 'Layout compacto activado. Solo Trips visible.' : 'Layout actualizado.');
+    setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
+    setStatusMessage('Dispatcher restaurado a fábrica: 4 bloques + mapa, columnas originales, control de mapa reintegrado.');
   };
 
   const hiddenDispatcherPanels = [{
@@ -1069,7 +1071,7 @@ const DispatcherWorkspace = () => {
     label: 'Actions'
   }].filter(item => !dispatcherLayout[item.key]);
 
-  const hasHiddenDispatcherPanels = hiddenDispatcherPanels.length > 0;
+  const hasHiddenDispatcherPanels = hiddenDispatcherPanels.length > 0 && Object.values(dispatcherLayout).slice(1).some(Boolean);
 
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
     const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
@@ -1171,18 +1173,22 @@ const DispatcherWorkspace = () => {
           row1: normalizedRows.row1,
           row2: normalizedRows.row2,
           row3: normalizedRows.row3
-        }
+        },
+        dispatcherLayout: DEFAULT_DISPATCHER_LAYOUT,
+        dispatcherVisibleTripColumns: DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS
       });
-      setStatusMessage('Dispatcher toolbar layout guardado.');
+      setStatusMessage('Dispatcher layout restaurado a valores de fábrica.');
+      applyDispatcherLayoutPreset('full');
+      setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
     } catch {
-      setStatusMessage('No se pudo guardar el dispatcher toolbar layout.');
+      setStatusMessage('No se pudo restaurar el dispatcher layout.');
     } finally {
       setIsToolbarEditMode(false);
       clearDraggingToolbarBlockIds();
     }
   };
 
-  const handleResetToolbarLayout = () => {
+  const handleRestoreDispatcherLayout = () => {
     const defaultRow1Order = [...DISPATCHER_ROW1_DEFAULT_BLOCKS];
     const defaultRow2Order = [...DISPATCHER_ROW2_DEFAULT_BLOCKS];
     const defaultRow3Order = [...DISPATCHER_ROW3_DEFAULT_BLOCKS];
@@ -1191,10 +1197,9 @@ const DispatcherWorkspace = () => {
     setToolbarRow3Order(defaultRow3Order);
     setIsToolbarEditMode(false);
     clearDraggingToolbarBlockIds();
+    setIsDispatchMapDetached(false);
+    setDetachedMapPosition({ x: 18, y: 96 });
     try {
-      window.localStorage.setItem(DISPATCHER_ROW1_BLOCKS_KEY, JSON.stringify(defaultRow1Order));
-      window.localStorage.setItem(DISPATCHER_ROW2_BLOCKS_KEY, JSON.stringify(defaultRow2Order));
-      window.localStorage.setItem(DISPATCHER_ROW3_BLOCKS_KEY, JSON.stringify(defaultRow3Order));
       void saveUserPreferences({
         ...userPreferences,
         dispatcherToolbar: {
@@ -2863,8 +2868,7 @@ const DispatcherWorkspace = () => {
       borderRadius: 8,
       backdropFilter: 'blur(10px)'
     }}>
-        <Button variant="outline-warning" size="sm" onClick={handleHideAllPanels} style={compactControlButtonStyle}>Hide All</Button>
-        <Button variant="outline-secondary" size="sm" onClick={() => applyDispatcherLayoutPreset('full')} style={compactControlButtonStyle}>Restore</Button>
+        <Button variant="outline-info" size="sm" onClick={handleRestoreLayout} style={compactControlButtonStyle}>Restore Factory</Button>
         {hasHiddenDispatcherPanels ? <>
             <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>HIDDEN:</span>
             {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)} style={compactControlButtonStyle}>{panel.label}</Button>)}

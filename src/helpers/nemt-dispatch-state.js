@@ -307,7 +307,7 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   label: 'Late Min'
 }];
 
-export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['trip', 'status', 'driver', 'pickup', 'dropoff', 'punctuality', 'lateMinutes', 'rider', 'address', 'puZip', 'destination', 'doZip', 'miles'];
+export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['notes', 'miles', 'status', 'rider', 'address', 'destination'];
 
 export const normalizeMapProviderPreference = value => {
   const normalized = String(value ?? 'auto').trim().toLowerCase();
