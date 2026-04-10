@@ -728,6 +728,7 @@ const DispatcherWorkspace = () => {
     refreshDrivers,
     refreshDispatchState,
     getDriverName,
+    sendTripNotification,
     updateTripNotes,
     updateTripRecord,
     setDispatcherVisibleTripColumns,
@@ -3094,6 +3095,20 @@ const DispatcherWorkspace = () => {
                           {(getTripLegFilterKey(row.trip) !== 'AL' || getEffectiveTripStatus(row.trip) === 'WillCall') ? <Button variant={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(row.trip.id)} title={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
                               WC
                             </Button> : <span style={{ display: 'inline-block', minWidth: 40 }} />}
+                        </td>
+                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                          {row.trip.driverId ? <Button variant="outline-info" size="sm" disabled={mapLocked} onClick={() => {
+                            sendTripNotification({
+                              driverId: row.trip.driverId,
+                              driverName: row.trip.driverName,
+                              tripId: row.trip.id,
+                              tripRiderId: row.trip.riderId,
+                              tripRiderName: row.trip.riderName
+                            });
+                            setStatusMessage(`Notification sent to driver for ${row.trip.riderName || 'trip'}`);
+                          }} title="Send notification to driver about this trip" style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
+                            🔔
+                          </Button> : <span style={{ display: 'inline-block', minWidth: 40 }} />}
                         </td>
                         {orderedVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
                       </tr>) : <tr>

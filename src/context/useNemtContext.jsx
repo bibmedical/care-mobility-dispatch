@@ -269,6 +269,73 @@ export const NemtProvider = ({
     }
   };
 
+  const sendTripNotification = async ({
+    driverId,
+    driverName,
+    tripId,
+    tripRiderId,
+    tripRiderName
+  }) => {
+    const normalizedDriverId = String(driverId || '').trim();
+    if (!normalizedDriverId) {
+      console.log('[TRIP PUSH] No driverId, skipping');
+      return;
+    }
+
+    const normalizedTripId = String(tripId || '').trim();
+    const normalizedRiderName = String(tripRiderName || tripRiderId || 'Patient').trim();
+
+    const subject = 'New Trip Assignment';
+    const body = `You have a new trip assigned for ${normalizedRiderName}. Please check your app.`;
+
+    console.log('[TRIP PUSH] Sending trip notification', {
+      driverId: normalizedDriverId,
+      driverName: String(driverName || '').trim(),
+      tripId: normalizedTripId,
+      riderName: normalizedRiderName
+    });
+
+    try {
+      const response = await fetch('/api/system-messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type: 'dispatch-message',
+          priority: 'high',
+          audience: 'Driver',
+          subject,
+          body,
+          driverId: normalizedDriverId,
+          driverName: String(driverName || '').trim(),
+          source: 'trip-assignment',
+          deliveryMethod: 'push'
+        })
+      });
+
+      const data = await response.json();
+      console.log('[TRIP PUSH] Response', {
+        status: response.status,
+        messageId: data?.message?.id,
+        driverId: normalizedDriverId
+      });
+
+      if (!response.ok) {
+        console.error('[TRIP PUSH] Error response', {
+          status: response.status,
+          error: data?.error,
+          driverId: normalizedDriverId
+        });
+      }
+    } catch (error) {
+      console.error('[TRIP PUSH] Fetch error', {
+        message: error?.message,
+        driverId: normalizedDriverId
+      });
+    }
+  };
+
   const flushPersistQueue = async () => {
     if (persistInFlightRef.current) return;
     const nextSnapshot = pendingPersistSnapshotRef.current;
@@ -1555,6 +1622,7 @@ export const NemtProvider = ({
     setPrintSetup,
     resetNemtState,
     getDriverName,
+    sendTripNotification,
     refreshDrivers: syncDriversFromServer,
     refreshDispatchState: syncDispatchFromServer,
     refreshDispatchMessages: syncDispatchThreadsFromServer
