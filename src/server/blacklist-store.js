@@ -36,6 +36,22 @@ const ensureTable = async () => {
       updated_at TEXT NOT NULL DEFAULT ''
     )
   `);
+  // Migration: if columns were created as TIMESTAMPTZ in a previous schema, convert to TEXT
+  await query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'blacklist_entries'
+          AND column_name = 'created_at'
+          AND data_type = 'timestamp with time zone'
+      ) THEN
+        ALTER TABLE blacklist_entries
+          ALTER COLUMN created_at TYPE TEXT USING COALESCE(created_at::text, ''),
+          ALTER COLUMN updated_at TYPE TEXT USING COALESCE(updated_at::text, '');
+      END IF;
+    END $$;
+  `);
   tableReady = true;
 };
 
