@@ -1,18 +1,46 @@
 import { NextResponse } from 'next/server';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
+import { readNemtAdminState } from '@/server/nemt-admin-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readSystemMessages, upsertSystemMessage } from '@/server/system-messages-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
+import { getFullName } from '@/helpers/nemt-admin-model';
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
 const resolveDriverByLookup = async lookup => {
   const adminPayload = await readNemtAdminPayload();
   const lookupValue = normalizeLookupValue(lookup);
-  return (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(driver => {
+  const dispatchDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(driver => {
     return [driver?.id, driver?.code, driver?.name, driver?.nickname].map(normalizeLookupValue).filter(Boolean).includes(lookupValue);
   }) || null;
+
+  if (dispatchDriver) return dispatchDriver;
+
+  // Fallback: mobile review must work even when the driver is not in active dispatch roster.
+  const adminState = await readNemtAdminState();
+  const matchedAdminDriver = (Array.isArray(adminState?.drivers) ? adminState.drivers : []).find(driver => {
+    return [
+      driver?.id,
+      driver?.username,
+      driver?.portalUsername,
+      driver?.email,
+      driver?.portalEmail,
+      getFullName(driver)
+    ].map(normalizeLookupValue).filter(Boolean).includes(lookupValue);
+  }) || null;
+
+  if (!matchedAdminDriver) return null;
+
+  return {
+    id: String(matchedAdminDriver?.id || '').trim(),
+    name: getFullName(matchedAdminDriver),
+    vehicle: String(matchedAdminDriver?.vehicleId || '').trim(),
+    hireDate: matchedAdminDriver?.hireDate,
+    startDate: matchedAdminDriver?.startDate,
+    createdAt: matchedAdminDriver?.createdAt
+  };
 };
 
 const buildRatingBreakdown = reviews => {
