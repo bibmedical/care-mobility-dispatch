@@ -879,8 +879,29 @@ const DispatcherWorkspace = () => {
 
     const sourceStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'));
     sourceStyles.forEach(styleNode => {
-      popupWindow.document.head.appendChild(styleNode.cloneNode(true));
+      if (styleNode.tagName === 'LINK') {
+        const href = styleNode.getAttribute('href');
+        if (!href) return;
+        const nextLink = popupWindow.document.createElement('link');
+        nextLink.setAttribute('rel', 'stylesheet');
+        nextLink.setAttribute('href', new URL(href, window.location.href).href);
+        const media = styleNode.getAttribute('media');
+        if (media) nextLink.setAttribute('media', media);
+        popupWindow.document.head.appendChild(nextLink);
+        return;
+      }
+
+      if (styleNode.tagName === 'STYLE') {
+        const nextStyle = popupWindow.document.createElement('style');
+        nextStyle.textContent = styleNode.textContent || '';
+        popupWindow.document.head.appendChild(nextStyle);
+      }
     });
+
+    const leafletCssLink = popupWindow.document.createElement('link');
+    leafletCssLink.setAttribute('rel', 'stylesheet');
+    leafletCssLink.setAttribute('href', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+    popupWindow.document.head.appendChild(leafletCssLink);
 
     popupWindow.document.title = 'Dispatch Map';
     popupWindow.document.documentElement.style.height = '100%';
@@ -914,7 +935,10 @@ const DispatcherWorkspace = () => {
     detachedMapPortalContainerRef.current = mountNode;
     window.setTimeout(() => {
       setDetachedMapResizeTick(current => current + 1);
-    }, 30);
+    }, 60);
+    window.setTimeout(() => {
+      setDetachedMapResizeTick(current => current + 1);
+    }, 260);
     setStatusMessage('Dispatch map moved to external window.');
 
     return () => {
