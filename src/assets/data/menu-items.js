@@ -105,10 +105,6 @@ export const MENU_ITEMS = [{
   label: 'Integrations',
   icon: 'iconoir:plug-type-a',
   children: [{
-    key: 'integrations-uber',
-    label: 'Uber',
-    url: '/integrations/uber'
-  }, {
     key: 'integrations-ai',
     label: 'AI',
     url: '/integrations/ai'

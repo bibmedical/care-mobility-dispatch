@@ -83,10 +83,6 @@ const HELP_ENTRIES = [{
   route: '/trip-dashboard',
   instruction: 'Build visual routes, select trips and control the map panel.'
 }, {
-  module: 'Uber Integrations',
-  route: '/integrations/uber',
-  instruction: 'Sync requests with Uber and validate provider response.'
-}, {
   module: 'User Management',
   route: '/user-management',
   instruction: 'Create users, define roles, access levels and inactivity timeouts.'
