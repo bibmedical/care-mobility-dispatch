@@ -13,7 +13,7 @@ import { useNotificationContext } from '@/context/useNotificationContext';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
@@ -614,6 +614,8 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const TripDashboardWorkspace = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDetachedMapMode = searchParams?.get('detachedMap') === '1';
   const { data: session } = useSession();
   const { changeTheme, themeMode } = useLayoutContext();
   const { data: smsData } = useSmsIntegrationApi();
@@ -1623,6 +1625,7 @@ const TripDashboardWorkspace = () => {
   };
 
   useEffect(() => {
+    if (isDetachedMapMode) return;
     const payload = {
       tripDateFilter,
       selectedTripIds,
@@ -1635,7 +1638,48 @@ const TripDashboardWorkspace = () => {
     if (lastMapScreenStatePayloadRef.current === payloadText) return;
     lastMapScreenStatePayloadRef.current = payloadText;
     window.localStorage.setItem(MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY, payloadText);
-  }, [activeDateTripIdSet, routeTrips, selectedDriverId, selectedRouteId, selectedTripIds, tripDateFilter]);
+  }, [activeDateTripIdSet, isDetachedMapMode, routeTrips, selectedDriverId, selectedRouteId, selectedTripIds, tripDateFilter]);
+
+  useEffect(() => {
+    if (!isDetachedMapMode || typeof window === 'undefined') return;
+
+    const applySnapshot = () => {
+      try {
+        const raw = window.localStorage.getItem(MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return;
+
+        const nextTripDateFilter = String(parsed.tripDateFilter || 'all');
+        const nextSelectedTripIds = Array.isArray(parsed.selectedTripIds)
+          ? parsed.selectedTripIds.map(value => String(value || '').trim()).filter(Boolean)
+          : [];
+        const nextSelectedDriverId = String(parsed.selectedDriverId || '').trim() || null;
+        const nextSelectedRouteId = String(parsed.selectedRouteId || '').trim() || null;
+
+        setTripDateFilter(nextTripDateFilter);
+        setSelectedTripIds(nextSelectedTripIds);
+        setSelectedDriverId(nextSelectedDriverId);
+        setSelectedRouteId(nextSelectedRouteId);
+        setShowInlineMap(true);
+      } catch {}
+    };
+
+    applySnapshot();
+
+    const handleStorage = event => {
+      if (event?.key && event.key !== MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY) return;
+      applySnapshot();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    const pollId = window.setInterval(applySnapshot, 500);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.clearInterval(pollId);
+    };
+  }, [isDetachedMapMode]);
 
   const routeStops = useMemo(() => {
     if (!showRoute) return [];
@@ -2899,7 +2943,7 @@ const TripDashboardWorkspace = () => {
   };
 
   const handleOpenMapWindow = () => {
-    const mapUrl = `/map-screen?source=dashboard`;
+    const mapUrl = `/trip-dashboard?detachedMap=1`;
     const payload = {
       tripDateFilter,
       selectedTripIds,
@@ -3334,6 +3378,49 @@ const TripDashboardWorkspace = () => {
   }];
 
   const dockPanelsVisible = dockPanelsOrdered.filter(panel => panel.visible);
+
+  if (isDetachedMapMode) {
+    return <div style={{ width: '100vw', height: '100vh', padding: 6, backgroundColor: '#0f172a' }}>
+      <Card className="h-100">
+        <CardBody className="p-0 d-flex flex-column h-100 position-relative">
+          <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+            <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
+            <ZoomControl position="bottomleft" />
+            {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
+            {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+            {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
+              const points = [{
+                key: `${trip.id}-pickup-mapquick`,
+                tripId: trip.id,
+                position: trip.position,
+                color: '#0ea5e9',
+                label: `PU ${trip.pickup}`
+              }, {
+                key: `${trip.id}-dropoff-mapquick`,
+                tripId: trip.id,
+                position: trip.destinationPosition ?? trip.position,
+                color: '#22c55e',
+                label: `DO ${trip.dropoff}`
+              }];
+              return points;
+            }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
+              click: () => {
+                toggleTripSelection(point.tripId);
+              }
+            }}>
+              <Popup>{point.label}</Popup>
+            </CircleMarker>) : null}
+            {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
+              <Popup>
+                <div className="fw-semibold">{stop.title}</div>
+                <div>{stop.detail}</div>
+              </Popup>
+            </Marker>)}
+          </MapContainer>
+        </CardBody>
+      </Card>
+    </div>;
+  }
 
   return <>
       {(!showDriversPanel || !showRoutesPanel || !showTripsPanel) && <div style={{
