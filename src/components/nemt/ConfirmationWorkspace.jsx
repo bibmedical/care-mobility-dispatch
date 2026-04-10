@@ -493,6 +493,7 @@ const ConfirmationWorkspace = () => {
   const [blockReasonModalTrip, setBlockReasonModalTrip] = useState(null);
   const [blockReasonType, setBlockReasonType] = useState('other');
   const [blockReasonNote, setBlockReasonNote] = useState('');
+  const [pendingHospitalRehabTrip, setPendingHospitalRehabTrip] = useState(null);
   
   // Hospital/Rehab states
   const [hospitalRehabModal, setHospitalRehabModal] = useState(null);
@@ -1161,11 +1162,8 @@ const ConfirmationWorkspace = () => {
     const reasonText = details ? `${reasonLabel}: ${details}` : reasonLabel;
 
     if (blockReasonType === 'hospital-rehab') {
+      setPendingHospitalRehabTrip(trip);
       setBlockReasonModalTrip(null);
-      // Avoid modal-manager race: open the next modal after the block modal starts closing.
-      window.setTimeout(() => {
-        handleOpenHospitalRehabModal(trip);
-      }, 0);
       if (details) setHospitalRehabNotes(details);
       setCustomStatus('Complete the Hospital/Rehab modal to finish blocking this patient.');
       return;
@@ -2887,7 +2885,20 @@ const ConfirmationWorkspace = () => {
         </Modal.Footer>
       </Modal>
 
-      <Modal show={Boolean(blockReasonModalTrip)} onHide={() => setBlockReasonModalTrip(null)} centered>
+      <Modal
+        show={Boolean(blockReasonModalTrip)}
+        onHide={() => {
+          setBlockReasonModalTrip(null);
+          setPendingHospitalRehabTrip(null);
+        }}
+        onExited={() => {
+          if (!pendingHospitalRehabTrip) return;
+          const trip = pendingHospitalRehabTrip;
+          setPendingHospitalRehabTrip(null);
+          handleOpenHospitalRehabModal(trip);
+        }}
+        centered
+      >
         <Modal.Header closeButton>
           <Modal.Title>Block Patient - Reason Required</Modal.Title>
         </Modal.Header>
