@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { authorizePersistedSystemUser } from '@/server/system-users-store';
 import { buildDriverSessionError, claimDriverMobileSession } from '@/server/driver-mobile-session-store';
 import { normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
-import { getFullName, mapAdminDataToDispatchDrivers, normalizeDriverGpsSettings, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
-import { readNemtAdminState } from '@/server/nemt-admin-store';
+import { buildStableDriverId, createBlankDriver, getFullName, mapAdminDataToDispatchDrivers, normalizeDriverGpsSettings, normalizeDriverTracking, normalizeRouteRoster } from '@/helpers/nemt-admin-model';
+import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors } from '@/server/mobile-api-cors';
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
@@ -78,6 +78,58 @@ const buildDriverSessionPayload = async (driver, baseSession, deviceId) => {
     ...baseSession,
     deviceId: claimedSession.deviceId,
     sessionToken: claimedSession.sessionToken
+  };
+};
+
+const ensureDriverMirrorForAuthUser = async (state, authUser) => {
+  if (!authUser || !authUser.androidAccess) {
+    return {
+      state,
+      driver: null
+    };
+  }
+
+  const existingDrivers = Array.isArray(state?.drivers) ? state.drivers : [];
+  const existingDriver = findDriverFromAuthUser(existingDrivers.map(normalizeDriverTracking), authUser);
+  if (existingDriver) {
+    return {
+      state,
+      driver: existingDriver
+    };
+  }
+
+  const seededDriver = normalizeDriverTracking({
+    ...createBlankDriver(),
+    id: buildStableDriverId(authUser),
+    authUserId: authUser.id,
+    firstName: authUser.firstName || '',
+    middleInitial: authUser.middleInitial || '',
+    lastName: authUser.lastName || '',
+    displayName: getFullName(authUser),
+    username: authUser.username || '',
+    email: authUser.email || '',
+    phone: authUser.phone || '',
+    password: authUser.password || '',
+    role: 'Driver(Driver)',
+    portalUsername: authUser.username || '',
+    portalEmail: authUser.email || '',
+    webAccess: Boolean(authUser.webAccess),
+    androidAccess: Boolean(authUser.androidAccess),
+    routeRoster: normalizeRouteRoster({ mode: 'permanent' }, null),
+    profileStatus: 'Active',
+    checkpoint: 'Android GPS active',
+    live: 'Offline'
+  });
+
+  const nextState = {
+    ...state,
+    drivers: [seededDriver, ...existingDrivers]
+  };
+  await writeNemtAdminState(nextState);
+
+  return {
+    state: nextState,
+    driver: seededDriver
   };
 };
 
@@ -165,6 +217,13 @@ export async function POST(request) {
         driver = refreshedAuthDriver || refreshedDirectDriver || refreshedIdentifierDriver || null;
         state = refreshedState;
         normalizedDrivers = refreshedDrivers;
+      }
+
+      if (!driver) {
+        const mirrored = await ensureDriverMirrorForAuthUser(state, authUser);
+        state = mirrored.state;
+        normalizedDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(normalizeDriverTracking);
+        driver = mirrored.driver || findDriverFromAuthUser(normalizedDrivers, authUser) || null;
       }
 
       if (!driver) {

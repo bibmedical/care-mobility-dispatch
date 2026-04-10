@@ -110,7 +110,22 @@ const writeLocalUsersState = async state => {
   return normalized;
 };
 
-const findLinkedDriverIndex = (drivers, user) => drivers.findIndex(driver => driver.authUserId === user.id || normalizeAuthValue(driver.username) === normalizeAuthValue(user.username) || normalizeAuthValue(driver.email) === normalizeAuthValue(user.email));
+const findLinkedDriverIndex = (drivers, user) => {
+  const targetUserId = String(user?.id || '').trim();
+  const targetUsername = normalizeAuthValue(user?.username);
+  const targetEmail = normalizeAuthValue(user?.email);
+
+  return drivers.findIndex(driver => {
+    const linkedAuthUserId = String(driver?.authUserId || '').trim();
+    if (linkedAuthUserId) {
+      return Boolean(targetUserId) && linkedAuthUserId === targetUserId;
+    }
+
+    const sameUsername = targetUsername && normalizeAuthValue(driver?.username) === targetUsername;
+    const sameEmail = targetEmail && normalizeAuthValue(driver?.email) === targetEmail;
+    return Boolean(sameUsername || sameEmail);
+  });
+};
 
 const buildUsersPayload = async state => {
   const adminState = await readNemtAdminState();
@@ -140,13 +155,15 @@ const ensureAtLeastOneAdminRemains = (nextUsers) => {
 
 const syncUserIntoDriverState = (drivers, user) => {
   const driverIndex = findLinkedDriverIndex(drivers, user);
+  const hasLinkedDriver = driverIndex >= 0;
+  const userIsDriverRole = isDriverRole(user.role);
 
-  if (!isDriverRole(user.role)) {
-    if (driverIndex === -1) return drivers;
-    return drivers.filter((_, index) => index !== driverIndex);
+  if (!userIsDriverRole && !hasLinkedDriver) {
+    return drivers;
   }
 
   const baseDriver = driverIndex >= 0 ? drivers[driverIndex] : createBlankDriver();
+  const resolvedDriverRole = userIsDriverRole ? user.role : (baseDriver.role || 'Driver(Driver)');
   const nextDriver = {
     ...baseDriver,
     id: driverIndex >= 0 ? baseDriver.id : buildStableDriverId(user),
@@ -164,7 +181,7 @@ const syncUserIntoDriverState = (drivers, user) => {
     isCompany: user.isCompany,
     companyName: user.companyName,
     taxId: user.taxId,
-    role: user.role,
+    role: resolvedDriverRole,
     portalUsername: user.username,
     portalEmail: user.email,
     live: 'Offline',
