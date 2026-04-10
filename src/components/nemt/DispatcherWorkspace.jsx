@@ -838,6 +838,7 @@ const DispatcherWorkspace = () => {
   const detachedMapDragOffsetRef = useRef({ x: 0, y: 0 });
   const detachedMapWindowRef = useRef(null);
   const detachedMapPortalContainerRef = useRef(null);
+  const detachedMapClosingRef = useRef(false);
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -907,14 +908,20 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     if (!isDispatchMapDetached) {
+      detachedMapClosingRef.current = true;
       if (detachedMapWindowRef.current && !detachedMapWindowRef.current.closed) {
         detachedMapWindowRef.current.close();
       }
       detachedMapWindowRef.current = null;
       detachedMapPortalContainerRef.current = null;
       setDetachedMapResizeTick(0);
+      window.setTimeout(() => {
+        detachedMapClosingRef.current = false;
+      }, 0);
       return;
     }
+
+    detachedMapClosingRef.current = false;
 
     const popupWindow = window.open('', 'care-mobility-dispatch-map', 'popup=yes,width=1500,height=900,left=80,top=60,resizable=yes,scrollbars=no');
     if (!popupWindow) {
@@ -964,6 +971,8 @@ const DispatcherWorkspace = () => {
     popupWindow.document.body.appendChild(mountNode);
 
     const handlePopupClose = () => {
+      if (detachedMapClosingRef.current) return;
+      detachedMapClosingRef.current = true;
       setIsDispatchMapDetached(false);
       detachedMapPortalContainerRef.current = null;
       detachedMapWindowRef.current = null;
@@ -1031,12 +1040,16 @@ const DispatcherWorkspace = () => {
     setStatusMessage('Dispatch map moved to external window.');
 
     return () => {
-      popupWindow.removeEventListener('beforeunload', handlePopupClose);
-      popupWindow.removeEventListener('resize', handlePopupResize);
-      popupWindow.document.removeEventListener('mousemove', relayMouseMove, true);
-      popupWindow.document.removeEventListener('mouseup', relayMouseUp, true);
-      popupWindow.document.removeEventListener('pointerup', relayPointerUp, true);
-      popupWindow.removeEventListener('blur', relayMouseReleaseOnBlur, true);
+      try {
+        popupWindow.removeEventListener('beforeunload', handlePopupClose);
+        popupWindow.removeEventListener('resize', handlePopupResize);
+        popupWindow.removeEventListener('blur', relayMouseReleaseOnBlur, true);
+        if (!popupWindow.closed && popupWindow.document) {
+          popupWindow.document.removeEventListener('mousemove', relayMouseMove, true);
+          popupWindow.document.removeEventListener('mouseup', relayMouseUp, true);
+          popupWindow.document.removeEventListener('pointerup', relayPointerUp, true);
+        }
+      } catch {}
       if (relayFrameId) window.cancelAnimationFrame(relayFrameId);
     };
   }, [isDispatchMapDetached]);
