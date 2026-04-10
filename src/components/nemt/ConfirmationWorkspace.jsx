@@ -505,6 +505,8 @@ const ConfirmationWorkspace = () => {
     return date.toISOString().slice(0, 10);
   });
   const [hospitalRehabNotes, setHospitalRehabNotes] = useState('');
+  const [hospitalRehabSaving, setHospitalRehabSaving] = useState(false);
+  const [hospitalRehabError, setHospitalRehabError] = useState('');
   
   // Confirmation method modal
   const [confirmationMethodModal, setConfirmationMethodModal] = useState(null);
@@ -1553,6 +1555,7 @@ const ConfirmationWorkspace = () => {
 
   const handleOpenHospitalRehabModal = trip => {
     setHospitalRehabModal(trip);
+    setHospitalRehabError('');
     if (trip.hospitalStatus) {
       setHospitalRehabType(trip.hospitalStatus.type || 'Hospital');
       setHospitalRehabStartDate(trip.hospitalStatus.startDate);
@@ -1578,121 +1581,132 @@ const ConfirmationWorkspace = () => {
 
   const handleSaveHospitalRehab = async () => {
     if (!hospitalRehabModal) return;
+    setHospitalRehabError('');
     if (!hospitalRehabStartDate || !hospitalRehabEndDate) {
       setCustomStatus('Selecciona fecha de inicio y fin para Hospital/Rehab.');
+      setHospitalRehabError('Selecciona fecha de inicio y fin para Hospital/Rehab.');
       return;
     }
     if (hospitalRehabEndDate < hospitalRehabStartDate) {
       setCustomStatus('La fecha final no puede ser menor que la fecha inicial.');
+      setHospitalRehabError('La fecha final no puede ser menor que la fecha inicial.');
       return;
     }
+    setHospitalRehabSaving(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const patientKey = buildPatientProfileKey(hospitalRehabModal);
+      const normalizedTripPhone = String(hospitalRehabModal.patientPhoneNumber || '').replace(/\D/g, '');
+      const normalizedRider = String(hospitalRehabModal.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const isSamePatient = entry => {
+        const entryPhone = String(entry?.phone || '').replace(/\D/g, '');
+        const entryName = String(entry?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (entryPhone && normalizedTripPhone && entryPhone === normalizedTripPhone) return true;
+        if (entryName && normalizedRider && entryName === normalizedRider) return true;
+        return false;
+      };
 
-    const nowIso = new Date().toISOString();
-    const patientKey = buildPatientProfileKey(hospitalRehabModal);
-    const normalizedTripPhone = String(hospitalRehabModal.patientPhoneNumber || '').replace(/\D/g, '');
-    const normalizedRider = String(hospitalRehabModal.rider || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    const isSamePatient = entry => {
-      const entryPhone = String(entry?.phone || '').replace(/\D/g, '');
-      const entryName = String(entry?.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      if (entryPhone && normalizedTripPhone && entryPhone === normalizedTripPhone) return true;
-      if (entryName && normalizedRider && entryName === normalizedRider) return true;
-      return false;
-    };
-
-    if (patientKey) {
-      const existingProfile = riderProfiles[patientKey] || {};
-      await saveSmsData({
-        sms: {
-          ...(smsData?.sms || {}),
-          riderProfiles: {
-            ...riderProfiles,
-            [patientKey]: {
-              ...existingProfile,
-              exclusion: {
-                mode: 'range',
-                startDate: hospitalRehabStartDate,
-                endDate: hospitalRehabEndDate,
-                reason: `${hospitalRehabType} stay`,
-                sourceNote: hospitalRehabNotes,
+      if (patientKey) {
+        const existingProfile = riderProfiles[patientKey] || {};
+        await saveSmsData({
+          sms: {
+            ...(smsData?.sms || {}),
+            riderProfiles: {
+              ...riderProfiles,
+              [patientKey]: {
+                ...existingProfile,
+                exclusion: {
+                  mode: 'range',
+                  startDate: hospitalRehabStartDate,
+                  endDate: hospitalRehabEndDate,
+                  reason: `${hospitalRehabType} stay`,
+                  sourceNote: hospitalRehabNotes,
+                  updatedAt: nowIso
+                },
                 updatedAt: nowIso
-              },
-              updatedAt: nowIso
+              }
             }
           }
-        }
-      });
-    }
+        });
+      }
 
-    const matchingBlacklistIndex = blacklistEntries.findIndex(entry => isSamePatient(entry));
-    const nextBlacklistEntries = matchingBlacklistIndex >= 0 ? blacklistEntries.map((entry, index) => {
-      if (index !== matchingBlacklistIndex) return entry;
-      const mergedNote = [String(entry.notes || '').trim(), `[${hospitalRehabType.toUpperCase()}] ${hospitalRehabNotes}`].filter(Boolean).join(' | ');
-      return {
-        ...entry,
+      const matchingBlacklistIndex = blacklistEntries.findIndex(entry => isSamePatient(entry));
+      const nextBlacklistEntries = matchingBlacklistIndex >= 0 ? blacklistEntries.map((entry, index) => {
+        if (index !== matchingBlacklistIndex) return entry;
+        const mergedNote = [String(entry.notes || '').trim(), `[${hospitalRehabType.toUpperCase()}] ${hospitalRehabNotes}`].filter(Boolean).join(' | ');
+        return {
+          ...entry,
+          category: 'Medical Hold',
+          status: 'Active',
+          holdUntil: hospitalRehabEndDate,
+          notes: mergedNote,
+          source: 'Confirmation Hospital/Rehab',
+          updatedAt: nowIso
+        };
+      }) : [{
+        id: `bl-${Date.now()}`,
+        name: hospitalRehabModal.rider || '',
+        phone: hospitalRehabModal.patientPhoneNumber || '',
         category: 'Medical Hold',
         status: 'Active',
         holdUntil: hospitalRehabEndDate,
-        notes: mergedNote,
+        notes: `[${hospitalRehabType.toUpperCase()}] ${hospitalRehabNotes}`.trim(),
         source: 'Confirmation Hospital/Rehab',
+        createdAt: nowIso,
         updatedAt: nowIso
-      };
-    }) : [{
-      id: `bl-${Date.now()}`,
-      name: hospitalRehabModal.rider || '',
-      phone: hospitalRehabModal.patientPhoneNumber || '',
-      category: 'Medical Hold',
-      status: 'Active',
-      holdUntil: hospitalRehabEndDate,
-      notes: `[${hospitalRehabType.toUpperCase()}] ${hospitalRehabNotes}`.trim(),
-      source: 'Confirmation Hospital/Rehab',
-      createdAt: nowIso,
-      updatedAt: nowIso
-    }, ...blacklistEntries];
+      }, ...blacklistEntries];
 
-    await saveBlacklistData({
-      version: blacklistData?.version ?? 1,
-      entries: nextBlacklistEntries
-    });
-
-    const siblingTrips = getSiblingLegTrips(hospitalRehabModal, trips);
-    const matchingTrips = trips.filter(trip => {
-      if (patientKey && buildPatientProfileKey(trip) === patientKey) {
-        const serviceDate = getTripServiceDateKey(trip);
-        return Boolean(serviceDate) && serviceDate >= hospitalRehabStartDate && serviceDate <= hospitalRehabEndDate;
-      }
-      return isSamePatient({
-        name: trip.rider,
-        phone: trip.patientPhoneNumber
+      await saveBlacklistData({
+        version: blacklistData?.version ?? 1,
+        entries: nextBlacklistEntries
       });
-    });
 
-    const targetTrips = Array.from(new Map([hospitalRehabModal, ...siblingTrips, ...matchingTrips].map(trip => [String(trip.id || ''), trip])).values()).filter(Boolean);
-    targetTrips.forEach(trip => {
-      updateTripRecord(trip.id, {
-        status: 'Cancelled',
-        hospitalStatus: {
-          type: hospitalRehabType,
-          startDate: hospitalRehabStartDate,
-          endDate: hospitalRehabEndDate,
-          notes: hospitalRehabNotes,
-          createdAt: nowIso
-        },
-        confirmation: {
-          ...(trip.confirmation || {}),
+      const siblingTrips = getSiblingLegTrips(hospitalRehabModal, trips);
+      const matchingTrips = trips.filter(trip => {
+        if (patientKey && buildPatientProfileKey(trip) === patientKey) {
+          const serviceDate = getTripServiceDateKey(trip);
+          return Boolean(serviceDate) && serviceDate >= hospitalRehabStartDate && serviceDate <= hospitalRehabEndDate;
+        }
+        return isSamePatient({
+          name: trip.rider,
+          phone: trip.patientPhoneNumber
+        });
+      });
+
+      const targetTrips = Array.from(new Map([hospitalRehabModal, ...siblingTrips, ...matchingTrips].map(trip => [String(trip.id || ''), trip])).values()).filter(Boolean);
+      targetTrips.forEach(trip => {
+        if (!trip?.id) return;
+        updateTripRecord(trip.id, {
           status: 'Cancelled',
-          provider: 'hospital-rehab',
-          respondedAt: nowIso,
-          lastResponseText: `${hospitalRehabType} until ${hospitalRehabEndDate}`,
-          lastResponseCode: 'HR'
-        },
-        notes: [String(trip.notes || '').trim(), `[AUTO-CANCEL ${hospitalRehabType.toUpperCase()}] ${new Date().toLocaleString()}: until ${hospitalRehabEndDate}. ${hospitalRehabNotes}`.trim()].filter(Boolean).join('\n')
+          hospitalStatus: {
+            type: hospitalRehabType,
+            startDate: hospitalRehabStartDate,
+            endDate: hospitalRehabEndDate,
+            notes: hospitalRehabNotes,
+            createdAt: nowIso
+          },
+          confirmation: {
+            ...(trip.confirmation || {}),
+            status: 'Cancelled',
+            provider: 'hospital-rehab',
+            respondedAt: nowIso,
+            lastResponseText: `${hospitalRehabType} until ${hospitalRehabEndDate}`,
+            lastResponseCode: 'HR'
+          },
+          notes: [String(trip.notes || '').trim(), `[AUTO-CANCEL ${hospitalRehabType.toUpperCase()}] ${new Date().toLocaleString()}: until ${hospitalRehabEndDate}. ${hospitalRehabNotes}`.trim()].filter(Boolean).join('\n')
+        });
       });
-    });
 
-
-    await refreshDispatchState({ forceServer: true });
-    setCustomStatus(`${targetTrips.length} trip(s) marked ${hospitalRehabType} for ${hospitalRehabModal.rider || 'patient'} through ${hospitalRehabEndDate}, including both legs when they exist. New trips in that range will be auto-hidden unless you filter Cancelled.`);
-    setHospitalRehabModal(null);
+      await refreshDispatchState({ forceServer: true });
+      setCustomStatus(`${targetTrips.length} trip(s) marked ${hospitalRehabType} for ${hospitalRehabModal.rider || 'patient'} through ${hospitalRehabEndDate}, including both legs when they exist. New trips in that range will be auto-hidden unless you filter Cancelled.`);
+      setHospitalRehabModal(null);
+    } catch (error) {
+      const message = error?.message || 'Could not save Hospital/Rehab status.';
+      setHospitalRehabError(message);
+      setCustomStatus(`Could not save Hospital/Rehab status: ${message}`);
+    } finally {
+      setHospitalRehabSaving(false);
+    }
   };
 
   const handleRemoveHospitalRehab = async trip => {
@@ -3128,10 +3142,11 @@ const ConfirmationWorkspace = () => {
 
           <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Notes</Form.Label>
           <Form.Control as="textarea" rows={3} value={hospitalRehabNotes} onChange={event => setHospitalRehabNotes(event.target.value)} placeholder="Recovery notes, facility name, contact info, etc..." />
+          {hospitalRehabError ? <div className="small text-danger mt-2">{hospitalRehabError}</div> : null}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setHospitalRehabModal(null)}>Close</Button>
-          <Button variant="primary" onClick={handleSaveHospitalRehab}>Save Hospital/Rehab Status</Button>
+          <Button variant="secondary" onClick={() => setHospitalRehabModal(null)} disabled={hospitalRehabSaving}>Close</Button>
+          <Button variant="primary" onClick={handleSaveHospitalRehab} disabled={hospitalRehabSaving}>{hospitalRehabSaving ? 'Saving...' : 'Save Hospital/Rehab Status'}</Button>
         </Modal.Footer>
       </Modal>
     </>;
