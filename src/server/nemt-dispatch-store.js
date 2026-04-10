@@ -116,7 +116,8 @@ export const readNemtDispatchThreads = async () => {
 
 export const writeNemtDispatchState = async (nextState, options = {}) => {
   const normalized = normalizePersistentDispatchState(nextState);
-  const allowPrune = options?.allowPrune === true;
+  const allowPrune = options?.allowPrune !== false;
+  const allowDestructiveEmptyPrune = options?.allowDestructiveEmptyPrune === true;
 
   try {
     await ensureDispatchSchema();
@@ -130,6 +131,18 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
 
   const archiveResult = await withTransaction(async client => {
     const { nextState: activeState } = await archiveDispatchState(normalized, { queryExecutor: client });
+    const [tripCountRow, routeCountRow, threadCountRow, dailyDriverCountRow, auditCountRow] = await Promise.all([
+      client.query(`SELECT COUNT(*)::int AS count FROM dispatch_trips`),
+      client.query(`SELECT COUNT(*)::int AS count FROM dispatch_route_plans`),
+      client.query(`SELECT COUNT(*)::int AS count FROM dispatch_threads`),
+      client.query(`SELECT COUNT(*)::int AS count FROM dispatch_daily_drivers`),
+      client.query(`SELECT COUNT(*)::int AS count FROM dispatch_audit_log`)
+    ]);
+    const existingTripCount = Number(tripCountRow.rows[0]?.count || 0);
+    const existingRouteCount = Number(routeCountRow.rows[0]?.count || 0);
+    const existingThreadCount = Number(threadCountRow.rows[0]?.count || 0);
+    const existingDailyDriverCount = Number(dailyDriverCountRow.rows[0]?.count || 0);
+    const existingAuditCount = Number(auditCountRow.rows[0]?.count || 0);
 
     // ── trips: bulk upsert, keep newest by updatedAt ──────────────────────────
     if (activeState.trips.length > 0) {
@@ -158,7 +171,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
         const tripIds = activeState.trips.map(t => t.id);
         await client.query(`DELETE FROM dispatch_trips WHERE id != ALL($1::text[])`, [tripIds]);
       }
-    } else if (allowPrune) {
+    } else if (allowPrune && (allowDestructiveEmptyPrune || existingTripCount === 0)) {
       await client.query(`DELETE FROM dispatch_trips`);
     }
 
@@ -180,7 +193,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
         const planIds = activeState.routePlans.map(p => p.id);
         await client.query(`DELETE FROM dispatch_route_plans WHERE id != ALL($1::text[])`, [planIds]);
       }
-    } else if (allowPrune) {
+    } else if (allowPrune && (allowDestructiveEmptyPrune || existingRouteCount === 0)) {
       await client.query(`DELETE FROM dispatch_route_plans`);
     }
 
@@ -197,7 +210,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
       const threadDriverIds = activeState.dispatchThreads.map(thread => String(thread?.driverId || '').trim()).filter(Boolean);
       if (threadDriverIds.length > 0) {
         await client.query(`DELETE FROM dispatch_threads WHERE driver_id != ALL($1::text[])`, [threadDriverIds]);
-      } else {
+      } else if (allowDestructiveEmptyPrune || existingThreadCount === 0) {
         await client.query(`DELETE FROM dispatch_threads`);
       }
     }
@@ -214,7 +227,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
       const dailyDriverIds = activeState.dailyDrivers.map(dd => String(dd?.id || '').trim()).filter(Boolean);
       if (dailyDriverIds.length > 0) {
         await client.query(`DELETE FROM dispatch_daily_drivers WHERE id != ALL($1::text[])`, [dailyDriverIds]);
-      } else {
+      } else if (allowDestructiveEmptyPrune || existingDailyDriverCount === 0) {
         await client.query(`DELETE FROM dispatch_daily_drivers`);
       }
     }
@@ -232,7 +245,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
       const auditIds = activeState.auditLog.map(entry => String(entry?.id || '').trim()).filter(Boolean);
       if (auditIds.length > 0) {
         await client.query(`DELETE FROM dispatch_audit_log WHERE id != ALL($1::text[])`, [auditIds]);
-      } else {
+      } else if (allowDestructiveEmptyPrune || existingAuditCount === 0) {
         await client.query(`DELETE FROM dispatch_audit_log`);
       }
     }
@@ -340,7 +353,7 @@ export const runDispatchArchiveMaintenance = async () => {
   const currentState = await readNemtDispatchState({ includePastDates: true });
   const { nextState, archivedDates, archiveSummaries } = await archiveDispatchState(currentState);
   if (archivedDates.length > 0) {
-    await writeNemtDispatchState(nextState, { allowPrune: true });
+    await writeNemtDispatchState(nextState, { allowPrune: true, allowDestructiveEmptyPrune: true });
   }
   return { state: nextState, archivedDates, archiveSummaries };
 };
