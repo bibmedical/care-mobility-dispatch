@@ -1291,7 +1291,7 @@ const DispatcherWorkspace = () => {
       case 'toolbar-edit':
         return <>
             {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save Toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)} disabled={mapLocked}>Edit Toolbar</Button>}
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout} disabled={mapLocked}>Reset Toolbar</Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRestoreLayout} disabled={mapLocked}>Restore Factory</Button>
           </>;
       case 'columns':
         return <>
