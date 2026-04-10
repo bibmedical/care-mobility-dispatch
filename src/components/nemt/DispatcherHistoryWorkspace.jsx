@@ -187,6 +187,11 @@ const matchPhotoToTrip = (tripRows, messageTimestamp, timeZone) => {
 };
 
 const isPhotoAttachment = attachment => attachment?.kind === 'photo' || String(attachment?.mimeType || '').toLowerCase().startsWith('image/');
+const hasPhotoUrl = value => {
+  const raw = String(value || '').trim();
+  if (!raw) return false;
+  return raw.startsWith('data:image/') || /^https?:\/\//i.test(raw);
+};
 
 const buildRouteTripMap = (routePlans, trips) => {
   const tripMap = new Map((Array.isArray(trips) ? trips : []).map(trip => [String(trip?.id || '').trim(), trip]));
@@ -567,11 +572,53 @@ const DispatcherHistoryWorkspace = () => {
         });
       });
     });
+
+    tripRows.forEach(trip => {
+      const photoCandidates = [{
+        id: `trip-${trip?.id}-complete`,
+        dataUrl: String(trip?.completionPhotoDataUrl || '').trim(),
+        name: 'Completion photo',
+        timestamp: trip?.completedAt || trip?.updatedAt || trip?.arrivedDestinationAt || null,
+        status: 'completed'
+      }, {
+        id: `trip-${trip?.id}-cancel`,
+        dataUrl: String(trip?.cancellationPhotoDataUrl || '').trim(),
+        name: 'Cancellation photo',
+        timestamp: trip?.canceledAt || trip?.updatedAt || null,
+        status: 'cancelled'
+      }].filter(item => hasPhotoUrl(item.dataUrl));
+
+      if (photoCandidates.length === 0) return;
+
+      const groupKey = String(trip?.id || '').trim() || 'unassigned';
+      const currentGroup = groups.get(groupKey) || {
+        key: groupKey,
+        title: trip?.rider || 'Unknown patient',
+        trip,
+        photos: []
+      };
+
+      photoCandidates.forEach(photo => {
+        currentGroup.photos.push({
+          id: photo.id,
+          dataUrl: photo.dataUrl,
+          name: photo.name,
+          timestamp: photo.timestamp,
+          direction: 'driver-trip',
+          status: photo.status,
+          threadLabel: selectedDriverLabel || 'Driver trip workflow',
+          trip
+        });
+      });
+
+      groups.set(groupKey, currentGroup);
+    });
+
     return Array.from(groups.values()).map(group => ({
       ...group,
       photos: group.photos.sort((left, right) => String(left.timestamp || '').localeCompare(String(right.timestamp || '')))
     })).sort((left, right) => left.title.localeCompare(right.title));
-  }, [archive, threadRows, tripRows]);
+  }, [archive, selectedDriverLabel, threadRows, tripRows]);
 
   const stats = {
     tripCount: visibleTripRows.length,

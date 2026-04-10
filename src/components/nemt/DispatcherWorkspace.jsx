@@ -16,7 +16,7 @@ import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whats
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap } from 'react-leaflet';
+import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
@@ -300,6 +300,21 @@ const FollowDriverMapController = ({ enabled, position, zoom = 14 }) => {
       animate: false
     });
   }, [enabled, map, position, zoom]);
+
+  return null;
+};
+
+const PauseFollowOnMapInteractionController = ({ enabled, onPause }) => {
+  useMapEvents({
+    dragstart: () => {
+      if (!enabled) return;
+      onPause();
+    },
+    zoomstart: () => {
+      if (!enabled) return;
+      onPause();
+    }
+  });
 
   return null;
 };
@@ -2845,6 +2860,7 @@ const DispatcherWorkspace = () => {
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
                   <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked}>All drivers</Button>
+                  {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
                   <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
                   <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
                   <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
@@ -2852,6 +2868,10 @@ const DispatcherWorkspace = () => {
                 <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
                   <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
+                  <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapLocked} onPause={() => {
+                  setFollowSelectedDriver(false);
+                  setStatusMessage('Auto-follow paused. You can pan and zoom the map freely.');
+                }} />
                   <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
                   <ZoomControl position="bottomleft" />
                   {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
