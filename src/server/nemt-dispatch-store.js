@@ -7,6 +7,7 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 let ensureDispatchSchemaPromise = null;
+let lastKnownDispatchState = null;
 
 const DISPATCH_STORAGE_FILE = getStorageFilePath('nemt-dispatch.json');
 
@@ -26,6 +27,15 @@ const readLocalDispatchState = async () => {
   } catch {
     return normalizePersistentDispatchState({});
   }
+};
+
+const hasMeaningfulDispatchData = state => {
+  const normalized = normalizePersistentDispatchState(state || {});
+  return normalized.trips.length > 0
+    || normalized.routePlans.length > 0
+    || normalized.dispatchThreads.length > 0
+    || normalized.dailyDrivers.length > 0
+    || normalized.auditLog.length > 0;
 };
 
 const writeLocalDispatchState = async nextState => {
@@ -66,7 +76,7 @@ export const readNemtDispatchState = async (options = {}) => {
       Promise.resolve(prefsStateRow)
     ]);
 
-    return normalizePersistentDispatchState({
+    const nextState = normalizePersistentDispatchState({
       trips: tripsRes.rows.map(r => r.data),
       routePlans: routesRes.rows.map(r => r.data),
       dispatchThreads: threadsRes.rows.map(r => r.data),
@@ -74,8 +84,20 @@ export const readNemtDispatchState = async (options = {}) => {
       auditLog: auditRes.rows.map(r => r.data),
       uiPreferences: prefsRow?.data ?? {}
     });
+    if (hasMeaningfulDispatchData(nextState)) {
+      lastKnownDispatchState = nextState;
+    }
+    return nextState;
   } catch {
-    return await readLocalDispatchState();
+    const localState = await readLocalDispatchState();
+    if (hasMeaningfulDispatchData(localState)) {
+      lastKnownDispatchState = localState;
+      return localState;
+    }
+    if (lastKnownDispatchState) {
+      return lastKnownDispatchState;
+    }
+    return localState;
   }
 };
 
@@ -92,13 +114,18 @@ export const readNemtDispatchThreads = async () => {
 
 // ─── WRITE ────────────────────────────────────────────────────────────────────
 
-export const writeNemtDispatchState = async nextState => {
+export const writeNemtDispatchState = async (nextState, options = {}) => {
   const normalized = normalizePersistentDispatchState(nextState);
+  const allowPrune = options?.allowPrune === true;
 
   try {
     await ensureDispatchSchema();
   } catch {
-    return await writeLocalDispatchState(normalized);
+    const localState = await writeLocalDispatchState(normalized);
+    if (hasMeaningfulDispatchData(localState)) {
+      lastKnownDispatchState = localState;
+    }
+    return localState;
   }
 
   const archiveResult = await withTransaction(async client => {
@@ -127,10 +154,11 @@ export const writeNemtDispatchState = async nextState => {
            updated_at = NOW()`,
         [JSON.stringify(activeState.trips)]
       );
-      // remove trips not in this save
-      const tripIds = activeState.trips.map(t => t.id);
-      await client.query(`DELETE FROM dispatch_trips WHERE id != ALL($1::text[])`, [tripIds]);
-    } else {
+      if (allowPrune) {
+        const tripIds = activeState.trips.map(t => t.id);
+        await client.query(`DELETE FROM dispatch_trips WHERE id != ALL($1::text[])`, [tripIds]);
+      }
+    } else if (allowPrune) {
       await client.query(`DELETE FROM dispatch_trips`);
     }
 
@@ -148,9 +176,11 @@ export const writeNemtDispatchState = async nextState => {
          ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, service_date=EXCLUDED.service_date, updated_at=NOW()`,
         [JSON.stringify(activeState.routePlans)]
       );
-      const planIds = activeState.routePlans.map(p => p.id);
-      await client.query(`DELETE FROM dispatch_route_plans WHERE id != ALL($1::text[])`, [planIds]);
-    } else {
+      if (allowPrune) {
+        const planIds = activeState.routePlans.map(p => p.id);
+        await client.query(`DELETE FROM dispatch_route_plans WHERE id != ALL($1::text[])`, [planIds]);
+      }
+    } else if (allowPrune) {
       await client.query(`DELETE FROM dispatch_route_plans`);
     }
 
@@ -163,11 +193,13 @@ export const writeNemtDispatchState = async nextState => {
         [thread.driverId, thread]
       );
     }
-    const threadDriverIds = activeState.dispatchThreads.map(thread => String(thread?.driverId || '').trim()).filter(Boolean);
-    if (threadDriverIds.length > 0) {
-      await client.query(`DELETE FROM dispatch_threads WHERE driver_id != ALL($1::text[])`, [threadDriverIds]);
-    } else {
-      await client.query(`DELETE FROM dispatch_threads`);
+    if (allowPrune) {
+      const threadDriverIds = activeState.dispatchThreads.map(thread => String(thread?.driverId || '').trim()).filter(Boolean);
+      if (threadDriverIds.length > 0) {
+        await client.query(`DELETE FROM dispatch_threads WHERE driver_id != ALL($1::text[])`, [threadDriverIds]);
+      } else {
+        await client.query(`DELETE FROM dispatch_threads`);
+      }
     }
 
     // ── daily drivers: upsert ─────────────────────────────────────────────────
@@ -178,11 +210,13 @@ export const writeNemtDispatchState = async nextState => {
         [dd.id, dd]
       );
     }
-    const dailyDriverIds = activeState.dailyDrivers.map(dd => String(dd?.id || '').trim()).filter(Boolean);
-    if (dailyDriverIds.length > 0) {
-      await client.query(`DELETE FROM dispatch_daily_drivers WHERE id != ALL($1::text[])`, [dailyDriverIds]);
-    } else {
-      await client.query(`DELETE FROM dispatch_daily_drivers`);
+    if (allowPrune) {
+      const dailyDriverIds = activeState.dailyDrivers.map(dd => String(dd?.id || '').trim()).filter(Boolean);
+      if (dailyDriverIds.length > 0) {
+        await client.query(`DELETE FROM dispatch_daily_drivers WHERE id != ALL($1::text[])`, [dailyDriverIds]);
+      } else {
+        await client.query(`DELETE FROM dispatch_daily_drivers`);
+      }
     }
 
     // ── audit log: insert only new entries ────────────────────────────────────
@@ -194,11 +228,13 @@ export const writeNemtDispatchState = async nextState => {
         [entry.id, entry]
       );
     }
-    const auditIds = activeState.auditLog.map(entry => String(entry?.id || '').trim()).filter(Boolean);
-    if (auditIds.length > 0) {
-      await client.query(`DELETE FROM dispatch_audit_log WHERE id != ALL($1::text[])`, [auditIds]);
-    } else {
-      await client.query(`DELETE FROM dispatch_audit_log`);
+    if (allowPrune) {
+      const auditIds = activeState.auditLog.map(entry => String(entry?.id || '').trim()).filter(Boolean);
+      if (auditIds.length > 0) {
+        await client.query(`DELETE FROM dispatch_audit_log WHERE id != ALL($1::text[])`, [auditIds]);
+      } else {
+        await client.query(`DELETE FROM dispatch_audit_log`);
+      }
     }
 
     // ── UI preferences ────────────────────────────────────────────────────────
@@ -211,6 +247,9 @@ export const writeNemtDispatchState = async nextState => {
     return activeState;
   });
 
+  if (hasMeaningfulDispatchData(archiveResult)) {
+    lastKnownDispatchState = archiveResult;
+  }
   return archiveResult;
 };
 
@@ -301,7 +340,7 @@ export const runDispatchArchiveMaintenance = async () => {
   const currentState = await readNemtDispatchState({ includePastDates: true });
   const { nextState, archivedDates, archiveSummaries } = await archiveDispatchState(currentState);
   if (archivedDates.length > 0) {
-    await writeNemtDispatchState(nextState);
+    await writeNemtDispatchState(nextState, { allowPrune: true });
   }
   return { state: nextState, archivedDates, archiveSummaries };
 };
