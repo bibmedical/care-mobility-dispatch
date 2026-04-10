@@ -3204,7 +3204,7 @@ const TripDashboardWorkspace = () => {
 
   const driverPanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
-        {showDriversPanel ? <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
+        <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <strong>Drivers: {drivers.length}</strong>
             <span>{liveDrivers} live</span>
@@ -3215,12 +3215,11 @@ const TripDashboardWorkspace = () => {
             refreshDrivers();
             router.push('/drivers');
             setStatusMessage('Opening Drivers to manage the live roster.');
-          }}>Manage</Button>
-            <Button variant="outline-danger" size="sm" onClick={() => setShowDriversPanel(false)} title="Hide drivers panel">✕</Button>
-            <Button variant="outline-dark" size="sm" onClick={handlePopOutDrivers} title="Pop out to another window">⇲</Button>
+          }}>Manage Drivers</Button>
+            <Button variant="outline-danger" size="sm" onClick={() => setShowDriversPanel(false)} title="Hide drivers panel">✕ Hide</Button>
           </div>
-        </div> : null}
-        {showDriversPanel ? <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
+        </div>
+        <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
           <Table size="sm" bordered striped hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ lineHeight: 1.1, fontSize: '0.78rem' }}>
             <thead style={{ backgroundColor: '#198754', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
@@ -3253,18 +3252,15 @@ const TripDashboardWorkspace = () => {
                 </tr>}
             </tbody>
           </Table>
-        </div> : <div className="d-flex flex-column align-items-center justify-content-center h-100 p-3">
-          <div className="text-muted mb-3">Drivers panel is hidden</div>
-          <Button variant="outline-dark" size="sm" onClick={() => setShowDriversPanel(true)}>Show Drivers</Button>
-        </div>}
+        </div>
       </CardBody>
     </Card>;
 
   const routePanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
-        {showRoutesPanel ? <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
+        <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
           <div className="d-flex align-items-center gap-2 flex-wrap">
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print</Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
             <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => setSelectedDriverId(event.target.value || null)} style={{ width: 180 }}>
               <option value="">Driver</option>
@@ -3278,11 +3274,10 @@ const TripDashboardWorkspace = () => {
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRoutePanelAssignSecondary}>Assign 2nd</Button>
             <Button variant="outline-danger" size="sm" onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
             <Badge bg="dark">{selectedRoutePanelTripIds.length} selected</Badge>
-            <Button variant="outline-danger" size="sm" onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button>
-            <Button variant="outline-dark" size="sm" onClick={handlePopOutRoutes} title="Pop out to another window">⇲</Button>
+            <Button variant="outline-danger" size="sm" onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕ Hide</Button>
           </div>
-        </div> : null}
-        {showRoutesPanel ? <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
+        </div>
+        <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
           <Table className="align-middle mb-0" data-bs-theme={themeMode}>
             <thead className={themeMode === 'dark' ? 'table-dark' : 'table-light'}>
               <tr>
@@ -3315,28 +3310,29 @@ const TripDashboardWorkspace = () => {
                 </tr>}
             </tbody>
           </Table>
-        </div> : <div className="d-flex flex-column align-items-center justify-content-center h-100 p-3">
-          <div className="text-muted mb-3">Routes panel is hidden</div>
-          <Button variant="outline-dark" size="sm" onClick={() => setShowRoutesPanel(true)}>Show Routes</Button>
-        </div>}
+        </div>
       </CardBody>
     </Card>;
 
   const dockPanelsOrdered = panelOrder === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? [{
     key: 'drivers',
-    node: driverPanelCard
+    node: driverPanelCard,
+    visible: showDriversPanel
   }, {
     key: 'routes',
-    node: routePanelCard
+    node: routePanelCard,
+    visible: showRoutesPanel
   }] : [{
     key: 'routes',
-    node: routePanelCard
+    node: routePanelCard,
+    visible: showRoutesPanel
   }, {
     key: 'drivers',
-    node: driverPanelCard
+    node: driverPanelCard,
+    visible: showDriversPanel
   }];
 
-  const dockPanelsVisible = dockPanelsOrdered;
+  const dockPanelsVisible = dockPanelsOrdered.filter(panel => panel.visible);
 
   return <>
       {(!showDriversPanel || !showRoutesPanel || !showTripsPanel) && <div style={{
