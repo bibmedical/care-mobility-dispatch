@@ -1017,12 +1017,16 @@ const DispatcherWorkspace = () => {
       relayFrameId = window.requestAnimationFrame(flushRelayedMove);
     };
 
+    const relayMouseDown = relayMouseEvent('mousedown');
+    const relayPointerDown = relayMouseEvent('mousedown');
     const relayMouseUp = relayMouseEvent('mouseup');
     const relayPointerUp = relayMouseEvent('mouseup');
     const relayMouseReleaseOnBlur = relayMouseEvent('mouseup');
 
     popupWindow.addEventListener('beforeunload', handlePopupClose);
     popupWindow.addEventListener('resize', handlePopupResize);
+    popupWindow.document.addEventListener('mousedown', relayMouseDown, true);
+    popupWindow.document.addEventListener('pointerdown', relayPointerDown, true);
     popupWindow.document.addEventListener('mousemove', relayMouseMove, true);
     popupWindow.document.addEventListener('mouseup', relayMouseUp, true);
     popupWindow.document.addEventListener('pointerup', relayPointerUp, true);
@@ -1045,6 +1049,8 @@ const DispatcherWorkspace = () => {
         popupWindow.removeEventListener('resize', handlePopupResize);
         popupWindow.removeEventListener('blur', relayMouseReleaseOnBlur, true);
         if (!popupWindow.closed && popupWindow.document) {
+          popupWindow.document.removeEventListener('mousedown', relayMouseDown, true);
+          popupWindow.document.removeEventListener('pointerdown', relayPointerDown, true);
           popupWindow.document.removeEventListener('mousemove', relayMouseMove, true);
           popupWindow.document.removeEventListener('mouseup', relayMouseUp, true);
           popupWindow.document.removeEventListener('pointerup', relayPointerUp, true);
