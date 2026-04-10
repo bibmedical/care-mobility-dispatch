@@ -122,11 +122,11 @@ const DISPATCHER_LAYOUT_PRESETS = [
 ];
 
 const DEFAULT_DISPATCHER_LAYOUT = {
-  preset: 'map-trips',
+  preset: 'full',
   mapVisible: true,
   tripsVisible: true,
-  messagingVisible: false,
-  actionsVisible: false
+  messagingVisible: true,
+  actionsVisible: true
 };
 
 const getDispatcherPresetPanels = presetId => DISPATCHER_LAYOUT_PRESETS.find(preset => preset.id === presetId)?.panels || null;
@@ -785,6 +785,10 @@ const DispatcherWorkspace = () => {
   const [showInfo, setShowInfo] = useState(true);
   const [showRoute, setShowRoute] = useState(true);
   const [showInlineMap, setShowInlineMap] = useState(true);
+  const [isDispatchMapDetached, setIsDispatchMapDetached] = useState(false);
+  const [detachedMapPosition, setDetachedMapPosition] = useState({ x: 18, y: 96 });
+  const [isDraggingDetachedMap, setIsDraggingDetachedMap] = useState(false);
+  const detachedMapDragOffsetRef = useRef({ x: 0, y: 0 });
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -827,6 +831,29 @@ const DispatcherWorkspace = () => {
     setDropoffZipFilter('');
     setDoCityFilter('');
   }, []);
+
+  useEffect(() => {
+    if (!isDraggingDetachedMap) return;
+
+    const handleMouseMove = event => {
+      setDetachedMapPosition({
+        x: Math.max(8, event.clientX - detachedMapDragOffsetRef.current.x),
+        y: Math.max(56, event.clientY - detachedMapDragOffsetRef.current.y)
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingDetachedMap(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingDetachedMap]);
   const [columnWidths, setColumnWidths] = useState({});
   const [draggingTripColumnKey, setDraggingTripColumnKey] = useState(null);
   const workspaceRef = useRef(null);
@@ -944,8 +971,10 @@ const DispatcherWorkspace = () => {
     const baseLayout = normalizeDispatcherLayout(userPreferences?.dispatcherLayout);
     const nextLayout = hasHydratedDefaultLayoutRef.current ? baseLayout : normalizeDispatcherLayout({
       ...baseLayout,
-      messagingVisible: false,
-      actionsVisible: false
+      mapVisible: true,
+      tripsVisible: true,
+      messagingVisible: true,
+      actionsVisible: true
     });
     setDispatcherLayout(nextLayout);
     hasHydratedDefaultLayoutRef.current = true;
@@ -1275,8 +1304,8 @@ const DispatcherWorkspace = () => {
               </Card> : null}
           </>;
       case 'map-screen':
-        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => setShowInlineMap(true)} disabled={mapLocked}>
-            {showInlineMap ? 'Map Screen' : 'Show Map Here'}
+        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapLocked}>
+            {isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}
           </Button>;
       case 'trip-order':
         return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle} disabled={mapLocked}>
@@ -2792,20 +2821,23 @@ const DispatcherWorkspace = () => {
     zIndex: 30,
     transition: 'background-color 0.15s'
   };
-
-  const handleOpenMapWindow = () => {
-    const mapUrl = `/map-screen?source=dispatcher`;
-    window.localStorage.setItem('__CARE_MOBILITY_MAP_SCREEN_SOURCE__', 'dispatcher');
-    const popup = window.open(mapUrl, 'care-mobility-map', 'popup=yes,width=1600,height=900,resizable=yes,scrollbars=no');
-    if (popup) {
-      popup.focus();
-      setShowInlineMap(false);
-      setStatusMessage('Mapa abierto en otra pantalla.');
-      return;
-    }
-    window.open(mapUrl, '_blank', 'noopener,noreferrer');
-    setShowInlineMap(false);
-    setStatusMessage('Mapa abierto en otra pestana.');
+  const compactControlButtonStyle = {
+    padding: '0.18rem 0.45rem',
+    fontSize: '0.68rem',
+    lineHeight: 1.05
+  };
+  const mapPanelPositionStyle = isDispatchMapDetached ? {
+    position: 'fixed',
+    left: detachedMapPosition.x,
+    top: detachedMapPosition.y,
+    width: '46vw',
+    minWidth: 520,
+    height: '44vh',
+    minHeight: 320,
+    zIndex: 1305
+  } : {
+    gridColumn: 1,
+    gridRow: mapPanelGridRow
   };
 
   const handleInlineMapToggle = () => {
@@ -2819,7 +2851,7 @@ const DispatcherWorkspace = () => {
   return <>
       <div style={{
       position: 'fixed',
-      top: 12,
+      top: 54,
       right: 16,
       zIndex: 1200,
       display: 'flex',
@@ -2827,24 +2859,31 @@ const DispatcherWorkspace = () => {
       alignItems: 'center',
       backgroundColor: 'rgba(15, 23, 42, 0.95)',
       border: '1px solid rgba(100, 116, 139, 0.35)',
-      padding: '8px 12px',
+      padding: '4px 8px',
       borderRadius: 8,
       backdropFilter: 'blur(10px)'
     }}>
-        <Button variant="outline-warning" size="sm" onClick={handleHideAllPanels}>Hide All</Button>
-        <Button variant="outline-secondary" size="sm" onClick={() => applyDispatcherLayoutPreset('full')}>Restore</Button>
+        <Button variant="outline-warning" size="sm" onClick={handleHideAllPanels} style={compactControlButtonStyle}>Hide All</Button>
+        <Button variant="outline-secondary" size="sm" onClick={() => applyDispatcherLayoutPreset('full')} style={compactControlButtonStyle}>Restore</Button>
         {hasHiddenDispatcherPanels ? <>
-            <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>HIDDEN:</span>
-            {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)}>{panel.label}</Button>)}
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>HIDDEN:</span>
+            {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)} style={compactControlButtonStyle}>{panel.label}</Button>)}
           </> : null}
       </div>
 
       <div ref={workspaceRef} style={workspaceGridStyle}>
-        <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', gridColumn: 1, gridRow: mapPanelGridRow }}>
+        <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', ...mapPanelPositionStyle }}>
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0">
               {showInlineMap ? <div className="position-relative h-100">
                 <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
+                  {isDispatchMapDetached ? <Button variant="warning" size="sm" style={{ ...compactControlButtonStyle, cursor: 'move' }} onMouseDown={event => {
+                  detachedMapDragOffsetRef.current = {
+                    x: event.clientX - detachedMapPosition.x,
+                    y: event.clientY - detachedMapPosition.y
+                  };
+                  setIsDraggingDetachedMap(true);
+                }}>Drag</Button> : null}
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapLocked}>Clear</Button>
                   <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
                     <option value="">City</option>
@@ -2863,7 +2902,7 @@ const DispatcherWorkspace = () => {
                   {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
                   <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
                   <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
-                  <Button variant="dark" size="sm" onClick={handleOpenMapWindow} disabled={mapLocked}>Pop Out</Button>
+                  <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
                 </div>
                 <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
                   <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}`} />
@@ -2935,11 +2974,10 @@ const DispatcherWorkspace = () => {
                     </CircleMarker>) : null}
                 </MapContainer>
               </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
-                  <div className="fw-semibold fs-5">Mapa movido a otra pantalla</div>
-                  <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Usa la ventana nueva para el mapa y sigue trabajando aqui con viajes, SMS y choferes.</div>
+                  <div className="fw-semibold fs-5">Mapa oculto en dispatcher</div>
+                  <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Activa Show Map para volver a usar el mismo mapa conectado del panel.</div>
                   <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
                     <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
-                    <Button variant="outline-light" size="sm" onClick={handleOpenMapWindow}>Open Map Window Again</Button>
                   </div>
                 </div>}
             </CardBody>
