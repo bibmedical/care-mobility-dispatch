@@ -33,6 +33,7 @@
         "ACCESS_BACKGROUND_LOCATION",
         "CAMERA",
         "READ_MEDIA_IMAGES",
+        "WAKE_LOCK",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
       ],

@@ -188,6 +188,7 @@ export const useDriverRuntime = () => {
   const [notificationError, setNotificationError] = useState('');
   const [isRegisteringPushToken, setIsRegisteringPushToken] = useState(false);
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  const requestedBackgroundSettingsRef = useRef(false);
 
   const clearDriverRuntimeState = async (message = '') => {
     setLoggedIn(false);
@@ -563,6 +564,10 @@ export const useDriverRuntime = () => {
           setIsBackgroundTrackingEnabled(false);
           setBackgroundTrackingError(error instanceof Error ? error.message : 'Unable to start background GPS.');
         }
+        if (active && !requestedBackgroundSettingsRef.current && error instanceof Error && /background location permission/i.test(error.message)) {
+          requestedBackgroundSettingsRef.current = true;
+          await Linking.openSettings();
+        }
       } finally {
         if (active) setIsManagingBackgroundTracking(false);
       }
@@ -603,9 +608,23 @@ export const useDriverRuntime = () => {
       }
     });
 
+    const watchdogInterval = setInterval(() => {
+      void (async () => {
+        try {
+          const running = await isBackgroundLocationTrackingActive();
+          if (!running) {
+            await ensureBackgroundTracking();
+          }
+        } catch {
+          // The next cycle retries automatically.
+        }
+      })();
+    }, 20000);
+
     return () => {
       active = false;
       subscription.remove();
+      clearInterval(watchdogInterval);
     };
   }, [driverSession?.driverId, loggedIn, trackingEnabled]);
 

@@ -77,16 +77,19 @@ export const startBackgroundLocationTracking = async () => {
   const timeInterval = Number.isFinite(configuredBgTime) && configuredBgTime > 0 ? configuredBgTime : DRIVER_APP_CONFIG.backgroundGpsTimeIntervalMs;
 
   await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-    accuracy: Location.Accuracy.Highest,
+    accuracy: Location.Accuracy.BestForNavigation,
     distanceInterval,
     timeInterval,
+    deferredUpdatesDistance: 0,
+    deferredUpdatesInterval: 0,
     activityType: Location.ActivityType.AutomotiveNavigation,
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: DRIVER_APP_CONFIG.backgroundLocationNotificationTitle,
       notificationBody: DRIVER_APP_CONFIG.backgroundLocationNotificationBody,
-      notificationColor: '#0f766e'
+      notificationColor: '#0f766e',
+      killServiceOnDestroy: false
     }
   });
 
