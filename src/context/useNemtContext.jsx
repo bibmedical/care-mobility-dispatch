@@ -208,7 +208,10 @@ export const NemtProvider = ({
     reason = 'route-update'
   }) => {
     const normalizedDriverId = String(driverId || '').trim();
-    if (!normalizedDriverId) return;
+    if (!normalizedDriverId) {
+      console.log('[ROUTE PUSH] No driverId, skipping');
+      return;
+    }
 
     const normalizedDate = String(serviceDate || '').trim();
     const isTomorrowRoute = normalizedDate && normalizedDate === getTomorrowDateKey();
@@ -219,8 +222,15 @@ export const NemtProvider = ({
       ? `You receive the route for tomorrow. Route: ${normalizedRouteName}.`
       : `Dispatch assigned/updated ${normalizedRouteName}${normalizedDate ? ` for ${normalizedDate}` : ''}.`;
 
+    console.log('[ROUTE PUSH] Sending route push', {
+      driverId: normalizedDriverId,
+      routeName: normalizedRouteName,
+      serviceDate: normalizedDate,
+      isTomorrow: isTomorrowRoute
+    });
+
     try {
-      await fetch('/api/system-messages', {
+      const response = await fetch('/api/system-messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -236,8 +246,26 @@ export const NemtProvider = ({
           deliveryMethod: 'push'
         })
       });
-    } catch {
-      // Route notification failures should not block dispatcher assignments.
+
+      const data = await response.json();
+      console.log('[ROUTE PUSH] Response', {
+        status: response.status,
+        messageId: data?.message?.id,
+        driverId: normalizedDriverId
+      });
+
+      if (!response.ok) {
+        console.error('[ROUTE PUSH] Error response', {
+          status: response.status,
+          error: data?.error,
+          driverId: normalizedDriverId
+        });
+      }
+    } catch (error) {
+      console.error('[ROUTE PUSH] Fetch error', {
+        message: error?.message,
+        driverId: normalizedDriverId
+      });
     }
   };
 
@@ -1020,11 +1048,18 @@ export const NemtProvider = ({
   });
 
     if (normalizedDriverId) {
-      void sendRoutePushMessage({
+      console.log('[CREATE ROUTE] Triggering push for', {
+        driverId: normalizedDriverId,
+        routeName: normalizedRouteName,
+        serviceDate: normalizedServiceDate
+      });
+      sendRoutePushMessage({
         driverId: normalizedDriverId,
         routeName: normalizedRouteName,
         serviceDate: normalizedServiceDate,
         reason: 'route-create'
+      }).catch(error => {
+        console.error('[CREATE ROUTE] Push error', error);
       });
     }
 
@@ -1131,11 +1166,18 @@ export const NemtProvider = ({
   });
 
     if (normalizedRouteId && normalizedDriverId) {
-      void sendRoutePushMessage({
+      console.log('[ASSIGN ROUTE DRIVER] Triggering push for', {
+        driverId: normalizedDriverId,
+        routeName: String(existingRoute?.name || normalizedRouteId).trim(),
+        serviceDate: String(existingRoute?.serviceDate || '').trim()
+      });
+      sendRoutePushMessage({
         driverId: normalizedDriverId,
         routeName: String(existingRoute?.name || normalizedRouteId).trim(),
         serviceDate: String(existingRoute?.serviceDate || '').trim(),
         reason: 'route-primary-driver'
+      }).catch(error => {
+        console.error('[ASSIGN ROUTE DRIVER] Push error', error);
       });
     }
 

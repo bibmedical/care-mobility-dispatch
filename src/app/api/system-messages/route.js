@@ -127,7 +127,10 @@ const sendExpoPush = async (pushTokens, message) => {
 
   const payload = pushTokens.map(to => ({
     to,
-    sound: 'default',
+    sound: true,
+    priority: 'high',
+    badge: 1,
+    vibrate: [100, 50, 100],
     title: pushTitle,
     body: pushBody,
     data: {
