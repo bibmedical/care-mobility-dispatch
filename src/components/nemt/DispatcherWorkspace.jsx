@@ -14,7 +14,7 @@ import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
@@ -782,6 +782,8 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const DispatcherWorkspace = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDetachedMapMode = searchParams?.get('detachedMap') === '1';
   const { themeMode } = useLayoutContext();
   const isDarkMode = themeMode === 'dark';
   const dispatcherSurfaceStyles = useMemo(() => buildDispatcherSurfaceStyles(isDarkMode), [isDarkMode]);
@@ -874,6 +876,11 @@ const DispatcherWorkspace = () => {
     key: 'pickup',
     direction: 'asc'
   });
+
+  useEffect(() => {
+    if (!isDetachedMapMode) return;
+    setShowInlineMap(true);
+  }, [isDetachedMapMode]);
 
   useEffect(() => {
     setSelectedDriverId(null);
@@ -3033,7 +3040,7 @@ const DispatcherWorkspace = () => {
             {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
             <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
             <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
-            <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
+            {!isDetachedMapMode ? <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button> : null}
           </div> : null}
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%', cursor: mapInteractionLocked ? 'not-allowed' : 'grab' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}-${detachedMapResizeTick}`} />
@@ -3121,6 +3128,12 @@ const DispatcherWorkspace = () => {
         {renderDispatchMapPanel()}
       </div>);
   });
+
+  if (isDetachedMapMode) {
+    return <div style={{ width: '100vw', height: '100vh', padding: 6, backgroundColor: '#0f172a' }}>
+        {renderDispatchMapPanel()}
+      </div>;
+  }
 
   return <>
       <div style={{
