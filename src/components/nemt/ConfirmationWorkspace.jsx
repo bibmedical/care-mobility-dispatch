@@ -1162,7 +1162,7 @@ const ConfirmationWorkspace = () => {
 
     if (blockReasonType === 'hospital-rehab') {
       setBlockReasonModalTrip(null);
-      setHospitalRehabModal(trip);
+      handleOpenHospitalRehabModal(trip);
       if (details) setHospitalRehabNotes(details);
       setCustomStatus('Complete the Hospital/Rehab modal to finish blocking this patient.');
       return;
