@@ -970,11 +970,37 @@ const DispatcherWorkspace = () => {
     popupWindow.document.body.style.width = '100%';
     popupWindow.document.body.style.overflow = 'hidden';
     popupWindow.document.body.style.backgroundColor = '#0f172a';
+    popupWindow.document.body.style.pointerEvents = 'auto';
+    popupWindow.document.body.style.userSelect = 'none';
+
+    const interactionFixStyle = popupWindow.document.createElement('style');
+    interactionFixStyle.textContent = `
+      html, body {
+        pointer-events: auto !important;
+      }
+      .leaflet-container,
+      .leaflet-pane,
+      .leaflet-map-pane,
+      .leaflet-overlay-pane,
+      .leaflet-marker-pane,
+      .leaflet-shadow-pane,
+      .leaflet-tooltip-pane,
+      .leaflet-popup-pane,
+      .leaflet-control-container,
+      .leaflet-top,
+      .leaflet-bottom,
+      .leaflet-control {
+        pointer-events: auto !important;
+      }
+    `;
+    popupWindow.document.head.appendChild(interactionFixStyle);
 
     const mountNode = popupWindow.document.createElement('div');
+    mountNode.id = 'detached-dispatch-map-root';
     mountNode.style.width = '100vw';
     mountNode.style.height = '100vh';
     mountNode.style.overflow = 'hidden';
+    mountNode.style.pointerEvents = 'auto';
     popupWindow.document.body.appendChild(mountNode);
     const popupRoot = createRoot(mountNode);
 
