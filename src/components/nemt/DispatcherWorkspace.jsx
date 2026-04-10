@@ -3070,7 +3070,7 @@ const DispatcherWorkspace = () => {
   const renderDispatchMapPanel = () => <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
       <CardBody className="p-0">
         {showInlineMap ? <div className="position-relative h-100">
-          <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
+          {!isDispatchMapDetached ? <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
             <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapInteractionLocked}>Clear</Button>
             <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
               <option value="">City</option>
@@ -3090,8 +3090,8 @@ const DispatcherWorkspace = () => {
             <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
             <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
             <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button>
-          </div>
-          <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+          </div> : null}
+          <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%', cursor: mapInteractionLocked ? 'not-allowed' : 'grab' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}-${detachedMapResizeTick}`} />
             <DispatchMapInteractionController enabled={!mapInteractionLocked} />
             <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
