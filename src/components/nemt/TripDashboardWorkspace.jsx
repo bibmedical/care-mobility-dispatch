@@ -141,6 +141,9 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 const TRIP_DASHBOARD_LAYOUT_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_LAYOUT__';
 const TRIP_DASHBOARD_PANEL_VIEW_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_VIEW__';
 const TRIP_DASHBOARD_PANEL_ORDER_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_ORDER__';
+const TRIP_DASHBOARD_DRIVERS_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_DRIVERS_VISIBLE__';
+const TRIP_DASHBOARD_ROUTES_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROUTES_VISIBLE__';
+const TRIP_DASHBOARD_TRIPS_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TRIPS_VISIBLE__';
 const TRIP_DASHBOARD_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW1_BLOCKS__';
 const TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS = ['date-controls', 'status-filter', 'trip-search', 'driver-assigned', 'action-buttons', 'leg-buttons', 'type-buttons', 'closed-route'];
 const TRIP_DASHBOARD_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW2_BLOCKS__';
@@ -721,6 +724,12 @@ const TripDashboardWorkspace = () => {
   const [aiPlannerPreview, setAiPlannerPreview] = useState(null);
   const [aiPlannerLoading, setAiPlannerLoading] = useState(false);
   const [aiPlannerCollapsed, setAiPlannerCollapsed] = useState(true);
+  const [showDriversPanel, setShowDriversPanel] = useState(true);
+  const [showRoutesPanel, setShowRoutesPanel] = useState(true);
+  const [showTripsPanel, setShowTripsPanel] = useState(true);
+  const [driversWindowOpen, setDriversWindowOpen] = useState(false);
+  const [routesWindowOpen, setRoutesWindowOpen] = useState(false);
+  const [tripsWindowOpen, setTripsWindowOpen] = useState(false);
   const workspaceRef = useRef(null);
   const tripTableTopScrollerRef = useRef(null);
   const tripTableBottomScrollerRef = useRef(null);
@@ -2922,6 +2931,74 @@ const TripDashboardWorkspace = () => {
     setStatusMessage('Map opened in another tab. Focus Right activated.');
   };
 
+  const handlePopOutDrivers = () => {
+    const driversUrl = `/panels/drivers`;
+    const payload = {
+      selectedDriverId,
+      driverSearch,
+      filteredDrivers: drivers
+    };
+    window.localStorage.setItem('__CARE_MOBILITY_DRIVERS_PANEL_STATE__', JSON.stringify(payload));
+    const popup = window.open(driversUrl, 'care-mobility-drivers', 'popup=yes,width=900,height=700,resizable=yes,scrollbars=no');
+    if (popup) {
+      popup.focus();
+      setShowDriversPanel(false);
+      setDriversWindowOpen(true);
+      setStatusMessage('Drivers panel opened in another window.');
+      return;
+    }
+    window.open(driversUrl, '_blank', 'noopener,noreferrer');
+    setShowDriversPanel(false);
+    setDriversWindowOpen(true);
+    setStatusMessage('Drivers panel opened in another tab.');
+  };
+
+  const handlePopOutRoutes = () => {
+    const routesUrl = `/panels/routes`;
+    const payload = {
+      selectedDriverId,
+      selectedSecondaryDriverId,
+      selectedRoutePanelTripIds,
+      routeTrips
+    };
+    window.localStorage.setItem('__CARE_MOBILITY_ROUTES_PANEL_STATE__', JSON.stringify(payload));
+    const popup = window.open(routesUrl, 'care-mobility-routes', 'popup=yes,width=900,height=700,resizable=yes,scrollbars=no');
+    if (popup) {
+      popup.focus();
+      setShowRoutesPanel(false);
+      setRoutesWindowOpen(true);
+      setStatusMessage('Routes panel opened in another window.');
+      return;
+    }
+    window.open(routesUrl, '_blank', 'noopener,noreferrer');
+    setShowRoutesPanel(false);
+    setRoutesWindowOpen(true);
+    setStatusMessage('Routes panel opened in another tab.');
+  };
+
+  const handlePopOutTrips = () => {
+    const tripsUrl = `/panels/trips`;
+    const payload = {
+      orderedVisibleTripColumns,
+      selectedTripIds,
+      tripStatusFilter,
+      tripDateFilter
+    };
+    window.localStorage.setItem('__CARE_MOBILITY_TRIPS_PANEL_STATE__', JSON.stringify(payload));
+    const popup = window.open(tripsUrl, 'care-mobility-trips', 'popup=yes,width=1200,height=700,resizable=yes,scrollbars=no');
+    if (popup) {
+      popup.focus();
+      setShowTripsPanel(false);
+      setTripsWindowOpen(true);
+      setStatusMessage('Trips panel opened in another window.');
+      return;
+    }
+    window.open(tripsUrl, '_blank', 'noopener,noreferrer');
+    setShowTripsPanel(false);
+    setTripsWindowOpen(true);
+    setStatusMessage('Trips panel opened in another tab.');
+  };
+
   const applyLayoutMode = nextLayoutMode => {
     if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && !showInlineMap) {
       setStatusMessage('Focus Right requires inline map. Use Show map here first.');
@@ -3127,21 +3204,23 @@ const TripDashboardWorkspace = () => {
 
   const driverPanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
-        <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
+        {showDriversPanel ? <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <strong>Drivers: {drivers.length}</strong>
             <span>{liveDrivers} live</span>
           </div>
-          <div className="d-flex gap-2 align-items-center">
+          <div className="d-flex gap-2 align-items-center flex-wrap">
             <Form.Control size="sm" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" style={{ width: 180 }} />
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
             refreshDrivers();
             router.push('/drivers');
             setStatusMessage('Opening Drivers to manage the live roster.');
-          }}>Manage Drivers</Button>
+          }}>Manage</Button>
+            <Button variant="outline-danger" size="sm" onClick={() => setShowDriversPanel(false)} title="Hide drivers panel">✕</Button>
+            <Button variant="outline-dark" size="sm" onClick={handlePopOutDrivers} title="Pop out to another window">⇲</Button>
           </div>
-        </div>
-        <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
+        </div> : null}
+        {showDriversPanel ? <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
           <Table size="sm" bordered striped hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ lineHeight: 1.1, fontSize: '0.78rem' }}>
             <thead style={{ backgroundColor: '#198754', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
@@ -3174,15 +3253,18 @@ const TripDashboardWorkspace = () => {
                 </tr>}
             </tbody>
           </Table>
-        </div>
+        </div> : <div className="d-flex flex-column align-items-center justify-content-center h-100 p-3">
+          <div className="text-muted mb-3">Drivers panel is hidden</div>
+          <Button variant="outline-dark" size="sm" onClick={() => setShowDriversPanel(true)}>Show Drivers</Button>
+        </div>}
       </CardBody>
     </Card>;
 
   const routePanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
-        <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
+        {showRoutesPanel ? <div className="d-flex justify-content-between align-items-center p-2 border-bottom bg-success text-dark gap-2 flex-wrap">
           <div className="d-flex align-items-center gap-2 flex-wrap">
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute}>Print</Button>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
             <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => setSelectedDriverId(event.target.value || null)} style={{ width: 180 }}>
               <option value="">Driver</option>
@@ -3196,9 +3278,11 @@ const TripDashboardWorkspace = () => {
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRoutePanelAssignSecondary}>Assign 2nd</Button>
             <Button variant="outline-danger" size="sm" onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
             <Badge bg="dark">{selectedRoutePanelTripIds.length} selected</Badge>
+            <Button variant="outline-danger" size="sm" onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button>
+            <Button variant="outline-dark" size="sm" onClick={handlePopOutRoutes} title="Pop out to another window">⇲</Button>
           </div>
-        </div>
-        <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
+        </div> : null}
+        {showRoutesPanel ? <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
           <Table className="align-middle mb-0" data-bs-theme={themeMode}>
             <thead className={themeMode === 'dark' ? 'table-dark' : 'table-light'}>
               <tr>
@@ -3231,7 +3315,10 @@ const TripDashboardWorkspace = () => {
                 </tr>}
             </tbody>
           </Table>
-        </div>
+        </div> : <div className="d-flex flex-column align-items-center justify-content-center h-100 p-3">
+          <div className="text-muted mb-3">Routes panel is hidden</div>
+          <Button variant="outline-dark" size="sm" onClick={() => setShowRoutesPanel(true)}>Show Routes</Button>
+        </div>}
       </CardBody>
     </Card>;
 
@@ -3252,6 +3339,26 @@ const TripDashboardWorkspace = () => {
   const dockPanelsVisible = dockPanelsOrdered;
 
   return <>
+      {(!showDriversPanel || !showRoutesPanel || !showTripsPanel) && <div style={{
+        position: 'fixed',
+        top: 12,
+        right: 16,
+        zIndex: 1200,
+        display: 'flex',
+        gap: 8,
+        alignItems: 'center',
+        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        border: '1px solid rgba(100, 116, 139, 0.35)',
+        padding: '8px 12px',
+        borderRadius: 8,
+        backdropFilter: 'blur(10px)'
+      }}>
+        <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>HIDDEN PANELS:</span>
+        {!showDriversPanel && <Button variant="outline-success" size="sm" onClick={() => setShowDriversPanel(true)}>📊 Drivers</Button>}
+        {!showRoutesPanel && <Button variant="outline-success" size="sm" onClick={() => setShowRoutesPanel(true)}>🗺️ Routes</Button>}
+        {!showTripsPanel && <Button variant="outline-success" size="sm" onClick={() => setShowTripsPanel(true)}>📋 Trips</Button>}
+      </div>}
+
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: showMapPane && isStandardLayout ? 'block' : 'none' }}>
           <Card className="h-100">
