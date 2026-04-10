@@ -2824,8 +2824,9 @@ const ConfirmationWorkspace = () => {
                   const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
                   const isOptedOut = blockingState.isBlocked;
                   const riderProfile = getRiderProfile(trip);
+                  const tripRowStyle = { borderTop: '2px solid rgba(99,102,241,0.35)' };
                   return <React.Fragment key={trip.id}>
-                      <tr>
+                      <tr style={tripRowStyle}>
                         <td>
                           <input
                             type="checkbox"
@@ -2837,7 +2838,7 @@ const ConfirmationWorkspace = () => {
                         {confirmationTableColumns.map(columnKey => <React.Fragment key={`${trip.id}-${columnKey}`}>{renderConfirmationDataCell(trip, columnKey, confirmationStatus, isOptedOut, riderProfile)}</React.Fragment>)}
                       </tr>
                       <tr>
-                        <td colSpan={confirmationTableColumnCount} className="pt-0 border-0">
+                        <td colSpan={confirmationTableColumnCount} className="pt-0 border-0" style={{ borderBottom: '2px solid rgba(99,102,241,0.35)' }}>
                           <div className="d-flex gap-1 flex-wrap justify-content-center py-2">
                             <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 90 }}>
                               {confirmationStatus === 'Confirmed' ? 'Unconfirm' : 'Confirm'}
