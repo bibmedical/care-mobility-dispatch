@@ -223,6 +223,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
     const pickFromCamera = async () => {
       try {
+        const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraPermission.status !== 'granted') {
+          openSettings();
+          return;
+        }
         const cameraResult = await ImagePicker.launchCameraAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.35,
@@ -236,26 +241,35 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       }
     };
 
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.35,
-        allowsEditing: true,
-        base64: true
-      });
-      if (result.canceled || !result.assets?.[0]?.base64) return;
-      setCancelPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
-    } catch {
-      Alert.alert(
-        'Photo permission',
-        'Gallery is not available. Use camera instead?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Use camera', onPress: () => void pickFromCamera() },
-          { text: 'Open settings', onPress: () => void Linking.openSettings() }
-        ]
-      );
-    }
+    const pickFromGallery = async () => {
+      try {
+        const libraryPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (libraryPermission.status !== 'granted') {
+          openSettings();
+          return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.35,
+          allowsEditing: true,
+          base64: true
+        });
+        if (result.canceled || !result.assets?.[0]?.base64) return;
+        setCancelPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      } catch {
+        openSettings();
+      }
+    };
+
+    Alert.alert(
+      'Attach cancellation photo',
+      'Choose where to get the photo.',
+      [
+        { text: 'Take photo', onPress: () => void pickFromCamera() },
+        { text: 'Choose from gallery', onPress: () => void pickFromGallery() },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   const submitCancelTrip = async () => {
@@ -291,6 +305,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
     const pickFromCamera = async () => {
       try {
+        const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+        if (cameraPermission.status !== 'granted') {
+          openSettings();
+          return;
+        }
         const cameraResult = await ImagePicker.launchCameraAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
           quality: 0.3,
@@ -305,27 +324,36 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       }
     };
 
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.3,
-        allowsEditing: true,
-        aspect: [1, 1],
-        base64: true
-      });
-      if (result.canceled || !result.assets?.[0]?.base64) return;
-      setCompletionPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
-    } catch {
-      Alert.alert(
-        'Photo permission',
-        'Gallery is not available. Use camera instead?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Use camera', onPress: () => void pickFromCamera() },
-          { text: 'Open settings', onPress: () => void Linking.openSettings() }
-        ]
-      );
-    }
+    const pickFromGallery = async () => {
+      try {
+        const libraryPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (libraryPermission.status !== 'granted') {
+          openSettings();
+          return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.3,
+          allowsEditing: true,
+          aspect: [1, 1],
+          base64: true
+        });
+        if (result.canceled || !result.assets?.[0]?.base64) return;
+        setCompletionPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      } catch {
+        openSettings();
+      }
+    };
+
+    Alert.alert(
+      'Attach completion photo',
+      'Choose where to get the photo.',
+      [
+        { text: 'Take photo', onPress: () => void pickFromCamera() },
+        { text: 'Choose from gallery', onPress: () => void pickFromGallery() },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   const submitCompleteTrip = async () => {

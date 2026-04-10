@@ -16,6 +16,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This driver app needs your live location to show real GPS in dispatcher and calculate ETA.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This driver app needs background GPS so dispatcher can keep seeing the vehicle even when the phone screen is not on.",
+        "NSCameraUsageDescription": "This driver app needs camera access to capture required trip and profile photos.",
+        "NSPhotoLibraryUsageDescription": "This driver app needs photo library access so drivers can attach existing trip and profile photos.",
         "UIBackgroundModes": [
           "location"
         ]
@@ -29,6 +31,8 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION"
       ],
@@ -57,6 +61,13 @@
           "locationAlwaysAndWhenInUsePermission": "This driver app needs background GPS so dispatcher can keep seeing the vehicle even when the phone screen is off.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This driver app needs photo access so drivers can attach trip and profile photos.",
+          "cameraPermission": "This driver app needs camera access to take required trip and profile photos."
         }
       ]
     ],
