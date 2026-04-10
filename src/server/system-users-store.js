@@ -26,6 +26,27 @@ const normalizeUserRecord = user => ({
   eventType: String(user?.eventType ?? '')
 });
 
+const applyRoleAccessPolicy = user => {
+  const role = String(user?.role || '');
+  if (isDriverRole(role)) {
+    return {
+      ...user,
+      webAccess: false,
+      androidAccess: true
+    };
+  }
+
+  if (isAdminRole(role)) {
+    return {
+      ...user,
+      webAccess: true,
+      androidAccess: true
+    };
+  }
+
+  return user;
+};
+
 const normalizeProtectedIds = (protectedUserIds, users) => {
   const userIds = new Set(users.map(user => user.id));
   const preferredIds = Array.isArray(protectedUserIds) ? protectedUserIds : DEFAULT_PROTECTED_SYSTEM_USER_IDS;
@@ -52,7 +73,7 @@ const normalizeUsersState = value => {
       };
     }
 
-    return normalizedUser;
+    return applyRoleAccessPolicy(normalizedUser);
   }) : [];
 
   return {

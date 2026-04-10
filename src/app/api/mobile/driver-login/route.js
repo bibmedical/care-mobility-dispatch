@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { authorizePersistedSystemUser } from '@/server/system-users-store';
 import { buildDriverSessionError, claimDriverMobileSession } from '@/server/driver-mobile-session-store';
-import { isDriverRole, normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
+import { normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
 import { getFullName, mapAdminDataToDispatchDrivers, normalizeDriverGpsSettings, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors } from '@/server/mobile-api-cors';
@@ -153,10 +153,6 @@ export async function POST(request) {
       } catch (authError) {
         driver = findDriverFromDirectCredentials(normalizedDrivers, state, identifier, password);
         if (!driver) throw authError;
-      }
-
-      if (authUser && !isDriverRole(authUser?.role)) {
-        return jsonWithMobileCors(request, { ok: false, error: 'This account is not a driver profile.' }, { status: 403 });
       }
 
       if (!driver) {
