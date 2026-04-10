@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, Vibration } from 'react-native';
+import { AppState, Linking, Vibration } from 'react-native';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
@@ -158,13 +158,11 @@ export const useDriverRuntime = () => {
   const [messages, setMessages] = useState<DriverMessage[]>([]);
   const [readIncomingMessageIds, setReadIncomingMessageIds] = useState<string[]>([]);
   const [driverReviewSummary, setDriverReviewSummary] = useState<DriverReviewSummary | null>(null);
-
   const effectiveForegroundGpsTimeIntervalMs = useMemo(() => {
     const configured = Number(driverSession?.gpsSettings?.fgTimeIntervalMs);
     if (Number.isFinite(configured) && configured > 0) return configured;
     return DRIVER_APP_CONFIG.gpsTimeIntervalMs;
   }, [driverSession?.gpsSettings?.fgTimeIntervalMs]);
-
   const effectiveForegroundGpsDistanceIntervalMeters = useMemo(() => {
     const configured = Number(driverSession?.gpsSettings?.fgDistanceIntervalMeters);
     if (Number.isFinite(configured) && configured > 0) return configured;
@@ -363,8 +361,6 @@ export const useDriverRuntime = () => {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-
     void Notifications.setNotificationChannelAsync(DRIVER_ALERT_CHANNEL_ID, {
       name: 'Dispatcher Alerts',
       importance: Notifications.AndroidImportance.MAX,
@@ -576,6 +572,40 @@ export const useDriverRuntime = () => {
 
     return () => {
       active = false;
+    };
+  }, [driverSession?.driverId, loggedIn, trackingEnabled]);
+
+  useEffect(() => {
+    if (!loggedIn || !trackingEnabled || !driverSession?.driverId || !DRIVER_APP_CONFIG.enableBackgroundTracking) return;
+
+    let active = true;
+
+    const ensureBackgroundTracking = async () => {
+      try {
+        await startBackgroundLocationTracking();
+        if (active) {
+          setIsBackgroundTrackingEnabled(true);
+          setBackgroundTrackingError('');
+        }
+      } catch (error) {
+        if (active) {
+          setIsBackgroundTrackingEnabled(false);
+          setBackgroundTrackingError(error instanceof Error ? error.message : 'Unable to keep background GPS active.');
+        }
+      }
+    };
+
+    void ensureBackgroundTracking();
+
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'background' || nextState === 'inactive' || nextState === 'active') {
+        void ensureBackgroundTracking();
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
     };
   }, [driverSession?.driverId, loggedIn, trackingEnabled]);
 
@@ -1045,8 +1075,6 @@ export const useDriverRuntime = () => {
       const actionAllowsSignatureBypass = ['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination'].includes(action);
       const backendSignatureError = /signature|firma/i.test(String(payload?.error || ''));
 
-      // Compatibility fallback: some older backend revisions incorrectly require
-      // signature for progress actions. Retry once with a placeholder signature.
       if (!response.ok && actionAllowsSignatureBypass && backendSignatureError) {
         const retryResult = await sendTripActionRequest({
           riderSignatureName: 'Driver workflow acknowledgment'
