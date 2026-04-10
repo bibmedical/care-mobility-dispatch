@@ -3365,6 +3365,101 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
+  const renderTripMapPanel = ({ detached = false } = {}) => <Card className="h-100">
+      <CardBody className="p-0 d-flex flex-column h-100 position-relative">
+        {showInlineMap ? <div className="position-relative h-100">
+            {!detached ? <Button variant="warning" type="button" onClick={() => {
+          setShowMapPane(false);
+          setStatusMessage('Map hidden in Trip Dashboard.');
+        }} style={yellowMapTabStyle}>
+                Hide Map
+              </Button> : null}
+            <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
+              <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
+              <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
+                <option value="">City</option>
+                {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
+              </Form.Select>
+              <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} style={mapQuickZipControlStyle}>
+                <option value="">ZIP Code</option>
+                {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
+              </Form.Select>
+              <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
+                <option value="auto">Map: Auto</option>
+                <option value="openstreetmap">Map: OSM</option>
+                <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
+              </Form.Select>
+              <Button variant="dark" size="sm" onClick={() => {
+            setShowBottomPanels(true);
+            setPanelView(TRIP_DASHBOARD_PANEL_VIEWS.both);
+            if (isStandardLayout && showMapPane) {
+              setRightPanelCollapsed(false);
+              setColumnSplit(current => clamp(current, 38, 68));
+            }
+            setStatusMessage('Bottom panels anchored.');
+          }}>Panels anchored</Button>
+              {!detached ? <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button> : null}
+            </div>
+            {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
+          zIndex: 500,
+          minWidth: 260,
+          marginTop: 46,
+          backgroundColor: 'rgba(15, 19, 32, 0.92)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          color: '#f8fafc'
+        }}>
+                <div className="small text-uppercase" style={{ color: '#94a3b8' }}>PU {activeInfoTrip.id}</div>
+                <div className="fw-semibold">{activeInfoTrip.rider}</div>
+                <div className="small">{activeInfoTrip.pickup}</div>
+                <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.address || 'No pickup address available'}</div>
+                <div className="small mt-1">DO {activeInfoTrip.dropoff}</div>
+                <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
+              </div> : null}
+            <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+              <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
+              <ZoomControl position="bottomleft" />
+              {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
+              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+              {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
+            const points = [{
+              key: `${trip.id}-pickup-mapquick`,
+              tripId: trip.id,
+              position: trip.position,
+              color: '#0ea5e9',
+              label: `PU ${trip.pickup}`
+            }, {
+              key: `${trip.id}-dropoff-mapquick`,
+              tripId: trip.id,
+              position: trip.destinationPosition ?? trip.position,
+              color: '#22c55e',
+              label: `DO ${trip.dropoff}`
+            }];
+            return points;
+          }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
+            click: () => {
+              toggleTripSelection(point.tripId);
+            }
+          }}>
+                  <Popup>{point.label}</Popup>
+                </CircleMarker>) : null}
+              {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
+                  <Popup>
+                    <div className="fw-semibold">{stop.title}</div>
+                    <div>{stop.detail}</div>
+                  </Popup>
+                </Marker>)}
+            </MapContainer>
+          </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
+            <div className="fw-semibold fs-5">Map moved to another screen</div>
+            <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Open the map on the other screen and keep route, trip, and driver management here.</div>
+            <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
+              <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
+              {!detached ? <Button variant="outline-light" size="sm" onClick={handleOpenMapWindow}>Open Map Window Again</Button> : null}
+            </div>
+          </div>}
+      </CardBody>
+    </Card>;
+
   const dockPanelsOrdered = panelOrder === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? [{
     key: 'drivers',
     node: driverPanelCard,
@@ -3387,44 +3482,7 @@ const TripDashboardWorkspace = () => {
 
   if (isDetachedMapMode) {
     return <div style={{ width: '100vw', height: '100vh', padding: 6, backgroundColor: '#0f172a' }}>
-      <Card className="h-100">
-        <CardBody className="p-0 d-flex flex-column h-100 position-relative">
-          <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
-            <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
-            <ZoomControl position="bottomleft" />
-            {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-            {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
-            {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
-              const points = [{
-                key: `${trip.id}-pickup-mapquick`,
-                tripId: trip.id,
-                position: trip.position,
-                color: '#0ea5e9',
-                label: `PU ${trip.pickup}`
-              }, {
-                key: `${trip.id}-dropoff-mapquick`,
-                tripId: trip.id,
-                position: trip.destinationPosition ?? trip.position,
-                color: '#22c55e',
-                label: `DO ${trip.dropoff}`
-              }];
-              return points;
-            }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
-              click: () => {
-                toggleTripSelection(point.tripId);
-              }
-            }}>
-              <Popup>{point.label}</Popup>
-            </CircleMarker>) : null}
-            {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
-              <Popup>
-                <div className="fw-semibold">{stop.title}</div>
-                <div>{stop.detail}</div>
-              </Popup>
-            </Marker>)}
-          </MapContainer>
-        </CardBody>
-      </Card>
+      {renderTripMapPanel({ detached: true })}
     </div>;
   }
 
@@ -3451,100 +3509,7 @@ const TripDashboardWorkspace = () => {
 
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: showMapPane && isStandardLayout ? 'block' : 'none' }}>
-          <Card className="h-100">
-            <CardBody className="p-0 d-flex flex-column h-100 position-relative">
-              {showInlineMap ? <div className="position-relative h-100">
-                <Button variant="warning" type="button" onClick={() => {
-                setShowMapPane(false);
-                setStatusMessage('Map hidden in Trip Dashboard.');
-              }} style={yellowMapTabStyle}>
-                  Hide Map
-                </Button>
-                <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
-                  <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
-                  <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
-                    <option value="">City</option>
-                    {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
-                  </Form.Select>
-                  <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} style={mapQuickZipControlStyle}>
-                    <option value="">ZIP Code</option>
-                    {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
-                  </Form.Select>
-                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
-                    <option value="auto">Map: Auto</option>
-                    <option value="openstreetmap">Map: OSM</option>
-                    <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
-                  </Form.Select>
-                  <Button variant="dark" size="sm" onClick={() => {
-                  setShowBottomPanels(true);
-                  setPanelView(TRIP_DASHBOARD_PANEL_VIEWS.both);
-                  if (isStandardLayout && showMapPane) {
-                    setRightPanelCollapsed(false);
-                    setColumnSplit(current => clamp(current, 38, 68));
-                  }
-                  setStatusMessage('Bottom panels anchored.');
-                }}>Panels anchored</Button>
-                  <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button>
-                </div>
-                {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
-                zIndex: 500,
-                minWidth: 260,
-                marginTop: 46,
-                backgroundColor: 'rgba(15, 19, 32, 0.92)',
-                border: '1px solid rgba(255,255,255,0.12)',
-                color: '#f8fafc'
-              }}>
-                    <div className="small text-uppercase" style={{ color: '#94a3b8' }}>PU {activeInfoTrip.id}</div>
-                    <div className="fw-semibold">{activeInfoTrip.rider}</div>
-                    <div className="small">{activeInfoTrip.pickup}</div>
-                    <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.address || 'No pickup address available'}</div>
-                    <div className="small mt-1">DO {activeInfoTrip.dropoff}</div>
-                    <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
-                  </div> : null}
-                <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
-                  <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
-                  <ZoomControl position="bottomleft" />
-                  {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-                  {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
-                  {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
-                  const points = [{
-                    key: `${trip.id}-pickup-mapquick`,
-                    tripId: trip.id,
-                    position: trip.position,
-                    color: '#0ea5e9',
-                    label: `PU ${trip.pickup}`
-                  }, {
-                    key: `${trip.id}-dropoff-mapquick`,
-                    tripId: trip.id,
-                    position: trip.destinationPosition ?? trip.position,
-                    color: '#22c55e',
-                    label: `DO ${trip.dropoff}`
-                  }];
-                  return points;
-                }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
-                  click: () => {
-                    toggleTripSelection(point.tripId);
-                  }
-                }}>
-                      <Popup>{point.label}</Popup>
-                    </CircleMarker>) : null}
-                  {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
-                      <Popup>
-                        <div className="fw-semibold">{stop.title}</div>
-                        <div>{stop.detail}</div>
-                      </Popup>
-                    </Marker>)}
-                </MapContainer>
-              </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
-                  <div className="fw-semibold fs-5">Map moved to another screen</div>
-                  <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Open the map on the other screen and keep route, trip, and driver management here.</div>
-                  <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
-                    <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
-                    <Button variant="outline-light" size="sm" onClick={handleOpenMapWindow}>Open Map Window Again</Button>
-                  </div>
-                </div>}
-            </CardBody>
-          </Card>
+          {renderTripMapPanel()}
         </div>
 
         <div onMouseDown={() => showTripsPanel && (showMapPane && !isPeekPanelMode || isFocusRightLayout && hasVisibleDockPanels) ? setDragMode('column') : undefined} style={{
