@@ -248,3 +248,40 @@ export const updateDriverLocation = async ({
   );
   return (result.rowCount ?? 0) > 0;
 };
+
+export const resolveDriverPresenceContext = async driverId => {
+  await ensureAdminSchema();
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) return null;
+
+  const row = await queryOne(
+    `
+      SELECT
+        id,
+        data->>'authUserId' AS auth_user_id,
+        data->>'displayName' AS display_name,
+        data->>'firstName' AS first_name,
+        data->>'lastName' AS last_name,
+        data->>'username' AS username,
+        data->>'email' AS email,
+        data->>'role' AS role
+      FROM admin_drivers
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [normalizedDriverId]
+  );
+
+  if (!row) return null;
+
+  const fullName = [String(row.first_name || '').trim(), String(row.last_name || '').trim()].filter(Boolean).join(' ').trim();
+  const userName = String(row.display_name || '').trim() || fullName || String(row.username || '').trim() || normalizedDriverId;
+
+  return {
+    driverId: normalizedDriverId,
+    userId: String(row.auth_user_id || '').trim() || normalizedDriverId,
+    userName,
+    userRole: String(row.role || '').trim() || 'Driver(Driver)',
+    userEmail: String(row.email || '').trim() || ''
+  };
+};

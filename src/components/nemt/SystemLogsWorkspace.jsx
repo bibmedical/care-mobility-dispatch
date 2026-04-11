@@ -549,6 +549,7 @@ const SystemLogsWorkspace = () => {
 
     return Array.from(summaryMap.values())
       .sort((a, b) => {
+        if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
         if (b.todayWorkedMs !== a.todayWorkedMs) return b.todayWorkedMs - a.todayWorkedMs;
         return String(a.userName || '').localeCompare(String(b.userName || ''));
       });
@@ -558,6 +559,11 @@ const SystemLogsWorkspace = () => {
     () => workerSummaries.filter(worker => worker.isOnline).sort((a, b) => b.todayLastTimestamp - a.todayLastTimestamp),
     [workerSummaries]
   );
+
+  const onlineUserNamesSummary = useMemo(() => {
+    if (activeOnlineUsers.length === 0) return 'Nadie conectado en este momento.';
+    return `En linea ahora: ${activeOnlineUsers.map(user => user.userName).filter(Boolean).join(', ')}`;
+  }, [activeOnlineUsers]);
 
   const driverAlertLogs = useMemo(() => allLogs.filter(log => {
     if (!isDriverAlertActionLog(log)) return false;
@@ -950,7 +956,7 @@ const SystemLogsWorkspace = () => {
           <div className={styles.tableHeader}>
             <div>
               <h3>Lista de Trabajadores</h3>
-              <p>Afuera ves todos los trabajadores con sus horas del dia. Entra a uno para ver todo el detalle.</p>
+              <p>{onlineUserNamesSummary}</p>
             </div>
             <div className={styles.tableBadge}>{workerSummaries.length} trabajadores</div>
           </div>

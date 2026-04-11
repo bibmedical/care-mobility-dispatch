@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { updateDriverLocation } from '@/server/nemt-admin-store';
+import { resolveDriverPresenceContext, updateDriverLocation } from '@/server/nemt-admin-store';
+import { logPresenceHeartbeat } from '@/server/activity-logs-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
@@ -43,6 +44,29 @@ export async function POST(request) {
 
   if (!updated) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
+  }
+
+  try {
+    const presenceContext = await resolveDriverPresenceContext(driverId);
+    if (presenceContext?.userId) {
+      const ipAddress = String(request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '').split(',')[0].trim();
+      await logPresenceHeartbeat({
+        userId: presenceContext.userId,
+        userName: presenceContext.userName,
+        userRole: presenceContext.userRole,
+        userEmail: presenceContext.userEmail,
+        ipAddress,
+        metadata: {
+          source: 'mobile-apk',
+          driverId,
+          latitude,
+          longitude
+        },
+        minIntervalMs: Number(process.env.PRESENCE_HEARTBEAT_MIN_INTERVAL_MS || 60_000)
+      });
+    }
+  } catch (presenceError) {
+    console.error('Failed to record mobile presence heartbeat:', presenceError);
   }
 
   return jsonWithMobileCors(request, { ok: true, driverId, trackingLastSeen });
