@@ -47,6 +47,14 @@ const twoFAStyles = {
   }
 };
 
+const loginStyles = {
+  submitButton: {
+    backgroundColor: '#6b7280',
+    borderColor: '#6b7280',
+    color: '#ffffff'
+  }
+};
+
 const LoginForm = () => {
   const {
     loading,
@@ -171,7 +179,7 @@ const LoginForm = () => {
               <Link href="/auth/reset-pass" className="text-muted font-13">Forgot password?</Link>
             </div>
             <div className="d-grid mb-3">
-              <Button type="submit" variant="primary" disabled={loading}>
+              <Button type="submit" variant="secondary" style={loginStyles.submitButton} disabled={loading}>
                 {loading ? 'Logging in...' : 'Log In'} <IconifyIcon icon="fa6-solid:right-to-bracket" className="ms-1" />
               </Button>
             </div>
