@@ -415,6 +415,38 @@ const SystemLogsWorkspace = () => {
     }
   };
 
+  const handleClearAllLogs = async () => {
+    const shouldClear = typeof window !== 'undefined' ? window.confirm('Clear all System Logs now? This cannot be undone.') : false;
+    if (!shouldClear) return;
+
+    try {
+      const response = await fetch('/api/system-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'clear-all',
+          eventLabel: 'Clear all logs'
+        })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.error || 'Unable to clear logs');
+      }
+
+      showNotification({
+        message: 'System Logs cleared successfully.',
+        variant: 'success'
+      });
+      await fetchLogs();
+    } catch (error) {
+      showNotification({
+        message: `Could not clear logs: ${error?.message || 'Unknown error'}`,
+        variant: 'error'
+      });
+    }
+  };
+
   useEffect(() => {
     fetchLogs();
     const interval = setInterval(fetchLogs, 30000);
@@ -771,6 +803,9 @@ const SystemLogsWorkspace = () => {
 
         <div className={styles.controlsMeta}>
           <span>{stats.todayEvents} eventos hoy en todo el sistema</span>
+          <button onClick={handleClearAllLogs} className={styles.backButton} disabled={loading}>
+            Limpiar Logs
+          </button>
           <button onClick={fetchLogs} className={styles.button} disabled={loading}>
             {loading ? 'Cargando...' : 'Actualizar'}
           </button>

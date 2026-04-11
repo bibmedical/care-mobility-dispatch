@@ -1,6 +1,6 @@
 import { getServerSession } from 'next-auth';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
-import { getAllActivityLogs, getActivityLogsByRole, getActivityLogsByUserId, getActivityLogsSummary, logPresenceHeartbeat, logUserActionEvent } from '@/server/activity-logs-store';
+import { clearAllActivityLogs, getAllActivityLogs, getActivityLogsByRole, getActivityLogsByUserId, getActivityLogsSummary, logPresenceHeartbeat, logUserActionEvent } from '@/server/activity-logs-store';
 
 export async function GET(req) {
   try {
@@ -49,7 +49,13 @@ export async function POST(req) {
     const metadata = body?.metadata && typeof body.metadata === 'object' ? body.metadata : null;
     const normalizedEventLabel = eventLabel.toLowerCase();
     const isPresenceHeartbeat = normalizedEventLabel === 'presence heartbeat' || String(metadata?.kind || '').toLowerCase() === 'presence-heartbeat';
+    const isClearAllRequest = normalizedEventLabel === 'clear all logs' || body?.action === 'clear-all';
     const ipAddress = String(req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '').split(',')[0].trim();
+
+    if (isClearAllRequest) {
+      const remaining = await clearAllActivityLogs();
+      return Response.json({ success: true, remaining });
+    }
 
     if (isPresenceHeartbeat) {
       const minIntervalMs = Number(process.env.PRESENCE_HEARTBEAT_MIN_INTERVAL_MS || 60_000);

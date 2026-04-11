@@ -424,3 +424,14 @@ export const clearOldActivityLogs = async (daysOld = 90) => {
     console.error('Error clearing old activity logs:', error);
   }
 };
+
+export const clearAllActivityLogs = async () => {
+  try {
+    await query('DELETE FROM activity_logs');
+    const [{ count }] = await queryRows('SELECT COUNT(*)::int AS count FROM activity_logs');
+    return Number(count) || 0;
+  } catch (error) {
+    console.error('Error clearing all activity logs:', error);
+    throw error;
+  }
+};
