@@ -612,6 +612,25 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
   popupAnchor: [0, -14]
 });
 
+const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
+
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100 }) => {
+  const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
+  const normalizedScale = clamp(Number(vehicleIconScalePercent) || 100, 70, 200);
+  const shellSize = Math.round(60 * normalizedScale / 100);
+  const bodyWidth = Math.round(34 * normalizedScale / 100);
+  const bodyHeight = Math.round(48 * normalizedScale / 100);
+  const imageSizePercent = Math.round(clamp(132 * normalizedScale / 100, 110, 190));
+
+  return divIcon({
+    className: 'driver-live-vehicle-icon-shell',
+    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${DEFAULT_VEHICLE_ICON_URL}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
+    iconSize: [shellSize, shellSize],
+    iconAnchor: [Math.round(shellSize / 2), Math.round(shellSize / 2)],
+    popupAnchor: [0, -Math.round(shellSize * 0.4)]
+  });
+};
+
 const TripDashboardWorkspace = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1763,6 +1782,18 @@ const TripDashboardWorkspace = () => {
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
 
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
+  const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
+  const liveVehicleIconByDriverId = useMemo(() => {
+    const iconByDriverId = new Map();
+    for (const driver of driversWithRealLocation) {
+      iconByDriverId.set(String(driver?.id || '').trim(), createLiveVehicleIcon({
+        heading: driver.heading,
+        isOnline: driver.live === 'Online',
+        vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+      }));
+    }
+    return iconByDriverId;
+  }, [driversWithRealLocation]);
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
@@ -1842,12 +1873,6 @@ const TripDashboardWorkspace = () => {
       setSelectedTripIds(prunedSelectedIds);
     }
   }, [activeDateTripIdSet, selectedTripIds, setSelectedTripIds]);
-
-  useEffect(() => {
-    if (!mapZipQuickFilter) return;
-    if (mapQuickZipOptions.includes(mapZipQuickFilter)) return;
-    setMapZipQuickFilter('');
-  }, [mapQuickZipOptions, mapZipQuickFilter]);
 
   useEffect(() => {
     const fallbackAnchorTrip = aiPlanningScopeTrips[0] ?? null;
@@ -3378,7 +3403,7 @@ const TripDashboardWorkspace = () => {
         }} style={yellowMapTabStyle}>
                 Hide Map
               </Button> : null}
-            <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
+            <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'scroll', overflowY: 'hidden', scrollbarGutter: 'stable both-edges', whiteSpace: 'nowrap' }}>
               <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
               <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
                 <option value="">City</option>
@@ -3424,6 +3449,17 @@ const TripDashboardWorkspace = () => {
               <ZoomControl position="bottomleft" />
               {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
               {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+              {driversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
+            heading: driver.heading,
+            isOnline: driver.live === 'Online',
+            vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+          })}>
+                  <Popup>
+                    <div className="fw-semibold">{driver.name}</div>
+                    <div className="small text-muted">{driver.live || 'Offline'}</div>
+                    <div>{getDriverCheckpoint(driver)}</div>
+                  </Popup>
+                </Marker>)}
               {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
             const points = [{
               key: `${trip.id}-pickup-mapquick`,

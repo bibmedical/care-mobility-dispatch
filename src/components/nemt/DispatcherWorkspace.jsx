@@ -759,11 +759,7 @@ const getVehicleVariantIndex = key => {
 
 const getVehicleVariantUrl = key => `/assets/gpscars/car-${String(getVehicleVariantIndex(key) + 1).padStart(2, '0')}.svg`;
 
-const resolveVehicleIconUrl = (driverKey, vehicleSvgPath = '') => {
-  const customPath = String(vehicleSvgPath || '').trim();
-  if (!customPath) return DEFAULT_VEHICLE_ICON_URL;
-  return customPath.startsWith('/') ? customPath : `/${customPath.replace(/^\/+/, '')}`;
-};
+const resolveVehicleIconUrl = () => DEFAULT_VEHICLE_ICON_URL;
 
 const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   className: 'driver-map-icon-shell',
@@ -773,14 +769,14 @@ const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   popupAnchor: [0, -16]
 });
 
-const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '', vehicleIconScalePercent = 100, vehicleIconSvgPath = '' }) => {
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100 }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
   const normalizedScale = clamp(Number(vehicleIconScalePercent) || 100, 70, 200);
   const shellSize = Math.round(60 * normalizedScale / 100);
   const bodyWidth = Math.round(34 * normalizedScale / 100);
   const bodyHeight = Math.round(48 * normalizedScale / 100);
   const imageSizePercent = Math.round(clamp(132 * normalizedScale / 100, 110, 190));
-  const vehicleVariantUrl = resolveVehicleIconUrl(driverKey, vehicleIconSvgPath);
+  const vehicleVariantUrl = resolveVehicleIconUrl();
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
     html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${vehicleVariantUrl}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
@@ -1991,7 +1987,18 @@ const DispatcherWorkspace = () => {
     return etaByDriver;
   }, [drivers, trips]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
-  const showAllLiveDriversOnMap = !selectedDriverId || !selectedDriver?.hasRealLocation;
+  const nonSelectedDriversWithRealLocation = useMemo(() => driversWithRealLocation.filter(driver => String(driver?.id || '').trim() !== String(selectedDriverId || '').trim()), [driversWithRealLocation, selectedDriverId]);
+  const liveVehicleIconByDriverId = useMemo(() => {
+    const iconByDriverId = new Map();
+    for (const driver of driversWithRealLocation) {
+      iconByDriverId.set(String(driver?.id || '').trim(), createLiveVehicleIcon({
+        heading: driver.heading,
+        isOnline: driver.live === 'Online',
+        vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+      }));
+    }
+    return iconByDriverId;
+  }, [driversWithRealLocation]);
   const quickReassignDrivers = useMemo(() => {
     return [...drivers].sort((leftDriver, rightDriver) => {
       const leftOnline = String(leftDriver?.live || '').trim().toLowerCase() === 'online' ? 1 : 0;
@@ -2408,12 +2415,6 @@ const DispatcherWorkspace = () => {
     setQuickReassignDriverId('');
     setStatusMessage(`${selectedCount} trip(s) reasignados a ${driver.name}.`);
   };
-
-  useEffect(() => {
-    if (!mapZipQuickFilter) return;
-    if (mapQuickZipOptions.includes(mapZipQuickFilter)) return;
-    setMapZipQuickFilter('');
-  }, [mapQuickZipOptions, mapZipQuickFilter]);
 
   const handleDriverSelectionChange = nextDriverId => {
     setSelectedDriverId(nextDriverId);
@@ -3079,7 +3080,7 @@ const DispatcherWorkspace = () => {
   const renderDispatchMapPanel = () => <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
       <CardBody className="p-0">
         {showInlineMap ? <div className="position-relative h-100">
-          {!isDispatchMapDetached ? <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 650, maxWidth: '100%' }}>
+          {!isDispatchMapDetached ? <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'scroll', overflowY: 'hidden', scrollbarGutter: 'stable both-edges', whiteSpace: 'nowrap' }}>
             <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapInteractionLocked}>Clear</Button>
             <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
               <option value="">City</option>
@@ -3095,7 +3096,7 @@ const DispatcherWorkspace = () => {
               <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
             </Form.Select>
             <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapInteractionLocked}>All drivers</Button>
-            {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button> : null}
+            <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked || !selectedDriver?.hasRealLocation}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button>
             <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
             <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
             {!isDetachedMapMode ? <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button> : null}
@@ -3122,12 +3123,10 @@ const DispatcherWorkspace = () => {
                 </Marker>
               </> : null}
             {selectedDriver?.hasRealLocation ? <Circle center={selectedDriver.position} radius={Math.max(100, Number(selectedDriver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: selectedDriverColor, weight: 2, opacity: 0.35, fillOpacity: 0.05 }} /> : null}
-            {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({
+            {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={liveVehicleIconByDriverId.get(String(selectedDriver?.id || '').trim()) || createLiveVehicleIcon({
             heading: selectedDriver.heading,
             isOnline: selectedDriver.live === 'Online',
-            driverKey: selectedDriver.id || selectedDriver.name,
-            vehicleIconScalePercent: selectedDriver?.gpsSettings?.vehicleIconScalePercent,
-            vehicleIconSvgPath: selectedDriver?.gpsSettings?.vehicleIconSvgPath
+            vehicleIconScalePercent: selectedDriver?.gpsSettings?.vehicleIconScalePercent
           })}>
                 <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                   <div className="fw-semibold">{selectedDriver.name}</div>
@@ -3135,13 +3134,11 @@ const DispatcherWorkspace = () => {
                   <div className="small text-muted">ETA: {selectedDriverEta?.label || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim()) || 'ETA unavailable'}</div>
                 </Tooltip>
               </Marker> : null}
-            {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Circle key={`driver-area-${driver.id}`} center={driver.position} radius={Math.max(100, Number(driver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: getDriverColor(driver.id || driver.name), weight: 1.5, opacity: 0.25, fillOpacity: 0.03 }} />) : null}
-            {showAllLiveDriversOnMap ? driversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={createLiveVehicleIcon({
+            {nonSelectedDriversWithRealLocation.map(driver => <Circle key={`driver-area-${driver.id}`} center={driver.position} radius={Math.max(100, Number(driver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: getDriverColor(driver.id || driver.name), weight: 1.5, opacity: 0.25, fillOpacity: 0.03 }} />)}
+            {nonSelectedDriversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
-            driverKey: driver.id || driver.name,
-            vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent,
-            vehicleIconSvgPath: driver?.gpsSettings?.vehicleIconSvgPath
+            vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
           })}>
                 <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                   <div className="fw-semibold">{driver.name}</div>
@@ -3149,7 +3146,7 @@ const DispatcherWorkspace = () => {
                   <div>{getDriverMapLocationLabel(driver)}</div>
                   <div className="small text-muted">{driver.live}</div>
                 </Tooltip>
-              </Marker>) : null}
+              </Marker>)}
             {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
             const points = [{
               key: `${trip.id}-pickup-mapquick`,

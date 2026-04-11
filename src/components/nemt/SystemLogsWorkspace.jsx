@@ -68,6 +68,19 @@ const formatTimestamp12 = value => {
   });
 };
 
+const formatLogLocality = log => {
+  const metadata = log?.metadata && typeof log.metadata === 'object' ? log.metadata : {};
+  const city = String(metadata.city || metadata.locality || metadata.town || '').trim();
+  const region = String(metadata.region || metadata.state || metadata.province || '').trim();
+  const country = String(metadata.country || metadata.countryCode || '').trim();
+  const inlineLocation = String(metadata.location || metadata.locationLabel || '').trim();
+
+  const composed = [city, region, country].filter(Boolean).join(', ');
+  if (composed) return composed;
+  if (inlineLocation) return inlineLocation;
+  return 'Localidad no disponible';
+};
+
 const buildSessionState = logs => {
   const activeSessionByUserId = new Map();
   const durationByLoginId = new Map();
@@ -489,7 +502,8 @@ const SystemLogsWorkspace = () => {
         userId: user.id,
         userName: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.username || user.email || user.id,
         userRole: user.role || 'Unknown',
-        userEmail: user.email || '-',
+          userIpAddress: '-',
+          userLocality: 'Localidad no disponible',
         todayWorkedMs: workdayState.totalByUserDate.get(`${user.id}::${todayDateKey}`) || 0,
         todayActionCount: 0,
         todayLastTimestamp: 0,
@@ -505,7 +519,8 @@ const SystemLogsWorkspace = () => {
         userId: log.userId,
         userName: log.userName || log.userId,
         userRole: log.userRole || 'Unknown',
-        userEmail: log.userEmail || '-',
+        userIpAddress: String(log.ipAddress || '').trim() || '-',
+        userLocality: formatLogLocality(log),
         todayWorkedMs: workdayState.totalByUserDate.get(`${log.userId}::${todayDateKey}`) || 0,
         todayActionCount: 0,
         todayLastTimestamp: 0,
@@ -521,7 +536,8 @@ const SystemLogsWorkspace = () => {
           userId: log.userId,
           userName: log.userName || log.userId,
           userRole: log.userRole || 'Unknown',
-          userEmail: log.userEmail || '-',
+          userIpAddress: String(log.ipAddress || '').trim() || '-',
+          userLocality: formatLogLocality(log),
           todayWorkedMs: 0,
           todayActionCount: 0,
           todayLastTimestamp: 0,
@@ -543,7 +559,8 @@ const SystemLogsWorkspace = () => {
         ...current,
         userName: current.userName || log.userName || log.userId,
         userRole: current.userRole || log.userRole || 'Unknown',
-        userEmail: current.userEmail || log.userEmail || '-',
+        userIpAddress: String(log.ipAddress || '').trim() || current.userIpAddress || '-',
+        userLocality: formatLogLocality(log) === 'Localidad no disponible' ? current.userLocality || 'Localidad no disponible' : formatLogLocality(log),
         todayWorkedMs,
         todayActionCount: current.todayActionCount + (isToday ? 1 : 0),
         todayLastTimestamp: shouldUpdateLastAction ? timestampMs : current.todayLastTimestamp,
@@ -980,7 +997,7 @@ const SystemLogsWorkspace = () => {
             <thead>
               <tr>
                 <th>Trabajador</th>
-                <th>Correo</th>
+                <th>IP / Localidad</th>
                 <th>Ultima Actividad</th>
                 <th>Horas Hoy</th>
                 <th>Estado</th>
@@ -998,7 +1015,10 @@ const SystemLogsWorkspace = () => {
               ) : workerSummaries.map((worker, index) => (
                 <tr key={`${worker.userId || 'user'}-${index}`} onClick={() => handleUserClick(worker)} className={styles.clickableRow}>
                   <td className={styles.userNameCell}>{worker.userName}</td>
-                  <td>{worker.userEmail}</td>
+                  <td>
+                    <div>{worker.userIpAddress || '-'}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{worker.userLocality || 'Localidad no disponible'}</div>
+                  </td>
                   <td>
                     <span className={`${styles.action} ${styles[getActionClass(worker.todayLastAction)]}`}>
                       {worker.todayLastTimestamp ? `${worker.todayLastAction} ${formatTimestamp12(worker.todayLastTimestamp)}` : 'Sin actividad hoy'}
