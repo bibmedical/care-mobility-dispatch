@@ -30,8 +30,11 @@ const ProfileDropdown = () => {
       console.error('Error in logout logging:', error);
     }
     
-    // Proceed with sign out
-    await signOut({ callbackUrl: '/auth/login' });
+    // Proceed with sign out without relying on server-side callback URL
+    await signOut({ redirect: false });
+    if (typeof window !== 'undefined') {
+      window.location.assign('/auth/login');
+    }
   };
 
   return <Dropdown as={'li'} className="topbar-item">

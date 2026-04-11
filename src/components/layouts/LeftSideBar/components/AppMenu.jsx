@@ -83,7 +83,10 @@ const MenuItemLink = ({
       console.error('Error in logout logging:', error);
     }
 
-    await signOut({ callbackUrl: '/auth/login' });
+    await signOut({ redirect: false });
+    if (typeof window !== 'undefined') {
+      window.location.assign('/auth/login');
+    }
   };
 
   if (item.key === 'logoff') {

@@ -61,7 +61,11 @@ const useInactivityLogout = ({ enabled = true } = {}) => {
         }).catch(err => console.error('Failed to log inactivity logout:', err));
       }
       
-      signOut({ redirect: true, callbackUrl: '/auth/login' });
+      void signOut({ redirect: false }).then(() => {
+        if (typeof window !== 'undefined') {
+          window.location.assign('/auth/login');
+        }
+      });
     }, timeoutMs);
   }, [enabled, session?.user?.id, session?.user?.inactivityTimeoutMinutes, showWarning, showNotification]);
 

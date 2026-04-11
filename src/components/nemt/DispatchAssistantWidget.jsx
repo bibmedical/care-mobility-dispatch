@@ -779,8 +779,10 @@ const DispatchAssistantWidget = () => {
               console.error('Error in logout logging:', error);
             }
           }
-          void signOut({
-            callbackUrl: '/auth/login'
+          void signOut({ redirect: false }).then(() => {
+            if (typeof window !== 'undefined') {
+              window.location.assign('/auth/login');
+            }
           });
         }, 700);
       } else if (payload?.action?.type === 'open-module' && payload?.action?.href) {
