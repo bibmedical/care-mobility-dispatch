@@ -196,22 +196,11 @@ html[data-bs-theme="dark"] {
 
 @include media-breakpoint-up(xl) {
     body[data-sidebar-size="collapsed"] {
-        .startbar {
-            width: 0 !important;
-            min-width: 0 !important;
-            overflow: hidden;
-            margin-left: calc(var(--#{$prefix}startbar-width) * -1);
-            transition: 0.3s;
+        .startbar:hover {
+            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.13);
+            z-index: 1006;
         }
 
-        .page-wrapper {
-            .page-content {
-                margin-left: 0 !important;
-            }
-        }
-    }
-
-    body[data-sidebar-size="collapsed"] {
         .startbar:not(:hover) {
             width: var(--#{$prefix}startbar-collapsed-width);
             transition: 0.3s;
