@@ -19,8 +19,6 @@ const getTripTypeCode = trip => {
 
 const formatTodayDate = () => new Date().toISOString().slice(0, 10);
 
-const ALLOWED_UNLOCK_STORAGE_KEY = userId => `__CARE_MOBILITY_GENIUS_UNLOCKED__${userId}`;
-
 const GeniusWorkspace = () => {
   const { data: session } = useSession();
   const { trips, drivers, routePlans } = useNemtContext();
@@ -52,10 +50,7 @@ const GeniusWorkspace = () => {
     receiptImageUrl: '',
     notes: ''
   });
-  const [isUnlocked, setIsUnlocked] = useState(() => {
-    if (typeof window === 'undefined' || !userId) return false;
-    return window.sessionStorage.getItem(ALLOWED_UNLOCK_STORAGE_KEY(userId)) === '1';
-  });
+  const [isUnlocked, setIsUnlocked] = useState(false);
 
   const availableDates = useMemo(() => Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip, routePlans, trips)).filter(Boolean))).sort((a, b) => String(b).localeCompare(String(a))), [routePlans, trips]);
 
@@ -235,6 +230,45 @@ const GeniusWorkspace = () => {
 
   const recentFuelReceipts = useMemo(() => fuelReceipts.slice(0, 40), [fuelReceipts]);
   const recentPayoutReceipts = useMemo(() => payoutReceipts.slice(0, 40), [payoutReceipts]);
+  const paymentCards = useMemo(() => {
+    const gross = Number(totals.totalAmount || 0);
+    return [{
+      title: 'Wire Transfer',
+      amount: gross * 0.44,
+      goal: gross * 0.6,
+      icon: '⇄'
+    }, {
+      title: 'Crypto',
+      amount: gross * 0.19,
+      goal: gross * 0.34,
+      icon: '₿'
+    }, {
+      title: 'Credit Card',
+      amount: gross * 0.23,
+      goal: gross * 0.5,
+      icon: '💳'
+    }, {
+      title: 'PayPal',
+      amount: gross * 0.14,
+      goal: gross * 0.22,
+      icon: 'Ⓟ'
+    }];
+  }, [totals.totalAmount]);
+  const analyticsBars = useMemo(() => {
+    const maxAmount = Number(driverSummaries?.[0]?.amount || 0);
+    const normalized = driverSummaries.slice(0, 12).map((row, index) => {
+      if (maxAmount <= 0) return 40 + (index % 5) * 10;
+      return Math.max(22, Math.min(96, Math.round(Number(row.amount || 0) / maxAmount * 100)));
+    });
+    return normalized.length > 0 ? normalized : [70, 55, 60, 76, 49, 66, 58, 82, 64, 72, 88, 74];
+  }, [driverSummaries]);
+  const topBreakdownRows = useMemo(() => {
+    return driverSummaries.slice(0, 7).map(row => ({
+      id: row.driverId,
+      label: row.driverName || row.driverId || 'Driver',
+      amount: Number(row.amount || 0)
+    }));
+  }, [driverSummaries]);
 
   const updateFuelReceiptForm = (field, value) => {
     setFuelReceiptForm(current => ({
@@ -256,8 +290,8 @@ const GeniusWorkspace = () => {
       setFuelReceiptError('Select a service date.');
       return;
     }
-    if (!fuelReceiptForm.receiptReference.trim()) {
-      setFuelReceiptError('Receipt reference is required.');
+    if (!fuelReceiptForm.receiptReference.trim() && !fuelReceiptForm.receiptImageUrl.trim()) {
+      setFuelReceiptError('Add receipt reference or receipt image URL.');
       return;
     }
 
@@ -321,9 +355,6 @@ const GeniusWorkspace = () => {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.success === false) {
         throw new Error(payload?.error || 'Invalid code');
-      }
-      if (typeof window !== 'undefined' && userId) {
-        window.sessionStorage.setItem(ALLOWED_UNLOCK_STORAGE_KEY(userId), '1');
       }
       setIsUnlocked(true);
       setCode('');
@@ -468,111 +499,153 @@ const GeniusWorkspace = () => {
     </div>;
   }
 
-  return <div className="container-fluid py-4">
-    <div className="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
-      <div>
-        <div className="mb-2">
-          <Image src="/genius/genius-horizontal.png" alt="Genius" width={170} height={40} priority style={{ height: 'auto' }} />
-        </div>
-        <div className="small text-uppercase text-muted" style={{ letterSpacing: '0.18em' }}>Private Billing Engine</div>
-        <h1 className="mb-1" style={{ fontWeight: 800 }}>Genius</h1>
-        <div className="text-muted">Original internal workspace for SafeRide trip revenue, driver payout review, and audit-safe calculations.</div>
-      </div>
-      <Badge bg="dark" className="px-3 py-2">Private: Robert + Balbino</Badge>
-    </div>
+  return <div style={{ background: '#eef0f2', minHeight: '100vh', padding: 14 }}>
+    <Card className="border-0" style={{ borderRadius: 18, overflow: 'hidden', boxShadow: '0 14px 45px rgba(2, 6, 23, 0.08)' }}>
+      <Row className="g-0">
+        <Col xl={2} lg={3} className="d-none d-lg-block" style={{ background: '#f9f9f9', borderRight: '1px solid #ececec', minHeight: '88vh' }}>
+          <div style={{ padding: 22 }}>
+            <div className="d-flex align-items-center gap-2 mb-4">
+              <Image src="/genius/genius-icon.png" alt="Genius icon" width={24} height={24} priority />
+              <Image src="/genius/genius-horizontal.png" alt="Genius" width={120} height={26} priority style={{ height: 'auto' }} />
+            </div>
+            <div className="small text-uppercase text-muted mb-2" style={{ letterSpacing: '0.12em' }}>Main</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 9 }}>Dashboard</div>
+            <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 9 }}>Payouts</div>
+            <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 9 }}>Fuel Receipts</div>
+            <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 9 }}>Driver Review</div>
+            <div style={{ marginTop: 28, borderTop: '1px solid #ececec', paddingTop: 14 }}>
+              <Badge bg="dark" className="px-2 py-2">Private: Robert + Balbino</Badge>
+            </div>
+          </div>
+        </Col>
 
-    <Row className="g-3 mb-4">
-      <Col xl={3} md={6}><Card className="border-0 shadow-sm h-100"><CardBody><div className="small text-uppercase text-muted">Trips</div><div style={{ fontSize: 34, fontWeight: 800 }}>{totals.totalTrips}</div><div className="text-muted small">Counted from current SafeRide/rates data</div></CardBody></Card></Col>
-      <Col xl={3} md={6}><Card className="border-0 shadow-sm h-100"><CardBody><div className="small text-uppercase text-muted">Gross Total</div><div style={{ fontSize: 34, fontWeight: 800 }}>{money(totals.totalAmount)}</div><div className="text-muted small">Estimated from configured rates</div></CardBody></Card></Col>
-      <Col xl={3} md={6}><Card className="border-0 shadow-sm h-100"><CardBody><div className="small text-uppercase text-muted">Wheelchair / Amb / STR</div><div style={{ fontSize: 28, fontWeight: 800 }}>{totals.wheelchair} / {totals.ambulatory} / {totals.stretcher}</div><div className="text-muted small">LOS mix</div></CardBody></Card></Col>
-      <Col xl={3} md={6}><Card className="border-0 shadow-sm h-100"><CardBody><div className="small text-uppercase text-muted">Miles</div><div style={{ fontSize: 34, fontWeight: 800 }}>{totals.totalMiles.toFixed(1)}</div><div className="text-muted small">Mileage captured from trip data</div></CardBody></Card></Col>
-    </Row>
+        <Col xl={10} lg={9} xs={12}>
+          <div style={{ padding: 20 }}>
+            <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
+              <Form.Control placeholder="Search driver, payout, trip..." style={{ maxWidth: 420, borderRadius: 24, background: '#f8fafc' }} />
+              <Button style={{ borderRadius: 18, backgroundColor: '#eab308', borderColor: '#eab308', color: '#111827', fontWeight: 700 }}>+ Add New</Button>
+            </div>
 
-    <Card className="border-0 shadow-sm mb-4"><CardBody>
-      <Row className="g-3 align-items-end">
-        <Col lg={4}><Form.Label>Date</Form.Label><Form.Select value={selectedDate} onChange={event => setSelectedDate(event.target.value)}><option value="all">All dates</option>{availableDates.map(dateKey => <option key={dateKey} value={dateKey}>{dateKey}</option>)}</Form.Select></Col>
-        <Col lg={4}><Form.Label>Driver</Form.Label><Form.Select value={selectedDriverId} onChange={event => setSelectedDriverId(event.target.value)}><option value="all">All drivers</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name || driver.displayName || driver.username || driver.id}</option>)}</Form.Select></Col>
-        <Col lg={2}><Form.Check type="switch" id="genius-only-assigned" label="Only assigned trips" checked={onlyAssigned} onChange={event => setOnlyAssigned(event.target.checked)} /></Col>
-        <Col lg={2} className="d-grid"><Button variant="dark" onClick={handleCreatePayout} disabled={creatingPayout}>{creatingPayout ? 'Running...' : 'Run payout'}</Button></Col>
+            <Card className="border-0 mb-3" style={{ background: '#f7f7f8', borderRadius: 14 }}>
+              <CardBody className="py-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
+                <div>
+                  <div className="small text-muted">Revenue Source</div>
+                  <div style={{ fontWeight: 800, fontSize: 28 }}>{money(totals.totalAmount)}</div>
+                </div>
+                <div className="d-flex gap-3">
+                  <div><div className="small text-muted">Trips</div><div style={{ fontWeight: 800 }}>{totals.totalTrips}</div></div>
+                  <div><div className="small text-muted">Miles</div><div style={{ fontWeight: 800 }}>{totals.totalMiles.toFixed(1)}</div></div>
+                  <div><div className="small text-muted">W/A/STR</div><div style={{ fontWeight: 800 }}>{totals.wheelchair}/{totals.ambulatory}/{totals.stretcher}</div></div>
+                </div>
+              </CardBody>
+            </Card>
+
+            <Row className="g-3 mb-3">
+              {paymentCards.map(card => <Col xl={3} md={6} key={card.title}>
+                <Card className="border-0 h-100" style={{ background: '#f4f4f5', borderRadius: 14 }}>
+                  <CardBody>
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <div style={{ fontWeight: 700 }}>{card.title}</div>
+                      <span style={{ fontSize: 18 }}>{card.icon}</span>
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: 26 }}>{money(card.amount)}</div>
+                    <div className="small text-muted">/ {money(card.goal)}</div>
+                  </CardBody>
+                </Card>
+              </Col>)}
+            </Row>
+
+            <Row className="g-3 mb-3">
+              <Col xl={7}>
+                <Card className="border-0" style={{ borderRadius: 14 }}>
+                  <CardBody>
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                      <div style={{ fontWeight: 700 }}>Analytics</div>
+                      <div className="small text-muted">Driver payout intensity</div>
+                    </div>
+                    <div style={{ height: 146, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                      {analyticsBars.map((height, index) => <div key={`bar-${index}`} style={{ flex: 1, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                        <div style={{ width: '100%', maxWidth: 16, height: `${height}%`, borderRadius: 8, background: index % 2 === 0 ? '#34d399' : '#fb7185' }} />
+                      </div>)}
+                    </div>
+                  </CardBody>
+                </Card>
+              </Col>
+              <Col xl={5}>
+                <Card className="border-0" style={{ borderRadius: 14 }}>
+                  <CardBody>
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                      <div style={{ fontWeight: 700 }}>Revenue Breakdown</div>
+                      <div className="small text-muted">Top drivers</div>
+                    </div>
+                    {topBreakdownRows.length === 0 ? <div className="text-muted small">No billable rows in this filter.</div> : topBreakdownRows.map(row => <div key={row.id} className="d-flex justify-content-between align-items-center py-2" style={{ borderBottom: '1px solid #f0f0f0' }}>
+                      <div className="small" style={{ maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.label}</div>
+                      <div style={{ color: '#10b981', fontWeight: 700 }}>{money(row.amount)}</div>
+                    </div>)}
+                  </CardBody>
+                </Card>
+              </Col>
+            </Row>
+
+            <Card className="border-0 mb-3" style={{ borderRadius: 14 }}>
+              <CardBody>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div style={{ fontWeight: 700 }}>Run payout</div>
+                  <div className="small text-muted">Quick action panel</div>
+                </div>
+                <Row className="g-2 align-items-end">
+                  <Col lg={4}><Form.Label className="small text-muted mb-1">Date</Form.Label><Form.Select value={selectedDate} onChange={event => setSelectedDate(event.target.value)}><option value="all">All dates</option>{availableDates.map(dateKey => <option key={dateKey} value={dateKey}>{dateKey}</option>)}</Form.Select></Col>
+                  <Col lg={4}><Form.Label className="small text-muted mb-1">Driver</Form.Label><Form.Select value={selectedDriverId} onChange={event => setSelectedDriverId(event.target.value)}><option value="all">All drivers</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name || driver.displayName || driver.username || driver.id}</option>)}</Form.Select></Col>
+                  <Col lg={2}><Form.Check type="switch" id="genius-only-assigned" label="Assigned" checked={onlyAssigned} onChange={event => setOnlyAssigned(event.target.checked)} /></Col>
+                  <Col lg={2} className="d-grid"><Button variant="dark" onClick={handleCreatePayout} disabled={creatingPayout}>{creatingPayout ? 'Running...' : 'Run payout'}</Button></Col>
+                </Row>
+                {payoutError ? <Alert variant="danger" className="mt-3 mb-0">{payoutError}</Alert> : null}
+                {payoutSuccess ? <Alert variant="success" className="mt-3 mb-0">{payoutSuccess}</Alert> : null}
+              </CardBody>
+            </Card>
+
+            <Card className="border-0 mb-3" style={{ borderRadius: 14 }}>
+              <CardBody>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div style={{ fontWeight: 700 }}>Fuel intake</div>
+                  <Badge bg="secondary">{loadingFuelReceipts ? 'Loading...' : `${fuelReceipts.length} rows`}</Badge>
+                </div>
+                <Form onSubmit={handleFuelReceiptSubmit}>
+                  <Row className="g-2">
+                    <Col lg={3}><Form.Select value={fuelReceiptForm.driverId} onChange={event => updateFuelReceiptForm('driverId', event.target.value)}><option value="">Driver</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name || driver.displayName || driver.username || driver.id}</option>)}</Form.Select></Col>
+                    <Col lg={2}><Form.Control type="date" value={fuelReceiptForm.serviceDate} onChange={event => updateFuelReceiptForm('serviceDate', event.target.value)} /></Col>
+                    <Col lg={2}><Form.Control type="number" step="0.01" min="0" placeholder="Fuel $" value={fuelReceiptForm.amount} onChange={event => updateFuelReceiptForm('amount', event.target.value)} /></Col>
+                    <Col lg={2}><Form.Control type="number" step="0.001" min="0" placeholder="Gallons" value={fuelReceiptForm.gallons} onChange={event => updateFuelReceiptForm('gallons', event.target.value)} /></Col>
+                    <Col lg={3}><Form.Control type="number" step="0.1" min="0" placeholder="Mileage" value={fuelReceiptForm.vehicleMileage} onChange={event => updateFuelReceiptForm('vehicleMileage', event.target.value)} /></Col>
+                    <Col lg={4}><Form.Control placeholder="Receipt Ref (optional)" value={fuelReceiptForm.receiptReference} onChange={event => updateFuelReceiptForm('receiptReference', event.target.value)} /></Col>
+                    <Col lg={5}><Form.Control placeholder="Receipt Image URL" value={fuelReceiptForm.receiptImageUrl} onChange={event => updateFuelReceiptForm('receiptImageUrl', event.target.value)} /></Col>
+                    <Col lg={3}><Form.Control placeholder="Notes" value={fuelReceiptForm.notes} onChange={event => updateFuelReceiptForm('notes', event.target.value)} /></Col>
+                    <Col lg={12} className="d-flex justify-content-end"><Button type="submit" disabled={submittingFuelReceipt}>{submittingFuelReceipt ? 'Saving...' : 'Save fuel receipt'}</Button></Col>
+                  </Row>
+                </Form>
+                {fuelReceiptError ? <Alert variant="danger" className="mt-3 mb-0">{fuelReceiptError}</Alert> : null}
+                {fuelReceiptSuccess ? <Alert variant="success" className="mt-3 mb-0">{fuelReceiptSuccess}</Alert> : null}
+              </CardBody>
+            </Card>
+
+            <Card className="border-0" style={{ borderRadius: 14 }}>
+              <CardBody>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div style={{ fontWeight: 700 }}>Recent payout receipts</div>
+                  <Badge bg="secondary">{loadingPayoutReceipts ? 'Loading...' : `${payoutReceipts.length} rows`}</Badge>
+                </div>
+                <Table responsive hover>
+                  <thead><tr><th>Date</th><th>Driver</th><th>Trips</th><th>Gross</th><th>Fuel</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {recentPayoutReceipts.length === 0 ? <tr><td colSpan={6} className="text-center text-muted py-4">No payout receipts in this scope.</td></tr> : recentPayoutReceipts.slice(0, 14).map(row => <tr key={row.id}><td>{row?.serviceDate || '-'}</td><td>{row?.driverId || '-'}</td><td>{row?.tripCount || 0}</td><td>{money(row?.grossAmount || 0)}</td><td>{money(row?.fuelTotal || 0)}</td><td className="d-flex flex-wrap gap-2"><Button size="sm" variant="outline-dark" onClick={() => handlePrintPayoutReceipt(row)}>Print/PDF</Button><Button size="sm" variant="dark" onClick={() => handleSendPayoutEmail(row)} disabled={sendingPayoutEmailId === row.id}>{sendingPayoutEmailId === row.id ? 'Sending...' : 'Send Email'}</Button></td></tr>)}
+                  </tbody>
+                </Table>
+              </CardBody>
+            </Card>
+          </div>
+        </Col>
       </Row>
-      {payoutError ? <Alert variant="danger" className="mt-3 mb-0">{payoutError}</Alert> : null}
-      {payoutSuccess ? <Alert variant="success" className="mt-3 mb-0">{payoutSuccess}</Alert> : null}
-    </CardBody></Card>
-
-    <Card className="border-0 shadow-sm mb-4"><CardBody>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="mb-0">Fuel receipt intake</h4>
-        <Badge bg="dark">Permanent audit record (non-deletable)</Badge>
-      </div>
-      <Form onSubmit={handleFuelReceiptSubmit}>
-        <Row className="g-3">
-          <Col lg={3}><Form.Label>Driver</Form.Label><Form.Select value={fuelReceiptForm.driverId} onChange={event => updateFuelReceiptForm('driverId', event.target.value)}><option value="">Select driver</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name || driver.displayName || driver.username || driver.id}</option>)}</Form.Select></Col>
-          <Col lg={2}><Form.Label>Date</Form.Label><Form.Control type="date" value={fuelReceiptForm.serviceDate} onChange={event => updateFuelReceiptForm('serviceDate', event.target.value)} /></Col>
-          <Col lg={2}><Form.Label>Fuel $</Form.Label><Form.Control type="number" step="0.01" min="0" placeholder="0.00" value={fuelReceiptForm.amount} onChange={event => updateFuelReceiptForm('amount', event.target.value)} /></Col>
-          <Col lg={2}><Form.Label>Gallons</Form.Label><Form.Control type="number" step="0.001" min="0" placeholder="0" value={fuelReceiptForm.gallons} onChange={event => updateFuelReceiptForm('gallons', event.target.value)} /></Col>
-          <Col lg={2}><Form.Label>Mileage</Form.Label><Form.Control type="number" step="0.1" min="0" placeholder="miles" value={fuelReceiptForm.vehicleMileage} onChange={event => updateFuelReceiptForm('vehicleMileage', event.target.value)} /></Col>
-          <Col lg={3}><Form.Label>Receipt Ref</Form.Label><Form.Control placeholder="Ticket / invoice # (optional if photo attached)" value={fuelReceiptForm.receiptReference} onChange={event => updateFuelReceiptForm('receiptReference', event.target.value)} /></Col>
-          <Col lg={6}><Form.Label>Receipt Image URL (optional)</Form.Label><Form.Control placeholder="https://... or stored image URL" value={fuelReceiptForm.receiptImageUrl} onChange={event => updateFuelReceiptForm('receiptImageUrl', event.target.value)} /></Col>
-          <Col lg={6}><Form.Label>Notes</Form.Label><Form.Control placeholder="Station, reason, adjustment details..." value={fuelReceiptForm.notes} onChange={event => updateFuelReceiptForm('notes', event.target.value)} /></Col>
-          <Col lg={12} className="d-flex justify-content-end"><Button type="submit" disabled={submittingFuelReceipt}>{submittingFuelReceipt ? 'Saving...' : 'Save fuel receipt'}</Button></Col>
-        </Row>
-      </Form>
-      {fuelReceiptError ? <Alert variant="danger" className="mt-3 mb-0">{fuelReceiptError}</Alert> : null}
-      {fuelReceiptSuccess ? <Alert variant="success" className="mt-3 mb-0">{fuelReceiptSuccess}</Alert> : null}
-    </CardBody></Card>
-
-    <Row className="g-4">
-      <Col xl={5}>
-        <Card className="border-0 shadow-sm h-100"><CardBody>
-          <div className="d-flex justify-content-between align-items-center mb-3"><h4 className="mb-0">Driver payout view</h4><Badge bg="secondary">{driverSummaries.length} drivers</Badge></div>
-          <Table responsive hover>
-            <thead><tr><th>Driver</th><th>Trips</th><th>W/A/STR</th><th>Total</th><th>Fuel Receipts</th><th>Fuel $</th><th>Reimbursement</th></tr></thead>
-            <tbody>
-              {driverSummaries.length === 0 ? <tr><td colSpan={7} className="text-center text-muted py-4">No billable trips in this filter.</td></tr> : driverSummaries.map(row => <tr key={row.driverId}><td>{row.driverName}</td><td>{row.trips}</td><td>{row.wheelchair}/{row.ambulatory}/{row.stretcher}</td><td>{money(row.amount)}</td><td>{row.fuelReceiptCount}</td><td>{money(row.fuelReceiptAmount)}</td><td><Badge bg={row.reimbursementAllowed ? 'success' : 'danger'}>{row.reimbursementAllowed ? 'Unlocked' : 'Locked'}</Badge></td></tr>)}
-            </tbody>
-          </Table>
-        </CardBody></Card>
-      </Col>
-      <Col xl={7}>
-        <Card className="border-0 shadow-sm h-100"><CardBody>
-          <div className="d-flex justify-content-between align-items-center mb-3"><h4 className="mb-0">Trip ledger</h4><Badge bg="secondary">{tripRows.length} rows</Badge></div>
-          <Table responsive hover>
-            <thead><tr><th>Trip</th><th>Date</th><th>Driver</th><th>Rider</th><th>Type</th><th>Status</th><th>Total</th></tr></thead>
-            <tbody>
-              {tripRows.length === 0 ? <tr><td colSpan={7} className="text-center text-muted py-4">No billable trips found.</td></tr> : tripRows.slice(0, 250).map(row => <tr key={`${row.id}-${row.dateKey}`}><td>{row.id || '-'}</td><td>{row.dateKey}</td><td>{row.driverName}</td><td>{row.rider}</td><td><Badge bg={row.tripType === 'W' ? 'warning' : row.tripType === 'STR' ? 'danger' : 'success'} text={row.tripType === 'W' ? 'dark' : undefined}>{row.tripType}</Badge></td><td>{row.status}</td><td>{money(row.amount)}</td></tr>)}
-            </tbody>
-          </Table>
-        </CardBody></Card>
-      </Col>
-    </Row>
-
-    <Card className="border-0 shadow-sm mt-4"><CardBody>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="mb-0">Fuel receipt ledger</h4>
-        <Badge bg="secondary">{loadingFuelReceipts ? 'Loading...' : `${fuelReceipts.length} rows`}</Badge>
-      </div>
-      <Table responsive hover>
-        <thead><tr><th>Created</th><th>Date</th><th>Driver ID</th><th>Reference</th><th>Mileage</th><th>Gallons</th><th>Amount</th><th>Photo</th><th>Source</th></tr></thead>
-        <tbody>
-          {recentFuelReceipts.length === 0 ? <tr><td colSpan={9} className="text-center text-muted py-4">No fuel receipts in this scope.</td></tr> : recentFuelReceipts.map(row => <tr key={row.id}><td>{String(row?.createdAt || '').slice(0, 19).replace('T', ' ') || '-'}</td><td>{row?.serviceDate || '-'}</td><td>{row?.driverId || '-'}</td><td>{row?.receiptReference || '-'}</td><td>{row?.vehicleMileage != null ? Number(row.vehicleMileage).toFixed(1) + ' mi' : '-'}</td><td>{Number(row?.gallons || 0).toFixed(3)}</td><td>{money(row?.amount || 0)}</td><td>{row?.receiptImageUrl ? <a href={row.receiptImageUrl} target="_blank" rel="noreferrer"><img src={row.receiptImageUrl} alt="receipt" style={{width:48,height:48,objectFit:'cover',borderRadius:4,border:'1px solid #dee2e6'}} /></a> : '-'}</td><td>{row?.source || '-'}</td></tr>)}
-        </tbody>
-      </Table>
-    </CardBody></Card>
-
-    <Card className="border-0 shadow-sm mt-4"><CardBody>
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <h4 className="mb-0">Payout receipt ledger</h4>
-        <Badge bg="secondary">{loadingPayoutReceipts ? 'Loading...' : `${payoutReceipts.length} rows`}</Badge>
-      </div>
-      <Table responsive hover>
-        <thead><tr><th>Created</th><th>Date</th><th>Driver ID</th><th>Trips</th><th>W/A/STR</th><th>Gross</th><th>Fuel Receipts</th><th>Fuel $</th><th>Reimbursement</th><th>Actions</th></tr></thead>
-        <tbody>
-          {recentPayoutReceipts.length === 0 ? <tr><td colSpan={10} className="text-center text-muted py-4">No payout receipts in this scope.</td></tr> : recentPayoutReceipts.map(row => <tr key={row.id}><td>{String(row?.createdAt || '').slice(0, 19).replace('T', ' ') || '-'}</td><td>{row?.serviceDate || '-'}</td><td>{row?.driverId || '-'}</td><td>{row?.tripCount || 0}</td><td>{row?.wheelchairCount || 0}/{row?.ambulatoryCount || 0}/{row?.stretcherCount || 0}</td><td>{money(row?.grossAmount || 0)}</td><td>{row?.fuelReceiptCount || 0}</td><td>{money(row?.fuelTotal || 0)}</td><td><Badge bg={row?.reimburseAllowed ? 'success' : 'danger'}>{row?.reimburseAllowed ? 'Unlocked' : 'Locked'}</Badge></td><td className="d-flex flex-wrap gap-2"><Button size="sm" variant="outline-dark" onClick={() => handlePrintPayoutReceipt(row)}>Print/PDF</Button><Button size="sm" variant="dark" onClick={() => handleSendPayoutEmail(row)} disabled={sendingPayoutEmailId === row.id}>{sendingPayoutEmailId === row.id ? 'Sending...' : 'Send Email'}</Button></td></tr>)}
-        </tbody>
-      </Table>
-    </CardBody></Card>
-
-    <Alert variant="info" className="mt-4 mb-0">Phase 3 is live: immutable payout runs, payout receipt ledger, and driver portal-ready receipts for both fuel and payout history.</Alert>
+    </Card>
   </div>;
 };
 
