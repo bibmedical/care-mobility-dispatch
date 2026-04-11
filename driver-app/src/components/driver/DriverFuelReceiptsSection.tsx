@@ -53,14 +53,7 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
   const activeRequest: DriverFuelRequest | undefined = runtime.fuelRequests
     .find(r => r.status === 'pending' || r.status === 'approved');
 
-  const lastCompletedRequest: DriverFuelRequest | undefined = runtime.fuelRequests
-    .find(r => r.status === 'receipt_submitted' && r.vehicleMileage != null);
-
   const requestedMileageNumber = requestMileage !== '' ? Number(requestMileage) : NaN;
-  const projectedMilesSinceLastFuel =
-    Number.isFinite(requestedMileageNumber) && requestedMileageNumber >= 0 && lastCompletedRequest?.vehicleMileage != null
-      ? Math.round((requestedMileageNumber - Number(lastCompletedRequest.vehicleMileage)) * 10) / 10
-      : null;
 
   const set = (key: keyof ReceiptForm, value: string) =>
     setReceiptForm(prev => ({ ...prev, [key]: value }));
@@ -318,9 +311,6 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
         <Text style={styles.heroBody}>
           Need fuel? Tap the button below to notify dispatch. Once approved and funds are sent to you, you&apos;ll be prompted to submit your receipt with the gallons and mileage.
         </Text>
-        <Text style={styles.statusMeta}>
-          Last recorded fuel mileage: {lastCompletedRequest?.vehicleMileage != null ? Number(lastCompletedRequest.vehicleMileage).toFixed(1) : 'N/A'}
-        </Text>
       </View>
 
       <View style={styles.formCard}>
@@ -334,11 +324,6 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
           keyboardType="decimal-pad"
           placeholderTextColor={driverTheme.colors.textMuted}
         />
-        {projectedMilesSinceLastFuel != null ? (
-          <Text style={styles.statusMeta}>
-            Since last fuel, you drove {projectedMilesSinceLastFuel.toFixed(1)} miles.
-          </Text>
-        ) : null}
       </View>
 
       {runtime.fuelRequestError ? (
@@ -355,17 +340,12 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
       <Pressable
         style={[styles.requestBtn, { backgroundColor: accent }, runtime.isSubmittingFuelRequest ? styles.submitBtnDisabled : null]}
         onPress={() => {
-          const mileage = Number(requestMileage);
-          if (!Number.isFinite(mileage) || mileage < 0) {
+          if (!Number.isFinite(requestedMileageNumber) || requestedMileageNumber < 0) {
             runtime.setFuelRequestError('Current mileage is required.');
             return;
           }
-          if (lastCompletedRequest?.vehicleMileage != null && mileage < Number(lastCompletedRequest.vehicleMileage)) {
-            runtime.setFuelRequestError('Current mileage cannot be less than your last fuel mileage.');
-            return;
-          }
           void (async () => {
-            const ok = await runtime.submitFuelRequest({ requestedMileage: mileage });
+            const ok = await runtime.submitFuelRequest({ requestedMileage: requestedMileageNumber });
             if (ok) setRequestMileage('');
           })();
         }}
@@ -393,7 +373,6 @@ function renderHistory(requests: DriverFuelRequest[]) {
           <Text style={styles.historyDetail}>
             {r.approvedAmount != null ? `$${Number(r.approvedAmount).toFixed(2)}` : '—'}
             {r.gallons != null ? `  ·  ${Number(r.gallons).toFixed(3)} gal` : ''}
-            {r.vehicleMileage != null ? `  ·  ${Number(r.vehicleMileage).toFixed(1)} mi` : ''}
             {r.milesSinceLastFuel != null ? `  ·  +${Number(r.milesSinceLastFuel).toFixed(1)} mi since last fuel` : ''}
           </Text>
           {r.approvedByUser ? <Text style={styles.historyApprover}>Approved by {r.approvedByUser}</Text> : null}

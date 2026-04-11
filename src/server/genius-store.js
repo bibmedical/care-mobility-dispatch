@@ -444,18 +444,15 @@ export const createFuelRequest = async ({ driverId, driverName, requestedMileage
      WHERE driver_id = $1
        AND status = 'receipt_submitted'
        AND vehicle_mileage IS NOT NULL
-     ORDER BY receipt_submitted_at DESC NULLS LAST, requested_at DESC
+       AND vehicle_mileage <= $2
+     ORDER BY vehicle_mileage DESC, receipt_submitted_at DESC NULLS LAST, requested_at DESC
      LIMIT 1`,
-    [normalizedDriverId]
+    [normalizedDriverId, normalizedRequestedMileage]
   );
 
   const lastFuelMileage = lastFuelRow?.vehicleMileage != null
     ? Math.round(Number(lastFuelRow.vehicleMileage) * 10) / 10
     : null;
-
-  if (lastFuelMileage != null && normalizedRequestedMileage < lastFuelMileage) {
-    throw new Error(`Current mileage (${normalizedRequestedMileage.toFixed(1)}) cannot be below last fuel mileage (${lastFuelMileage.toFixed(1)}).`);
-  }
 
   const milesSinceLastFuel = lastFuelMileage != null
     ? Math.round((normalizedRequestedMileage - lastFuelMileage) * 10) / 10
