@@ -132,33 +132,33 @@ const formatConfirmationDayLabel = value => {
 const getConfirmationRowPalette = confirmationStatus => {
   if (confirmationStatus === 'Cancelled') {
     return {
-      backgroundColor: '#7f1d1d',
-      actionBackgroundColor: '#991b1b',
-      color: '#fef2f2',
-      borderColor: '#fecaca'
+      backgroundColor: '#fecaca',
+      actionBackgroundColor: '#fca5a5',
+      color: '#111827',
+      borderColor: '#ef4444'
     };
   }
   if (confirmationStatus === 'Confirmed') {
     return {
-      backgroundColor: '#166534',
-      actionBackgroundColor: '#15803d',
-      color: '#f0fdf4',
-      borderColor: '#bbf7d0'
+      backgroundColor: '#dcfce7',
+      actionBackgroundColor: '#bbf7d0',
+      color: '#111827',
+      borderColor: '#22c55e'
     };
   }
   if (confirmationStatus === 'Needs Call') {
     return {
-      backgroundColor: '#facc15',
-      actionBackgroundColor: '#eab308',
+      backgroundColor: '#fef08a',
+      actionBackgroundColor: '#fde047',
       color: '#111827',
       borderColor: '#a16207'
     };
   }
   return {
-    backgroundColor: '#334155',
-    actionBackgroundColor: '#1f2937',
-    color: '#f8fafc',
-    borderColor: '#cbd5e1'
+    backgroundColor: '#e2e8f0',
+    actionBackgroundColor: '#cbd5e1',
+    color: '#111827',
+    borderColor: '#64748b'
   };
 };
 
