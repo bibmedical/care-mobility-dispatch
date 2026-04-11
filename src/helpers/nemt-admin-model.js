@@ -238,6 +238,31 @@ const safeDate = value => {
   return date;
 };
 
+const toDateKey = value => {
+  const date = safeDate(value);
+  if (!date) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const getActiveTimeOffAppointment = driver => {
+  const appointment = driver?.timeOffAppointment;
+  if (!appointment || typeof appointment !== 'object') return null;
+  const status = String(appointment.status || 'active').trim().toLowerCase();
+  if (status !== 'active') return null;
+  const appointmentDate = String(appointment.appointmentDate || '').trim();
+  if (!appointmentDate) return null;
+  return {
+    ...appointment,
+    appointmentDate
+  };
+};
+
+const hasDriverTimeOffOnDate = (driver, referenceDate = new Date()) => {
+  const activeAppointment = getActiveTimeOffAppointment(driver);
+  if (!activeAppointment) return false;
+  return activeAppointment.appointmentDate === toDateKey(referenceDate);
+};
+
 export const getCurrentRosterWeekKey = (referenceDate = new Date()) => {
   const nextDate = new Date(referenceDate);
   nextDate.setHours(0, 0, 0, 0);
@@ -258,6 +283,7 @@ export const normalizeRouteRoster = (value, driver = null) => {
 };
 
 export const isDriverOnActiveRoster = (driver, referenceDate = new Date()) => {
+  if (hasDriverTimeOffOnDate(driver, referenceDate)) return false;
   const routeRoster = normalizeRouteRoster(driver?.routeRoster, driver);
   if (routeRoster.mode === 'permanent') return true;
   if (routeRoster.mode === 'weekly') return routeRoster.weekKey === getCurrentRosterWeekKey(referenceDate);
@@ -657,6 +683,7 @@ export const mapAdminDataToDispatchDrivers = state => {
   const grouping = state.groupings.find(item => item.id === normalizedDriver.groupingId);
   const alerts = getDocumentAlerts(normalizedDriver);
   const isLiveTracking = isDriverOnline(normalizedDriver);
+  const activeTimeOffAppointment = getActiveTimeOffAppointment(normalizedDriver);
   const normalizedPosition = Array.isArray(normalizedDriver.position) && normalizedDriver.position.length === 2
     ? normalizedDriver.position.map(value => Number(value))
     : [];
@@ -670,10 +697,13 @@ export const mapAdminDataToDispatchDrivers = state => {
     phone: normalizedDriver.phone || '',
     checkpoint: normalizedDriver.checkpoint || 'Base dispatch',
     attendant: attendant?.name || 'Not Set',
-    info: alerts[0]?.text || normalizedDriver.notes || grouping?.dispatchTag || 'Ready',
+    info: activeTimeOffAppointment
+      ? `Time Off: ${activeTimeOffAppointment.appointmentType || 'Appointment'} on ${activeTimeOffAppointment.appointmentDate}`
+      : alerts[0]?.text || normalizedDriver.notes || grouping?.dispatchTag || 'Ready',
     live: isLiveTracking ? 'Online' : 'Offline',
     group: grouping?.name || 'Ungrouped',
     routeRoster: normalizedDriver.routeRoster,
+    timeOffAppointment: activeTimeOffAppointment,
     position: hasValidPosition ? normalizedPosition : ORLANDO_CENTER,
     hasRealLocation: hasValidPosition,
     gpsSettings: normalizeDriverGpsSettings(normalizedDriver?.gpsSettings),

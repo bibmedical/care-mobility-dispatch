@@ -179,6 +179,7 @@ export async function POST(request) {
           email: driver.portalEmail || driver.email || '',
           phone: normalizePhoneDigits(driver.phone),
           address: String(driver.address || driver.baseAddress || '').trim(),
+          timeOffAppointment: driver.timeOffAppointment || null,
           vehicleId: driver.vehicleId || '',
           passwordResetRequired: Boolean(driver.passwordResetRequired),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
@@ -248,6 +249,7 @@ export async function POST(request) {
           email: authUser?.email || driver.portalEmail || driver.email || '',
           phone: normalizePhoneDigits(driver.phone),
           address: String(driver.address || driver.baseAddress || '').trim(),
+          timeOffAppointment: driver.timeOffAppointment || null,
           vehicleId: driver.vehicleId || '',
           passwordResetRequired: Boolean(driver.passwordResetRequired),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
@@ -299,6 +301,7 @@ export async function POST(request) {
         email: driver.portalEmail || driver.email || '',
         phone: normalizePhoneDigits(driver.phone),
         address: String(driver.address || driver.baseAddress || '').trim(),
+        timeOffAppointment: driver.timeOffAppointment || null,
         vehicleId: driver.vehicleId || '',
         passwordResetRequired: Boolean(driver.passwordResetRequired),
         gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)

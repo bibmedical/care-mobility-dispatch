@@ -6,7 +6,7 @@ import Constants from 'expo-constants';
 import { DRIVER_APP_CONFIG } from '../config/driverAppConfig';
 import { DriverNotificationMode, clearStoredDriverSession, readOrCreateDriverDeviceId, readStoredDriverSession, readStoredNotificationMode, readStoredTrackingPreference, writeStoredDriverSession, writeStoredNotificationMode, writeStoredTrackingPreference } from '../services/driverSessionStorage';
 import { isBackgroundLocationTrackingActive, startBackgroundLocationTracking, stopBackgroundLocationTracking } from '../services/driverBackgroundLocation';
-import { DriverAppTab, DriverDocuments, DriverFuelReceipt, DriverFuelRequest, DriverMessage, DriverReviewSummary, DriverSession, DriverShiftState, DriverTrip, LocationSnapshot } from '../types/driver';
+import { DriverAppTab, DriverDocuments, DriverFuelReceipt, DriverFuelRequest, DriverMessage, DriverReviewSummary, DriverSession, DriverShiftState, DriverTimeOffAppointment, DriverTrip, LocationSnapshot } from '../types/driver';
 
 const formatDateTime = (value: number | null) => {
   if (!value) return 'No update yet';
@@ -190,6 +190,10 @@ export const useDriverRuntime = () => {
   const [isSubmittingFuelRequest, setIsSubmittingFuelRequest] = useState(false);
   const [fuelRequestError, setFuelRequestError] = useState('');
   const [fuelRequestSuccess, setFuelRequestSuccess] = useState('');
+  const [driverTimeOffAppointment, setDriverTimeOffAppointment] = useState<DriverTimeOffAppointment | null>(null);
+  const [isSubmittingDriverTimeOff, setIsSubmittingDriverTimeOff] = useState(false);
+  const [driverTimeOffError, setDriverTimeOffError] = useState('');
+  const [driverTimeOffSuccess, setDriverTimeOffSuccess] = useState('');
   const [currentCity, setCurrentCity] = useState('Locating city...');
   const [notificationMode, setNotificationMode] = useState<DriverNotificationMode>('sound');
   const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(false);
@@ -753,6 +757,24 @@ export const useDriverRuntime = () => {
       active = false;
     };
   }, [locationSnapshot?.latitude, locationSnapshot?.longitude]);
+
+  useEffect(() => {
+    if (!loggedIn || !driverSession?.driverId) {
+      setDriverTimeOffAppointment(null);
+      setDriverTimeOffError('');
+      setDriverTimeOffSuccess('');
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      await loadDriverTimeOff();
+      if (!active) return;
+    })();
+    return () => {
+      active = false;
+    };
+  }, [driverSession?.driverId, loggedIn]);
 
   useEffect(() => {
     if (!loggedIn || !driverSession?.driverId) {
@@ -1479,6 +1501,9 @@ export const useDriverRuntime = () => {
     setIsSubmittingFuelRequest(true);
     setFuelRequestError('');
     setFuelRequestSuccess('');
+    setDriverTimeOffAppointment(null);
+    setDriverTimeOffError('');
+    setDriverTimeOffSuccess('');
     try {
       const driverId = String(driverSession?.driverId || '').trim();
       const requestedMileage = Number(requestPayload?.requestedMileage);
@@ -1549,6 +1574,78 @@ export const useDriverRuntime = () => {
       return false;
     } finally {
       setIsSubmittingFuelRequest(false);
+    }
+  };
+
+  const loadDriverTimeOff = async () => {
+    if (!loggedIn || !driverSession?.driverId) return;
+
+    try {
+      const { response, payload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-time-off?driverId=${encodeURIComponent(driverSession.driverId)}`,
+        {
+          headers: getDriverAuthHeaders(driverSession)
+        }
+      );
+
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
+      if (!response.ok) return;
+
+      const nextAppointment = payload?.appointment as DriverTimeOffAppointment | null | undefined;
+      setDriverTimeOffAppointment(nextAppointment || null);
+      setDriverTimeOffError('');
+    } catch {
+      // non-critical
+    }
+  };
+
+  const submitDriverTimeOff = async (payload: {
+    appointmentType: string;
+    appointmentDate: string;
+    note: string;
+    excuseImageUrl: string;
+  }): Promise<boolean> => {
+    if (!loggedIn || !driverSession?.driverId) return false;
+
+    setIsSubmittingDriverTimeOff(true);
+    setDriverTimeOffError('');
+    setDriverTimeOffSuccess('');
+
+    try {
+      const { response, payload: responsePayload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-time-off`,
+        {
+          method: 'POST',
+          headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            driverId: driverSession.driverId,
+            ...payload
+          })
+        }
+      );
+
+      if (await handleDriverSessionFailure(response, responsePayload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) {
+        throw new Error(String(responsePayload?.error || '') || 'Unable to submit time off.');
+      }
+
+      const nextAppointment = responsePayload?.appointment as DriverTimeOffAppointment | null | undefined;
+      if (nextAppointment) {
+        setDriverTimeOffAppointment(nextAppointment);
+        const nextSession = {
+          ...driverSession,
+          timeOffAppointment: nextAppointment
+        };
+        setDriverSession(nextSession);
+        await writeStoredDriverSession(nextSession);
+      }
+      setDriverTimeOffSuccess('Time off saved. Dispatch was notified and route assignment is blocked for that date.');
+      return true;
+    } catch (error) {
+      setDriverTimeOffError(error instanceof Error ? error.message : 'Unable to submit time off.');
+      return false;
+    } finally {
+      setIsSubmittingDriverTimeOff(false);
     }
   };
 
@@ -1683,6 +1780,14 @@ export const useDriverRuntime = () => {
     submitFuelRequestReceipt,
     resetFuelData,
     loadFuelRequests,
+    driverTimeOffAppointment,
+    isSubmittingDriverTimeOff,
+    driverTimeOffError,
+    driverTimeOffSuccess,
+    setDriverTimeOffError,
+    setDriverTimeOffSuccess,
+    loadDriverTimeOff,
+    submitDriverTimeOff,
     formatDateTime
   };
 };

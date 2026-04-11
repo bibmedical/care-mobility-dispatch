@@ -24,6 +24,7 @@ const buildSessionPayload = driver => ({
   email: driver.portalEmail || driver.email || '',
   phone: normalizePhoneDigits(driver.phone),
   address: String(driver.address || driver.baseAddress || '').trim(),
+  timeOffAppointment: driver.timeOffAppointment || null,
   vehicleId: driver.vehicleId || '',
   passwordResetRequired: Boolean(driver.passwordResetRequired)
 });

@@ -1016,15 +1016,24 @@ export const NemtProvider = ({
   const assignTripsToDriver = (driverId, tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
     const updatedAt = getMutationTimestamp();
+    const selectedDriver = (Array.isArray(currentState?.drivers) ? currentState.drivers : []).find(driver => String(driver?.id || '').trim() === String(driverId || '').trim()) || null;
+    const blockedDate = String(selectedDriver?.timeOffAppointment?.status || '').trim().toLowerCase() === 'active'
+      ? String(selectedDriver?.timeOffAppointment?.appointmentDate || '').trim()
+      : '';
     return {
       ...currentState,
       selectedDriverId: driverId,
-      trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
-        ...trip,
-        driverId,
-        updatedAt,
-        status: 'Assigned'
-      } : trip)
+      trips: currentState.trips.map(trip => {
+        if (!targetTripIds.includes(trip.id)) return trip;
+        const serviceDate = getTripServiceDateKey(trip);
+        if (blockedDate && serviceDate === blockedDate) return trip;
+        return {
+          ...trip,
+          driverId,
+          updatedAt,
+          status: 'Assigned'
+        };
+      })
     };
   }, {
     markDispatchDirty: true,
@@ -1041,14 +1050,23 @@ export const NemtProvider = ({
   const assignTripsToSecondaryDriver = (driverId, tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
     const updatedAt = getMutationTimestamp();
+    const selectedDriver = (Array.isArray(currentState?.drivers) ? currentState.drivers : []).find(driver => String(driver?.id || '').trim() === String(driverId || '').trim()) || null;
+    const blockedDate = String(selectedDriver?.timeOffAppointment?.status || '').trim().toLowerCase() === 'active'
+      ? String(selectedDriver?.timeOffAppointment?.appointmentDate || '').trim()
+      : '';
     return {
       ...currentState,
-      trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
-        ...trip,
-        secondaryDriverId: driverId,
-        updatedAt,
-        status: trip.driverId || driverId ? 'Assigned' : trip.status
-      } : trip)
+      trips: currentState.trips.map(trip => {
+        if (!targetTripIds.includes(trip.id)) return trip;
+        const serviceDate = getTripServiceDateKey(trip);
+        if (blockedDate && serviceDate === blockedDate) return trip;
+        return {
+          ...trip,
+          secondaryDriverId: driverId,
+          updatedAt,
+          status: trip.driverId || driverId ? 'Assigned' : trip.status
+        };
+      })
     };
   }, {
     markDispatchDirty: true,

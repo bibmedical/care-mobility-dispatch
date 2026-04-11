@@ -20,6 +20,7 @@ const QUICK_ITEMS: QuickItem[] = [
   { key: 'messages', label: 'Messages', subtitle: 'Dispatch inbox' },
   { key: 'alerts', label: 'Alerts', subtitle: 'Active notifications' },
   { key: 'gps', label: 'GPS', subtitle: 'Location and permissions' },
+  { key: 'timeoff', label: 'Time Off', subtitle: 'Appointment and excuse note' },
   { key: 'settings', label: 'Settings', subtitle: 'App and device settings' },
   { key: 'profile', label: 'Profile', subtitle: 'Driver profile details' },
   { key: 'history', label: 'History', subtitle: 'Completed trips' },

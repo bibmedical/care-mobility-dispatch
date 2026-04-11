@@ -9,6 +9,7 @@ import { DriverHelpSection } from '../components/driver/DriverHelpSection';
 import { DriverHistorySection } from '../components/driver/DriverHistorySection';
 import { DriverMessagesSection } from '../components/driver/DriverMessagesSection';
 import { DriverProfileSection } from '../components/driver/DriverProfileSection';
+import { DriverTimeOffSection } from '../components/driver/DriverTimeOffSection.tsx';
 import { DriverTripsSection } from '../components/driver/DriverTripsSection';
 import { getDriverAccentColor, withDriverAccentAlpha } from '../components/driver/driverColor';
 import { driverSharedStyles, driverTheme } from '../components/driver/driverTheme';
@@ -30,7 +31,8 @@ const SCREEN_TITLES: Record<DriverAppTab, string> = {
   history: 'History',
   documents: 'Documents',
   help: 'Help',
-  fuel: 'Fuel & Mileage'
+  fuel: 'Fuel & Mileage',
+  timeoff: 'Time Off'
 };
 
 export const DriverOperationsScreen = ({ runtime }: Props) => {
@@ -50,6 +52,7 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
     if (runtime.activeTab === 'history') return <DriverHistorySection runtime={runtime} />;
     if (runtime.activeTab === 'documents') return <DriverDocumentsSection runtime={runtime} />;
     if (runtime.activeTab === 'fuel') return <DriverFuelReceiptsSection runtime={runtime} />;
+    if (runtime.activeTab === 'timeoff') return <DriverTimeOffSection runtime={runtime} />;
     if (runtime.activeTab === 'help') return <DriverHelpSection runtime={runtime} />;
     return <DriverControlSection runtime={runtime} />;
   };

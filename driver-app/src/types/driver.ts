@@ -9,7 +9,17 @@ export type LocationSnapshot = {
 
 export type DriverShiftState = 'available' | 'en-route' | 'arrived' | 'completed';
 
-export type DriverAppTab = 'home' | 'trips' | 'messages' | 'alerts' | 'gps' | 'settings' | 'profile' | 'history' | 'documents' | 'help' | 'fuel';
+export type DriverAppTab = 'home' | 'trips' | 'messages' | 'alerts' | 'gps' | 'settings' | 'profile' | 'history' | 'documents' | 'help' | 'fuel' | 'timeoff';
+
+export type DriverTimeOffAppointment = {
+  id: string;
+  appointmentType: string;
+  appointmentDate: string;
+  note: string;
+  excuseImageUrl: string;
+  status: 'active' | 'cancelled' | 'completed';
+  createdAt: string;
+};
 
 export type DriverFuelReceipt = {
   id: string;
@@ -169,6 +179,7 @@ export type DriverSession = {
   deviceId: string;
   sessionToken: string;
   profilePhotoUrl?: string;
+  timeOffAppointment?: DriverTimeOffAppointment | null;
   gpsSettings?: {
     mapRadiusMeters?: number;
     fgTimeIntervalMs?: number;

@@ -38,6 +38,7 @@ export const DriverControlSection = ({ runtime }: Props) => {
         <SettingRow label="Vehicle Management" onPress={() => runtime.setActiveTab('history')} />
         <SettingRow label="Document Management" onPress={() => runtime.setActiveTab('documents')} />
         <SettingRow label="Fuel Receipts & Mileage" onPress={() => runtime.setActiveTab('fuel')} />
+        <SettingRow label="Time Off Appointment" onPress={() => runtime.setActiveTab('timeoff')} />
         <SettingRow label="Payment" onPress={() => runtime.setActiveTab('help')} />
         <SettingRow label="Sign Out" onPress={() => void runtime.signOut()} />
       </View>
