@@ -131,15 +131,6 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
     }
   };
 
-  const handleResetFuel = async () => {
-    const ok = await runtime.resetFuelData();
-    if (ok) {
-      setReceiptForm(EMPTY_RECEIPT);
-      setRequestMileage('');
-      await runtime.loadFuelRequests();
-    }
-  };
-
   // ── Status: pending ─────────────────────────────────────────────────────────
   if (activeRequest?.status === 'pending') {
     return (
@@ -161,12 +152,6 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
         </View>
         <Pressable style={styles.refreshButton} onPress={() => void runtime.loadFuelRequests()}>
           <Text style={styles.refreshButtonText}>Refresh Status</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.refreshButton, { borderColor: '#fca5a5', marginTop: -10 }]}
-          onPress={() => void handleResetFuel()}
-        >
-          <Text style={[styles.refreshButtonText, { color: '#b91c1c' }]}>Reset Fuel and Start Over</Text>
         </Pressable>
         {renderHistory(runtime.fuelRequests)}
       </ScrollView>
@@ -369,13 +354,6 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
         {runtime.isSubmittingFuelRequest
           ? <ActivityIndicator color="#fff" size="large" />
           : <Text style={styles.requestBtnText}>REQUEST FUEL</Text>}
-      </Pressable>
-
-      <Pressable
-        style={[styles.refreshButton, { borderColor: '#fca5a5' }]}
-        onPress={() => void handleResetFuel()}
-      >
-        <Text style={[styles.refreshButtonText, { color: '#b91c1c' }]}>Reset Fuel and Start Over</Text>
       </Pressable>
 
       {renderHistory(runtime.fuelRequests)}

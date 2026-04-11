@@ -1474,24 +1474,29 @@ export const useDriverRuntime = () => {
     }
   };
 
-  const submitFuelRequest = async (payload: { requestedMileage: number }): Promise<boolean> => {
+  const submitFuelRequest = async (requestPayload: { requestedMileage: number }): Promise<boolean> => {
     if (!loggedIn || !driverSession) return false;
     setIsSubmittingFuelRequest(true);
     setFuelRequestError('');
     setFuelRequestSuccess('');
     try {
       const driverId = String(driverSession?.driverId || '').trim();
-      const { response, payload } = await fetchJsonWithTimeout(
+      const requestedMileage = Number(requestPayload?.requestedMileage);
+      if (!Number.isFinite(requestedMileage) || requestedMileage < 0) {
+        throw new Error('Current mileage is required.');
+      }
+
+      const { response, payload: responsePayload } = await fetchJsonWithTimeout(
         `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request`,
         {
           method: 'POST',
           headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ driverId, requestedMileage: payload.requestedMileage })
+          body: JSON.stringify({ driverId, requestedMileage })
         }
       );
-      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
-      if (!response.ok) throw new Error(String(payload?.error || '') || 'Unable to submit fuel request.');
-      const created = payload?.request as DriverFuelRequest | undefined;
+      if (await handleDriverSessionFailure(response, responsePayload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) throw new Error(String(responsePayload?.error || '') || 'Unable to submit fuel request.');
+      const created = responsePayload?.request as DriverFuelRequest | undefined;
       if (created) setFuelRequests(current => [created, ...current]);
       const mileageDelta = created?.milesSinceLastFuel;
       if (mileageDelta != null && Number.isFinite(Number(mileageDelta))) {
