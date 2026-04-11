@@ -699,6 +699,7 @@ const TripDashboardWorkspace = () => {
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showToolbarTools, setShowToolbarTools] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
   const [toolbarRow1Order, setToolbarRow1Order] = useState(TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS);
   const [toolbarRow2Order, setToolbarRow2Order] = useState(TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS);
@@ -3652,7 +3653,26 @@ const TripDashboardWorkspace = () => {
               </CardBody>
             </Card> : <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
-              <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+              {toolbarCollapsed ? <div className="d-flex align-items-center justify-content-between p-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+                  <button type="button" onClick={() => setToolbarCollapsed(false)} style={{
+                borderRadius: 10,
+                border: '1px solid rgba(15, 23, 42, 0.25)',
+                background: '#fef9c3',
+                color: '#111827',
+                fontWeight: 800,
+                fontSize: 11,
+                letterSpacing: '0.04em',
+                padding: '6px 12px'
+              }}>
+                    Show menu
+                  </button>
+                  <span className="small fw-semibold">Toolbar hidden</span>
+                </div> : <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+                <div className="d-flex justify-content-end align-items-center">
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setToolbarCollapsed(true)} title="Hide menu">
+                    <IconifyIcon icon="iconoir:eye-closed" />
+                  </Button>
+                </div>
                 {shouldShowPinnedToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap">
                     {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
                     <Button variant="dark" size="sm" onClick={handleResetToolbarLayout}>Restore toolbar</Button>
@@ -3789,7 +3809,7 @@ const TripDashboardWorkspace = () => {
                       {(isToolbarEditMode || isToolbarBlockEnabled(blockId)) && (renderToolbarRow3Block(blockId) || isToolbarEditMode ? renderToolbarRow3Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null)}
                     </div>)}
                 </div>
-              </div>
+              </div>}
               {aiPlannerCollapsed ? <div className="mx-3 mt-2 mb-2 d-flex align-items-center justify-content-start gap-2 flex-wrap">
                   <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={{
                 borderRadius: 10,
