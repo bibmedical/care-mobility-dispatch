@@ -1416,12 +1416,13 @@ export const useDriverRuntime = () => {
     setFuelReceiptError('');
     setFuelReceiptSuccess('');
     try {
+      const driverId = String(driverSession?.driverId || '').trim();
       const { response, payload: resPayload } = await fetchJsonWithTimeout(
         `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-receipts`,
         {
           method: 'POST',
           headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ ...payload, driverId })
         }
       );
       if (await handleDriverSessionFailure(response, resPayload, 'Your driver session ended. Sign in again.')) return false;
@@ -1441,9 +1442,12 @@ export const useDriverRuntime = () => {
   const loadFuelReceipts = async (serviceDate = '') => {
     if (!loggedIn || !driverSession) return;
     try {
-      const query = serviceDate ? `?serviceDate=${encodeURIComponent(serviceDate)}` : '';
+      const driverId = String(driverSession?.driverId || '').trim();
+      const query = new URLSearchParams();
+      if (serviceDate) query.set('serviceDate', serviceDate);
+      if (driverId) query.set('driverId', driverId);
       const { response, payload } = await fetchJsonWithTimeout(
-        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-receipts${query}`,
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-receipts${query.toString() ? `?${query.toString()}` : ''}`,
         { headers: getDriverAuthHeaders(driverSession) }
       );
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
@@ -1457,8 +1461,9 @@ export const useDriverRuntime = () => {
   const loadFuelRequests = async () => {
     if (!loggedIn || !driverSession) return;
     try {
+      const driverId = String(driverSession?.driverId || '').trim();
       const { response, payload } = await fetchJsonWithTimeout(
-        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request`,
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ''}`,
         { headers: getDriverAuthHeaders(driverSession) }
       );
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
@@ -1475,12 +1480,13 @@ export const useDriverRuntime = () => {
     setFuelRequestError('');
     setFuelRequestSuccess('');
     try {
+      const driverId = String(driverSession?.driverId || '').trim();
       const { response, payload } = await fetchJsonWithTimeout(
         `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request`,
         {
           method: 'POST',
           headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({})
+          body: JSON.stringify({ driverId })
         }
       );
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
@@ -1509,14 +1515,15 @@ export const useDriverRuntime = () => {
     setFuelRequestError('');
     setFuelRequestSuccess('');
     try {
-      const { response, resPayload } = await fetchJsonWithTimeout(
+      const driverId = String(driverSession?.driverId || '').trim();
+      const { response, payload: resPayload } = await fetchJsonWithTimeout(
         `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request/${encodeURIComponent(payload.requestId)}/receipt`,
         {
           method: 'POST',
           headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ ...payload, driverId })
         }
-      ) as any;
+      );
       if (await handleDriverSessionFailure(response, resPayload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(String(resPayload?.error || '') || 'Unable to submit receipt.');
       const updated = resPayload?.request as DriverFuelRequest | undefined;
