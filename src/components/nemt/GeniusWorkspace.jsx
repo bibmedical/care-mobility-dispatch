@@ -519,8 +519,8 @@ const GeniusWorkspace = () => {
   return <div style={{ background: '#eef0f2', minHeight: '100vh', padding: 14 }}>
     <Card className="border-0" style={{ borderRadius: 18, overflow: 'hidden', boxShadow: '0 14px 45px rgba(2, 6, 23, 0.08)' }}>
       <Row className="g-0">
-        <Col xl={2} lg={3} className="d-none d-lg-block" style={{ background: '#f9f9f9', borderRight: '1px solid #ececec', minHeight: '88vh' }}>
-          <div style={{ padding: 22 }}>
+        <Col xl={2} lg={3} className="d-none d-lg-block" style={{ background: '#f9f9f9', borderRight: '1px solid #ececec', minHeight: '95vh' }}>
+          <div style={{ padding: 22, height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div className="d-flex align-items-center gap-2 mb-4">
               <Image src="/genius/genius-icon.png" alt="Genius icon" width={24} height={24} priority />
               <Image src="/genius/genius-horizontal.png" alt="Genius" width={120} height={26} priority style={{ height: 'auto' }} />
@@ -530,16 +530,18 @@ const GeniusWorkspace = () => {
             <button type="button" onClick={() => scrollToSection('genius-payouts')} style={{ display: 'block', border: 'none', background: 'transparent', padding: 0, marginBottom: 9, fontSize: 14, color: '#6b7280', cursor: 'pointer' }}>Payouts</button>
             <button type="button" onClick={() => scrollToSection('genius-fuel-receipts')} style={{ display: 'block', border: 'none', background: 'transparent', padding: 0, marginBottom: 9, fontSize: 14, color: '#6b7280', cursor: 'pointer' }}>Fuel Receipts</button>
             <button type="button" onClick={() => scrollToSection('genius-driver-review')} style={{ display: 'block', border: 'none', background: 'transparent', padding: 0, marginBottom: 9, fontSize: 14, color: '#6b7280', cursor: 'pointer' }}>Driver Review</button>
-            <div style={{ marginTop: 28, borderTop: '1px solid #ececec', paddingTop: 14 }}>
+            <div style={{ marginTop: 18, borderTop: '1px solid #ececec', paddingTop: 14, display: 'flex', flexDirection: 'column', flex: 1, minHeight: '360px' }}>
               <div className="small text-uppercase text-muted mb-2" style={{ letterSpacing: '0.12em' }}>Drivers</div>
-              <div style={{ maxHeight: 220, overflowY: 'auto', paddingRight: 6 }}>
+              <div style={{ flex: 1, minHeight: '320px', overflowY: 'auto', paddingRight: 6 }}>
                 {sidebarDrivers.length === 0 ? <div className="small text-muted">No drivers</div> : sidebarDrivers.map(driver => <button
                   key={driver.id}
                   type="button"
                   onClick={() => {
                     setSelectedDriverId(driver.id);
+                    setFuelReceiptForm(current => ({ ...current, driverId: driver.id }));
                     setOnlyAssigned(true);
-                    scrollToSection('genius-payouts');
+                    setPayoutError('');
+                    scrollToSection('genius-fuel-receipts');
                   }}
                   style={{
                     width: '100%',
@@ -637,7 +639,11 @@ const GeniusWorkspace = () => {
                 </div>
                 <Row className="g-2 align-items-end">
                   <Col lg={4}><Form.Label className="small text-muted mb-1">Date</Form.Label><Form.Select value={selectedDate} onChange={event => setSelectedDate(event.target.value)}><option value="all">All dates</option>{availableDates.map(dateKey => <option key={dateKey} value={dateKey}>{dateKey}</option>)}</Form.Select></Col>
-                  <Col lg={4}><Form.Label className="small text-muted mb-1">Driver</Form.Label><Form.Select value={selectedDriverId} onChange={event => setSelectedDriverId(event.target.value)}><option value="all">All drivers</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name || driver.displayName || driver.username || driver.id}</option>)}</Form.Select></Col>
+                  <Col lg={4}><Form.Label className="small text-muted mb-1">Driver</Form.Label><Form.Select value={selectedDriverId} onChange={event => {
+                    const nextDriverId = event.target.value;
+                    setSelectedDriverId(nextDriverId);
+                    setFuelReceiptForm(current => ({ ...current, driverId: nextDriverId === 'all' ? '' : nextDriverId }));
+                  }}><option value="all">All drivers</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name || driver.displayName || driver.username || driver.id}</option>)}</Form.Select></Col>
                   <Col lg={2}><Form.Check type="switch" id="genius-only-assigned" label="Assigned" checked={onlyAssigned} onChange={event => setOnlyAssigned(event.target.checked)} /></Col>
                   <Col lg={2} className="d-grid"><Button variant="dark" onClick={handleCreatePayout} disabled={creatingPayout}>{creatingPayout ? 'Running...' : 'Run payout'}</Button></Col>
                 </Row>
@@ -654,7 +660,11 @@ const GeniusWorkspace = () => {
                 </div>
                 <Form onSubmit={handleFuelReceiptSubmit}>
                   <Row className="g-2">
-                    <Col lg={3}><Form.Select value={fuelReceiptForm.driverId} onChange={event => updateFuelReceiptForm('driverId', event.target.value)}><option value="">Driver</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name || driver.displayName || driver.username || driver.id}</option>)}</Form.Select></Col>
+                    <Col lg={3}><Form.Select value={fuelReceiptForm.driverId} onChange={event => {
+                      const nextDriverId = event.target.value;
+                      updateFuelReceiptForm('driverId', nextDriverId);
+                      if (nextDriverId) setSelectedDriverId(nextDriverId);
+                    }}><option value="">Driver</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name || driver.displayName || driver.username || driver.id}</option>)}</Form.Select></Col>
                     <Col lg={2}><Form.Control type="date" value={fuelReceiptForm.serviceDate} onChange={event => updateFuelReceiptForm('serviceDate', event.target.value)} /></Col>
                     <Col lg={2}><Form.Control type="number" step="0.01" min="0" placeholder="Fuel $" value={fuelReceiptForm.amount} onChange={event => updateFuelReceiptForm('amount', event.target.value)} /></Col>
                     <Col lg={2}><Form.Control type="number" step="0.001" min="0" placeholder="Gallons" value={fuelReceiptForm.gallons} onChange={event => updateFuelReceiptForm('gallons', event.target.value)} /></Col>
