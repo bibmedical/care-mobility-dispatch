@@ -36,7 +36,14 @@ const twoFAStyles = {
   actionButton: {
     backgroundColor: '#5b6472',
     borderColor: '#5b6472',
-    color: '#ffffff'
+    color: '#ffffff',
+    opacity: 1
+  },
+  actionButtonDisabled: {
+    backgroundColor: '#7b8492',
+    borderColor: '#7b8492',
+    color: '#f8fafc',
+    opacity: 1
   }
 };
 
@@ -98,7 +105,17 @@ const LoginForm = () => {
                   <FormControl value={confirmSetupCode} onChange={event => setConfirmSetupCode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" style={twoFAStyles.input} />
                 </FormGroup>
                 <div className="d-flex gap-2">
-                  <Button type="submit" variant="secondary" style={twoFAStyles.actionButton} disabled={loading || setupCode.length !== 6 || confirmSetupCode.length !== 6}>Save and continue</Button>
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    style={loading || setupCode.length !== 6 || confirmSetupCode.length !== 6 ? {
+                      ...twoFAStyles.actionButton,
+                      ...twoFAStyles.actionButtonDisabled
+                    } : twoFAStyles.actionButton}
+                    disabled={loading || setupCode.length !== 6 || confirmSetupCode.length !== 6}
+                  >
+                    Save and continue
+                  </Button>
                   <Button type="button" variant="secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
                 </div>
               </Form>
@@ -111,7 +128,17 @@ const LoginForm = () => {
                   <FormControl value={twoFACode} onChange={event => setTwoFACode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" style={twoFAStyles.input} />
                 </FormGroup>
                 <div className="d-flex gap-2">
-                  <Button type="submit" variant="secondary" style={twoFAStyles.actionButton} disabled={loading || twoFACode.length !== 6}>Verify</Button>
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    style={loading || twoFACode.length !== 6 ? {
+                      ...twoFAStyles.actionButton,
+                      ...twoFAStyles.actionButtonDisabled
+                    } : twoFAStyles.actionButton}
+                    disabled={loading || twoFACode.length !== 6}
+                  >
+                    Verify
+                  </Button>
                   <Button type="button" variant="secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
                 </div>
               </Form>
