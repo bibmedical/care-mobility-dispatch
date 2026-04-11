@@ -433,19 +433,19 @@ const SystemLogsWorkspace = () => {
   const todayDateKey = useMemo(() => getTodayDateKey(clockTick), [clockTick]);
 
   const summaryLogs = useMemo(() => logs.filter(log => WORK_EVENT_TYPES.has(log.eventType) && !isPresenceHeartbeatLog(log)), [logs]);
-  const presenceAwareLogs = useMemo(() => logs.filter(log => WORK_EVENT_TYPES.has(log.eventType)), [logs]);
+  const presenceHeartbeatLogs = useMemo(() => logs.filter(log => isPresenceHeartbeatLog(log)), [logs]);
 
   const workerSummaries = useMemo(() => {
     const summaryMap = new Map();
     const nowMs = Number(clockTick) || Date.now();
-    const lastEventByUserId = new Map();
+    const lastPresenceHeartbeatByUserId = new Map();
 
-    presenceAwareLogs.forEach(log => {
+    presenceHeartbeatLogs.forEach(log => {
       if (!log?.userId || !log?.timestamp) return;
       const timestampMs = new Date(log.timestamp).getTime();
       if (!Number.isFinite(timestampMs)) return;
-      const previousTimestamp = Number(lastEventByUserId.get(log.userId) || 0);
-      if (timestampMs >= previousTimestamp) lastEventByUserId.set(log.userId, timestampMs);
+      const previousTimestamp = Number(lastPresenceHeartbeatByUserId.get(log.userId) || 0);
+      if (timestampMs >= previousTimestamp) lastPresenceHeartbeatByUserId.set(log.userId, timestampMs);
     });
 
     systemUsers.forEach(user => {
@@ -483,8 +483,8 @@ const SystemLogsWorkspace = () => {
       const timestampMs = new Date(log.timestamp).getTime();
       const isToday = Number.isFinite(timestampMs) && getDateKeyFromTimestampMs(timestampMs) === todayDateKey;
       const shouldUpdateLastAction = isToday && timestampMs >= Number(current.todayLastTimestamp || 0);
-      const lastEventMs = Number(lastEventByUserId.get(log.userId) || 0);
-      const hasRecentActivity = Number.isFinite(lastEventMs) && lastEventMs > 0 && nowMs - lastEventMs <= ONLINE_RECENT_ACTIVITY_MS;
+      const lastHeartbeatMs = Number(lastPresenceHeartbeatByUserId.get(log.userId) || 0);
+      const hasRecentActivity = Number.isFinite(lastHeartbeatMs) && lastHeartbeatMs > 0 && nowMs - lastHeartbeatMs <= ONLINE_RECENT_ACTIVITY_MS;
       const hasOpenSession = sessionState.activeSessionByUserId.has(log.userId);
       summaryMap.set(log.userId, {
         ...current,
@@ -500,8 +500,8 @@ const SystemLogsWorkspace = () => {
     });
 
     summaryMap.forEach((value, userId) => {
-      const lastEventMs = Number(lastEventByUserId.get(userId) || 0);
-      const hasRecentActivity = Number.isFinite(lastEventMs) && lastEventMs > 0 && nowMs - lastEventMs <= ONLINE_RECENT_ACTIVITY_MS;
+      const lastHeartbeatMs = Number(lastPresenceHeartbeatByUserId.get(userId) || 0);
+      const hasRecentActivity = Number.isFinite(lastHeartbeatMs) && lastHeartbeatMs > 0 && nowMs - lastHeartbeatMs <= ONLINE_RECENT_ACTIVITY_MS;
       const hasOpenSession = sessionState.activeSessionByUserId.has(userId);
       summaryMap.set(userId, {
         ...value,
@@ -514,7 +514,7 @@ const SystemLogsWorkspace = () => {
         if (b.todayWorkedMs !== a.todayWorkedMs) return b.todayWorkedMs - a.todayWorkedMs;
         return String(a.userName || '').localeCompare(String(b.userName || ''));
       });
-  }, [clockTick, presenceAwareLogs, sessionState, systemUsers, summaryLogs, workdayState, todayDateKey]);
+  }, [clockTick, presenceHeartbeatLogs, sessionState, systemUsers, summaryLogs, workdayState, todayDateKey]);
 
   const activeOnlineUsers = useMemo(
     () => workerSummaries.filter(worker => worker.isOnline).sort((a, b) => b.todayLastTimestamp - a.todayLastTimestamp),
