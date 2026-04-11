@@ -744,29 +744,19 @@ const getSelectedDriverEtaTarget = trip => {
 
 const getTripTargetPosition = trip => getSelectedDriverEtaTarget(trip)?.position ?? trip?.position;
 
-const VEHICLE_SPRITE_URL = '/assets/43429.jpg';
-const VEHICLE_SPRITE_COLUMNS = 10;
-const VEHICLE_SPRITE_ROWS = 8;
-const VEHICLE_SPRITE_TOTAL = VEHICLE_SPRITE_COLUMNS * VEHICLE_SPRITE_ROWS;
+const VEHICLE_VARIANT_TOTAL = 20;
 
-const getVehicleSpriteIndex = key => {
+const getVehicleVariantIndex = key => {
   const text = String(key || '').trim();
   if (!text) return 0;
   let hash = 0;
   for (let index = 0; index < text.length; index += 1) {
     hash = (hash * 31 + text.charCodeAt(index)) % 2147483647;
   }
-  return Math.abs(hash) % VEHICLE_SPRITE_TOTAL;
+  return Math.abs(hash) % VEHICLE_VARIANT_TOTAL;
 };
 
-const getVehicleSpritePosition = spriteIndex => {
-  const normalizedIndex = Number.isFinite(Number(spriteIndex)) ? Math.max(0, Math.floor(Number(spriteIndex))) : 0;
-  const row = Math.floor(normalizedIndex / VEHICLE_SPRITE_COLUMNS);
-  const column = normalizedIndex % VEHICLE_SPRITE_COLUMNS;
-  const x = VEHICLE_SPRITE_COLUMNS <= 1 ? 0 : (column / (VEHICLE_SPRITE_COLUMNS - 1)) * 100;
-  const y = VEHICLE_SPRITE_ROWS <= 1 ? 0 : (row / (VEHICLE_SPRITE_ROWS - 1)) * 100;
-  return { x, y };
-};
+const getVehicleVariantUrl = key => `/assets/gpscars/car-${String(getVehicleVariantIndex(key) + 1).padStart(2, '0')}.svg`;
 
 const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   className: 'driver-map-icon-shell',
@@ -780,10 +770,10 @@ const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '' }
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
   const haloColor = isOnline ? 'rgba(132, 204, 22, 0.34)' : 'rgba(148, 163, 184, 0.24)';
   const shadowHaloColor = isOnline ? 'rgba(59, 130, 246, 0.18)' : 'rgba(100, 116, 139, 0.16)';
-  const spritePosition = getVehicleSpritePosition(getVehicleSpriteIndex(driverKey));
+  const vehicleVariantUrl = getVehicleVariantUrl(driverKey);
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><svg width="52" height="52" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><circle cx="48" cy="48" r="31" fill="${shadowHaloColor}"/><circle cx="48" cy="48" r="23" fill="${haloColor}"/></g></svg><div style="position:absolute;width:24px;height:34px;border-radius:5px;background-image:url('${VEHICLE_SPRITE_URL}');background-size:${VEHICLE_SPRITE_COLUMNS * 100}% ${VEHICLE_SPRITE_ROWS * 100}%;background-position:${spritePosition.x}% ${spritePosition.y}%;background-repeat:no-repeat;filter:${isOnline ? 'none' : 'grayscale(0.9)'};box-shadow:0 1px 2px rgba(15,23,42,0.35);"></div></div>`,
+    html: `<div style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><svg width="52" height="52" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><circle cx="48" cy="48" r="31" fill="${shadowHaloColor}"/><circle cx="48" cy="48" r="23" fill="${haloColor}"/></g></svg><div style="position:absolute;width:24px;height:34px;border-radius:5px;background-image:url('${vehicleVariantUrl}');background-size:contain;background-position:center;background-repeat:no-repeat;filter:${isOnline ? 'none' : 'grayscale(0.9)'};box-shadow:0 1px 2px rgba(15,23,42,0.35);"></div></div>`,
     iconSize: [48, 48],
     iconAnchor: [24, 24],
     popupAnchor: [0, -20]
