@@ -1,5 +1,3 @@
-'use client';
-
 import FuelRequestsWorkspace from '@/components/nemt/FuelRequestsWorkspace';
 
 export const metadata = {
