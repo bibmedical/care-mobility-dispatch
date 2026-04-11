@@ -98,7 +98,7 @@ export const DriverProfileSection = ({ runtime }: Props) => {
     }
   };
 
-  return <View style={driverSharedStyles.card}>
+  return <View style={[driverSharedStyles.card, styles.container]}>
       <View style={styles.headerBlock}>
         <Pressable style={[styles.avatarButton, runtime.isUploadingDocument ? styles.avatarButtonDisabled : null]} onPress={() => void pickProfilePhoto()} disabled={runtime.isUploadingDocument}>
           <View style={styles.avatarBubble}>
@@ -113,13 +113,6 @@ export const DriverProfileSection = ({ runtime }: Props) => {
         <Text style={styles.name}>{name}</Text>
         <Text style={styles.subline}>{runtime.driverSession?.email || runtime.driverSession?.username || 'No email set'}</Text>
         <Text style={styles.photoHint}>Tap the round photo to upload or replace it.</Text>
-      </View>
-
-      <View style={styles.infoCard}>
-        <InfoRow label="Driver code" value={runtime.driverSession?.driverCode || '-'} />
-        <InfoRow label="Vehicle" value={runtime.driverSession?.vehicleId || 'Pending assignment'} />
-        <InfoRow label="Shift" value={runtime.shiftState} />
-        <InfoRow label="Base address" value={runtime.driverSession?.address || 'Not set'} />
       </View>
 
       <View style={styles.formCard}>
@@ -144,22 +137,17 @@ export const DriverProfileSection = ({ runtime }: Props) => {
         </Pressable>
       </View>
 
-      <Pressable style={styles.primaryButton} onPress={() => runtime.setActiveTab('settings')}>
-        <Text style={styles.primaryButtonText}>Open settings</Text>
-      </Pressable>
-
-      <Pressable style={styles.secondaryButton} onPress={() => void runtime.signOut()}>
-        <Text style={styles.secondaryButtonText}>Logout</Text>
-      </Pressable>
     </View>;
 };
 
-const InfoRow = ({ label, value }: { label: string; value: string }) => <View style={styles.infoRow}>
-    <Text style={styles.infoLabel}>{label}</Text>
-    <Text style={styles.infoValue}>{value}</Text>
-  </View>;
-
 const styles = StyleSheet.create({
+  container: {
+    borderWidth: 0,
+    borderColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+    backgroundColor: '#ffffff'
+  },
   headerBlock: {
     alignItems: 'center',
     gap: 8
@@ -217,21 +205,11 @@ const styles = StyleSheet.create({
     color: driverTheme.colors.textSoft,
     textAlign: 'center'
   },
-  infoCard: {
-    backgroundColor: driverTheme.colors.surfaceMuted,
-    borderRadius: 20,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: driverTheme.colors.border
-  },
   formCard: {
-    backgroundColor: driverTheme.colors.surfaceMuted,
+    backgroundColor: '#ffffff',
     borderRadius: 20,
     padding: 16,
-    gap: 10,
-    borderWidth: 1,
-    borderColor: driverTheme.colors.border
+    gap: 10
   },
   formLabel: {
     color: driverTheme.colors.textSoft,
@@ -240,26 +218,13 @@ const styles = StyleSheet.create({
     fontWeight: '700'
   },
   input: {
-    backgroundColor: driverTheme.colors.surfaceElevated,
+    backgroundColor: '#f8fafc',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: driverTheme.colors.border,
+    borderWidth: 0,
+    borderColor: 'transparent',
     color: driverTheme.colors.text
-  },
-  infoRow: {
-    gap: 4
-  },
-  infoLabel: {
-    color: driverTheme.colors.textSoft,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    fontWeight: '700'
-  },
-  infoValue: {
-    color: driverTheme.colors.text,
-    fontWeight: '800'
   },
   primaryButton: {
     backgroundColor: driverTheme.colors.primary,
@@ -269,16 +234,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#ffffff',
-    fontWeight: '800'
-  },
-  secondaryButton: {
-    backgroundColor: driverTheme.colors.danger,
-    borderRadius: 16,
-    paddingVertical: 15,
-    alignItems: 'center'
-  },
-  secondaryButtonText: {
-    color: '#b03050',
     fontWeight: '800'
   },
   errorText: {
