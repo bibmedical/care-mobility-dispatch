@@ -522,6 +522,7 @@ const SystemLogsWorkspace = () => {
       const lastHeartbeatMs = Number(lastPresenceHeartbeatByUserId.get(log.userId) || 0);
       const hasRecentActivity = Number.isFinite(lastHeartbeatMs) && lastHeartbeatMs > 0 && nowMs - lastHeartbeatMs <= ONLINE_RECENT_ACTIVITY_MS;
       const hasOpenSession = sessionState.activeSessionByUserId.has(log.userId);
+      const isOnline = hasRecentActivity || hasOpenSession;
       summaryMap.set(log.userId, {
         ...current,
         userName: current.userName || log.userName || log.userId,
@@ -531,7 +532,7 @@ const SystemLogsWorkspace = () => {
         todayActionCount: current.todayActionCount + (isToday ? 1 : 0),
         todayLastTimestamp: shouldUpdateLastAction ? timestampMs : current.todayLastTimestamp,
         todayLastAction: shouldUpdateLastAction ? getActionLabel(log) : current.todayLastAction,
-        isOnline: hasOpenSession && hasRecentActivity
+        isOnline
       });
     });
 
@@ -539,9 +540,10 @@ const SystemLogsWorkspace = () => {
       const lastHeartbeatMs = Number(lastPresenceHeartbeatByUserId.get(userId) || 0);
       const hasRecentActivity = Number.isFinite(lastHeartbeatMs) && lastHeartbeatMs > 0 && nowMs - lastHeartbeatMs <= ONLINE_RECENT_ACTIVITY_MS;
       const hasOpenSession = sessionState.activeSessionByUserId.has(userId);
+      const isOnline = hasRecentActivity || hasOpenSession;
       summaryMap.set(userId, {
         ...value,
-        isOnline: hasOpenSession && hasRecentActivity
+        isOnline
       });
     });
 
