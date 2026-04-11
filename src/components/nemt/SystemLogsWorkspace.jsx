@@ -427,6 +427,16 @@ const SystemLogsWorkspace = () => {
 
   const workerSummaries = useMemo(() => {
     const summaryMap = new Map();
+    const nowMs = Number(clockTick) || Date.now();
+    const lastEventByUserId = new Map();
+
+    summaryLogs.forEach(log => {
+      if (!log?.userId || !log?.timestamp) return;
+      const timestampMs = new Date(log.timestamp).getTime();
+      if (!Number.isFinite(timestampMs)) return;
+      const previousTimestamp = Number(lastEventByUserId.get(log.userId) || 0);
+      if (timestampMs >= previousTimestamp) lastEventByUserId.set(log.userId, timestampMs);
+    });
 
     systemUsers.forEach(user => {
       summaryMap.set(user.id, {
@@ -438,7 +448,7 @@ const SystemLogsWorkspace = () => {
         todayActionCount: 0,
         todayLastTimestamp: 0,
         todayLastAction: 'Sin actividad',
-        isOnline: sessionState.activeSessionByUserId.has(user.id)
+        isOnline: false
       });
     });
 
@@ -454,7 +464,7 @@ const SystemLogsWorkspace = () => {
           todayActionCount: 0,
           todayLastTimestamp: 0,
           todayLastAction: 'Sin actividad',
-          isOnline: sessionState.activeSessionByUserId.has(log.userId)
+          isOnline: false
         });
       }
 
@@ -463,6 +473,9 @@ const SystemLogsWorkspace = () => {
       const timestampMs = new Date(log.timestamp).getTime();
       const isToday = Number.isFinite(timestampMs) && getDateKeyFromTimestampMs(timestampMs) === todayDateKey;
       const shouldUpdateLastAction = isToday && timestampMs >= Number(current.todayLastTimestamp || 0);
+      const lastEventMs = Number(lastEventByUserId.get(log.userId) || 0);
+      const hasRecentActivity = Number.isFinite(lastEventMs) && lastEventMs > 0 && nowMs - lastEventMs <= ONLINE_RECENT_ACTIVITY_MS;
+      const hasOpenSession = sessionState.activeSessionByUserId.has(log.userId);
       summaryMap.set(log.userId, {
         ...current,
         userName: current.userName || log.userName || log.userId,
@@ -472,7 +485,17 @@ const SystemLogsWorkspace = () => {
         todayActionCount: current.todayActionCount + (isToday ? 1 : 0),
         todayLastTimestamp: shouldUpdateLastAction ? timestampMs : current.todayLastTimestamp,
         todayLastAction: shouldUpdateLastAction ? getActionLabel(log) : current.todayLastAction,
-        isOnline: sessionState.activeSessionByUserId.has(log.userId)
+        isOnline: hasOpenSession && hasRecentActivity
+      });
+    });
+
+    summaryMap.forEach((value, userId) => {
+      const lastEventMs = Number(lastEventByUserId.get(userId) || 0);
+      const hasRecentActivity = Number.isFinite(lastEventMs) && lastEventMs > 0 && nowMs - lastEventMs <= ONLINE_RECENT_ACTIVITY_MS;
+      const hasOpenSession = sessionState.activeSessionByUserId.has(userId);
+      summaryMap.set(userId, {
+        ...value,
+        isOnline: hasOpenSession && hasRecentActivity
       });
     });
 
@@ -481,7 +504,7 @@ const SystemLogsWorkspace = () => {
         if (b.todayWorkedMs !== a.todayWorkedMs) return b.todayWorkedMs - a.todayWorkedMs;
         return String(a.userName || '').localeCompare(String(b.userName || ''));
       });
-  }, [sessionState, systemUsers, summaryLogs, workdayState, todayDateKey]);
+  }, [clockTick, sessionState, systemUsers, summaryLogs, workdayState, todayDateKey]);
 
   const activeOnlineUsers = useMemo(
     () => workerSummaries.filter(worker => worker.isOnline).sort((a, b) => b.todayLastTimestamp - a.todayLastTimestamp),
