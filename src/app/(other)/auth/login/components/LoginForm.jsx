@@ -24,14 +24,19 @@ const headerStyles = {
 
 const twoFAStyles = {
   panel: {
-    backgroundColor: '#2b313a',
-    borderColor: '#1f242c',
+    backgroundColor: '#3a414c',
+    borderColor: '#2c333d',
     color: '#f1f5f9'
   },
   input: {
-    backgroundColor: '#1f242c',
-    borderColor: '#3e4652',
+    backgroundColor: '#2f3640',
+    borderColor: '#515b69',
     color: '#f8fafc'
+  },
+  actionButton: {
+    backgroundColor: '#5b6472',
+    borderColor: '#5b6472',
+    color: '#ffffff'
   }
 };
 
@@ -93,7 +98,7 @@ const LoginForm = () => {
                   <FormControl value={confirmSetupCode} onChange={event => setConfirmSetupCode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" style={twoFAStyles.input} />
                 </FormGroup>
                 <div className="d-flex gap-2">
-                  <Button type="submit" variant="dark" disabled={loading || setupCode.length !== 6 || confirmSetupCode.length !== 6}>Save and continue</Button>
+                  <Button type="submit" variant="secondary" style={twoFAStyles.actionButton} disabled={loading || setupCode.length !== 6 || confirmSetupCode.length !== 6}>Save and continue</Button>
                   <Button type="button" variant="secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
                 </div>
               </Form>
@@ -106,7 +111,7 @@ const LoginForm = () => {
                   <FormControl value={twoFACode} onChange={event => setTwoFACode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" style={twoFAStyles.input} />
                 </FormGroup>
                 <div className="d-flex gap-2">
-                  <Button type="submit" variant="dark" disabled={loading || twoFACode.length !== 6}>Verify</Button>
+                  <Button type="submit" variant="secondary" style={twoFAStyles.actionButton} disabled={loading || twoFACode.length !== 6}>Verify</Button>
                   <Button type="button" variant="secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
                 </div>
               </Form>
