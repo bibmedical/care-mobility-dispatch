@@ -264,7 +264,14 @@ const DispatcherMessagingPanel = ({
   const [customNotificationSoundName, setCustomNotificationSoundName] = useState('');
   const [customNotificationSoundDataUrl, setCustomNotificationSoundDataUrl] = useState('');
   const [dailyForm, setDailyForm] = useState({ firstName: '', lastNameOrOrg: '' });
-  const [officialDriverForm, setOfficialDriverForm] = useState({ firstName: '', lastName: '', phone: '' });
+  const [officialDriverForm, setOfficialDriverForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    password: '',
+    phone: '',
+    licenseNumber: ''
+  });
   const [draftMessage, setDraftMessage] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
   const [showAddDriver, setShowAddDriver] = useState(false);
@@ -848,105 +855,130 @@ const DispatcherMessagingPanel = ({
   const handleAddOfficialDriver = async () => {
     const firstName = officialDriverForm.firstName.trim();
     const lastName = officialDriverForm.lastName.trim();
+    const email = String(officialDriverForm.email || '').trim().toLowerCase();
+    const password = String(officialDriverForm.password || '').trim();
     const phone = normalizePhoneDigits(officialDriverForm.phone);
-    if (!firstName || isSavingOfficialDriver) return;
+    const licenseNumber = String(officialDriverForm.licenseNumber || '').trim();
+    if (!firstName || !email || !password || !licenseNumber || isSavingOfficialDriver) return;
 
     setIsSavingOfficialDriver(true);
     try {
-      const response = await fetch('/api/nemt/admin', {
+      const usersResponse = await fetch('/api/system-users', {
         cache: 'no-store',
         credentials: 'same-origin'
       });
-      const payload = await readJsonResponse(response);
-      if (!response.ok) throw new Error(payload?.error || 'Unable to load admin drivers.');
+      const usersPayload = await readJsonResponse(usersResponse);
+      if (!usersResponse.ok) throw new Error(usersPayload?.error || 'Unable to load users.');
 
-      const existingDrivers = Array.isArray(payload?.drivers) ? payload.drivers : [];
-      const nowIso = new Date().toISOString();
-      const nextDriver = {
-        id: `drv-official-${Date.now()}`,
+      const existingUsers = Array.isArray(usersPayload?.users) ? usersPayload.users : [];
+      const hasEmailInUse = existingUsers.some(user => String(user?.email || '').trim().toLowerCase() === email);
+      if (hasEmailInUse) {
+        throw new Error('That email is already in use. Use another email for this official driver.');
+      }
+
+      const usernameBase = [firstName, lastName].filter(Boolean).join('.').toLowerCase().replace(/[^a-z0-9.]+/g, '.').replace(/\.{2,}/g, '.').replace(/^\.|\.$/g, '') || email.split('@')[0] || 'driver';
+      const existingUsernames = new Set(existingUsers.map(user => String(user?.username || '').trim().toLowerCase()).filter(Boolean));
+      let nextUsername = usernameBase;
+      let usernameIndex = 1;
+      while (existingUsernames.has(nextUsername)) {
+        nextUsername = `${usernameBase}${usernameIndex}`;
+        usernameIndex += 1;
+      }
+
+      const nextUserId = `user-driver-${Date.now()}`;
+      const nextUser = {
+        id: nextUserId,
         firstName,
         middleInitial: '',
         lastName,
-        displayName: [firstName, lastName].filter(Boolean).join(' ').trim(),
-        username: '',
-        email: '',
+        isCompany: false,
+        companyName: '',
+        taxId: '',
+        email,
         phone,
         role: 'Driver(Driver)',
-        attendantId: '',
-        vehicleId: '',
-        groupingId: 'grp-3',
-        companyName: 'Florida Mobility Group',
-        taxId: '',
-        brokerId: '',
-        notes: 'Created from Dispatcher Messaging panel (Official Driver).',
-        profileStatus: 'Active',
-        portalUsername: '',
-        portalEmail: '',
-        mobilePin: phone.length >= 4 ? phone.slice(-4) : '',
-        mfaEnabled: false,
-        passwordResetRequired: false,
-        backgroundCheckStatus: 'Pending',
-        drugScreenStatus: 'Pending',
-        cprCertified: false,
-        defensiveDrivingCertified: false,
-        hipaaCertified: false,
-        nemtCertified: false,
-        licenseNumber: '',
-        licenseClass: '',
-        licenseState: 'FL',
-        licenseIssueDate: '',
-        licenseExpirationDate: '',
-        medCardExpirationDate: '',
-        chauffeurPermit: '',
-        dmvVerified: false,
-        insuranceAccredited: false,
-        insuranceCarrier: '',
-        insurancePolicyNumber: '',
-        insuranceExpirationDate: '',
-        workersCompPolicyNumber: '',
-        workersCompExpirationDate: '',
-        taxIdVerified: false,
-        w9OnFile: false,
-        checkpoint: 'Official onboarding',
-        live: 'Offline',
-        trackingSource: '',
-        trackingLastSeen: '',
-        position: [28.5383, -81.3792],
-        gpsSettings: { enabled: true, intervalSeconds: 120, geofenceRadiusMeters: 300, geofenceAlerts: true },
-        routeRoster: { mode: 'off', days: [] },
-        documents: {
-          profilePhoto: null,
-          licenseFront: null,
-          licenseBack: null,
-          insuranceCertificate: null,
-          w9Document: null,
-          trainingCertificate: null
-        },
-        createdAt: nowIso,
-        updatedAt: nowIso
+        username: nextUsername,
+        password,
+        webAccess: false,
+        androidAccess: true,
+        inactivityTimeoutMinutes: 15,
+        lastEventTime: '',
+        eventType: 'Created from messaging panel'
       };
 
-      const saveResponse = await fetch('/api/nemt/admin', {
+      const saveUsersResponse = await fetch('/api/system-users', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
         credentials: 'same-origin',
         body: JSON.stringify({
-          ...payload,
-          drivers: [...existingDrivers, nextDriver]
+          ...usersPayload,
+          users: [...existingUsers, nextUser]
         })
       });
-      const savePayload = await readJsonResponse(saveResponse);
-      if (!saveResponse.ok) throw new Error(savePayload?.error || 'Unable to save official driver.');
+      const saveUsersPayload = await readJsonResponse(saveUsersResponse);
+      if (!saveUsersResponse.ok) throw new Error(saveUsersPayload?.error || 'Unable to save official driver user.');
+
+      const adminResponse = await fetch('/api/nemt/admin', {
+        cache: 'no-store',
+        credentials: 'same-origin'
+      });
+      const adminPayload = await readJsonResponse(adminResponse);
+      if (!adminResponse.ok) throw new Error(adminPayload?.error || 'Unable to load admin drivers.');
+
+      const currentAdminDrivers = Array.isArray(adminPayload?.drivers) ? adminPayload.drivers : [];
+      const linkedDriverIndex = currentAdminDrivers.findIndex(driver => String(driver?.authUserId || '').trim() === nextUserId || String(driver?.email || '').trim().toLowerCase() === email || String(driver?.portalEmail || '').trim().toLowerCase() === email);
+
+      if (linkedDriverIndex >= 0) {
+        const nowIso = new Date().toISOString();
+        const updatedDrivers = currentAdminDrivers.map((driver, index) => index === linkedDriverIndex ? {
+          ...driver,
+          firstName,
+          lastName,
+          displayName: [firstName, lastName].filter(Boolean).join(' ').trim(),
+          email,
+          phone,
+          username: nextUsername,
+          portalUsername: nextUsername,
+          portalEmail: email,
+          password,
+          licenseNumber,
+          licenseState: String(driver?.licenseState || 'FL').trim() || 'FL',
+          licenseClass: String(driver?.licenseClass || '').trim(),
+          backgroundCheckStatus: String(driver?.backgroundCheckStatus || 'Pending').trim() || 'Pending',
+          drugScreenStatus: String(driver?.drugScreenStatus || 'Pending').trim() || 'Pending',
+          notes: 'Official driver created from Dispatcher Messaging panel.',
+          updatedAt: nowIso,
+          documents: {
+            ...(driver?.documents && typeof driver.documents === 'object' ? driver.documents : {}),
+            licenseFront: driver?.documents?.licenseFront ?? null,
+            licenseBack: driver?.documents?.licenseBack ?? null
+          }
+        } : driver);
+
+        const saveAdminResponse = await fetch('/api/nemt/admin', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            ...adminPayload,
+            drivers: updatedDrivers
+          })
+        });
+        const saveAdminPayload = await readJsonResponse(saveAdminResponse);
+        if (!saveAdminResponse.ok) throw new Error(saveAdminPayload?.error || 'Official driver user was saved, but driver profile update failed.');
+      }
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('nemt-admin-updated'));
       }
       await refreshDispatchState({ forceServer: true });
-      setOfficialDriverForm({ firstName: '', lastName: '', phone: '' });
+      setOfficialDriverForm({ firstName: '', lastName: '', email: '', password: '', phone: '', licenseNumber: '' });
       setShowAddOfficialDriver(false);
-      setSmsStatus('Official driver saved in system.');
+      setSmsStatus('Official driver saved with login credentials and license profile.');
     } catch (error) {
       setSmsStatus(error?.message || 'Unable to save official driver.');
     } finally {
@@ -1064,12 +1096,43 @@ const DispatcherMessagingPanel = ({
                   size="sm"
                   className="mb-2"
                   style={messagingSurfaceStyles.input}
+                  placeholder="Email *"
+                  value={officialDriverForm.email}
+                  onChange={event => setOfficialDriverForm(current => ({ ...current, email: event.target.value }))}
+                  onKeyDown={event => { if (event.key === 'Enter') void handleAddOfficialDriver(); }}
+                />
+                <Form.Control
+                  size="sm"
+                  className="mb-2"
+                  type="password"
+                  style={messagingSurfaceStyles.input}
+                  placeholder="Password *"
+                  value={officialDriverForm.password}
+                  onChange={event => setOfficialDriverForm(current => ({ ...current, password: event.target.value }))}
+                  onKeyDown={event => { if (event.key === 'Enter') void handleAddOfficialDriver(); }}
+                />
+                <Form.Control
+                  size="sm"
+                  className="mb-2"
+                  style={messagingSurfaceStyles.input}
                   placeholder="Phone"
                   value={officialDriverForm.phone}
                   onChange={event => setOfficialDriverForm(current => ({ ...current, phone: event.target.value }))}
                   onKeyDown={event => { if (event.key === 'Enter') void handleAddOfficialDriver(); }}
                 />
-                <Button size="sm" variant="primary" onClick={() => void handleAddOfficialDriver()} disabled={!officialDriverForm.firstName.trim() || isSavingOfficialDriver}>
+                <Form.Control
+                  size="sm"
+                  className="mb-2"
+                  style={messagingSurfaceStyles.input}
+                  placeholder="License number *"
+                  value={officialDriverForm.licenseNumber}
+                  onChange={event => setOfficialDriverForm(current => ({ ...current, licenseNumber: event.target.value }))}
+                  onKeyDown={event => { if (event.key === 'Enter') void handleAddOfficialDriver(); }}
+                />
+                <div className="small mb-2" style={{ opacity: 0.8 }}>
+                  Docs upload (license front/back and other files) stays in User Management profile.
+                </div>
+                <Button size="sm" variant="primary" onClick={() => void handleAddOfficialDriver()} disabled={!officialDriverForm.firstName.trim() || !officialDriverForm.email.trim() || !officialDriverForm.password.trim() || !officialDriverForm.licenseNumber.trim() || isSavingOfficialDriver}>
                   {isSavingOfficialDriver ? 'Saving...' : 'Save Official Driver'}
                 </Button>
               </div>
