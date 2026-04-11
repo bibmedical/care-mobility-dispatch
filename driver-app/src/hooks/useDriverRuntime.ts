@@ -1274,7 +1274,7 @@ export const useDriverRuntime = () => {
     }
   };
 
-  const updateDriverProfile = async (nextProfile: { name: string; phone: string; address: string }) => {
+  const updateDriverProfile = async (nextProfile: { name: string; email: string; phone: string; address: string }) => {
     if (!driverSession?.driverId) return false;
 
     setIsSavingProfile(true);
