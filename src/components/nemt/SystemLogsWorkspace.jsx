@@ -7,6 +7,8 @@ import styles from './SystemLogsWorkspace.module.scss';
 
 const SESSION_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT']);
 const WORK_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT', 'ACTION']);
+const WORKDAY_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const ONLINE_RECENT_ACTIVITY_MS = 15 * 60 * 1000;
 const DRIVER_ALERT_ACTION_LABELS = {
   'Sent dispatcher SMS escalation': 'sms-escalation',
   'Resolved mobile driver alert': 'resolve-alert',
@@ -126,7 +128,9 @@ const buildWorkdayState = (logs, nowMs) => {
         previousTimestampMs = timestampMs;
         lastOpenLog = log;
       } else {
-        addDurationAcrossLocalDays(totalByUserDate, userId, previousTimestampMs, timestampMs);
+        const gapMs = Math.max(0, timestampMs - previousTimestampMs);
+        const countedEndMs = gapMs > WORKDAY_IDLE_TIMEOUT_MS ? previousTimestampMs + WORKDAY_IDLE_TIMEOUT_MS : timestampMs;
+        addDurationAcrossLocalDays(totalByUserDate, userId, previousTimestampMs, countedEndMs);
         previousTimestampMs = timestampMs;
         lastOpenLog = log;
       }
@@ -139,9 +143,12 @@ const buildWorkdayState = (logs, nowMs) => {
     });
 
     if (segmentStartMs !== null && previousTimestampMs != null && lastOpenLog) {
-      addDurationAcrossLocalDays(totalByUserDate, userId, previousTimestampMs, nowMs);
+      const tailGapMs = Math.max(0, nowMs - previousTimestampMs);
+      const tailEndMs = tailGapMs > WORKDAY_IDLE_TIMEOUT_MS ? previousTimestampMs + WORKDAY_IDLE_TIMEOUT_MS : nowMs;
+      addDurationAcrossLocalDays(totalByUserDate, userId, previousTimestampMs, tailEndMs);
       const todayTotalMs = totalByUserDate.get(`${userId}::${todayKey}`) || 0;
-      if (todayTotalMs > 0) {
+      const hasRecentActivity = tailGapMs <= ONLINE_RECENT_ACTIVITY_MS;
+      if (todayTotalMs > 0 && hasRecentActivity) {
         activeDayByUserId.set(userId, {
           ...lastOpenLog,
           totalMs: todayTotalMs,

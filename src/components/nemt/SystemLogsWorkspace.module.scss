@@ -31,6 +31,9 @@
   --sl-offline-text: #cfdae9;
 
   min-height: 100vh;
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
