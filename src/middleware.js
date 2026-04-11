@@ -4,6 +4,7 @@ import { withAuth } from 'next-auth/middleware';
 const AUTH_ROUTES = ['/auth/login', '/auth/register', '/auth/reset-pass', '/auth/lock-screen'];
 const DRIVER_PORTAL_PATH = '/driver-portal';
 const isDriverRole = role => String(role ?? '').trim().toLowerCase().includes('driver');
+const enforceIpBinding = String(process.env.ENFORCE_IP_BINDING || '').trim().toLowerCase() === 'true';
 
 const normalizeIp = value => {
   const raw = String(value ?? '').split(',')[0].trim();
@@ -70,8 +71,8 @@ export default withAuth(
 
         const tokenIp = normalizeIp(token.loginIp || '');
         const currentIp = getRequestIp(req);
-        // Enforce IP binding only when both IPs are present and non-local.
-        if (tokenIp && currentIp && tokenIp !== 'localhost' && currentIp !== 'localhost' && tokenIp !== currentIp) {
+        // IP binding can cause false logouts behind proxies/CDNs. Keep it optional.
+        if (enforceIpBinding && tokenIp && currentIp && tokenIp !== 'localhost' && currentIp !== 'localhost' && tokenIp !== currentIp) {
           return false;
         }
 
