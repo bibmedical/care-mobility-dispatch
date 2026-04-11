@@ -311,6 +311,7 @@
   .logsTable {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
 
     thead th {
       padding: 0.95rem 0.85rem;
@@ -338,6 +339,28 @@
       font-size: 0.92rem;
       vertical-align: middle;
     }
+
+    th:first-child,
+    td:first-child {
+      width: 21%;
+    }
+
+    th:nth-child(2),
+    td:nth-child(2) {
+      width: 29%;
+    }
+
+    th:nth-child(3),
+    td:nth-child(3) {
+      width: 24%;
+    }
+
+    th:nth-child(4),
+    td:nth-child(4),
+    th:nth-child(5),
+    td:nth-child(5) {
+      width: 13%;
+    }
   }
 
   .clickableRow {
@@ -358,6 +381,7 @@
     border-radius: 0.55rem;
     font-size: 0.78rem;
     font-weight: 700;
+    border: 1px solid transparent;
   }
 
   .badgeAdmin {
@@ -401,28 +425,33 @@
   }
 
   .statusOnline {
-    background: rgba(34, 197, 94, 0.18);
-    color: #a9f0bf;
+    background: #166534;
+    color: #ecfdf5;
+    border-color: rgba(22, 101, 52, 0.28);
   }
 
   .statusOffline {
-    background: var(--sl-offline-bg);
-    color: var(--sl-offline-text);
+    background: #334155;
+    color: #f8fafc;
+    border-color: rgba(51, 65, 85, 0.24);
   }
 
   .actionLOGIN {
-    background: #dff6df;
-    color: #1f7a3f;
+    background: #facc15;
+    color: #111827;
+    border-color: rgba(180, 83, 9, 0.2);
   }
 
   .actionLOGOUT {
-    background: rgba(248, 113, 113, 0.18);
-    color: #f4a3a3;
+    background: #b91c1c;
+    color: #fef2f2;
+    border-color: rgba(127, 29, 29, 0.32);
   }
 
   .actionACTION {
-    background: rgba(255, 214, 10, 0.16);
-    color: #ffd25f;
+    background: #1f2937;
+    color: #f8fafc;
+    border-color: rgba(15, 23, 42, 0.32);
   }
 
   .loading,
@@ -603,11 +632,6 @@
     flex: 1;
     font-weight: 700;
     color: var(--sl-text-strong);
-  }
-
-  .onlineUserRole {
-    color: var(--sl-text-muted);
-    font-size: 0.82rem;
   }
 
   .onlineUserTime {

@@ -176,11 +176,11 @@ const getActionLabel = log => {
   return truncateAction(log.eventLabel || 'ACCION');
 };
 
-const getRoleBadgeClass = role => {
-  const normalizedRole = String(role || '').toLowerCase();
-  if (normalizedRole.includes('driver') || normalizedRole.includes('chofer')) return 'badgeDriver';
-  if (normalizedRole.includes('attendant') || normalizedRole.includes('assistant')) return 'badgeAttendant';
-  return 'badgeAdmin';
+const getActionClass = actionLabel => {
+  const normalized = String(actionLabel || '').trim().toUpperCase();
+  if (normalized.startsWith('ENTRADA')) return 'actionLOGIN';
+  if (normalized.startsWith('SALIDA')) return 'actionLOGOUT';
+  return 'actionACTION';
 };
 
 const getRoleFilterKey = role => {
@@ -418,6 +418,7 @@ const SystemLogsWorkspace = () => {
   }, []);
 
   const detailSessionState = useMemo(() => buildSessionState(userDetailLogs), [userDetailLogs]);
+  const sessionState = useMemo(() => buildSessionState(logs), [logs]);
   const workdayState = useMemo(() => buildWorkdayState(logs, clockTick), [logs, clockTick]);
   const detailWorkdayState = useMemo(() => buildWorkdayState(userDetailLogs, clockTick), [userDetailLogs, clockTick]);
   const todayDateKey = useMemo(() => getTodayDateKey(clockTick), [clockTick]);
@@ -437,7 +438,7 @@ const SystemLogsWorkspace = () => {
         todayActionCount: 0,
         todayLastTimestamp: 0,
         todayLastAction: 'Sin actividad',
-        isOnline: workdayState.activeDayByUserId.has(user.id)
+        isOnline: sessionState.activeSessionByUserId.has(user.id)
       });
     });
 
@@ -453,7 +454,7 @@ const SystemLogsWorkspace = () => {
           todayActionCount: 0,
           todayLastTimestamp: 0,
           todayLastAction: 'Sin actividad',
-          isOnline: false
+          isOnline: sessionState.activeSessionByUserId.has(log.userId)
         });
       }
 
@@ -471,7 +472,7 @@ const SystemLogsWorkspace = () => {
         todayActionCount: current.todayActionCount + (isToday ? 1 : 0),
         todayLastTimestamp: shouldUpdateLastAction ? timestampMs : current.todayLastTimestamp,
         todayLastAction: shouldUpdateLastAction ? getActionLabel(log) : current.todayLastAction,
-        isOnline: workdayState.activeDayByUserId.has(log.userId)
+        isOnline: sessionState.activeSessionByUserId.has(log.userId)
       });
     });
 
@@ -480,11 +481,11 @@ const SystemLogsWorkspace = () => {
         if (b.todayWorkedMs !== a.todayWorkedMs) return b.todayWorkedMs - a.todayWorkedMs;
         return String(a.userName || '').localeCompare(String(b.userName || ''));
       });
-  }, [systemUsers, summaryLogs, workdayState, todayDateKey]);
+  }, [sessionState, systemUsers, summaryLogs, workdayState, todayDateKey]);
 
   const activeOnlineUsers = useMemo(
-    () => Array.from(workdayState.activeDayByUserId.values()).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
-    [workdayState]
+    () => workerSummaries.filter(worker => worker.isOnline).sort((a, b) => b.todayLastTimestamp - a.todayLastTimestamp),
+    [workerSummaries]
   );
 
   const driverAlertLogs = useMemo(() => allLogs.filter(log => {
@@ -881,10 +882,8 @@ const SystemLogsWorkspace = () => {
             <thead>
               <tr>
                 <th>Trabajador</th>
-                <th>Usuario</th>
-                <th>Rol</th>
                 <th>Correo</th>
-                <th>Ultima Accion</th>
+                <th>Ultima Actividad</th>
                 <th>Horas Hoy</th>
                 <th>Estado</th>
               </tr>
@@ -892,24 +891,18 @@ const SystemLogsWorkspace = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className={styles.loading}>Cargando...</td>
+                  <td colSpan="5" className={styles.loading}>Cargando...</td>
                 </tr>
               ) : workerSummaries.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className={styles.noData}>No hay trabajadores disponibles</td>
+                  <td colSpan="5" className={styles.noData}>No hay trabajadores disponibles</td>
                 </tr>
               ) : workerSummaries.map((worker, index) => (
                 <tr key={`${worker.userId || 'user'}-${index}`} onClick={() => handleUserClick(worker)} className={styles.clickableRow}>
                   <td className={styles.userNameCell}>{worker.userName}</td>
-                  <td>{worker.userId}</td>
-                  <td>
-                    <span className={`${styles.badge} ${styles[getRoleBadgeClass(worker.userRole)]}`}>
-                      {worker.userRole}
-                    </span>
-                  </td>
                   <td>{worker.userEmail}</td>
                   <td>
-                    <span className={`${styles.action} ${styles.actionACTION}`}>
+                    <span className={`${styles.action} ${styles[getActionClass(worker.todayLastAction)]}`}>
                       {worker.todayLastTimestamp ? `${worker.todayLastAction} ${formatTimestamp12(worker.todayLastTimestamp)}` : 'Sin actividad hoy'}
                     </span>
                   </td>
@@ -1188,7 +1181,6 @@ const SystemLogsWorkspace = () => {
             <h2>{selectedUser?.userName}</h2>
             <p>{selectedUser?.userEmail}</p>
             <div className={styles.detailBadges}>
-              <span className={styles.roleBadge}>{selectedUser?.userRole}</span>
               <span className={styles.sessionBadge}>Horas hoy: {formatDurationMs(selectedUserTodayWorkedMs)}</span>
               {selectedUserActiveSession ? <span className={styles.sessionBadge}>Sesion activa</span> : <span className={styles.sessionBadgeOffline}>Fuera de linea</span>}
             </div>
@@ -1237,17 +1229,16 @@ const SystemLogsWorkspace = () => {
         <div className={styles.tableHeader}>
           <div>
             <h3>Usuarios En Linea</h3>
-            <p>Tiempo vivo acumulado del dia actual por usuario conectado.</p>
+            <p>Usuarios con sesion abierta en este momento.</p>
           </div>
           <div className={styles.tableBadge}>{activeOnlineUsers.length} en linea</div>
         </div>
         <div className={styles.onlineUsersList}>
           {activeOnlineUsers.length > 0 ? activeOnlineUsers.map((user, index) => (
-            <div key={`${user.userId || 'online-user'}-${user.timestamp || 'ts'}-${index}`} className={styles.onlineUser}>
+            <div key={`${user.userId || 'online-user'}-${user.todayLastTimestamp || 'ts'}-${index}`} className={styles.onlineUser}>
               <span className={styles.onlineDot}></span>
               <span className={styles.onlineUserName}>{user.userName}</span>
-              <span className={styles.onlineUserRole}>{user.userRole}</span>
-              <span className={styles.onlineUserTime}>{formatDurationMs(user.totalMs)}</span>
+              <span className={styles.onlineUserTime}>{formatDurationMs(user.todayWorkedMs)}</span>
             </div>
           )) : (
             <div className={styles.noOnlineUsers}>Nadie conectado</div>
