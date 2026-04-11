@@ -1,6 +1,6 @@
 import { getServerSession } from 'next-auth';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
-import { getAllActivityLogs, getActivityLogsByRole, getActivityLogsByUserId, getActivityLogsSummary, logUserActionEvent } from '@/server/activity-logs-store';
+import { getAllActivityLogs, getActivityLogsByRole, getActivityLogsByUserId, getActivityLogsSummary, logPresenceHeartbeat, logUserActionEvent } from '@/server/activity-logs-store';
 
 export async function GET(req) {
   try {
@@ -46,14 +46,35 @@ export async function POST(req) {
       return Response.json({ success: false, error: 'eventLabel is required' }, { status: 400 });
     }
 
+    const metadata = body?.metadata && typeof body.metadata === 'object' ? body.metadata : null;
+    const normalizedEventLabel = eventLabel.toLowerCase();
+    const isPresenceHeartbeat = normalizedEventLabel === 'presence heartbeat' || String(metadata?.kind || '').toLowerCase() === 'presence-heartbeat';
+    const ipAddress = String(req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '').split(',')[0].trim();
+
+    if (isPresenceHeartbeat) {
+      const minIntervalMs = Number(process.env.PRESENCE_HEARTBEAT_MIN_INTERVAL_MS || 60_000);
+      const logEntry = await logPresenceHeartbeat({
+        userId: session.user.id,
+        userName: session.user.username || session.user.name || session.user.email || 'Unknown',
+        userRole: session.user.role || 'unknown',
+        userEmail: session.user.email || 'unknown',
+        ipAddress,
+        metadata,
+        minIntervalMs
+      });
+
+      return Response.json({ success: true, logEntry });
+    }
+
     const logEntry = await logUserActionEvent({
       userId: session.user.id,
       userName: session.user.username || session.user.name || session.user.email || 'Unknown',
       userRole: session.user.role || 'unknown',
       userEmail: session.user.email || 'unknown',
+      ipAddress,
       eventLabel,
       target: String(body?.target || ''),
-      metadata: body?.metadata && typeof body.metadata === 'object' ? body.metadata : null
+      metadata
     });
 
     return Response.json({ success: true, logEntry });

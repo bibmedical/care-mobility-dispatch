@@ -9,6 +9,7 @@ const SESSION_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT']);
 const WORK_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT', 'ACTION']);
 const WORKDAY_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const ONLINE_RECENT_ACTIVITY_MS = 15 * 60 * 1000;
+const PRESENCE_HEARTBEAT_LABEL = 'Presence heartbeat';
 const DRIVER_ALERT_ACTION_LABELS = {
   'Sent dispatcher SMS escalation': 'sms-escalation',
   'Resolved mobile driver alert': 'resolve-alert',
@@ -174,6 +175,14 @@ const getActionLabel = log => {
   if (log.eventType === 'LOGIN') return 'ENTRADA';
   if (log.eventType === 'LOGOUT') return 'SALIDA';
   return truncateAction(log.eventLabel || 'ACCION');
+};
+
+const isPresenceHeartbeatLog = log => {
+  if (log?.eventType !== 'ACTION') return false;
+  const eventLabel = String(log?.eventLabel || '').trim().toLowerCase();
+  if (eventLabel === PRESENCE_HEARTBEAT_LABEL.toLowerCase()) return true;
+  const metadataKind = String(log?.metadata?.kind || '').trim().toLowerCase();
+  return metadataKind === 'presence-heartbeat';
 };
 
 const getActionClass = actionLabel => {
@@ -423,14 +432,15 @@ const SystemLogsWorkspace = () => {
   const detailWorkdayState = useMemo(() => buildWorkdayState(userDetailLogs, clockTick), [userDetailLogs, clockTick]);
   const todayDateKey = useMemo(() => getTodayDateKey(clockTick), [clockTick]);
 
-  const summaryLogs = useMemo(() => logs.filter(log => WORK_EVENT_TYPES.has(log.eventType)), [logs]);
+  const summaryLogs = useMemo(() => logs.filter(log => WORK_EVENT_TYPES.has(log.eventType) && !isPresenceHeartbeatLog(log)), [logs]);
+  const presenceAwareLogs = useMemo(() => logs.filter(log => WORK_EVENT_TYPES.has(log.eventType)), [logs]);
 
   const workerSummaries = useMemo(() => {
     const summaryMap = new Map();
     const nowMs = Number(clockTick) || Date.now();
     const lastEventByUserId = new Map();
 
-    summaryLogs.forEach(log => {
+    presenceAwareLogs.forEach(log => {
       if (!log?.userId || !log?.timestamp) return;
       const timestampMs = new Date(log.timestamp).getTime();
       if (!Number.isFinite(timestampMs)) return;
@@ -504,7 +514,7 @@ const SystemLogsWorkspace = () => {
         if (b.todayWorkedMs !== a.todayWorkedMs) return b.todayWorkedMs - a.todayWorkedMs;
         return String(a.userName || '').localeCompare(String(b.userName || ''));
       });
-  }, [clockTick, sessionState, systemUsers, summaryLogs, workdayState, todayDateKey]);
+  }, [clockTick, presenceAwareLogs, sessionState, systemUsers, summaryLogs, workdayState, todayDateKey]);
 
   const activeOnlineUsers = useMemo(
     () => workerSummaries.filter(worker => worker.isOnline).sort((a, b) => b.todayLastTimestamp - a.todayLastTimestamp),

@@ -45,6 +45,23 @@ const fetchAllLogsDesc = async () => {
   return rows.map(mapRowToLog);
 };
 
+const getLatestPresenceHeartbeat = async userId => {
+  if (!userId) return null;
+  const rows = await queryRows(
+    `
+      SELECT id, user_id, user_name, user_role, user_email, ip_address, event_type, event_label, target, metadata, timestamp, date, time
+      FROM activity_logs
+      WHERE user_id = $1
+        AND event_type = 'ACTION'
+        AND event_label = 'Presence heartbeat'
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `,
+    [String(userId)]
+  );
+  return rows[0] ? mapRowToLog(rows[0]) : null;
+};
+
 const insertLog = async logEntry => {
   await query(
     `
@@ -239,6 +256,55 @@ export const logUserActionEvent = async ({
     return logEntry;
   } catch (error) {
     console.error('Error logging user action event:', error);
+    return null;
+  }
+};
+
+/**
+ * Log lightweight presence heartbeat event (throttled).
+ */
+export const logPresenceHeartbeat = async ({
+  userId,
+  userName,
+  userRole,
+  userEmail,
+  ipAddress = '',
+  metadata = null,
+  minIntervalMs = 60 * 1000
+}) => {
+  try {
+    if (!userId) return null;
+
+    const latestHeartbeat = await getLatestPresenceHeartbeat(userId);
+    if (latestHeartbeat?.timestamp) {
+      const ageMs = Date.now() - new Date(latestHeartbeat.timestamp).getTime();
+      if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < Math.max(5_000, Number(minIntervalMs) || 60_000)) {
+        return {
+          ...latestHeartbeat,
+          skipped: true
+        };
+      }
+    }
+
+    const logEntry = buildBaseLogEntry({
+      userId,
+      userName: userName || 'Unknown',
+      userRole: userRole || 'Unknown',
+      userEmail: userEmail || 'Unknown',
+      ipAddress,
+      eventType: 'ACTION',
+      eventLabel: 'Presence heartbeat',
+      target: 'session-presence',
+      metadata: {
+        kind: 'presence-heartbeat',
+        ...(metadata && typeof metadata === 'object' ? metadata : {})
+      }
+    });
+
+    await insertLog(logEntry);
+    return logEntry;
+  } catch (error) {
+    console.error('Error logging presence heartbeat:', error);
     return null;
   }
 };
