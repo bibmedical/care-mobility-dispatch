@@ -23,6 +23,7 @@ const buildSessionPayload = driver => ({
   username: driver.portalUsername || driver.username || '',
   email: driver.portalEmail || driver.email || '',
   phone: normalizePhoneDigits(driver.phone),
+  address: String(driver.address || driver.baseAddress || '').trim(),
   vehicleId: driver.vehicleId || '',
   passwordResetRequired: Boolean(driver.passwordResetRequired)
 });
@@ -59,6 +60,7 @@ export async function POST(request) {
   const name = String(payload?.name || '').trim();
   const email = String(payload?.email || '').trim();
   const phone = normalizePhoneDigits(payload?.phone || '');
+  const address = String(payload?.address || '').trim();
 
   if (!driverId) {
     return jsonWithMobileCors(request, { ok: false, error: 'driverId is required.' }, { status: 400 });
@@ -84,7 +86,11 @@ export async function POST(request) {
       displayName: `${firstName} ${lastName}`.trim(),
       email: email || item.email || '',
       portalEmail: email || item.portalEmail || item.email || '',
-      phone: phone || item.phone || ''
+      phone: phone || item.phone || '',
+      address: address || item.address || '',
+      baseAddress: address || item.baseAddress || '',
+      routeStartAddress: address || item.routeStartAddress || '',
+      checkpoint: address || item.checkpoint || ''
     };
   });
 

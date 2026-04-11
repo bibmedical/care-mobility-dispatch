@@ -178,6 +178,7 @@ export async function POST(request) {
           username: driver.portalUsername || driver.username || '',
           email: driver.portalEmail || driver.email || '',
           phone: normalizePhoneDigits(driver.phone),
+          address: String(driver.address || driver.baseAddress || '').trim(),
           vehicleId: driver.vehicleId || '',
           passwordResetRequired: Boolean(driver.passwordResetRequired),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
@@ -246,6 +247,7 @@ export async function POST(request) {
           username: authUser?.username || driver.portalUsername || driver.username || '',
           email: authUser?.email || driver.portalEmail || driver.email || '',
           phone: normalizePhoneDigits(driver.phone),
+          address: String(driver.address || driver.baseAddress || '').trim(),
           vehicleId: driver.vehicleId || '',
           passwordResetRequired: Boolean(driver.passwordResetRequired),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
@@ -296,6 +298,7 @@ export async function POST(request) {
         username: driver.portalUsername || driver.username || '',
         email: driver.portalEmail || driver.email || '',
         phone: normalizePhoneDigits(driver.phone),
+        address: String(driver.address || driver.baseAddress || '').trim(),
         vehicleId: driver.vehicleId || '',
         passwordResetRequired: Boolean(driver.passwordResetRequired),
         gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)

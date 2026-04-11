@@ -23,14 +23,14 @@ export const DriverProfileSection = ({ runtime }: Props) => {
   const name = runtime.driverSession?.name || runtime.driverCode || 'Driver';
   const resolvedProfilePhotoUrl = runtime.driverSession?.profilePhotoUrl || getDocumentUri(runtime.driverDocuments.profilePhoto);
   const [draftName, setDraftName] = useState(name);
-  const [draftEmail, setDraftEmail] = useState(runtime.driverSession?.email || '');
   const [draftPhone, setDraftPhone] = useState(runtime.driverSession?.phone || '');
+  const [draftAddress, setDraftAddress] = useState(runtime.driverSession?.address || '');
   const [avatarUploadError, setAvatarUploadError] = useState('');
 
   useEffect(() => {
     setDraftName(runtime.driverSession?.name || runtime.driverCode || 'Driver');
-    setDraftEmail(runtime.driverSession?.email || '');
     setDraftPhone(runtime.driverSession?.phone || '');
+    setDraftAddress(runtime.driverSession?.address || '');
   }, [runtime.driverCode, runtime.driverSession]);
 
   const uploadSelectedAsset = async (asset: ImagePicker.ImagePickerAsset) => {
@@ -109,7 +109,6 @@ export const DriverProfileSection = ({ runtime }: Props) => {
           </View>
         </Pressable>
         <Text style={styles.name}>{name}</Text>
-        <Text style={styles.subline}>{runtime.driverSession?.email || runtime.driverSession?.username || 'No email set'}</Text>
         <Text style={styles.photoHint}>Tap the round photo to upload or replace it.</Text>
       </View>
 
@@ -117,23 +116,24 @@ export const DriverProfileSection = ({ runtime }: Props) => {
         <InfoRow label="Driver code" value={runtime.driverSession?.driverCode || '-'} />
         <InfoRow label="Vehicle" value={runtime.driverSession?.vehicleId || 'Pending assignment'} />
         <InfoRow label="Shift" value={runtime.shiftState} />
+        <InfoRow label="Base address" value={runtime.driverSession?.address || 'Not set'} />
       </View>
 
       <View style={styles.formCard}>
         <Text style={styles.formLabel}>Name</Text>
         <TextInput value={draftName} onChangeText={setDraftName} style={styles.input} placeholder="Driver name" placeholderTextColor="#95a0c5" />
 
-        <Text style={styles.formLabel}>Email</Text>
-        <TextInput value={draftEmail} onChangeText={setDraftEmail} style={styles.input} placeholder="Email" placeholderTextColor="#95a0c5" autoCapitalize="none" keyboardType="email-address" />
-
         <Text style={styles.formLabel}>Phone</Text>
         <TextInput value={draftPhone} onChangeText={setDraftPhone} style={styles.input} placeholder="Phone" placeholderTextColor="#95a0c5" keyboardType="phone-pad" />
+
+        <Text style={styles.formLabel}>Address</Text>
+        <TextInput value={draftAddress} onChangeText={setDraftAddress} style={styles.input} placeholder="Where vehicle sleeps / route start" placeholderTextColor="#95a0c5" />
 
         {runtime.profileError ? <Text style={styles.errorText}>{runtime.profileError}</Text> : null}
         {avatarUploadError ? <Text style={styles.errorText}>{avatarUploadError}</Text> : null}
         {!avatarUploadError && runtime.documentsError ? <Text style={styles.errorText}>{runtime.documentsError}</Text> : null}
 
-        <Pressable style={styles.primaryButton} onPress={() => void runtime.updateDriverProfile({ name: draftName, email: draftEmail, phone: draftPhone })} disabled={runtime.isSavingProfile}>
+        <Pressable style={styles.primaryButton} onPress={() => void runtime.updateDriverProfile({ name: draftName, phone: draftPhone, address: draftAddress })} disabled={runtime.isSavingProfile}>
           {runtime.isSavingProfile ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.primaryButtonText}>Save profile</Text>}
         </Pressable>
       </View>
@@ -203,9 +203,6 @@ const styles = StyleSheet.create({
     color: driverTheme.colors.text,
     fontSize: 24,
     fontWeight: '800'
-  },
-  subline: {
-    color: driverTheme.colors.textMuted
   },
   photoHint: {
     color: driverTheme.colors.textSoft,

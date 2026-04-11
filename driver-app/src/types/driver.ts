@@ -163,6 +163,7 @@ export type DriverSession = {
   username: string;
   email: string;
   phone: string;
+  address: string;
   vehicleId: string;
   passwordResetRequired: boolean;
   deviceId: string;
