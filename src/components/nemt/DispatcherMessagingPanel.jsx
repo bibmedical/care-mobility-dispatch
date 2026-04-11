@@ -4,6 +4,7 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
+import { buildStableDriverId, createBlankDriver, getCurrentRosterWeekKey, normalizeRouteRoster } from '@/helpers/nemt-admin-model';
 import { getDriverColor, withDriverAlpha } from '@/helpers/nemt-driver-colors';
 import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
 import { normalizePhoneDigits } from '@/helpers/system-users';
@@ -929,48 +930,86 @@ const DispatcherMessagingPanel = ({
 
       const currentAdminDrivers = Array.isArray(adminPayload?.drivers) ? adminPayload.drivers : [];
       const linkedDriverIndex = currentAdminDrivers.findIndex(driver => String(driver?.authUserId || '').trim() === nextUserId || String(driver?.email || '').trim().toLowerCase() === email || String(driver?.portalEmail || '').trim().toLowerCase() === email);
+      const nowIso = new Date().toISOString();
+      const displayName = [firstName, lastName].filter(Boolean).join(' ').trim();
+      const activeRoster = normalizeRouteRoster({
+        mode: 'weekly',
+        weekKey: getCurrentRosterWeekKey(),
+        workStart: '12:00 AM',
+        workEnd: '11:59 PM',
+        atd: 'none'
+      });
 
-      if (linkedDriverIndex >= 0) {
-        const nowIso = new Date().toISOString();
-        const updatedDrivers = currentAdminDrivers.map((driver, index) => index === linkedDriverIndex ? {
-          ...driver,
-          firstName,
-          lastName,
-          displayName: [firstName, lastName].filter(Boolean).join(' ').trim(),
-          email,
-          phone,
-          username: nextUsername,
-          portalUsername: nextUsername,
-          portalEmail: email,
-          password,
-          licenseNumber,
-          licenseState: String(driver?.licenseState || 'FL').trim() || 'FL',
-          licenseClass: String(driver?.licenseClass || '').trim(),
-          backgroundCheckStatus: String(driver?.backgroundCheckStatus || 'Pending').trim() || 'Pending',
-          drugScreenStatus: String(driver?.drugScreenStatus || 'Pending').trim() || 'Pending',
-          notes: 'Official driver created from Dispatcher Messaging panel.',
-          updatedAt: nowIso,
-          documents: {
-            ...(driver?.documents && typeof driver.documents === 'object' ? driver.documents : {}),
-            licenseFront: driver?.documents?.licenseFront ?? null,
-            licenseBack: driver?.documents?.licenseBack ?? null
-          }
-        } : driver);
+      const updatedDrivers = linkedDriverIndex >= 0 ? currentAdminDrivers.map((driver, index) => index === linkedDriverIndex ? {
+        ...driver,
+        authUserId: nextUserId,
+        firstName,
+        lastName,
+        displayName,
+        email,
+        phone,
+        username: nextUsername,
+        portalUsername: nextUsername,
+        portalEmail: email,
+        password,
+        role: 'Driver(Driver)',
+        profileStatus: String(driver?.profileStatus || 'Pending').trim() || 'Pending',
+        licenseNumber,
+        licenseState: String(driver?.licenseState || 'FL').trim() || 'FL',
+        licenseClass: String(driver?.licenseClass || '').trim(),
+        licenseIssueDate: String(driver?.licenseIssueDate || nowIso.slice(0, 10)).trim(),
+        licenseExpirationDate: String(driver?.licenseExpirationDate || '2027-12-31').trim(),
+        backgroundCheckStatus: String(driver?.backgroundCheckStatus || 'Pending').trim() || 'Pending',
+        drugScreenStatus: String(driver?.drugScreenStatus || 'Pending').trim() || 'Pending',
+        checkpoint: String(driver?.checkpoint || 'Pending vehicle assignment').trim() || 'Pending vehicle assignment',
+        routeRoster: activeRoster,
+        notes: 'Official driver created from Dispatcher Messaging panel.',
+        updatedAt: nowIso,
+        documents: {
+          ...(driver?.documents && typeof driver.documents === 'object' ? driver.documents : {}),
+          licenseFront: driver?.documents?.licenseFront ?? null,
+          licenseBack: driver?.documents?.licenseBack ?? null
+        }
+      } : driver) : [...currentAdminDrivers, {
+        ...createBlankDriver(),
+        id: buildStableDriverId({ authUserId: nextUserId, username: nextUsername, email, firstName, lastName }),
+        authUserId: nextUserId,
+        firstName,
+        lastName,
+        displayName,
+        email,
+        phone,
+        username: nextUsername,
+        portalUsername: nextUsername,
+        portalEmail: email,
+        password,
+        role: 'Driver(Driver)',
+        groupingId: 'grp-3',
+        profileStatus: 'Pending',
+        licenseNumber,
+        licenseState: 'FL',
+        licenseIssueDate: nowIso.slice(0, 10),
+        licenseExpirationDate: '2027-12-31',
+        checkpoint: 'Pending vehicle assignment',
+        routeRoster: activeRoster,
+        notes: 'Official driver created from Dispatcher Messaging panel.',
+        createdAt: nowIso,
+        updatedAt: nowIso
+      }];
 
-        const saveAdminResponse = await fetch('/api/nemt/admin', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          credentials: 'same-origin',
-          body: JSON.stringify({
-            ...adminPayload,
-            drivers: updatedDrivers
-          })
-        });
-        const saveAdminPayload = await readJsonResponse(saveAdminResponse);
-        if (!saveAdminResponse.ok) throw new Error(saveAdminPayload?.error || 'Official driver user was saved, but driver profile update failed.');
-      }
+      const saveAdminResponse = await fetch('/api/nemt/admin', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          ...adminPayload,
+          drivers: updatedDrivers
+        })
+      });
+      const saveAdminPayload = await readJsonResponse(saveAdminResponse);
+      if (!saveAdminResponse.ok) throw new Error(saveAdminPayload?.error || 'Official driver user was saved, but driver profile update failed.');
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('nemt-admin-updated'));
