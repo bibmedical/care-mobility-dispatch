@@ -592,3 +592,35 @@ export const submitFuelRequestReceipt = async ({
   if (!row) throw new Error('Request not found or not in approved status.');
   return row;
 };
+
+export const clearDriverFuelData = async ({ driverId }) => {
+  await runMigrations();
+  const normalizedDriverId = normalizeText(driverId);
+  if (!normalizedDriverId) throw new Error('driverId is required.');
+
+  const deletedReceipts = await queryOne(
+    `WITH deleted AS (
+       DELETE FROM genius_fuel_receipts
+       WHERE driver_id = $1
+       RETURNING 1
+     )
+     SELECT COUNT(*)::int AS count FROM deleted`,
+    [normalizedDriverId]
+  );
+
+  const deletedRequests = await queryOne(
+    `WITH deleted AS (
+       DELETE FROM genius_fuel_requests
+       WHERE driver_id = $1
+       RETURNING 1
+     )
+     SELECT COUNT(*)::int AS count FROM deleted`,
+    [normalizedDriverId]
+  );
+
+  return {
+    driverId: normalizedDriverId,
+    deletedReceipts: Number(deletedReceipts?.count) || 0,
+    deletedRequests: Number(deletedRequests?.count) || 0
+  };
+};

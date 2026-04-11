@@ -1547,6 +1547,34 @@ export const useDriverRuntime = () => {
     }
   };
 
+  const resetFuelData = async (): Promise<boolean> => {
+    if (!loggedIn || !driverSession) return false;
+    setIsSubmittingFuelRequest(true);
+    setFuelRequestError('');
+    setFuelRequestSuccess('');
+    try {
+      const driverId = String(driverSession?.driverId || '').trim();
+      const { response, payload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request/reset`,
+        {
+          method: 'POST',
+          headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ driverId })
+        }
+      );
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) throw new Error(String(payload?.error || '') || 'Unable to reset fuel data.');
+      setFuelRequests([]);
+      setFuelRequestSuccess('Fuel requests reset. You can start from zero now.');
+      return true;
+    } catch (error) {
+      setFuelRequestError(error instanceof Error ? error.message : 'Unable to reset fuel data.');
+      return false;
+    } finally {
+      setIsSubmittingFuelRequest(false);
+    }
+  };
+
   return {
     driverCode,
     tripDateFilter,
@@ -1636,6 +1664,7 @@ export const useDriverRuntime = () => {
     setFuelRequestError,
     submitFuelRequest,
     submitFuelRequestReceipt,
+    resetFuelData,
     loadFuelRequests,
     formatDateTime
   };
