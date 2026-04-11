@@ -6,7 +6,7 @@ import Constants from 'expo-constants';
 import { DRIVER_APP_CONFIG } from '../config/driverAppConfig';
 import { DriverNotificationMode, clearStoredDriverSession, readOrCreateDriverDeviceId, readStoredDriverSession, readStoredNotificationMode, readStoredTrackingPreference, writeStoredDriverSession, writeStoredNotificationMode, writeStoredTrackingPreference } from '../services/driverSessionStorage';
 import { isBackgroundLocationTrackingActive, startBackgroundLocationTracking, stopBackgroundLocationTracking } from '../services/driverBackgroundLocation';
-import { DriverAppTab, DriverDocuments, DriverMessage, DriverReviewSummary, DriverSession, DriverShiftState, DriverTrip, LocationSnapshot } from '../types/driver';
+import { DriverAppTab, DriverDocuments, DriverFuelReceipt, DriverMessage, DriverReviewSummary, DriverSession, DriverShiftState, DriverTrip, LocationSnapshot } from '../types/driver';
 
 const formatDateTime = (value: number | null) => {
   if (!value) return 'No update yet';
@@ -182,6 +182,10 @@ export const useDriverRuntime = () => {
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [documentsError, setDocumentsError] = useState('');
+  const [fuelReceipts, setFuelReceipts] = useState<DriverFuelReceipt[]>([]);
+  const [isSubmittingFuelReceipt, setIsSubmittingFuelReceipt] = useState(false);
+  const [fuelReceiptError, setFuelReceiptError] = useState('');
+  const [fuelReceiptSuccess, setFuelReceiptSuccess] = useState('');
   const [currentCity, setCurrentCity] = useState('Locating city...');
   const [notificationMode, setNotificationMode] = useState<DriverNotificationMode>('sound');
   const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(false);
@@ -1394,6 +1398,58 @@ export const useDriverRuntime = () => {
     }
   };
 
+  const submitFuelReceipt = async (payload: {
+    serviceDate: string;
+    amount: number;
+    gallons: number;
+    vehicleMileage: number | null;
+    receiptReference: string;
+    receiptImageUrl: string;
+    notes: string;
+  }): Promise<boolean> => {
+    if (!loggedIn || !driverSession) return false;
+    setIsSubmittingFuelReceipt(true);
+    setFuelReceiptError('');
+    setFuelReceiptSuccess('');
+    try {
+      const { response, payload: resPayload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-receipts`,
+        {
+          method: 'POST',
+          headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify(payload)
+        }
+      );
+      if (await handleDriverSessionFailure(response, resPayload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) throw new Error(String(resPayload?.error || '') || 'Unable to submit fuel receipt.');
+      const created = resPayload?.receipt as DriverFuelReceipt | undefined;
+      if (created) setFuelReceipts(current => [created, ...current]);
+      setFuelReceiptSuccess('Fuel receipt submitted successfully.');
+      return true;
+    } catch (error) {
+      setFuelReceiptError(error instanceof Error ? error.message : 'Unable to submit fuel receipt.');
+      return false;
+    } finally {
+      setIsSubmittingFuelReceipt(false);
+    }
+  };
+
+  const loadFuelReceipts = async (serviceDate = '') => {
+    if (!loggedIn || !driverSession) return;
+    try {
+      const query = serviceDate ? `?serviceDate=${encodeURIComponent(serviceDate)}` : '';
+      const { response, payload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-receipts${query}`,
+        { headers: getDriverAuthHeaders(driverSession) }
+      );
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
+      if (!response.ok) return;
+      setFuelReceipts(Array.isArray(payload?.rows) ? (payload.rows as DriverFuelReceipt[]) : []);
+    } catch {
+      // non-critical, fail silently
+    }
+  };
+
   return {
     driverCode,
     tripDateFilter,
@@ -1467,6 +1523,14 @@ export const useDriverRuntime = () => {
     reloadDriverDocuments: () => loadDriverDocuments(true),
     reloadDriverReviewSummary: () => loadDriverReviewSummary(true),
     reloadMessages: () => loadMessages(true),
+    fuelReceipts,
+    isSubmittingFuelReceipt,
+    fuelReceiptError,
+    fuelReceiptSuccess,
+    setFuelReceiptSuccess,
+    setFuelReceiptError,
+    submitFuelReceipt,
+    loadFuelReceipts,
     formatDateTime
   };
 };

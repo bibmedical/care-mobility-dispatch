@@ -3,6 +3,7 @@ import { DriverAlertsSection } from '../components/driver/DriverAlertsSection';
 import { DriverControlSection } from '../components/driver/DriverControlSection';
 import { DriverDashboardSection } from '../components/driver/DriverDashboardSection';
 import { DriverDocumentsSection } from '../components/driver/DriverDocumentsSection';
+import { DriverFuelReceiptsSection } from '../components/driver/DriverFuelReceiptsSection';
 import { DriverGpsSection } from '../components/driver/DriverGpsSection';
 import { DriverHelpSection } from '../components/driver/DriverHelpSection';
 import { DriverHistorySection } from '../components/driver/DriverHistorySection';
@@ -28,7 +29,8 @@ const SCREEN_TITLES: Record<DriverAppTab, string> = {
   profile: 'Profile',
   history: 'History',
   documents: 'Documents',
-  help: 'Help'
+  help: 'Help',
+  fuel: 'Fuel & Mileage'
 };
 
 export const DriverOperationsScreen = ({ runtime }: Props) => {
@@ -47,6 +49,7 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
     if (runtime.activeTab === 'profile') return <DriverProfileSection runtime={runtime} />;
     if (runtime.activeTab === 'history') return <DriverHistorySection runtime={runtime} />;
     if (runtime.activeTab === 'documents') return <DriverDocumentsSection runtime={runtime} />;
+    if (runtime.activeTab === 'fuel') return <DriverFuelReceiptsSection runtime={runtime} />;
     if (runtime.activeTab === 'help') return <DriverHelpSection runtime={runtime} />;
     return <DriverControlSection runtime={runtime} />;
   };

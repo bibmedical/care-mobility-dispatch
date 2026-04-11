@@ -52,6 +52,7 @@ export async function POST(req) {
       gallons: body?.gallons,
       receiptReference: String(body?.receiptReference || '').trim(),
       receiptImageUrl: String(body?.receiptImageUrl || '').trim(),
+      vehicleMileage: body?.vehicleMileage,
       notes: String(body?.notes || '').trim(),
       submittedByUser: String(session.user.id || '').trim(),
       submittedByRole: String(session.user.role || '').trim() || 'driver',

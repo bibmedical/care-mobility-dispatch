@@ -46,6 +46,7 @@ const GeniusWorkspace = () => {
     serviceDate: formatTodayDate(),
     amount: '',
     gallons: '',
+    vehicleMileage: '',
     receiptReference: '',
     receiptImageUrl: '',
     notes: ''
@@ -269,6 +270,7 @@ const GeniusWorkspace = () => {
           serviceDate: fuelReceiptForm.serviceDate,
           amount: Number(fuelReceiptForm.amount) || 0,
           gallons: Number(fuelReceiptForm.gallons) || 0,
+          vehicleMileage: fuelReceiptForm.vehicleMileage !== '' ? Number(fuelReceiptForm.vehicleMileage) : null,
           receiptReference: fuelReceiptForm.receiptReference,
           receiptImageUrl: fuelReceiptForm.receiptImageUrl,
           notes: fuelReceiptForm.notes
@@ -287,6 +289,7 @@ const GeniusWorkspace = () => {
         ...current,
         amount: '',
         gallons: '',
+        vehicleMileage: '',
         receiptReference: '',
         receiptImageUrl: '',
         notes: ''
@@ -499,7 +502,8 @@ const GeniusWorkspace = () => {
           <Col lg={2}><Form.Label>Date</Form.Label><Form.Control type="date" value={fuelReceiptForm.serviceDate} onChange={event => updateFuelReceiptForm('serviceDate', event.target.value)} /></Col>
           <Col lg={2}><Form.Label>Fuel $</Form.Label><Form.Control type="number" step="0.01" min="0" placeholder="0.00" value={fuelReceiptForm.amount} onChange={event => updateFuelReceiptForm('amount', event.target.value)} /></Col>
           <Col lg={2}><Form.Label>Gallons</Form.Label><Form.Control type="number" step="0.001" min="0" placeholder="0" value={fuelReceiptForm.gallons} onChange={event => updateFuelReceiptForm('gallons', event.target.value)} /></Col>
-          <Col lg={3}><Form.Label>Receipt Ref</Form.Label><Form.Control placeholder="Ticket / invoice #" value={fuelReceiptForm.receiptReference} onChange={event => updateFuelReceiptForm('receiptReference', event.target.value)} /></Col>
+          <Col lg={2}><Form.Label>Mileage</Form.Label><Form.Control type="number" step="0.1" min="0" placeholder="miles" value={fuelReceiptForm.vehicleMileage} onChange={event => updateFuelReceiptForm('vehicleMileage', event.target.value)} /></Col>
+          <Col lg={3}><Form.Label>Receipt Ref</Form.Label><Form.Control placeholder="Ticket / invoice # (optional if photo attached)" value={fuelReceiptForm.receiptReference} onChange={event => updateFuelReceiptForm('receiptReference', event.target.value)} /></Col>
           <Col lg={6}><Form.Label>Receipt Image URL (optional)</Form.Label><Form.Control placeholder="https://... or stored image URL" value={fuelReceiptForm.receiptImageUrl} onChange={event => updateFuelReceiptForm('receiptImageUrl', event.target.value)} /></Col>
           <Col lg={6}><Form.Label>Notes</Form.Label><Form.Control placeholder="Station, reason, adjustment details..." value={fuelReceiptForm.notes} onChange={event => updateFuelReceiptForm('notes', event.target.value)} /></Col>
           <Col lg={12} className="d-flex justify-content-end"><Button type="submit" disabled={submittingFuelReceipt}>{submittingFuelReceipt ? 'Saving...' : 'Save fuel receipt'}</Button></Col>
@@ -540,9 +544,9 @@ const GeniusWorkspace = () => {
         <Badge bg="secondary">{loadingFuelReceipts ? 'Loading...' : `${fuelReceipts.length} rows`}</Badge>
       </div>
       <Table responsive hover>
-        <thead><tr><th>Created</th><th>Date</th><th>Driver ID</th><th>Reference</th><th>Gallons</th><th>Amount</th><th>Source</th></tr></thead>
+        <thead><tr><th>Created</th><th>Date</th><th>Driver ID</th><th>Reference</th><th>Mileage</th><th>Gallons</th><th>Amount</th><th>Photo</th><th>Source</th></tr></thead>
         <tbody>
-          {recentFuelReceipts.length === 0 ? <tr><td colSpan={7} className="text-center text-muted py-4">No fuel receipts in this scope.</td></tr> : recentFuelReceipts.map(row => <tr key={row.id}><td>{String(row?.createdAt || '').slice(0, 19).replace('T', ' ') || '-'}</td><td>{row?.serviceDate || '-'}</td><td>{row?.driverId || '-'}</td><td>{row?.receiptReference || '-'}</td><td>{Number(row?.gallons || 0).toFixed(3)}</td><td>{money(row?.amount || 0)}</td><td>{row?.source || '-'}</td></tr>)}
+          {recentFuelReceipts.length === 0 ? <tr><td colSpan={9} className="text-center text-muted py-4">No fuel receipts in this scope.</td></tr> : recentFuelReceipts.map(row => <tr key={row.id}><td>{String(row?.createdAt || '').slice(0, 19).replace('T', ' ') || '-'}</td><td>{row?.serviceDate || '-'}</td><td>{row?.driverId || '-'}</td><td>{row?.receiptReference || '-'}</td><td>{row?.vehicleMileage != null ? Number(row.vehicleMileage).toFixed(1) + ' mi' : '-'}</td><td>{Number(row?.gallons || 0).toFixed(3)}</td><td>{money(row?.amount || 0)}</td><td>{row?.receiptImageUrl ? <a href={row.receiptImageUrl} target="_blank" rel="noreferrer"><img src={row.receiptImageUrl} alt="receipt" style={{width:48,height:48,objectFit:'cover',borderRadius:4,border:'1px solid #dee2e6'}} /></a> : '-'}</td><td>{row?.source || '-'}</td></tr>)}
         </tbody>
       </Table>
     </CardBody></Card>

@@ -250,6 +250,11 @@ const _runMigrationsOnce = async () => {
     CREATE INDEX IF NOT EXISTS idx_genius_payout_runs_created_at ON genius_payout_runs(created_at DESC)
   `);
 
+  // ── Additive column migrations (safe to run repeatedly) ──────────────────────
+  await query(`
+    ALTER TABLE genius_fuel_receipts ADD COLUMN IF NOT EXISTS vehicle_mileage NUMERIC(10, 1)
+  `);
+
   // ── Seed singleton rows in 1 round trip ──────────────────────────────────────
   await query(`
     INSERT INTO dispatch_state (id, version, data) VALUES ('singleton', 1, '{}'::jsonb) ON CONFLICT (id) DO NOTHING;

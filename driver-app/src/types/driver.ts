@@ -9,7 +9,20 @@ export type LocationSnapshot = {
 
 export type DriverShiftState = 'available' | 'en-route' | 'arrived' | 'completed';
 
-export type DriverAppTab = 'home' | 'trips' | 'messages' | 'alerts' | 'gps' | 'settings' | 'profile' | 'history' | 'documents' | 'help';
+export type DriverAppTab = 'home' | 'trips' | 'messages' | 'alerts' | 'gps' | 'settings' | 'profile' | 'history' | 'documents' | 'help' | 'fuel';
+
+export type DriverFuelReceipt = {
+  id: string;
+  serviceDate: string;
+  amount: number;
+  gallons: number;
+  vehicleMileage: number | null;
+  receiptReference: string;
+  receiptImageUrl: string;
+  notes: string;
+  source: string;
+  createdAt: string;
+};
 
 export type DriverTrip = {
   id: string;

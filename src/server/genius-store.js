@@ -50,6 +50,7 @@ export const readGeniusFuelReceipts = async ({ serviceDate = '', driverId = '' }
        gallons,
        receipt_reference AS "receiptReference",
        receipt_image_url AS "receiptImageUrl",
+       vehicle_mileage AS "vehicleMileage",
        notes,
        submitted_by_user AS "submittedByUser",
        submitted_by_role AS "submittedByRole",
@@ -72,6 +73,7 @@ export const createGeniusFuelReceipt = async ({
   gallons,
   receiptReference,
   receiptImageUrl,
+  vehicleMileage,
   notes,
   submittedByUser,
   submittedByRole,
@@ -82,7 +84,10 @@ export const createGeniusFuelReceipt = async ({
   const normalizedDriverId = normalizeText(driverId);
   const dateKey = normalizeDateKey(serviceDate);
   const normalizedReference = normalizeText(receiptReference);
-  const normalizedImageUrl = normalizeText(receiptImageUrl).slice(0, 8000);
+  const normalizedImageUrl = normalizeText(receiptImageUrl).slice(0, 400000);
+  const normalizedMileage = vehicleMileage != null && Number.isFinite(Number(vehicleMileage)) && Number(vehicleMileage) >= 0
+    ? Math.round(Number(vehicleMileage) * 10) / 10
+    : null;
 
   if (!normalizedDriverId) {
     throw new Error('driverId is required.');
@@ -90,8 +95,8 @@ export const createGeniusFuelReceipt = async ({
   if (!dateKey) {
     throw new Error('serviceDate is required (YYYY-MM-DD).');
   }
-  if (!normalizedReference) {
-    throw new Error('receiptReference is required.');
+  if (!normalizedReference && !normalizedImageUrl) {
+    throw new Error('receiptReference or a receipt photo is required.');
   }
 
   const row = await queryOne(
@@ -103,13 +108,14 @@ export const createGeniusFuelReceipt = async ({
        gallons,
        receipt_reference,
        receipt_image_url,
+       vehicle_mileage,
        notes,
        submitted_by_user,
        submitted_by_role,
        source,
        created_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
      RETURNING
        id,
        driver_id AS "driverId",
@@ -118,6 +124,7 @@ export const createGeniusFuelReceipt = async ({
        gallons,
        receipt_reference AS "receiptReference",
        receipt_image_url AS "receiptImageUrl",
+       vehicle_mileage AS "vehicleMileage",
        notes,
        submitted_by_user AS "submittedByUser",
        submitted_by_role AS "submittedByRole",
@@ -131,6 +138,7 @@ export const createGeniusFuelReceipt = async ({
       toGallons(gallons),
       normalizedReference,
       normalizedImageUrl,
+      normalizedMileage,
       normalizeText(notes),
       normalizeText(submittedByUser),
       normalizeText(submittedByRole),
