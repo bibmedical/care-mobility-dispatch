@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
 import { isDriverRole } from '@/helpers/system-users';
 import { resolveDriverForSession } from '@/server/driver-portal';
-import { createFuelRequest, readDriverFuelRequests } from '@/server/genius-store';
+import { clearDriverFuelData, createFuelRequest, readDriverFuelRequests } from '@/server/genius-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
 
@@ -72,5 +72,19 @@ export async function POST(req) {
     return NextResponse.json({ ok: true, request: created });
   } catch (error) {
     return NextResponse.json({ ok: false, error: error?.message || 'Unable to submit fuel request.' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const context = await resolveDriverContext(req, body);
+    if (context.error) return context.error;
+
+    const driverId = String(context.driver.id || '').trim();
+    const result = await clearDriverFuelData({ driverId });
+    return NextResponse.json({ ok: true, ...result });
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: error?.message || 'Unable to reset fuel data.' }, { status: 500 });
   }
 }

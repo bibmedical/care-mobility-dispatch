@@ -1554,16 +1554,28 @@ export const useDriverRuntime = () => {
     setFuelRequestSuccess('');
     try {
       const driverId = String(driverSession?.driverId || '').trim();
-      const { response, payload } = await fetchJsonWithTimeout(
-        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request/reset`,
+      let call = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request${driverId ? `?driverId=${encodeURIComponent(driverId)}` : ''}`,
         {
-          method: 'POST',
-          headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ driverId })
+          method: 'DELETE',
+          headers: getDriverAuthHeaders(driverSession)
         }
       );
+
+      if (!call.response.ok) {
+        call = await fetchJsonWithTimeout(
+          `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request/reset`,
+          {
+            method: 'POST',
+            headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ driverId })
+          }
+        );
+      }
+
+      const { response, payload } = call;
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
-      if (!response.ok) throw new Error(String(payload?.error || '') || 'Unable to reset fuel data.');
+      if (!response.ok) throw new Error(String(payload?.error || '') || getMobileApiErrorMessage(response, 'Unable to reset fuel data.'));
       setFuelRequests([]);
       setFuelRequestSuccess('Fuel requests reset. You can start from zero now.');
       return true;
