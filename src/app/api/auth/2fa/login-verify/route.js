@@ -1,5 +1,6 @@
 import { verify2FAToken } from '@/server/2fa-store';
-import { deleteTemp2FASession, readTemp2FASession } from '@/server/temp-2fa-session-store';
+import { markTemp2FASessionVerified, readTemp2FASession } from '@/server/temp-2fa-session-store';
+import { verifyPersistedSystemUserWebLoginCode } from '@/server/system-users-store';
 
 export async function POST(req) {
   try {
@@ -23,7 +24,7 @@ export async function POST(req) {
     const tempSession = await readTemp2FASession(tempToken);
 
     if (!tempSession) {
-      return new Response(JSON.stringify({ error: 'Invalid or expired temp token' }), {
+      return new Response(JSON.stringify({ error: 'Invalid or expired temporary token' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -31,32 +32,46 @@ export async function POST(req) {
 
     // Check if expired
     if (tempSession.expiresAt < Date.now()) {
-      await deleteTemp2FASession(tempToken);
-      return new Response(JSON.stringify({ error: 'Temp token expired' }), {
+      return new Response(JSON.stringify({ error: 'Temporary token expired' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    // Verify 2FA code
-    const result = await verify2FAToken(tempSession.userId, code);
+    let result = { valid: false, error: 'Invalid verification code' };
+    if (tempSession.mode === 'web-pin') {
+      const validPin = await verifyPersistedSystemUserWebLoginCode(tempSession.userId, code);
+      result = validPin ? { valid: true } : { valid: false, error: 'Invalid web code' };
+    } else if (tempSession.mode === 'web-pin-setup') {
+      result = { valid: false, error: 'You must create your web code first.' };
+    } else {
+      result = await verify2FAToken(tempSession.userId, code);
+    }
 
     if (!result.valid) {
       return new Response(JSON.stringify({
         valid: false,
-        error: result.error || 'Invalid 2FA code'
+        error: result.error || 'Invalid code'
       }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    // Clean up temp session
-    await deleteTemp2FASession(tempToken);
+    const marked = await markTemp2FASessionVerified(tempToken);
+    if (!marked) {
+      return new Response(JSON.stringify({
+        valid: false,
+        error: 'Verification session expired. Please sign in again.'
+      }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     return new Response(JSON.stringify({
       valid: true,
-      message: '2FA verified. You can now complete signin.'
+      message: 'Verification complete. You can now finish signing in.'
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }

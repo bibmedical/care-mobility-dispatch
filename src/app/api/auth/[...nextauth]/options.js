@@ -2,7 +2,8 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { randomBytes } from 'crypto';
 import { authorizePersistedSystemUser, findPersistedSystemUserByIdentifier } from '@/server/system-users-store';
 import { logLoginFailure } from '@/server/login-failures-store';
-import { logLoginEvent } from '@/server/activity-logs-store';
+import { hasRecentOpenWebSession, logLoginEvent } from '@/server/activity-logs-store';
+import { consumeVerifiedTemp2FASession } from '@/server/temp-2fa-session-store';
 
 const isLocalPasswordlessWebEnabled = () => process.env.NODE_ENV !== 'production';
 
@@ -37,6 +38,14 @@ export const options = {
       clientType: {
         label: 'Client Type',
         type: 'text'
+      },
+      webLoginToken: {
+        label: 'Web Login Token',
+        type: 'text'
+      },
+      webLoginMode: {
+        label: 'Web Login Mode',
+        type: 'text'
       }
     },
     async authorize(credentials, req) {
@@ -45,6 +54,8 @@ export const options = {
         const clientType = credentials?.clientType ?? 'web';
         const identifier = String(credentials?.identifier || '').trim();
         const password = String(credentials?.password || '').trim();
+        const webLoginToken = String(credentials?.webLoginToken || '').trim();
+        const webLoginMode = String(credentials?.webLoginMode || 'web-pin').trim() || 'web-pin';
         const result = !password && clientType === 'web' && isLocalPasswordlessWebEnabled()
           ? await findPersistedSystemUserByIdentifier(identifier)
           : await authorizePersistedSystemUser({
@@ -52,6 +63,23 @@ export const options = {
             password,
             clientType
           });
+
+        if (result && clientType === 'web') {
+          const hasActiveSession = await hasRecentOpenWebSession(result.id);
+          if (hasActiveSession) {
+            throw new Error('This account is already active on another web session.');
+          }
+
+          const hasVerifiedWebChallenge = await consumeVerifiedTemp2FASession({
+            token: webLoginToken,
+            userId: result.id,
+            mode: webLoginMode
+          });
+
+          if (!hasVerifiedWebChallenge) {
+            throw new Error('Web verification code is required.');
+          }
+        }
 
         if (!result) {
           // Log failed attempt

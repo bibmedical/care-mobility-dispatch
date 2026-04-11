@@ -38,9 +38,15 @@ const LoginForm = () => {
     codeValue,
     setCodeValue,
     requires2FA,
+    requiresCodeSetup,
     twoFACode,
     setTwoFACode,
+    setupCode,
+    setSetupCode,
+    confirmSetupCode,
+    setConfirmSetupCode,
     verify2FALogin,
+    setupWebCodeAndLogin,
     cancel2FA,
     lockoutStatus
   } = useSignIn();
@@ -61,18 +67,37 @@ const LoginForm = () => {
 
   return <>
       {requires2FA ? <Alert variant="warning" className="mb-4">
-          <div className="fw-semibold">Admin 2FA required</div>
-          <div className="small mb-3">Enter the 6-digit code from your authenticator app to finish the sign-in.</div>
-          <Form onSubmit={verify2FALogin}>
-            <FormGroup className="mb-3">
-              <FormLabel>2FA Code</FormLabel>
-              <FormControl value={twoFACode} onChange={event => setTwoFACode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" />
-            </FormGroup>
-            <div className="d-flex gap-2">
-              <Button type="submit" variant="dark" disabled={loading || twoFACode.length !== 6}>Verify</Button>
-              <Button type="button" variant="outline-secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
-            </div>
-          </Form>
+          {requiresCodeSetup ? <>
+              <div className="fw-semibold">Required security setup</div>
+              <div className="small mb-3">For security, you must first create your personal 6-digit web code before signing in.</div>
+              <Form onSubmit={setupWebCodeAndLogin}>
+                <FormGroup className="mb-3">
+                  <FormLabel>Choose your 6-digit web code</FormLabel>
+                  <FormControl value={setupCode} onChange={event => setSetupCode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" />
+                </FormGroup>
+                <FormGroup className="mb-3">
+                  <FormLabel>Confirm code</FormLabel>
+                  <FormControl value={confirmSetupCode} onChange={event => setConfirmSetupCode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" />
+                </FormGroup>
+                <div className="d-flex gap-2">
+                  <Button type="submit" variant="dark" disabled={loading || setupCode.length !== 6 || confirmSetupCode.length !== 6}>Save and continue</Button>
+                  <Button type="button" variant="outline-secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
+                </div>
+              </Form>
+            </> : <>
+              <div className="fw-semibold">Required web verification</div>
+              <div className="small mb-3">Enter your 6-digit web code to complete sign-in.</div>
+              <Form onSubmit={verify2FALogin}>
+                <FormGroup className="mb-3">
+                  <FormLabel>6-digit code</FormLabel>
+                  <FormControl value={twoFACode} onChange={event => setTwoFACode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" />
+                </FormGroup>
+                <div className="d-flex gap-2">
+                  <Button type="submit" variant="dark" disabled={loading || twoFACode.length !== 6}>Verify</Button>
+                  <Button type="button" variant="outline-secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
+                </div>
+              </Form>
+            </>}
         </Alert> : null}
 
         {loginMode === 'credentials' ? <div className="mt-4 mb-2">
@@ -80,7 +105,7 @@ const LoginForm = () => {
               <div className="fw-semibold">Account temporarily locked</div>
               <div className="small">{lockoutStatus.message}</div>
               {lockoutStatus.lockRemaining ? <div className="small mt-1">Time remaining: {lockoutStatus.lockRemaining}</div> : null}
-              <div className="small mt-1">If you need immediate access, contact your admin.</div>
+              <div className="small mt-1">If you need immediate access, contact your administrator.</div>
             </Alert> : null}
           <Form onSubmit={handleSubmit}>
             <FormGroup className="mb-3">
@@ -107,7 +132,7 @@ const LoginForm = () => {
             </div>
           </Form>
           <div className="text-center">
-            <button type="button" className="btn btn-link p-0 font-13" onClick={() => setLoginMode('email')}>or Log In with Email Code →</button>
+            <button type="button" className="btn btn-link p-0 font-13" onClick={() => setLoginMode('email')}>or sign in with email code →</button>
           </div>
         </div> : <form onSubmit={emailStep === 'send' ? sendEmailCode : verifyEmailCode} className="my-4">
           <Card style={shellStyles} className="overflow-hidden">

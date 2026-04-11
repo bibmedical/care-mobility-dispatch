@@ -151,6 +151,56 @@ const getOpenSessionsByUserId = logs => {
   return openSessions;
 };
 
+export const hasRecentOpenWebSession = async (userId, activeWindowMs = 3 * 60 * 1000) => {
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) return false;
+
+  try {
+    const rows = await queryRows(
+      `
+        SELECT event_type, event_label, metadata, timestamp
+        FROM activity_logs
+        WHERE user_id = $1
+          AND (
+            event_type IN ('LOGIN', 'LOGOUT')
+            OR (
+              event_type = 'ACTION'
+              AND event_label = 'Presence heartbeat'
+            )
+          )
+        ORDER BY timestamp DESC
+        LIMIT 250
+      `,
+      [normalizedUserId]
+    );
+
+    const latestLogin = rows.find(row => String(row?.event_type || '') === 'LOGIN');
+    if (!latestLogin?.timestamp) return false;
+
+    const latestLogout = rows.find(row => String(row?.event_type || '') === 'LOGOUT');
+    if (latestLogout?.timestamp && new Date(latestLogout.timestamp).getTime() >= new Date(latestLogin.timestamp).getTime()) {
+      return false;
+    }
+
+    const latestHeartbeat = rows.find(row => String(row?.event_type || '') === 'ACTION' && String(row?.event_label || '') === 'Presence heartbeat');
+    const now = Date.now();
+    const windowMs = Math.max(60_000, Number(activeWindowMs) || 3 * 60 * 1000);
+
+    if (latestHeartbeat?.timestamp) {
+      const heartbeatAgeMs = now - new Date(latestHeartbeat.timestamp).getTime();
+      if (Number.isFinite(heartbeatAgeMs) && heartbeatAgeMs >= 0 && heartbeatAgeMs <= windowMs) {
+        return true;
+      }
+    }
+
+    const loginAgeMs = now - new Date(latestLogin.timestamp).getTime();
+    return Number.isFinite(loginAgeMs) && loginAgeMs >= 0 && loginAgeMs <= windowMs;
+  } catch (error) {
+    console.error('Error checking open web session:', error);
+    return false;
+  }
+};
+
 /**
  * Log a login event
  */

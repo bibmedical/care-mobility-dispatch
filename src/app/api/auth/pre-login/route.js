@@ -1,7 +1,7 @@
 import { authorizePersistedSystemUser, findPersistedSystemUserByIdentifier } from '@/server/system-users-store';
-import { is2FAEnabled } from '@/server/2fa-store';
 import { getRecentFailures, logLoginFailure } from '@/server/login-failures-store';
 import { createTemp2FASession } from '@/server/temp-2fa-session-store';
+import { hasRecentOpenWebSession } from '@/server/activity-logs-store';
 import { randomBytes } from 'crypto';
 const MAX_LOGIN_FAILURES = parseInt(process.env.LOGIN_MAX_FAILURES || '5', 10);
 const LOGIN_LOCK_WINDOW_MINUTES = parseInt(process.env.LOGIN_LOCK_WINDOW_MINUTES || '15', 10);
@@ -24,7 +24,7 @@ const buildLockoutResponse = (remainingMs, reason = 'Too many failed login attem
     retryAfterSeconds,
     lockRemaining,
     contactAdmin: true,
-    message: `Account temporarily locked due to too many attempts. Time remaining: ${lockRemaining}. Contact your admin.`,
+    message: `Account temporarily locked due to too many attempts. Time remaining: ${lockRemaining}. Contact your administrator.`,
     reason
   }), {
     status: 429,
@@ -84,7 +84,7 @@ export async function POST(req) {
       if (authMessage.includes('DATABASE_URL is not set')) {
         return new Response(JSON.stringify({
           error: 'Local database is not configured.',
-          message: 'Set DATABASE_URL in .env.local to enable local login with SQL users.'
+          message: 'Set DATABASE_URL in .env.local to enable local SQL user login.'
         }), {
           status: 503,
           headers: { 'Content-Type': 'application/json' }
@@ -106,9 +106,9 @@ export async function POST(req) {
 
       const attemptsLeft = Math.max(0, MAX_LOGIN_FAILURES - updatedFailures.length);
       return new Response(JSON.stringify({
-        error: 'Incorrect username or password.',
+        error: 'Invalid username or password.',
         attemptsLeft,
-        message: attemptsLeft > 0 ? `Invalid credentials. You have ${attemptsLeft} attempt(s) left before temporary lockout.` : 'Invalid credentials.'
+        message: attemptsLeft > 0 ? `Invalid credentials. ${attemptsLeft} attempt(s) left before temporary lock.` : 'Invalid credentials.'
       }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' }
@@ -122,36 +122,38 @@ export async function POST(req) {
       });
     }
 
-    // Check if user has 2FA enabled and is admin
-    if (user.role === 'admin') {
-      const twoFAEnabled = await is2FAEnabled(user.id);
-
-      if (twoFAEnabled) {
-        // Generate temporary token for 2FA verification
-        const tempToken = randomBytes(32).toString('hex');
-
-        await createTemp2FASession({
-          token: tempToken,
-          userId: user.id,
-          email: user.email,
-          username: user.username,
-        });
-
-        return new Response(JSON.stringify({
-          requires2FA: true,
-          tempToken,
-          message: 'Please verify with 2FA'
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
+    const hasActiveSession = await hasRecentOpenWebSession(user.id);
+    if (hasActiveSession) {
+      return new Response(JSON.stringify({
+        error: 'This account is already active in another web session.',
+        message: 'This account is already active in another web session. Sign out there first, then try again.'
+      }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-    // No 2FA required, proceed with normal login
+    const storedWebCode = String(user?.webLoginCode || '').replace(/\D/g, '').slice(0, 6);
+
+    // Generate temporary challenge token for mandatory web code setup/verification.
+    const tempToken = randomBytes(32).toString('hex');
+    const challengeMode = storedWebCode.length === 6 ? 'web-pin' : 'web-pin-setup';
+    await createTemp2FASession({
+      token: tempToken,
+      userId: user.id,
+      email: user.email,
+      username: user.username,
+      mode: challengeMode
+    });
+
     return new Response(JSON.stringify({
-      requires2FA: false,
-      message: 'Credentials verified. Please complete signin.'
+      requires2FA: true,
+      tempToken,
+      method: challengeMode,
+      requiresCodeSetup: challengeMode === 'web-pin-setup',
+      message: challengeMode === 'web-pin-setup'
+        ? 'For security, you must create your 6-digit web code before signing in.'
+        : 'Enter your 6-digit web code to complete sign-in.'
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
@@ -159,7 +161,7 @@ export async function POST(req) {
   } catch (error) {
     console.error('Error in pre-login check:', error);
     return new Response(JSON.stringify({
-      error: 'Pre-login check failed',
+      error: 'Pre-login validation failed',
       message: error.message
     }), {
       status: 500,

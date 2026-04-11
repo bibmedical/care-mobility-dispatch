@@ -19,6 +19,7 @@ const normalizeUserRecord = user => ({
   role: String(user?.role ?? ''),
   username: String(user?.username ?? ''),
   password: String(user?.password || buildPasswordForUser(user)),
+  webLoginCode: String(user?.webLoginCode ?? '').replace(/\D/g, '').slice(0, 6),
   webAccess: typeof user?.webAccess === 'boolean' ? user.webAccess : true,
   androidAccess: typeof user?.androidAccess === 'boolean' ? user.androidAccess : true,
   inactivityTimeoutMinutes: typeof user?.inactivityTimeoutMinutes === 'number' && user.inactivityTimeoutMinutes > 0 ? user.inactivityTimeoutMinutes : 15,
@@ -470,6 +471,61 @@ export const updatePersistedSystemUserPasswordByEmail = async (email, password) 
   });
 
   return matchedUser.id;
+};
+
+export const setPersistedSystemUserWebLoginCode = async (userId, code) => {
+  const normalizedUserId = String(userId ?? '').trim();
+  const normalizedCode = String(code ?? '').replace(/\D/g, '').slice(0, 6);
+
+  if (!normalizedUserId) {
+    throw new Error('User ID is required');
+  }
+
+  if (normalizedCode.length !== 6) {
+    throw new Error('Web login code must be exactly 6 digits');
+  }
+
+  const currentState = await readSystemUsersState();
+  const targetUser = currentState.users.find(user => String(user?.id || '').trim() === normalizedUserId);
+
+  if (!targetUser) {
+    throw new Error('User not found');
+  }
+
+  const nextUsers = currentState.users.map(user => String(user?.id || '').trim() === normalizedUserId ? {
+    ...user,
+    webLoginCode: normalizedCode
+  } : user);
+
+  await writeSystemUsersState({
+    version: currentState.version,
+    protectedUserIds: currentState.protectedUserIds,
+    users: nextUsers
+  });
+
+  return true;
+};
+
+export const verifyPersistedSystemUserWebLoginCode = async (userId, code) => {
+  const normalizedUserId = String(userId ?? '').trim();
+  const normalizedCode = String(code ?? '').replace(/\D/g, '').slice(0, 6);
+
+  if (!normalizedUserId || normalizedCode.length !== 6) {
+    return false;
+  }
+
+  const payload = await readSystemUsersPayload();
+  const user = (Array.isArray(payload?.users) ? payload.users : []).find(candidate => String(candidate?.id || '').trim() === normalizedUserId);
+  if (!user) {
+    return false;
+  }
+
+  const storedCode = String(user?.webLoginCode ?? '').replace(/\D/g, '').slice(0, 6);
+  if (storedCode.length !== 6) {
+    return false;
+  }
+
+  return storedCode === normalizedCode;
 };
 
 export const authorizePersistedSystemUser = async credentials => {

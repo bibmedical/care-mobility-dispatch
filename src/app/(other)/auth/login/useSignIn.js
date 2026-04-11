@@ -41,7 +41,10 @@ const useSignIn = () => {
   const [codeValue, setCodeValue] = useState('');
   const [portalPageValue, setPortalPageValue] = useState(PAGE_OPTIONS[0].value);
   const [requires2FA, setRequires2FA] = useState(false);
+  const [requiresCodeSetup, setRequiresCodeSetup] = useState(false);
   const [twoFACode, setTwoFACode] = useState('');
+  const [setupCode, setSetupCode] = useState('');
+  const [confirmSetupCode, setConfirmSetupCode] = useState('');
   const [pendingLogin, setPendingLogin] = useState(null);
   const [lockoutStatus, setLockoutStatus] = useState(null);
 
@@ -73,7 +76,7 @@ const useSignIn = () => {
 
     if (normalizedCompanyKey !== COMPANY_KEY) {
       showNotification({
-        message: 'Please enter the company code correctly',
+        message: 'Please enter the company key correctly',
         variant: 'danger'
       });
       return false;
@@ -101,12 +104,12 @@ const useSignIn = () => {
             lockRemaining: preLoginData?.lockRemaining || null,
             retryAfterSeconds: preLoginData?.retryAfterSeconds || null,
             contactAdmin: Boolean(preLoginData?.contactAdmin),
-            message: preLoginData?.message || 'Account temporarily locked. Contact your admin.'
+            message: preLoginData?.message || 'Account temporarily locked. Contact your administrator.'
           });
         }
 
         showNotification({
-          message: preLoginData.message || preLoginData.error || 'Login failed',
+          message: preLoginData.message || preLoginData.error || 'Unable to sign in',
           variant: 'danger'
         });
         setLoading(false);
@@ -115,13 +118,23 @@ const useSignIn = () => {
 
       if (preLoginData.requires2FA) {
         // Store info for 2FA verification
+        const loginMethod = preLoginData.method || 'web-pin';
         setPendingLogin({
           identifier: normalizedIdentifier,
           password: normalizedPassword,
           tempToken: preLoginData.tempToken,
+          method: loginMethod,
           portalPage: normalizedPortalPage
         });
+        const setupRequired = Boolean(preLoginData.requiresCodeSetup || loginMethod === 'web-pin-setup');
+        setRequiresCodeSetup(setupRequired);
         setRequires2FA(true);
+        showNotification({
+          message: preLoginData.message || (setupRequired
+            ? 'For security, create your 6-digit web code to continue.'
+            : 'Enter your 6-digit web code to continue.'),
+          variant: 'info'
+        });
         setLoading(false);
         return true;
       }
@@ -139,7 +152,7 @@ const useSignIn = () => {
         const targetPage = PAGE_OPTIONS.find(option => option.value === normalizedPortalPage)?.href ?? '/dispatcher';
         push(queryParams['redirectTo'] ?? targetPage);
         showNotification({
-          message: 'Successfully logged in. Redirecting....',
+          message: 'Successfully signed in. Redirecting...',
           variant: 'success'
         });
         return true;
@@ -152,7 +165,7 @@ const useSignIn = () => {
       }
     } catch (error) {
       showNotification({
-        message: error.message || 'Login failed',
+        message: error.message || 'Unable to sign in',
         variant: 'danger'
       });
       return false;
@@ -229,7 +242,7 @@ const useSignIn = () => {
 
     if (!pendingLogin) {
       showNotification({
-        message: '2FA session expired',
+        message: 'Verification session expired',
         variant: 'danger'
       });
       setRequires2FA(false);
@@ -252,7 +265,7 @@ const useSignIn = () => {
 
       if (!verifyResponse.ok) {
         showNotification({
-          message: verifyData.error || '2FA verification failed',
+          message: verifyData.error || 'Code verification failed',
           variant: 'danger'
         });
         return;
@@ -263,28 +276,31 @@ const useSignIn = () => {
         redirect: false,
         identifier: pendingLogin.identifier,
         password: pendingLogin.password,
-        clientType: 'web'
+        clientType: 'web',
+        webLoginToken: pendingLogin.tempToken,
+        webLoginMode: pendingLogin.method || 'web-pin'
       });
 
       if (signInResponse?.ok) {
         const targetPage = PAGE_OPTIONS.find(option => option.value === pendingLogin.portalPage)?.href ?? '/dispatcher';
         push(queryParams['redirectTo'] ?? targetPage);
         showNotification({
-          message: 'Successfully logged in. Redirecting....',
+          message: 'Successfully signed in. Redirecting...',
           variant: 'success'
         });
         setRequires2FA(false);
+        setRequiresCodeSetup(false);
         setPendingLogin(null);
         setTwoFACode('');
       } else {
         showNotification({
-          message: signInResponse?.error ?? 'Unable to complete signin',
+          message: signInResponse?.error ?? 'Unable to complete sign-in',
           variant: 'danger'
         });
       }
     } catch (error) {
       showNotification({
-        message: error.message || '2FA verification failed',
+        message: error.message || 'Code verification failed',
         variant: 'danger'
       });
     } finally {
@@ -294,8 +310,101 @@ const useSignIn = () => {
 
   const cancel2FA = () => {
     setRequires2FA(false);
+    setRequiresCodeSetup(false);
     setPendingLogin(null);
     setTwoFACode('');
+    setSetupCode('');
+    setConfirmSetupCode('');
+  };
+
+  const setupWebCodeAndLogin = async e => {
+    e?.preventDefault();
+
+    const normalizedSetupCode = String(setupCode || '').replace(/\D/g, '').slice(0, 6);
+    const normalizedConfirmCode = String(confirmSetupCode || '').replace(/\D/g, '').slice(0, 6);
+
+    if (normalizedSetupCode.length !== 6 || normalizedConfirmCode.length !== 6) {
+      showNotification({
+        message: 'Please enter and confirm a 6-digit web code',
+        variant: 'danger'
+      });
+      return;
+    }
+
+    if (normalizedSetupCode !== normalizedConfirmCode) {
+      showNotification({
+        message: 'Web code confirmation does not match',
+        variant: 'danger'
+      });
+      return;
+    }
+
+    if (!pendingLogin?.tempToken) {
+      showNotification({
+        message: 'Code setup session expired',
+        variant: 'danger'
+      });
+      setRequires2FA(false);
+      setRequiresCodeSetup(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const setupResponse = await fetch('/api/auth/web-code/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tempToken: pendingLogin.tempToken,
+          code: normalizedSetupCode,
+          confirmCode: normalizedConfirmCode
+        })
+      });
+
+      const setupData = await setupResponse.json();
+      if (!setupResponse.ok) {
+        showNotification({
+          message: setupData.error || setupData.message || 'Unable to save web code',
+          variant: 'danger'
+        });
+        return;
+      }
+
+      const signInResponse = await signIn('credentials', {
+        redirect: false,
+        identifier: pendingLogin.identifier,
+        password: pendingLogin.password,
+        clientType: 'web',
+        webLoginToken: pendingLogin.tempToken,
+        webLoginMode: 'web-pin-setup'
+      });
+
+      if (signInResponse?.ok) {
+        const targetPage = PAGE_OPTIONS.find(option => option.value === pendingLogin.portalPage)?.href ?? '/dispatcher';
+        push(queryParams['redirectTo'] ?? targetPage);
+        showNotification({
+          message: 'Web code created and sign-in completed. Redirecting...',
+          variant: 'success'
+        });
+        setRequires2FA(false);
+        setRequiresCodeSetup(false);
+        setPendingLogin(null);
+        setSetupCode('');
+        setConfirmSetupCode('');
+      } else {
+        showNotification({
+          message: signInResponse?.error ?? 'Unable to complete sign-in',
+          variant: 'danger'
+        });
+      }
+    } catch (error) {
+      showNotification({
+        message: error.message || 'Unable to create web code',
+        variant: 'danger'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const verifyEmailCode = async e => {
@@ -370,9 +479,15 @@ const useSignIn = () => {
     portalPageValue,
     setPortalPageValue,
     requires2FA,
+    requiresCodeSetup,
     twoFACode,
     setTwoFACode,
+    setupCode,
+    setSetupCode,
+    confirmSetupCode,
+    setConfirmSetupCode,
     verify2FALogin,
+    setupWebCodeAndLogin,
     cancel2FA
   };
 };
