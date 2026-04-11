@@ -151,6 +151,23 @@ const getOpenSessionsByUserId = logs => {
   return openSessions;
 };
 
+export const hasRecentOpenWebSession = async userId => {
+  try {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) return false;
+
+    const logs = await fetchAllLogsDesc();
+    const openSession = getOpenSessionsByUserId(logs).get(normalizedUserId);
+    if (!openSession?.timestamp) return false;
+
+    const ageMs = Date.now() - new Date(openSession.timestamp).getTime();
+    return Number.isFinite(ageMs) && ageMs >= 0 && ageMs < STALE_OPEN_SESSION_MS;
+  } catch (error) {
+    console.error('Error checking recent open web session:', error);
+    return false;
+  }
+};
+
 /**
  * Log a login event
  */
