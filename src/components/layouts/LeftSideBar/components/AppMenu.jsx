@@ -114,21 +114,59 @@ const MenuItemLink = ({
 const AppMenu = ({
   menuItems
 }) => {
+  const { data: session } = useSession();
   const pathname = usePathname();
   const [activeMenuItems, setActiveMenuItems] = useState([]);
+  const currentUserId = String(session?.user?.id || '').trim();
+  const visibleMenuItems = (menuItems || []).reduce((items, item) => {
+    const allowedUserIds = Array.isArray(item?.allowedUserIds) ? item.allowedUserIds.map(value => String(value || '').trim()).filter(Boolean) : [];
+    if (allowedUserIds.length > 0 && !allowedUserIds.includes(currentUserId)) {
+      return items;
+    }
+
+    if (Array.isArray(item?.children) && item.children.length > 0) {
+      const visibleChildren = item.children.reduce((children, child) => {
+        const childAllowedUserIds = Array.isArray(child?.allowedUserIds) ? child.allowedUserIds.map(value => String(value || '').trim()).filter(Boolean) : [];
+        if (childAllowedUserIds.length > 0 && !childAllowedUserIds.includes(currentUserId)) {
+          return children;
+        }
+        children.push(child.children ? {
+          ...child,
+          children: (child.children || []).filter(grandChild => {
+            const grandChildAllowedUserIds = Array.isArray(grandChild?.allowedUserIds) ? grandChild.allowedUserIds.map(value => String(value || '').trim()).filter(Boolean) : [];
+            return grandChildAllowedUserIds.length === 0 || grandChildAllowedUserIds.includes(currentUserId);
+          })
+        } : child);
+        return children;
+      }, []);
+
+      if (!item.isTitle && visibleChildren.length === 0) {
+        return items;
+      }
+
+      items.push({
+        ...item,
+        children: visibleChildren
+      });
+      return items;
+    }
+
+    items.push(item);
+    return items;
+  }, []);
   const toggleMenu = (menuItem, show) => {
-    if (show) setActiveMenuItems([menuItem.key, ...findAllParent(menuItems, menuItem)]);
+    if (show) setActiveMenuItems([menuItem.key, ...findAllParent(visibleMenuItems, menuItem)]);
   };
   const getActiveClass = item => {
     return activeMenuItems?.includes(item.key) ? 'active' : '';
   };
   const activeMenu = useCallback(() => {
     const trimmedURL = pathname?.replaceAll('', '');
-    const matchingMenuItem = getMenuItemFromURL(menuItems, trimmedURL);
+    const matchingMenuItem = getMenuItemFromURL(visibleMenuItems, trimmedURL);
     if (matchingMenuItem) {
-      const activeMt = findMenuItem(menuItems, matchingMenuItem.key);
+      const activeMt = findMenuItem(visibleMenuItems, matchingMenuItem.key);
       if (activeMt) {
-        setActiveMenuItems([activeMt.key, ...findAllParent(menuItems, activeMt)]);
+        setActiveMenuItems([activeMt.key, ...findAllParent(visibleMenuItems, activeMt)]);
       }
       setTimeout(() => {
         const activatedItem = document.querySelector(`#leftside-menu-container .simplebar-content a[href="${trimmedURL}"]`);
@@ -164,12 +202,12 @@ const AppMenu = ({
         animateScroll();
       };
     }
-  }, [pathname, menuItems]);
+  }, [pathname, visibleMenuItems]);
   useEffect(() => {
-    if (menuItems && menuItems.length > 0) activeMenu();
-  }, [activeMenu, menuItems]);
+    if (visibleMenuItems && visibleMenuItems.length > 0) activeMenu();
+  }, [activeMenu, visibleMenuItems]);
   return <ul className="navbar-nav mb-auto w-100">
-      {(menuItems || []).map((item, idx) => {
+      {(visibleMenuItems || []).map((item, idx) => {
       return <Fragment key={item.key + idx}>
             {item.isTitle ? <li className={clsx('menu-label', 'mt-2')}>
                 <small className={clsx({

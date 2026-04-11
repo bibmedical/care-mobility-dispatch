@@ -7,6 +7,7 @@ import { getFullName } from '@/helpers/nemt-admin-model';
 import { resolveDriverForSession } from '@/server/driver-portal';
 import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readSystemMessages } from '@/server/system-messages-store';
+import { readGeniusFuelReceipts, readGeniusPayoutRuns } from '@/server/genius-store';
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
@@ -110,6 +111,11 @@ export async function GET() {
     return !messageDriverId || messageDriverId === String(driver.id || '').trim();
   }).slice(0, 25);
 
+  const [fuelReceipts, payoutReceipts] = await Promise.all([
+    readGeniusFuelReceipts({ driverId: String(driver.id || '').trim() }),
+    readGeniusPayoutRuns({ driverId: String(driver.id || '').trim(), limit: 40 })
+  ]);
+
   return NextResponse.json({
     ok: true,
     driver: {
@@ -136,6 +142,8 @@ export async function GET() {
     trips,
     activeTrip: trips[0] ?? null,
     messages: visibleMessages,
+    fuelReceipts: fuelReceipts.slice(0, 40),
+    payoutReceipts: payoutReceipts.slice(0, 40),
     updatedAt: Date.now()
   });
   } catch (error) {

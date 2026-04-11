@@ -124,6 +124,8 @@ export default function DriverPortalWorkspace() {
   const trips = Array.isArray(portalData?.trips) ? portalData.trips : [];
   const messages = Array.isArray(portalData?.messages) ? portalData.messages : [];
   const documents = driver?.documents && typeof driver.documents === 'object' ? driver.documents : {};
+  const fuelReceipts = Array.isArray(portalData?.fuelReceipts) ? portalData.fuelReceipts : [];
+  const payoutReceipts = Array.isArray(portalData?.payoutReceipts) ? portalData.payoutReceipts : [];
 
   return <div className="py-4">
       <Row className="g-4">
@@ -279,6 +281,43 @@ export default function DriverPortalWorkspace() {
                         </ListGroup.Item>;
                     })}
                   </ListGroup>
+                </Card.Body>
+              </Card>
+            </Col>
+
+            <Col xs={12}>
+              <Card className="border-0 shadow-sm h-100">
+                <Card.Body className="p-4">
+                  <div className="d-flex align-items-center justify-content-between mb-3">
+                    <h3 className="h5 mb-0">Payment receipts</h3>
+                    <Badge bg="dark">{payoutReceipts.length}</Badge>
+                  </div>
+                  {payoutReceipts.length ? <ListGroup variant="flush">
+                      {payoutReceipts.map(receipt => <ListGroup.Item key={receipt.id} className="px-0">
+                          <div className="fw-semibold">{receipt.serviceDate || 'No date'} | Gross ${Number(receipt.grossAmount || 0).toFixed(2)}</div>
+                          <div className="small text-muted">Trips: {receipt.tripCount || 0} | W/A/STR: {receipt.wheelchairCount || 0}/{receipt.ambulatoryCount || 0}/{receipt.stretcherCount || 0}</div>
+                          <div className="small text-muted">Fuel: {receipt.fuelReceiptCount || 0} receipt(s), ${Number(receipt.fuelTotal || 0).toFixed(2)} | Reimbursement: {receipt.reimburseAllowed ? 'Unlocked' : 'Locked'}</div>
+                          <div className="small text-muted">Created: {formatTimestamp(receipt.createdAt)}</div>
+                        </ListGroup.Item>)}
+                    </ListGroup> : <Alert variant="light" className="mb-0">No payout receipts yet.</Alert>}
+                </Card.Body>
+              </Card>
+            </Col>
+
+            <Col xs={12}>
+              <Card className="border-0 shadow-sm h-100">
+                <Card.Body className="p-4">
+                  <div className="d-flex align-items-center justify-content-between mb-3">
+                    <h3 className="h5 mb-0">Fuel receipts</h3>
+                    <Badge bg="secondary">{fuelReceipts.length}</Badge>
+                  </div>
+                  {fuelReceipts.length ? <ListGroup variant="flush">
+                      {fuelReceipts.map(receipt => <ListGroup.Item key={receipt.id} className="px-0">
+                          <div className="fw-semibold">{receipt.serviceDate || 'No date'} | ${Number(receipt.amount || 0).toFixed(2)} ({Number(receipt.gallons || 0).toFixed(3)} gal)</div>
+                          <div className="small text-muted">Reference: {receipt.receiptReference || 'Not provided'}</div>
+                          <div className="small text-muted">Created: {formatTimestamp(receipt.createdAt)}</div>
+                        </ListGroup.Item>)}
+                    </ListGroup> : <Alert variant="light" className="mb-0">No fuel receipts submitted yet.</Alert>}
                 </Card.Body>
               </Card>
             </Col>

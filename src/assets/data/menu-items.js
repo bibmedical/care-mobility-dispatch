@@ -79,6 +79,11 @@ export const MENU_ITEMS = [{
     label: 'Billing',
     url: '/billing'
   }, {
+    key: 'billing-genius',
+    label: 'Genius',
+    url: '/billing/genius',
+    allowedUserIds: ['user-16', 'user-20']
+  }, {
     key: 'billing-rates',
     label: 'Rates',
     url: '/rates'

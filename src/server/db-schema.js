@@ -213,7 +213,41 @@ const _runMigrationsOnce = async () => {
       documents  JSONB NOT NULL DEFAULT '[]'::jsonb,
       chunks     JSONB NOT NULL DEFAULT '[]'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
+    );
+    CREATE TABLE IF NOT EXISTS genius_fuel_receipts (
+      id                 TEXT PRIMARY KEY,
+      driver_id          TEXT NOT NULL,
+      service_date       TEXT NOT NULL,
+      amount             NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      gallons            NUMERIC(12, 3) NOT NULL DEFAULT 0,
+      receipt_reference  TEXT NOT NULL DEFAULT '',
+      receipt_image_url  TEXT NOT NULL DEFAULT '',
+      notes              TEXT NOT NULL DEFAULT '',
+      submitted_by_user  TEXT NOT NULL DEFAULT '',
+      submitted_by_role  TEXT NOT NULL DEFAULT '',
+      source             TEXT NOT NULL DEFAULT 'admin',
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_genius_fuel_receipts_driver_date ON genius_fuel_receipts(driver_id, service_date);
+    CREATE INDEX IF NOT EXISTS idx_genius_fuel_receipts_created_at ON genius_fuel_receipts(created_at DESC);
+    CREATE TABLE IF NOT EXISTS genius_payout_runs (
+      id                 TEXT PRIMARY KEY,
+      service_date       TEXT NOT NULL,
+      driver_id          TEXT NOT NULL,
+      gross_amount       NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      trip_count         INTEGER NOT NULL DEFAULT 0,
+      wheelchair_count   INTEGER NOT NULL DEFAULT 0,
+      ambulatory_count   INTEGER NOT NULL DEFAULT 0,
+      stretcher_count    INTEGER NOT NULL DEFAULT 0,
+      fuel_receipt_count INTEGER NOT NULL DEFAULT 0,
+      fuel_total         NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      reimburse_allowed  BOOLEAN NOT NULL DEFAULT FALSE,
+      payload            JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_by_user    TEXT NOT NULL DEFAULT '',
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_genius_payout_runs_date_driver ON genius_payout_runs(service_date, driver_id);
+    CREATE INDEX IF NOT EXISTS idx_genius_payout_runs_created_at ON genius_payout_runs(created_at DESC)
   `);
 
   // ── Seed singleton rows in 1 round trip ──────────────────────────────────────
