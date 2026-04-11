@@ -135,13 +135,21 @@ const getTripTargetPosition = trip => isTripEnRoute(trip) ? trip?.destinationPos
 
 const createLiveVehicleIcon = ({ heading = 0, isOnline = false }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
-  const bodyColor = isOnline ? '#16a34a' : '#475569';
+  const bodyColor = isOnline ? '#16a34a' : '#94a3b8';
+  const bodyShadow = isOnline ? '#334155' : '#64748b';
+  const glassColor = '#e6f0ff';
+  const trimColor = '#0f172a';
+  const haloColor = isOnline ? 'rgba(132, 204, 22, 0.34)' : 'rgba(148, 163, 184, 0.24)';
+  const shadowHaloColor = isOnline ? 'rgba(59, 130, 246, 0.18)' : 'rgba(100, 116, 139, 0.16)';
+  const roofColor = '#f8fafc';
+  const wheelColor = '#111827';
+  const wheelStroke = 'rgba(255,255,255,0.85)';
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 4px 12px rgba(15,23,42,0.35));"><svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6.2 8.4L8.3 5.5C8.7 5 9.3 4.7 9.9 4.7H14.1C14.8 4.7 15.4 5 15.7 5.5L17.8 8.4H19C20.1 8.4 21 9.3 21 10.4V15.8C21 16.4 20.6 16.8 20 16.8H18.8C18.7 18 17.7 19 16.5 19C15.3 19 14.3 18 14.2 16.8H9.8C9.7 18 8.7 19 7.5 19C6.3 19 5.3 18 5.2 16.8H4C3.4 16.8 3 16.4 3 15.8V10.4C3 9.3 3.9 8.4 5 8.4H6.2Z" fill="${bodyColor}" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.7 8.4H15.3L13.9 6.4C13.8 6.2 13.5 6 13.2 6H10.8C10.5 6 10.2 6.2 10.1 6.4L8.7 8.4Z" fill="#dbeafe" opacity="0.95"/><circle cx="7.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><circle cx="16.5" cy="16.1" r="1.7" fill="#0f172a" stroke="#ffffff" stroke-width="1.1"/><path d="M18.9 11.2H19.7" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/><path d="M4.3 11.2H5.1" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/></svg></div>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -14]
+    html: `<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><svg width="48" height="48" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><circle cx="48" cy="48" r="31" fill="${shadowHaloColor}"/><circle cx="48" cy="48" r="23" fill="${haloColor}"/><path d="M48 10 62 20c3 2.2 5 5.5 5.6 9.2L72 58c.5 4-1.7 7.8-5.3 9.6L56 73.2c-5 2.6-11 2.6-16 0l-10.7-5.6C25.7 65.8 23.5 62 24 58l4.4-28.8c.6-3.7 2.6-7 5.6-9.2L48 10Z" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="3" stroke-linejoin="round"/><path d="M41 20h14c3.1 0 5.8 2.1 6.5 5.1l2.1 8.8c.8 3.3-1.7 6.4-5 6.4H37.4c-3.3 0-5.8-3.1-5-6.4l2.1-8.8c.7-3 3.4-5.1 6.5-5.1Z" fill="${roofColor}" opacity="0.95"/><path d="M39 28.5c0-2 1.6-3.6 3.6-3.6h10.8c2 0 3.6 1.6 3.6 3.6v5.2H39v-5.2Z" fill="${glassColor}" stroke="rgba(255,255,255,0.9)" stroke-width="1.3"/><path d="M34 47h28" stroke="${trimColor}" stroke-width="2" opacity="0.2"/><path d="M36 55h24" stroke="${trimColor}" stroke-width="2" opacity="0.16"/><path d="M48 11V5" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" opacity="0.9"/><circle cx="31" cy="35" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="65" cy="35" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="31" cy="61" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="65" cy="61" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/></g></svg></div>`,
+    iconSize: [48, 48],
+    iconAnchor: [24, 24],
+    popupAnchor: [0, -20]
   });
 };
 
