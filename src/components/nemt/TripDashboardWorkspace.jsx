@@ -684,6 +684,10 @@ const TripDashboardWorkspace = () => {
   const [puCityFilter, setPuCityFilter] = useState('');
   const [doCityFilter, setDoCityFilter] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
+  const [driverSort, setDriverSort] = useState({
+    key: 'name',
+    direction: 'asc'
+  });
   const [driverGrouping, setDriverGrouping] = useState('VDR Grouping');
   const [routeSearch, setRouteSearch] = useState('');
   const [showInfo, setShowInfo] = useState(false);
@@ -1459,9 +1463,36 @@ const TripDashboardWorkspace = () => {
   const visibleTripIds = filteredTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean);
   const filteredDrivers = useMemo(() => {
     const term = driverSearch.trim().toLowerCase();
-    if (!term) return drivers;
-    return drivers.filter(driver => [driver?.name, driver?.code, driver?.vehicle, driver?.attendant, driver?.live].some(value => String(value || '').toLowerCase().includes(term)));
-  }, [driverSearch, drivers]);
+    const filtered = !term ? drivers : drivers.filter(driver => [driver?.name, driver?.code, driver?.vehicle, driver?.attendant, driver?.live].some(value => String(value || '').toLowerCase().includes(term)));
+
+    const getDriverSortValue = driver => {
+      switch (driverSort.key) {
+        case 'vehicle':
+          return driver?.vehicle;
+        case 'attendant':
+          return driver?.attendant;
+        case 'info':
+          return driver?.info;
+        case 'live':
+          return driver?.live;
+        case 'name':
+        default:
+          return driver?.name;
+      }
+    };
+
+    return [...filtered].sort((leftDriver, rightDriver) => {
+      const leftValue = String(getDriverSortValue(leftDriver) || '').trim();
+      const rightValue = String(getDriverSortValue(rightDriver) || '').trim();
+
+      if (!leftValue && !rightValue) return 0;
+      if (!leftValue) return 1;
+      if (!rightValue) return -1;
+
+      const result = leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' });
+      return driverSort.direction === 'asc' ? result : -result;
+    });
+  }, [driverSearch, drivers, driverSort.direction, driverSort.key]);
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
   const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIdSet]);
   const selectedDriverWorkingTrips = useMemo(() => {
@@ -2291,6 +2322,16 @@ const TripDashboardWorkspace = () => {
     });
   };
 
+  const handleDriverSortChange = columnKey => {
+    setDriverSort(currentSort => currentSort.key === columnKey ? {
+      key: columnKey,
+      direction: currentSort.direction === 'asc' ? 'desc' : 'asc'
+    } : {
+      key: columnKey,
+      direction: 'asc'
+    });
+  };
+
   const handleTripOrderModeToggle = () => {
     setTripOrderMode(currentMode => {
       const nextMode = currentMode === 'time' ? 'original' : 'time';
@@ -2384,6 +2425,13 @@ const TripDashboardWorkspace = () => {
       }} />
     </th>;
   };
+
+  const renderDriverHeader = (columnKey, label) => <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff', whiteSpace: 'nowrap' }}>
+      <button type="button" onClick={() => handleDriverSortChange(columnKey)} className="btn btn-link text-decoration-none p-0 d-inline-flex align-items-center gap-1" style={{ color: '#fff', fontWeight: 700 }}>
+        <span>{label}</span>
+        <span className="small">{driverSort.key === columnKey ? driverSort.direction === 'asc' ? '↑' : '↓' : '↕'}</span>
+      </button>
+    </th>;
 
   const handleDriverSelectionChange = nextDriverId => {
     setSelectedDriverId(nextDriverId);
@@ -3313,11 +3361,11 @@ const TripDashboardWorkspace = () => {
           <Table size="sm" bordered striped hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ lineHeight: 1.1, fontSize: '0.78rem' }}>
             <thead style={{ backgroundColor: '#198754', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
-                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Vehicle</th>
-                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Driver</th>
-                {!isFocusRightLayout ? <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Attendant</th> : null}
-                {!isFocusRightLayout ? <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Info</th> : null}
-                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>Live</th>
+                {renderDriverHeader('vehicle', 'Vehicle')}
+                {renderDriverHeader('name', 'Driver')}
+                {!isFocusRightLayout ? renderDriverHeader('attendant', 'Attendant') : null}
+                {!isFocusRightLayout ? renderDriverHeader('info', 'Info') : null}
+                {renderDriverHeader('live', 'Live')}
                 <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff' }}>#</th>
                 <th className="py-1" style={{ width: 60, backgroundColor: '#198754', color: '#fff' }}>ACT</th>
               </tr>
