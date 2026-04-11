@@ -738,6 +738,7 @@ const TripDashboardWorkspace = () => {
   const tripTableElementRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
   const lastMapScreenStatePayloadRef = useRef('');
+  const detachedMapSnapshotRef = useRef('');
   const layoutHydratedRef = useRef(false);
   const panelViewHydratedRef = useRef(false);
   const panelOrderHydratedRef = useRef(false);
@@ -1654,8 +1655,11 @@ const TripDashboardWorkspace = () => {
       try {
         const raw = window.localStorage.getItem(MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY);
         if (!raw) return;
+        if (raw === detachedMapSnapshotRef.current) return;
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return;
+
+        detachedMapSnapshotRef.current = raw;
 
         const nextTripDateFilter = String(parsed.tripDateFilter || 'all');
         const nextSelectedTripIds = Array.isArray(parsed.selectedTripIds)
@@ -1680,7 +1684,7 @@ const TripDashboardWorkspace = () => {
     };
 
     window.addEventListener('storage', handleStorage);
-    const pollId = window.setInterval(applySnapshot, 500);
+    const pollId = window.setInterval(applySnapshot, 2500);
 
     return () => {
       window.removeEventListener('storage', handleStorage);

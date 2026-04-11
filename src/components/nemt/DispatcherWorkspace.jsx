@@ -783,7 +783,7 @@ const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '', 
   const vehicleVariantUrl = resolveVehicleIconUrl(driverKey, vehicleIconSvgPath);
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${vehicleVariantUrl}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" /></div></div>`,
+    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${vehicleVariantUrl}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
     iconSize: [shellSize, shellSize],
     iconAnchor: [Math.round(shellSize / 2), Math.round(shellSize / 2)],
     popupAnchor: [0, -Math.round(shellSize * 0.4)]
@@ -859,6 +859,7 @@ const DispatcherWorkspace = () => {
   const detachedMapPortalContainerRef = useRef(null);
   const detachedMapReactRootRef = useRef(null);
   const detachedMapClosingRef = useRef(false);
+  const detachedMapSnapshotRef = useRef('');
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -902,8 +903,11 @@ const DispatcherWorkspace = () => {
       try {
         const raw = window.localStorage.getItem(MAP_SCREEN_DISPATCHER_STATE_KEY);
         if (!raw) return;
+        if (raw === detachedMapSnapshotRef.current) return;
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return;
+
+        detachedMapSnapshotRef.current = raw;
 
         const nextTripDateFilter = String(parsed.tripDateFilter || 'all');
         const nextSelectedTripIds = Array.isArray(parsed.selectedTripIds)
@@ -929,7 +933,7 @@ const DispatcherWorkspace = () => {
     };
 
     window.addEventListener('storage', handleStorage);
-    const pollId = window.setInterval(applySnapshot, 500);
+    const pollId = window.setInterval(applySnapshot, 2500);
 
     return () => {
       window.removeEventListener('storage', handleStorage);

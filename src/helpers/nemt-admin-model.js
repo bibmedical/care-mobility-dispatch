@@ -657,7 +657,10 @@ export const mapAdminDataToDispatchDrivers = state => {
   const grouping = state.groupings.find(item => item.id === normalizedDriver.groupingId);
   const alerts = getDocumentAlerts(normalizedDriver);
   const isLiveTracking = isDriverOnline(normalizedDriver);
-  const hasValidPosition = Array.isArray(normalizedDriver.position) && normalizedDriver.position.length === 2;
+  const normalizedPosition = Array.isArray(normalizedDriver.position) && normalizedDriver.position.length === 2
+    ? normalizedDriver.position.map(value => Number(value))
+    : [];
+  const hasValidPosition = normalizedPosition.length === 2 && Number.isFinite(normalizedPosition[0]) && Number.isFinite(normalizedPosition[1]);
   return {
     id: normalizedDriver.id,
     code: vehicle?.unitNumber || `DRV-${String(index + 1).padStart(3, '0')}`,
@@ -671,7 +674,7 @@ export const mapAdminDataToDispatchDrivers = state => {
     live: isLiveTracking ? 'Online' : 'Offline',
     group: grouping?.name || 'Ungrouped',
     routeRoster: normalizedDriver.routeRoster,
-    position: hasValidPosition ? normalizedDriver.position : ORLANDO_CENTER,
+    position: hasValidPosition ? normalizedPosition : ORLANDO_CENTER,
     hasRealLocation: hasValidPosition,
     gpsSettings: normalizeDriverGpsSettings(normalizedDriver?.gpsSettings),
     gpsAreaRadiusMeters: normalizeDriverGpsSettings(normalizedDriver?.gpsSettings).mapRadiusMeters,
