@@ -22,6 +22,19 @@ const headerStyles = {
   }
 };
 
+const twoFAStyles = {
+  panel: {
+    backgroundColor: '#2b313a',
+    borderColor: '#1f242c',
+    color: '#f1f5f9'
+  },
+  input: {
+    backgroundColor: '#1f242c',
+    borderColor: '#3e4652',
+    color: '#f8fafc'
+  }
+};
+
 const LoginForm = () => {
   const {
     loading,
@@ -66,22 +79,22 @@ const LoginForm = () => {
   };
 
   return <>
-      {requires2FA ? <Alert variant="warning" className="mb-4">
+      {requires2FA ? <Alert variant="dark" className="mb-4" style={twoFAStyles.panel}>
           {requiresCodeSetup ? <>
               <div className="fw-semibold">Required security setup</div>
               <div className="small mb-3">For security, you must first create your personal 6-digit web code before signing in.</div>
               <Form onSubmit={setupWebCodeAndLogin}>
                 <FormGroup className="mb-3">
-                  <FormLabel>Choose your 6-digit web code</FormLabel>
-                  <FormControl value={setupCode} onChange={event => setSetupCode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" />
+                  <FormLabel className="text-light">Choose your 6-digit web code</FormLabel>
+                  <FormControl value={setupCode} onChange={event => setSetupCode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" style={twoFAStyles.input} />
                 </FormGroup>
                 <FormGroup className="mb-3">
-                  <FormLabel>Confirm code</FormLabel>
-                  <FormControl value={confirmSetupCode} onChange={event => setConfirmSetupCode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" />
+                  <FormLabel className="text-light">Confirm code</FormLabel>
+                  <FormControl value={confirmSetupCode} onChange={event => setConfirmSetupCode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" style={twoFAStyles.input} />
                 </FormGroup>
                 <div className="d-flex gap-2">
                   <Button type="submit" variant="dark" disabled={loading || setupCode.length !== 6 || confirmSetupCode.length !== 6}>Save and continue</Button>
-                  <Button type="button" variant="outline-secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
+                  <Button type="button" variant="secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
                 </div>
               </Form>
             </> : <>
@@ -89,12 +102,12 @@ const LoginForm = () => {
               <div className="small mb-3">Enter your 6-digit web code to complete sign-in.</div>
               <Form onSubmit={verify2FALogin}>
                 <FormGroup className="mb-3">
-                  <FormLabel>6-digit code</FormLabel>
-                  <FormControl value={twoFACode} onChange={event => setTwoFACode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" />
+                  <FormLabel className="text-light">6-digit code</FormLabel>
+                  <FormControl value={twoFACode} onChange={event => setTwoFACode(event.target.value.replace(/[^\d]/g, '').slice(0, 6))} maxLength={6} placeholder="123456" style={twoFAStyles.input} />
                 </FormGroup>
                 <div className="d-flex gap-2">
                   <Button type="submit" variant="dark" disabled={loading || twoFACode.length !== 6}>Verify</Button>
-                  <Button type="button" variant="outline-secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
+                  <Button type="button" variant="secondary" onClick={cancel2FA} disabled={loading}>Cancel</Button>
                 </div>
               </Form>
             </>}
