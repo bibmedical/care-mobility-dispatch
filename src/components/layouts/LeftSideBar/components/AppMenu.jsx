@@ -2,6 +2,7 @@
 
 import clsx from 'clsx';
 import Link from 'next/link';
+import { signOut, useSession } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Collapse } from 'react-bootstrap';
@@ -64,6 +65,39 @@ const MenuItemLink = ({
   item,
   className
 }) => {
+  const { data: session } = useSession();
+
+  const handleLogoff = async event => {
+    event.preventDefault();
+
+    try {
+      if (session?.user?.id) {
+        void fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          keepalive: true,
+          body: JSON.stringify({ userId: session.user.id })
+        }).catch(error => console.error('Failed to log logout:', error));
+      }
+    } catch (error) {
+      console.error('Error in logout logging:', error);
+    }
+
+    await signOut({ callbackUrl: '/auth/login' });
+  };
+
+  if (item.key === 'logoff') {
+    return <button type="button" onClick={handleLogoff} className={clsx(className, 'w-100 text-start border-0 bg-transparent', {
+      disabled: item.isDisabled
+    })}>
+        {item.icon && <i className="menu-icon">
+            <IconifyIcon icon={item.icon} />
+          </i>}
+        <span>{item.label}</span>
+        {item.badge && <span className={`badge badge-pill text-end bg-${item.badge.variant}`}>{item.badge.text}</span>}
+      </button>;
+  }
+
   return <Link href={item.url ?? ''} target={item.target} className={clsx(className, {
     disabled: item.isDisabled
   })}>
