@@ -744,6 +744,7 @@ const getSelectedDriverEtaTarget = trip => {
 
 const getTripTargetPosition = trip => getSelectedDriverEtaTarget(trip)?.position ?? trip?.position;
 
+const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
 const VEHICLE_VARIANT_TOTAL = 20;
 
 const getVehicleVariantIndex = key => {
@@ -760,7 +761,7 @@ const getVehicleVariantUrl = key => `/assets/gpscars/car-${String(getVehicleVari
 
 const resolveVehicleIconUrl = (driverKey, vehicleSvgPath = '') => {
   const customPath = String(vehicleSvgPath || '').trim();
-  if (!customPath) return getVehicleVariantUrl(driverKey);
+  if (!customPath) return DEFAULT_VEHICLE_ICON_URL;
   return customPath.startsWith('/') ? customPath : `/${customPath.replace(/^\/+/, '')}`;
 };
 
