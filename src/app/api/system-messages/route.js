@@ -16,6 +16,7 @@ import { normalizeAuthValue } from '@/helpers/system-users';
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 const badRequest = message => NextResponse.json({ error: message }, { status: 400 });
 const internalError = error => NextResponse.json({ error: error?.message || 'Unable to process system messages' }, { status: 500 });
+const MOBILE_ALERT_TYPES = new Set(['delay-alert', 'backup-driver-request', 'uber-request']);
 const EXPO_PUSH_TIMEOUT_MS = 2500;
 const MAX_SUBJECT_LENGTH = 240;
 const MAX_BODY_LENGTH = 5000;
@@ -181,12 +182,44 @@ const sendExpoPush = async (pushTokens, message) => {
   }
 };
 
-export async function GET() {
+export async function GET(request) {
   try {
     const session = await getServerSession(options);
     if (!session?.user?.id) return unauthorized();
 
-    const messages = await readSystemMessages();
+    const searchParams = request?.nextUrl?.searchParams || new URL(request.url).searchParams;
+    const alertsOnly = ['1', 'true', 'yes'].includes(String(searchParams.get('alertsOnly') || '').trim().toLowerCase());
+    const includeMedia = !['0', 'false', 'no'].includes(String(searchParams.get('includeMedia') || '').trim().toLowerCase());
+    const statusFilter = String(searchParams.get('status') || '').trim().toLowerCase();
+    const parsedLimit = Number(searchParams.get('limit'));
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(Math.floor(parsedLimit), 500) : 0;
+
+    let messages = await readSystemMessages();
+
+    if (alertsOnly) {
+      messages = messages.filter(message => {
+        const messageType = String(message?.type || '').trim();
+        return Boolean(message?.driverId) && String(message?.source || '').trim() === 'mobile-driver-app' && MOBILE_ALERT_TYPES.has(messageType);
+      });
+    }
+
+    if (statusFilter) {
+      messages = messages.filter(message => String(message?.status || '').trim().toLowerCase() === statusFilter);
+    }
+
+    messages = [...messages].sort((left, right) => new Date(right?.createdAt || 0) - new Date(left?.createdAt || 0));
+
+    if (limit > 0) {
+      messages = messages.slice(0, limit);
+    }
+
+    if (!includeMedia) {
+      messages = messages.map(message => ({
+        ...message,
+        mediaUrl: null
+      }));
+    }
+
     return NextResponse.json({ messages });
   } catch (error) {
     return internalError(error);

@@ -69,7 +69,7 @@ const buildMessagingSurfaceStyles = isDarkMode => ({
   }
 });
 
-const MOBILE_ALERT_POLL_MS = 12000;
+const MOBILE_ALERT_POLL_MS = 15000;
 
 const DRIVER_ALERT_SMS_TEMPLATES = {
   'delay-alert': driverName => `Dispatch update for ${driverName}: we received your delay alert. Send your best ETA as soon as traffic clears or conditions change.`,
@@ -500,7 +500,7 @@ const DispatcherMessagingPanel = ({
     const loadDriverAlerts = async ({ silent = false } = {}) => {
       if (active) setIsLoadingAlerts(!silent && !hasLoadedAlertsRef.current);
       try {
-        const response = await fetch('/api/system-messages', { cache: 'no-store' });
+        const response = await fetch('/api/system-messages?alertsOnly=1&status=active&includeMedia=0&limit=200', { cache: 'no-store' });
         const payload = await readJsonResponse(response);
         if (!response.ok) throw new Error(payload?.error || 'Unable to load driver alerts.');
         if (!active) return;
