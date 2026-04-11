@@ -4,6 +4,9 @@ import { useSession, signOut } from 'next-auth/react';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useNotificationContext } from '@/context/useNotificationContext';
 
+const DEFAULT_INACTIVITY_TIMEOUT_MINUTES = 15;
+const WARNING_BEFORE_LOGOUT_MINUTES = 5;
+
 /**
  * Hook that logs out user after inactivity timeout.
  * Shows warning 2 minutes before logout.
@@ -33,16 +36,20 @@ const useInactivityLogout = ({ enabled = true } = {}) => {
     }
 
     lastActivityRef.current = Date.now();
-    const timeoutMinutes = session?.user?.inactivityTimeoutMinutes || 30;
+    const configuredTimeoutMinutes = Number(session?.user?.inactivityTimeoutMinutes);
+    const timeoutMinutes = Number.isFinite(configuredTimeoutMinutes) && configuredTimeoutMinutes > 0
+      ? configuredTimeoutMinutes
+      : DEFAULT_INACTIVITY_TIMEOUT_MINUTES;
     const timeoutMs = timeoutMinutes * 60 * 1000;
-    const warningMs = Math.max(timeoutMs - 2 * 60 * 1000, 0); // 2 minutes before logout
+    const warningLeadMinutes = Math.min(WARNING_BEFORE_LOGOUT_MINUTES, Math.max(timeoutMinutes - 1, 1));
+    const warningMs = Math.max(timeoutMs - warningLeadMinutes * 60 * 1000, 0);
 
-    // Set warning timeout (show alert 2 minutes before logout)
+    // Set warning timeout before automatic logout
     if (warningMs > 0) {
       warningTimeoutRef.current = setTimeout(() => {
         setShowWarning(true);
         showNotification({
-          message: `Your session will expire in 2 minutes due to inactivity. Move your mouse or click to stay logged in.`,
+          message: `Your session will expire in ${warningLeadMinutes} minute${warningLeadMinutes === 1 ? '' : 's'} due to inactivity. Move your mouse or click to stay logged in.`,
           variant: 'warning'
         });
       }, warningMs);
