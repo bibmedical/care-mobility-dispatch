@@ -3739,9 +3739,7 @@ const TripDashboardWorkspace = () => {
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
-                {topButtonsRowCollapsed ? <div className="small fw-semibold" style={{ color: '#0f172a' }}>
-                    Top action buttons hidden.
-                  </div> : <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }} onDragOver={event => {
+                {topButtonsRowCollapsed ? null : <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
                 event.preventDefault();
               }} onDrop={() => {
