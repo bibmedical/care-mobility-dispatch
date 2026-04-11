@@ -111,7 +111,6 @@ export const DriverProfileSection = ({ runtime }: Props) => {
           </View>
         </Pressable>
         <Text style={styles.name}>{name}</Text>
-        <Text style={styles.subline}>{runtime.driverSession?.email || runtime.driverSession?.username || 'No email set'}</Text>
         <Text style={styles.photoHint}>Tap the round photo to upload or replace it.</Text>
       </View>
 
@@ -197,9 +196,6 @@ const styles = StyleSheet.create({
     color: driverTheme.colors.text,
     fontSize: 24,
     fontWeight: '800'
-  },
-  subline: {
-    color: driverTheme.colors.textMuted
   },
   photoHint: {
     color: driverTheme.colors.textSoft,
