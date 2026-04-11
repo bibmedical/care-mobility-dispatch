@@ -117,6 +117,51 @@ const DISCONNECTED_BADGE_STYLE = {
   color: '#ffffff'
 };
 
+const formatConfirmationDayLabel = value => {
+  const text = String(value || '').trim();
+  if (!text || text === 'all') return 'All days';
+  const date = new Date(`${text}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return text;
+  return date.toLocaleDateString('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric'
+  });
+};
+
+const getConfirmationRowPalette = confirmationStatus => {
+  if (confirmationStatus === 'Cancelled') {
+    return {
+      backgroundColor: '#7f1d1d',
+      actionBackgroundColor: '#991b1b',
+      color: '#fef2f2',
+      borderColor: '#fecaca'
+    };
+  }
+  if (confirmationStatus === 'Confirmed') {
+    return {
+      backgroundColor: '#166534',
+      actionBackgroundColor: '#15803d',
+      color: '#f0fdf4',
+      borderColor: '#bbf7d0'
+    };
+  }
+  if (confirmationStatus === 'Needs Call') {
+    return {
+      backgroundColor: '#facc15',
+      actionBackgroundColor: '#eab308',
+      color: '#111827',
+      borderColor: '#a16207'
+    };
+  }
+  return {
+    backgroundColor: '#334155',
+    actionBackgroundColor: '#1f2937',
+    color: '#f8fafc',
+    borderColor: '#cbd5e1'
+  };
+};
+
 const INLINE_CONFIRMATION_EDITABLE_COLUMNS = new Set(['pickup', 'dropoff', 'pickupAddress', 'dropoffAddress']);
 
 const buildConfirmationActor = session => {
@@ -166,25 +211,25 @@ const CONFIRMATION_TABLE_SORTABLE_COLUMNS = new Set(['tripId', 'rider', 'phone',
 
 const CONFIRMATION_TABLE_COLUMN_WIDTHS = {
   tripId: 120,
-  rider: 180,
-  phone: 130,
-  pickupTime: 110,
-  pickupAddress: 180,
+  rider: 160,
+  phone: 112,
+  pickupTime: 95,
+  pickupAddress: 160,
   puZip: 95,
-  dropoffTime: 110,
-  dropoffAddress: 180,
+  dropoffTime: 95,
+  dropoffAddress: 160,
   doZip: 95,
-  miles: 90,
+  miles: 82,
   leg: 70,
   type: 70,
   doNotConfirm: 130,
-  hospitalRehab: 150,
-  confirmation: 130,
-  dispatchStatus: 150,
-  reply: 180,
+  hospitalRehab: 135,
+  confirmation: 120,
+  dispatchStatus: 132,
+  reply: 150,
   sent: 150,
   responded: 150,
-  internalNotes: 180,
+  internalNotes: 150,
   action: 124
 };
 
@@ -607,18 +652,25 @@ const ConfirmationWorkspace = () => {
     return '';
   }, [groupTemplates, legFilter, rideTypeFilter]);
 
+  const summarySourceTrips = useMemo(() => {
+    if (confirmationDate === 'all') return trips;
+    return trips.filter(trip => getTripServiceDateKey(trip) === confirmationDate);
+  }, [confirmationDate, trips]);
+
+  const summaryDayLabel = useMemo(() => formatConfirmationDayLabel(confirmationDate), [confirmationDate]);
+
   const summary = useMemo(() => ({
-    total: trips.length,
-    pending: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Pending').length,
-    confirmed: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Confirmed').length,
-    cancelled: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Cancelled').length,
-    needsCall: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Needs Call').length,
-    notSent: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Not Sent').length,
-    optedOut: trips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length,
-    rehabHospital: trips.filter(trip => Boolean(getTripRehabHospitalInfo(trip))).length,
+    total: summarySourceTrips.length,
+    pending: summarySourceTrips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Pending').length,
+    confirmed: summarySourceTrips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Confirmed').length,
+    cancelled: summarySourceTrips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Cancelled').length,
+    needsCall: summarySourceTrips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Needs Call').length,
+    notSent: summarySourceTrips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Not Sent').length,
+    optedOut: summarySourceTrips.filter(trip => getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id)) === 'Opted Out').length,
+    rehabHospital: summarySourceTrips.filter(trip => Boolean(getTripRehabHospitalInfo(trip))).length,
     blacklisted: blacklistEntries.filter(entry => entry.status === 'Active').length,
     clones: trips.filter(trip => Boolean(trip?.clonedFromTripId)).length
-  }), [blacklistEntries, tripBlockingMap, trips]);
+  }), [blacklistEntries, summarySourceTrips, tripBlockingMap, trips]);
 
   const handleSummaryCardClick = nextStatusFilter => {
     setResultViewMode('trips');
@@ -2345,7 +2397,7 @@ const ConfirmationWorkspace = () => {
 
       <Row className="g-3 mb-3">
         <Col md={6} xl={2}>
-          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('all')} title="Show all trips in results"><CardBody><div className="text-secondary small mb-1">Trips</div><h4 className="mb-0">{summary.total}</h4></CardBody></Card>
+          <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('all')} title="Show all trips in results"><CardBody><div className="text-secondary small mb-1">Day</div><h4 className="mb-0">{summary.total}</h4><div className="small text-secondary mt-1">{summaryDayLabel}</div></CardBody></Card>
         </Col>
         <Col md={6} xl={2}>
           <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('Pending')} title="Filter results to Pending"><CardBody><div className="text-secondary small mb-1">Pending</div><h4 className="mb-0">{summary.pending}</h4></CardBody></Card>
@@ -2803,7 +2855,7 @@ const ConfirmationWorkspace = () => {
                 </Table>
               </div>
             </div> : <div className="table-responsive">
-            <Table size="sm" striped hover className="align-middle mb-0 small" style={{ ...surfaceStyles.table, whiteSpace: 'nowrap', width: 'max-content' }}>
+            <Table size="sm" className="align-middle mb-0 small" style={{ ...surfaceStyles.table, width: '100%', minWidth: 1320 }}>
               <thead style={surfaceStyles.tableHead}>
                 <tr>
                   <th style={{ width: 48 }}>
@@ -2824,7 +2876,17 @@ const ConfirmationWorkspace = () => {
                   const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
                   const isOptedOut = blockingState.isBlocked;
                   const riderProfile = getRiderProfile(trip);
-                  const tripRowStyle = { borderTop: '2px solid rgba(80,80,80,0.7)' };
+                  const rowPalette = getConfirmationRowPalette(confirmationStatus);
+                  const tripRowStyle = {
+                    backgroundColor: rowPalette.backgroundColor,
+                    color: rowPalette.color,
+                    borderTop: `2px solid ${rowPalette.borderColor}`
+                  };
+                  const tripActionRowStyle = {
+                    backgroundColor: rowPalette.actionBackgroundColor,
+                    color: rowPalette.color,
+                    borderBottom: `2px solid ${rowPalette.borderColor}`
+                  };
                   return <React.Fragment key={trip.id}>
                       <tr style={tripRowStyle}>
                         <td>
@@ -2838,7 +2900,7 @@ const ConfirmationWorkspace = () => {
                         {confirmationTableColumns.map(columnKey => <React.Fragment key={`${trip.id}-${columnKey}`}>{renderConfirmationDataCell(trip, columnKey, confirmationStatus, isOptedOut, riderProfile)}</React.Fragment>)}
                       </tr>
                       <tr>
-                        <td colSpan={confirmationTableColumnCount} className="pt-0 border-0" style={{ borderBottom: '2px solid rgba(80,80,80,0.7)' }}>
+                        <td colSpan={confirmationTableColumnCount} className="pt-0 border-0" style={tripActionRowStyle}>
                           <div className="d-flex gap-1 flex-wrap justify-content-center py-2">
                             <Button size="sm" variant={confirmationStatus === 'Confirmed' ? 'success' : 'outline-success'} onClick={() => handleManualConfirm(trip.id, trip)} title={confirmationStatus === 'Confirmed' ? 'Unconfirm this trip' : 'Confirm via SMS/WhatsApp/Call'} style={{ minWidth: 90 }}>
                               {confirmationStatus === 'Confirmed' ? 'Unconfirm' : 'Confirm'}
