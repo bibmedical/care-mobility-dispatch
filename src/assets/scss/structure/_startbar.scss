@@ -196,22 +196,14 @@ html[data-bs-theme="dark"] {
 
 @include media-breakpoint-up(xl) {
     body[data-sidebar-size="collapsed"] {
-        .startbar:hover {
-            box-shadow: 4px 0 24px rgba(0, 0, 0, 0.13);
-            z-index: 1006;
-        }
+        .startbar {
+            transform: translateX(calc(-1 * (var(--#{$prefix}startbar-width) - 6px)));
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
 
-        .startbar:not(:hover) {
-            width: 6px;
-            min-width: 6px;
-            overflow: hidden;
-            transition: width 0.25s ease, box-shadow 0.25s ease;
-
-            .brand,
-            .startbar-menu,
-            .update-msg {
-                opacity: 0;
-                pointer-events: none;
+            &:hover {
+                transform: translateX(0);
+                box-shadow: 4px 0 24px rgba(0, 0, 0, 0.13);
+                z-index: 1006;
             }
         }
 
