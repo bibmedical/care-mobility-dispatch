@@ -700,6 +700,7 @@ const TripDashboardWorkspace = () => {
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showToolbarTools, setShowToolbarTools] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const [topButtonsRowCollapsed, setTopButtonsRowCollapsed] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
   const [toolbarRow1Order, setToolbarRow1Order] = useState(TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS);
   const [toolbarRow2Order, setToolbarRow2Order] = useState(TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS);
@@ -3730,8 +3731,25 @@ const TripDashboardWorkspace = () => {
                     </div>)}
                 </div>
                 
+                <div className="d-flex justify-content-end">
+                  <Button
+                    variant="outline-dark"
+                    size="sm"
+                    style={greenToolbarButtonStyle}
+                    onClick={() => {
+                    setTopButtonsRowCollapsed(current => !current);
+                    setShowToolbarTools(false);
+                    setShowColumnPicker(false);
+                  }}
+                  >
+                    {topButtonsRowCollapsed ? 'Show top buttons' : 'Hide top buttons'}
+                  </Button>
+                </div>
+
                 {/* Row 2: Statistics and main action buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }} onDragOver={event => {
+                {topButtonsRowCollapsed ? <div className="small fw-semibold" style={{ color: '#0f172a' }}>
+                    Top action buttons hidden.
+                  </div> : <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
                 event.preventDefault();
               }} onDrop={() => {
@@ -3768,7 +3786,7 @@ const TripDashboardWorkspace = () => {
                   >
                       {(isToolbarEditMode || isToolbarBlockEnabled(blockId)) && (renderToolbarRow2Block(blockId) || isToolbarEditMode ? renderToolbarRow2Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null)}
                     </div>)}
-                </div>
+                </div>}
                 
                 {/* Row 3: Leg/Type filters and misc buttons */}
                 <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'visible', overflowY: 'visible' }} onDragOver={event => {
