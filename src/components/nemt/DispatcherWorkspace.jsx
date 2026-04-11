@@ -744,6 +744,30 @@ const getSelectedDriverEtaTarget = trip => {
 
 const getTripTargetPosition = trip => getSelectedDriverEtaTarget(trip)?.position ?? trip?.position;
 
+const VEHICLE_SPRITE_URL = '/assets/43429.jpg';
+const VEHICLE_SPRITE_COLUMNS = 10;
+const VEHICLE_SPRITE_ROWS = 8;
+const VEHICLE_SPRITE_TOTAL = VEHICLE_SPRITE_COLUMNS * VEHICLE_SPRITE_ROWS;
+
+const getVehicleSpriteIndex = key => {
+  const text = String(key || '').trim();
+  if (!text) return 0;
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) % 2147483647;
+  }
+  return Math.abs(hash) % VEHICLE_SPRITE_TOTAL;
+};
+
+const getVehicleSpritePosition = spriteIndex => {
+  const normalizedIndex = Number.isFinite(Number(spriteIndex)) ? Math.max(0, Math.floor(Number(spriteIndex))) : 0;
+  const row = Math.floor(normalizedIndex / VEHICLE_SPRITE_COLUMNS);
+  const column = normalizedIndex % VEHICLE_SPRITE_COLUMNS;
+  const x = VEHICLE_SPRITE_COLUMNS <= 1 ? 0 : (column / (VEHICLE_SPRITE_COLUMNS - 1)) * 100;
+  const y = VEHICLE_SPRITE_ROWS <= 1 ? 0 : (row / (VEHICLE_SPRITE_ROWS - 1)) * 100;
+  return { x, y };
+};
+
 const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   className: 'driver-map-icon-shell',
   html: `<div style="width:34px;height:34px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:${isSelected ? '#f59e0b' : isOnline ? '#16a34a' : '#475569'};border:2px solid #ffffff;box-shadow:0 6px 18px rgba(15,23,42,0.28);color:#ffffff;font-size:16px;line-height:1;">&#128663;</div>`,
@@ -754,18 +778,12 @@ const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
 
 const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '' }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
-  const bodyColor = isOnline ? getDriverColor(driverKey) : '#94a3b8';
-  const bodyShadow = isOnline ? '#334155' : '#64748b';
-  const glassColor = '#e6f0ff';
-  const trimColor = '#0f172a';
   const haloColor = isOnline ? 'rgba(132, 204, 22, 0.34)' : 'rgba(148, 163, 184, 0.24)';
   const shadowHaloColor = isOnline ? 'rgba(59, 130, 246, 0.18)' : 'rgba(100, 116, 139, 0.16)';
-  const roofColor = '#f8fafc';
-  const wheelColor = '#111827';
-  const wheelStroke = 'rgba(255,255,255,0.85)';
+  const spritePosition = getVehicleSpritePosition(getVehicleSpriteIndex(driverKey));
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><svg width="48" height="48" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><circle cx="48" cy="48" r="31" fill="${shadowHaloColor}"/><circle cx="48" cy="48" r="23" fill="${haloColor}"/><path d="M48 10 62 20c3 2.2 5 5.5 5.6 9.2L72 58c.5 4-1.7 7.8-5.3 9.6L56 73.2c-5 2.6-11 2.6-16 0l-10.7-5.6C25.7 65.8 23.5 62 24 58l4.4-28.8c.6-3.7 2.6-7 5.6-9.2L48 10Z" fill="${bodyColor}" stroke="${bodyShadow}" stroke-width="3" stroke-linejoin="round"/><path d="M41 20h14c3.1 0 5.8 2.1 6.5 5.1l2.1 8.8c.8 3.3-1.7 6.4-5 6.4H37.4c-3.3 0-5.8-3.1-5-6.4l2.1-8.8c.7-3 3.4-5.1 6.5-5.1Z" fill="${roofColor}" opacity="0.95"/><path d="M39 28.5c0-2 1.6-3.6 3.6-3.6h10.8c2 0 3.6 1.6 3.6 3.6v5.2H39v-5.2Z" fill="${glassColor}" stroke="rgba(255,255,255,0.9)" stroke-width="1.3"/><path d="M34 47h28" stroke="${trimColor}" stroke-width="2" opacity="0.2"/><path d="M36 55h24" stroke="${trimColor}" stroke-width="2" opacity="0.16"/><path d="M48 11V5" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round" opacity="0.9"/><circle cx="31" cy="35" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="65" cy="35" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="31" cy="61" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/><circle cx="65" cy="61" r="4.4" fill="${wheelColor}" stroke="${wheelStroke}" stroke-width="1.1"/></g></svg></div>`,
+    html: `<div style="width:52px;height:52px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><svg width="52" height="52" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g><circle cx="48" cy="48" r="31" fill="${shadowHaloColor}"/><circle cx="48" cy="48" r="23" fill="${haloColor}"/></g></svg><div style="position:absolute;width:24px;height:34px;border-radius:5px;background-image:url('${VEHICLE_SPRITE_URL}');background-size:${VEHICLE_SPRITE_COLUMNS * 100}% ${VEHICLE_SPRITE_ROWS * 100}%;background-position:${spritePosition.x}% ${spritePosition.y}%;background-repeat:no-repeat;filter:${isOnline ? 'none' : 'grayscale(0.9)'};box-shadow:0 1px 2px rgba(15,23,42,0.35);"></div></div>`,
     iconSize: [48, 48],
     iconAnchor: [24, 24],
     popupAnchor: [0, -20]
