@@ -1140,7 +1140,12 @@ const TripDashboardWorkspace = () => {
             <option value="cancelled">Cancelled</option>
           </Form.Select>;
       case 'trip-search':
-        return <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, patient, phone, address..." style={{ width: 260 }} />;
+        return <div className="d-flex align-items-center gap-2 flex-nowrap">
+            <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, patient, phone, address..." style={{ width: 260 }} />
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setToolbarCollapsed(true)} title="Hide menu">
+              <IconifyIcon icon="iconoir:eye-closed" />
+            </Button>
+          </div>;
       case 'driver-assigned':
         return selectedDriver ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>{selectedDriverAssignedTripCount} assigned</Badge> : null;
       case 'action-buttons':
@@ -1237,6 +1242,13 @@ const TripDashboardWorkspace = () => {
             setStatusMessage('Trips panel hidden.');
           }}>✕ Hide Trips</Button>
             {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+            setTopButtonsRowCollapsed(current => !current);
+            setShowToolbarTools(false);
+            setShowColumnPicker(false);
+          }}>
+              {topButtonsRowCollapsed ? 'Show top buttons' : 'Hide top buttons'}
+            </Button>
           </div>;
       case 'panels':
         return null;
@@ -3669,11 +3681,6 @@ const TripDashboardWorkspace = () => {
                   </button>
                   <span className="small fw-semibold">Toolbar hidden</span>
                 </div> : <div className="d-flex flex-column align-items-stretch p-3 border-bottom bg-success text-dark gap-2 flex-shrink-0">
-                <div className="d-flex justify-content-end align-items-center">
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setToolbarCollapsed(true)} title="Hide menu">
-                    <IconifyIcon icon="iconoir:eye-closed" />
-                  </Button>
-                </div>
                 {shouldShowPinnedToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap">
                     {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
                     <Button variant="dark" size="sm" onClick={handleResetToolbarLayout}>Restore toolbar</Button>
@@ -3731,21 +3738,6 @@ const TripDashboardWorkspace = () => {
                     </div>)}
                 </div>
                 
-                <div className="d-flex justify-content-end">
-                  <Button
-                    variant="outline-dark"
-                    size="sm"
-                    style={greenToolbarButtonStyle}
-                    onClick={() => {
-                    setTopButtonsRowCollapsed(current => !current);
-                    setShowToolbarTools(false);
-                    setShowColumnPicker(false);
-                  }}
-                  >
-                    {topButtonsRowCollapsed ? 'Show top buttons' : 'Hide top buttons'}
-                  </Button>
-                </div>
-
                 {/* Row 2: Statistics and main action buttons */}
                 {topButtonsRowCollapsed ? <div className="small fw-semibold" style={{ color: '#0f172a' }}>
                     Top action buttons hidden.
