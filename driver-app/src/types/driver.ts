@@ -24,6 +24,25 @@ export type DriverFuelReceipt = {
   createdAt: string;
 };
 
+export type DriverFuelRequest = {
+  id: string;
+  driverId: string;
+  driverName: string;
+  status: 'pending' | 'approved' | 'receipt_submitted' | 'rejected';
+  requestedAt: string;
+  approvedByUser: string | null;
+  approvedAt: string | null;
+  approvedAmount: number | null;
+  transferMethod: string | null;
+  transferReference: string | null;
+  transferNotes: string | null;
+  receiptImageUrl: string | null;
+  gallons: number | null;
+  vehicleMileage: number | null;
+  receiptSubmittedAt: string | null;
+  geniusReceiptId: string | null;
+};
+
 export type DriverTrip = {
   id: string;
   rideId?: string;

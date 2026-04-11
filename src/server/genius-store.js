@@ -361,3 +361,133 @@ export const createGeniusPayoutRun = async ({
     ]
   );
 };
+
+// ── Fuel Requests (driver request → admin approval → driver submits receipt) ──
+
+const FUEL_REQUEST_COLS = `
+  id,
+  driver_id AS "driverId",
+  driver_name AS "driverName",
+  status,
+  requested_at AS "requestedAt",
+  approved_by_user AS "approvedByUser",
+  approved_at AS "approvedAt",
+  approved_amount AS "approvedAmount",
+  transfer_method AS "transferMethod",
+  transfer_reference AS "transferReference",
+  transfer_notes AS "transferNotes",
+  receipt_image_url AS "receiptImageUrl",
+  gallons,
+  vehicle_mileage AS "vehicleMileage",
+  receipt_submitted_at AS "receiptSubmittedAt",
+  genius_receipt_id AS "geniusReceiptId"
+`;
+
+export const createFuelRequest = async ({ driverId, driverName }) => {
+  await runMigrations();
+  const normalizedDriverId = normalizeText(driverId);
+  const normalizedDriverName = normalizeText(driverName);
+  if (!normalizedDriverId) throw new Error('driverId is required.');
+  return await queryOne(
+    `INSERT INTO genius_fuel_requests (id, driver_id, driver_name, status, requested_at)
+     VALUES ($1, $2, $3, 'pending', NOW())
+     RETURNING ${FUEL_REQUEST_COLS}`,
+    [randomUUID(), normalizedDriverId, normalizedDriverName]
+  );
+};
+
+export const readFuelRequests = async ({ status = '', limit = 100 } = {}) => {
+  await runMigrations();
+  const normalizedStatus = normalizeText(status);
+  const normalizedLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+  return await queryRows(
+    `SELECT ${FUEL_REQUEST_COLS}
+     FROM genius_fuel_requests
+     WHERE ($1::text = '' OR status = $1)
+     ORDER BY requested_at DESC
+     LIMIT $2`,
+    [normalizedStatus, normalizedLimit]
+  );
+};
+
+export const readDriverFuelRequests = async ({ driverId, limit = 20 } = {}) => {
+  await runMigrations();
+  const normalizedDriverId = normalizeText(driverId);
+  if (!normalizedDriverId) return [];
+  const normalizedLimit = Math.max(1, Math.min(100, Number(limit) || 20));
+  return await queryRows(
+    `SELECT ${FUEL_REQUEST_COLS}
+     FROM genius_fuel_requests
+     WHERE driver_id = $1
+     ORDER BY requested_at DESC
+     LIMIT $2`,
+    [normalizedDriverId, normalizedLimit]
+  );
+};
+
+export const approveFuelRequest = async ({
+  requestId,
+  approvedByUser,
+  approvedAmount,
+  transferMethod,
+  transferReference,
+  transferNotes
+}) => {
+  await runMigrations();
+  const normalizedId = normalizeText(requestId);
+  if (!normalizedId) throw new Error('requestId is required.');
+  const row = await queryOne(
+    `UPDATE genius_fuel_requests
+     SET status = 'approved',
+         approved_by_user = $2,
+         approved_at = NOW(),
+         approved_amount = $3,
+         transfer_method = $4,
+         transfer_reference = $5,
+         transfer_notes = $6
+     WHERE id = $1 AND status = 'pending'
+     RETURNING ${FUEL_REQUEST_COLS}`,
+    [
+      normalizedId,
+      normalizeText(approvedByUser),
+      approvedAmount != null ? toMoney(approvedAmount) : null,
+      normalizeText(transferMethod),
+      normalizeText(transferReference),
+      normalizeText(transferNotes)
+    ]
+  );
+  if (!row) throw new Error('Request not found or already processed.');
+  return row;
+};
+
+export const submitFuelRequestReceipt = async ({
+  requestId,
+  receiptImageUrl,
+  gallons,
+  vehicleMileage
+}) => {
+  await runMigrations();
+  const normalizedId = normalizeText(requestId);
+  if (!normalizedId) throw new Error('requestId is required.');
+  const normalizedImageUrl = normalizeText(receiptImageUrl).slice(0, 400000);
+  if (!normalizedImageUrl) throw new Error('Receipt photo is required.');
+  const normalizedGallons = toGallons(gallons);
+  if (normalizedGallons <= 0) throw new Error('Gallons is required.');
+  const normalizedMileage = vehicleMileage != null && Number.isFinite(Number(vehicleMileage)) && Number(vehicleMileage) >= 0
+    ? Math.round(Number(vehicleMileage) * 10) / 10
+    : null;
+  if (normalizedMileage === null) throw new Error('Vehicle mileage is required.');
+  const row = await queryOne(
+    `UPDATE genius_fuel_requests
+     SET status = 'receipt_submitted',
+         receipt_image_url = $2,
+         gallons = $3,
+         vehicle_mileage = $4,
+         receipt_submitted_at = NOW()
+     WHERE id = $1 AND status = 'approved'
+     RETURNING ${FUEL_REQUEST_COLS}`,
+    [normalizedId, normalizedImageUrl, normalizedGallons, normalizedMileage]
+  );
+  if (!row) throw new Error('Request not found or not in approved status.');
+  return row;
+};

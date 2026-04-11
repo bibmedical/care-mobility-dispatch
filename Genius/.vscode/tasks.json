@@ -1,0 +1,100 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "expo-start-driver-app",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx expo start --clear"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "expo-start-driver-app-tunnel",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx expo start --clear --tunnel"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "expo-start-driver-app-tunnel",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx expo start --clear --tunnel"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "expo-start-driver-app-tunnel-shell",
+			"type": "shell",
+			"command": "Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx expo start --clear --tunnel",
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "expo-start-driver-app-tunnel-8082",
+			"type": "shell",
+			"command": "Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx expo start --clear --tunnel --port 8082",
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "expo-start-driver-app-tunnel-localngrok",
+			"type": "shell",
+			"command": "Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx expo start --clear --tunnel --port 8082",
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "expo-start-driver-app-stable",
+			"type": "shell",
+			"command": "Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx expo start --clear --port 8081",
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "expo-start-driver-app-render",
+			"type": "shell",
+			"command": "Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx expo start --clear --port 8081",
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "expo-driver-app-absolute",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; .\\node_modules\\.bin\\expo.cmd start --clear --port 8081"
+			],
+			"isBackground": true,
+			"group": "build"
+		},
+		{
+			"label": "eas-build-driver-app-preview",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Set-Location \"c:\\Users\\cored\\Desktop\\JS\\driver-app\"; npx eas build --platform android --profile preview --non-interactive"
+			],
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}

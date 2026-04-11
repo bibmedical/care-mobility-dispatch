@@ -250,6 +250,31 @@ const _runMigrationsOnce = async () => {
     CREATE INDEX IF NOT EXISTS idx_genius_payout_runs_created_at ON genius_payout_runs(created_at DESC)
   `);
 
+  // ── Additive table migrations (safe to run repeatedly) ───────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS genius_fuel_requests (
+      id                    TEXT PRIMARY KEY,
+      driver_id             TEXT NOT NULL,
+      driver_name           TEXT NOT NULL DEFAULT '',
+      status                TEXT NOT NULL DEFAULT 'pending',
+      requested_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      approved_by_user      TEXT,
+      approved_at           TIMESTAMPTZ,
+      approved_amount       NUMERIC(12, 2),
+      transfer_method       TEXT,
+      transfer_reference    TEXT,
+      transfer_notes        TEXT,
+      receipt_image_url     TEXT,
+      gallons               NUMERIC(12, 3),
+      vehicle_mileage       NUMERIC(10, 1),
+      receipt_submitted_at  TIMESTAMPTZ,
+      genius_receipt_id     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_genius_fuel_requests_driver ON genius_fuel_requests(driver_id);
+    CREATE INDEX IF NOT EXISTS idx_genius_fuel_requests_status ON genius_fuel_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_genius_fuel_requests_requested_at ON genius_fuel_requests(requested_at DESC)
+  `);
+
   // ── Additive column migrations (safe to run repeatedly) ──────────────────────
   await query(`
     ALTER TABLE genius_fuel_receipts ADD COLUMN IF NOT EXISTS vehicle_mileage NUMERIC(10, 1)

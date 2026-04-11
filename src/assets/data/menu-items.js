@@ -41,6 +41,11 @@ export const MENU_ITEMS = [{
   label: 'Transportation',
   isTitle: true
 }, {
+  key: 'fuel-requests-menu',
+  label: 'Fuel Requests',
+  icon: 'iconoir:gas-tank',
+  url: '/fuel-requests'
+}, {
   key: 'transportation-menu',
   label: 'Transportation',
   icon: 'iconoir:bus',

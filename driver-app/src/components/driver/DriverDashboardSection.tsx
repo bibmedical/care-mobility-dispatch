@@ -15,6 +15,7 @@ type QuickItem = {
 };
 
 const QUICK_ITEMS: QuickItem[] = [
+  { key: 'fuel', label: 'Fuel', subtitle: 'Request fuel & submit receipt' },
   { key: 'trips', label: 'Next Day Trips', subtitle: 'Tomorrow routes only' },
   { key: 'messages', label: 'Messages', subtitle: 'Dispatch inbox' },
   { key: 'alerts', label: 'Alerts', subtitle: 'Active notifications' },

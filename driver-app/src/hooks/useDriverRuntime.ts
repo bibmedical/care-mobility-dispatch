@@ -6,7 +6,7 @@ import Constants from 'expo-constants';
 import { DRIVER_APP_CONFIG } from '../config/driverAppConfig';
 import { DriverNotificationMode, clearStoredDriverSession, readOrCreateDriverDeviceId, readStoredDriverSession, readStoredNotificationMode, readStoredTrackingPreference, writeStoredDriverSession, writeStoredNotificationMode, writeStoredTrackingPreference } from '../services/driverSessionStorage';
 import { isBackgroundLocationTrackingActive, startBackgroundLocationTracking, stopBackgroundLocationTracking } from '../services/driverBackgroundLocation';
-import { DriverAppTab, DriverDocuments, DriverFuelReceipt, DriverMessage, DriverReviewSummary, DriverSession, DriverShiftState, DriverTrip, LocationSnapshot } from '../types/driver';
+import { DriverAppTab, DriverDocuments, DriverFuelReceipt, DriverFuelRequest, DriverMessage, DriverReviewSummary, DriverSession, DriverShiftState, DriverTrip, LocationSnapshot } from '../types/driver';
 
 const formatDateTime = (value: number | null) => {
   if (!value) return 'No update yet';
@@ -186,6 +186,10 @@ export const useDriverRuntime = () => {
   const [isSubmittingFuelReceipt, setIsSubmittingFuelReceipt] = useState(false);
   const [fuelReceiptError, setFuelReceiptError] = useState('');
   const [fuelReceiptSuccess, setFuelReceiptSuccess] = useState('');
+  const [fuelRequests, setFuelRequests] = useState<DriverFuelRequest[]>([]);
+  const [isSubmittingFuelRequest, setIsSubmittingFuelRequest] = useState(false);
+  const [fuelRequestError, setFuelRequestError] = useState('');
+  const [fuelRequestSuccess, setFuelRequestSuccess] = useState('');
   const [currentCity, setCurrentCity] = useState('Locating city...');
   const [notificationMode, setNotificationMode] = useState<DriverNotificationMode>('sound');
   const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(false);
@@ -1450,6 +1454,85 @@ export const useDriverRuntime = () => {
     }
   };
 
+  const loadFuelRequests = async () => {
+    if (!loggedIn || !driverSession) return;
+    try {
+      const { response, payload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request`,
+        { headers: getDriverAuthHeaders(driverSession) }
+      );
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
+      if (!response.ok) return;
+      setFuelRequests(Array.isArray(payload?.rows) ? (payload.rows as DriverFuelRequest[]) : []);
+    } catch {
+      // non-critical
+    }
+  };
+
+  const submitFuelRequest = async (): Promise<boolean> => {
+    if (!loggedIn || !driverSession) return false;
+    setIsSubmittingFuelRequest(true);
+    setFuelRequestError('');
+    setFuelRequestSuccess('');
+    try {
+      const { response, payload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request`,
+        {
+          method: 'POST',
+          headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({})
+        }
+      );
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) throw new Error(String(payload?.error || '') || 'Unable to submit fuel request.');
+      const created = payload?.request as DriverFuelRequest | undefined;
+      if (created) setFuelRequests(current => [created, ...current]);
+      setFuelRequestSuccess('Fuel request submitted! Waiting for dispatcher approval.');
+      return true;
+    } catch (error) {
+      setFuelRequestError(error instanceof Error ? error.message : 'Unable to submit fuel request.');
+      return false;
+    } finally {
+      setIsSubmittingFuelRequest(false);
+    }
+  };
+
+  const submitFuelRequestReceipt = async (payload: {
+    requestId: string;
+    serviceDate: string;
+    receiptImageUrl: string;
+    gallons: number;
+    vehicleMileage: number;
+  }): Promise<boolean> => {
+    if (!loggedIn || !driverSession) return false;
+    setIsSubmittingFuelRequest(true);
+    setFuelRequestError('');
+    setFuelRequestSuccess('');
+    try {
+      const { response, resPayload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/driver-portal/me/fuel-request/${encodeURIComponent(payload.requestId)}/receipt`,
+        {
+          method: 'POST',
+          headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify(payload)
+        }
+      ) as any;
+      if (await handleDriverSessionFailure(response, resPayload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) throw new Error(String(resPayload?.error || '') || 'Unable to submit receipt.');
+      const updated = resPayload?.request as DriverFuelRequest | undefined;
+      if (updated) {
+        setFuelRequests(current => current.map(r => r.id === updated.id ? updated : r));
+      }
+      setFuelRequestSuccess('Receipt submitted! Added to Genius billing.');
+      return true;
+    } catch (error) {
+      setFuelRequestError(error instanceof Error ? error.message : 'Unable to submit receipt.');
+      return false;
+    } finally {
+      setIsSubmittingFuelRequest(false);
+    }
+  };
+
   return {
     driverCode,
     tripDateFilter,
@@ -1531,6 +1614,15 @@ export const useDriverRuntime = () => {
     setFuelReceiptError,
     submitFuelReceipt,
     loadFuelReceipts,
+    fuelRequests,
+    isSubmittingFuelRequest,
+    fuelRequestError,
+    fuelRequestSuccess,
+    setFuelRequestSuccess,
+    setFuelRequestError,
+    submitFuelRequest,
+    submitFuelRequestReceipt,
+    loadFuelRequests,
     formatDateTime
   };
 };
