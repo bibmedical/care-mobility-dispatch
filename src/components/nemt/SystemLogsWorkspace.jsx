@@ -498,6 +498,22 @@ const SystemLogsWorkspace = () => {
       });
     });
 
+    presenceHeartbeatLogs.forEach(log => {
+      if (!log?.userId) return;
+      if (summaryMap.has(log.userId)) return;
+      summaryMap.set(log.userId, {
+        userId: log.userId,
+        userName: log.userName || log.userId,
+        userRole: log.userRole || 'Unknown',
+        userEmail: log.userEmail || '-',
+        todayWorkedMs: workdayState.totalByUserDate.get(`${log.userId}::${todayDateKey}`) || 0,
+        todayActionCount: 0,
+        todayLastTimestamp: 0,
+        todayLastAction: 'Sin actividad',
+        isOnline: false
+      });
+    });
+
     summaryLogs.forEach(log => {
       if (!log?.userId) return;
       if (!summaryMap.has(log.userId)) {
