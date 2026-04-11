@@ -1474,7 +1474,7 @@ export const useDriverRuntime = () => {
     }
   };
 
-  const submitFuelRequest = async (): Promise<boolean> => {
+  const submitFuelRequest = async (payload: { requestedMileage: number }): Promise<boolean> => {
     if (!loggedIn || !driverSession) return false;
     setIsSubmittingFuelRequest(true);
     setFuelRequestError('');
@@ -1486,14 +1486,19 @@ export const useDriverRuntime = () => {
         {
           method: 'POST',
           headers: getDriverAuthHeaders(driverSession, { 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ driverId })
+          body: JSON.stringify({ driverId, requestedMileage: payload.requestedMileage })
         }
       );
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(String(payload?.error || '') || 'Unable to submit fuel request.');
       const created = payload?.request as DriverFuelRequest | undefined;
       if (created) setFuelRequests(current => [created, ...current]);
-      setFuelRequestSuccess('Fuel request submitted! Waiting for dispatcher approval.');
+      const mileageDelta = created?.milesSinceLastFuel;
+      if (mileageDelta != null && Number.isFinite(Number(mileageDelta))) {
+        setFuelRequestSuccess(`Fuel request submitted! You drove ${Number(mileageDelta).toFixed(1)} miles since last fuel.`);
+      } else {
+        setFuelRequestSuccess('Fuel request submitted! Waiting for dispatcher approval.');
+      }
       return true;
     } catch (error) {
       setFuelRequestError(error instanceof Error ? error.message : 'Unable to submit fuel request.');
@@ -1507,6 +1512,8 @@ export const useDriverRuntime = () => {
     requestId: string;
     serviceDate: string;
     receiptImageUrl: string;
+    paymentCardImageUrl: string;
+    paymentCardLast4: string;
     gallons: number;
     vehicleMileage: number;
   }): Promise<boolean> => {

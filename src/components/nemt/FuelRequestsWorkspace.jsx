@@ -43,6 +43,7 @@ export default function FuelRequestsWorkspace() {
   });
   const [approvalError, setApprovalError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -246,6 +247,10 @@ export default function FuelRequestsWorkspace() {
                       <div><strong>Approved amount:</strong> {selectedRequest.approvedAmount != null ? `$${Number(selectedRequest.approvedAmount).toFixed(2)}` : '-'}</div>
                       <div><strong>Transfer method:</strong> {selectedRequest.transferMethod || '-'}</div>
                       <div><strong>Transfer reference:</strong> {selectedRequest.transferReference || '-'}</div>
+                      <div><strong>Card last 4:</strong> {selectedRequest.paymentCardLast4 || '-'}</div>
+                      <div><strong>Requested mileage:</strong> {selectedRequest.requestedMileage != null ? Number(selectedRequest.requestedMileage).toFixed(1) : '-'}</div>
+                      <div><strong>Last fuel mileage:</strong> {selectedRequest.lastFuelMileage != null ? Number(selectedRequest.lastFuelMileage).toFixed(1) : '-'}</div>
+                      <div><strong>Miles since last fuel:</strong> {selectedRequest.milesSinceLastFuel != null ? Number(selectedRequest.milesSinceLastFuel).toFixed(1) : '-'}</div>
                       <div><strong>Receipt submitted:</strong> {toDateTime(selectedRequest.receiptSubmittedAt)}</div>
                       <div><strong>Gallons:</strong> {selectedRequest.gallons != null ? Number(selectedRequest.gallons).toFixed(3) : '-'}</div>
                       <div><strong>Mileage:</strong> {selectedRequest.vehicleMileage != null ? Number(selectedRequest.vehicleMileage).toFixed(1) : '-'}</div>
@@ -257,9 +262,61 @@ export default function FuelRequestsWorkspace() {
                     ) : null}
 
                     {selectedRequest.receiptImageUrl ? (
-                      <a href={selectedRequest.receiptImageUrl} target="_blank" rel="noreferrer" style={styles.imageLink}>
-                        <img src={selectedRequest.receiptImageUrl} alt="Receipt" style={styles.receiptImage} />
-                      </a>
+                      <div style={styles.receiptWrap}>
+                        <div style={styles.proofTitle}>Receipt Photo</div>
+                        <button
+                          type="button"
+                          style={styles.receiptThumbButton}
+                          onClick={() => setReceiptPreviewUrl(String(selectedRequest.receiptImageUrl || ''))}
+                        >
+                          <img src={selectedRequest.receiptImageUrl} alt="Receipt" style={styles.receiptImage} />
+                        </button>
+                        <div style={styles.receiptActions}>
+                          <button
+                            type="button"
+                            style={styles.receiptActionBtn}
+                            onClick={() => setReceiptPreviewUrl(String(selectedRequest.receiptImageUrl || ''))}
+                          >
+                            View receipt
+                          </button>
+                          <a
+                            href={selectedRequest.receiptImageUrl}
+                            download={`receipt-${selectedRequest.id}.jpg`}
+                            style={styles.receiptActionLink}
+                          >
+                            Download
+                          </a>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {selectedRequest.paymentCardImageUrl ? (
+                      <div style={styles.receiptWrap}>
+                        <div style={styles.proofTitle}>Card Used to Pay</div>
+                        <button
+                          type="button"
+                          style={styles.receiptThumbButton}
+                          onClick={() => setReceiptPreviewUrl(String(selectedRequest.paymentCardImageUrl || ''))}
+                        >
+                          <img src={selectedRequest.paymentCardImageUrl} alt="Card used to pay" style={styles.receiptImage} />
+                        </button>
+                        <div style={styles.receiptActions}>
+                          <button
+                            type="button"
+                            style={styles.receiptActionBtn}
+                            onClick={() => setReceiptPreviewUrl(String(selectedRequest.paymentCardImageUrl || ''))}
+                          >
+                            View card photo
+                          </button>
+                          <a
+                            href={selectedRequest.paymentCardImageUrl}
+                            download={`card-proof-${selectedRequest.id}.jpg`}
+                            style={styles.receiptActionLink}
+                          >
+                            Download
+                          </a>
+                        </div>
+                      </div>
                     ) : null}
 
                     {selectedRequest.status === 'pending' ? (
@@ -322,6 +379,18 @@ export default function FuelRequestsWorkspace() {
           </div>
         </div>
       ) : null}
+
+      {receiptPreviewUrl ? (
+        <div style={styles.previewOverlay} onClick={() => setReceiptPreviewUrl('')}>
+          <div style={styles.previewCard} onClick={event => event.stopPropagation()}>
+            <img src={receiptPreviewUrl} alt="Receipt full" style={styles.previewImage} />
+            <div style={styles.previewActions}>
+              <a href={receiptPreviewUrl} download="receipt-full.jpg" style={styles.receiptActionLink}>Download</a>
+              <button type="button" style={styles.cancelBtn} onClick={() => setReceiptPreviewUrl('')}>Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -364,8 +433,13 @@ const styles = {
   detailTime: { fontSize: 12, color: '#6b7280' },
   detailGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(220px, 1fr))', gap: 8, fontSize: 13, color: '#1f2937', marginBottom: 10 },
   notesBox: { border: '1px solid #e5e7eb', borderRadius: 8, padding: 10, background: '#fff', fontSize: 13, marginBottom: 10 },
-  imageLink: { display: 'inline-block', marginBottom: 10 },
+  proofTitle: { fontSize: 12, fontWeight: 800, color: '#374151' },
+  receiptWrap: { display: 'inline-flex', flexDirection: 'column', gap: 8, marginBottom: 10 },
+  receiptThumbButton: { border: 'none', background: 'transparent', padding: 0, margin: 0, cursor: 'zoom-in', display: 'inline-block' },
   receiptImage: { width: 180, height: 180, objectFit: 'cover', borderRadius: 10, border: '1px solid #d1d5db' },
+  receiptActions: { display: 'flex', gap: 8, alignItems: 'center' },
+  receiptActionBtn: { border: '1px solid #d1d5db', background: '#fff', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700 },
+  receiptActionLink: { border: '1px solid #d1d5db', background: '#fff', borderRadius: 8, padding: '6px 10px', textDecoration: 'none', color: '#111827', fontSize: 12, fontWeight: 700 },
   approveBtn: { border: 'none', background: '#16a34a', color: '#fff', borderRadius: 8, padding: '10px 14px', fontWeight: 700, cursor: 'pointer' },
 
   emptyText: { color: '#6b7280', fontSize: 13, padding: 12 },
@@ -378,5 +452,10 @@ const styles = {
   modalInput: { width: '100%', border: '1px solid #d1d5db', borderRadius: 8, padding: '9px 10px', fontSize: 14 },
   modalButtons: { marginTop: 14, display: 'flex', justifyContent: 'flex-end', gap: 8 },
   cancelBtn: { border: '1px solid #d1d5db', background: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' },
-  confirmBtn: { border: 'none', background: '#16a34a', color: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 }
+  confirmBtn: { border: 'none', background: '#16a34a', color: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', fontWeight: 700 },
+
+  previewOverlay: { position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  previewCard: { background: '#fff', borderRadius: 12, padding: 12, maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: 10 },
+  previewImage: { maxWidth: '86vw', maxHeight: '76vh', objectFit: 'contain', borderRadius: 8, border: '1px solid #e5e7eb' },
+  previewActions: { display: 'flex', justifyContent: 'flex-end', gap: 8 }
 };

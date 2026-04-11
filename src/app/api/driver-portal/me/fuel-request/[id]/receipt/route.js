@@ -29,7 +29,7 @@ const resolveDriverContext = async (req, body = null) => {
   const driverId = String(body?.driverId || '').trim();
   if (!driverId) return { error: NextResponse.json({ ok: false, error: 'Authentication required.' }, { status: 401 }) };
 
-  const mobileAuth = await authorizeMobileDriverRequest(req, driverId);
+  const mobileAuth = await authorizeMobileDriverRequest(req, driverId, { allowLegacyWithoutSession: true });
   if (mobileAuth.response) return { error: mobileAuth.response };
 
   const driver = await findDriverById(driverId);
@@ -61,6 +61,8 @@ export async function POST(req, { params }) {
     const updated = await submitFuelRequestReceipt({
       requestId,
       receiptImageUrl: String(body?.receiptImageUrl || '').trim(),
+      paymentCardImageUrl: String(body?.paymentCardImageUrl || '').trim(),
+      paymentCardLast4: String(body?.paymentCardLast4 || '').trim(),
       gallons: body?.gallons,
       vehicleMileage: body?.vehicleMileage
     });
@@ -74,6 +76,11 @@ export async function POST(req, { params }) {
       gallons: updated.gallons,
       receiptReference: String(updated.transferReference || updated.transferMethod || 'Fuel Request').trim(),
       receiptImageUrl: String(updated.receiptImageUrl || '').trim(),
+      paymentCardImageUrl: String(updated.paymentCardImageUrl || '').trim(),
+      paymentCardLast4: String(updated.paymentCardLast4 || '').trim(),
+      requestVehicleMileage: updated.requestedMileage,
+      previousVehicleMileage: updated.lastFuelMileage,
+      milesSinceLastFuel: updated.milesSinceLastFuel,
       vehicleMileage: updated.vehicleMileage,
       notes: `Fuel request approved by ${updated.approvedByUser || 'dispatcher'}. ${updated.transferNotes || ''}`.trim(),
       submittedByUser: context.submittedByUser,

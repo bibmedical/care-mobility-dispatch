@@ -50,6 +50,11 @@ export const readGeniusFuelReceipts = async ({ serviceDate = '', driverId = '' }
        gallons,
        receipt_reference AS "receiptReference",
        receipt_image_url AS "receiptImageUrl",
+        payment_card_image_url AS "paymentCardImageUrl",
+        payment_card_last4 AS "paymentCardLast4",
+      request_vehicle_mileage AS "requestVehicleMileage",
+      previous_vehicle_mileage AS "previousVehicleMileage",
+      miles_since_last_fuel AS "milesSinceLastFuel",
        vehicle_mileage AS "vehicleMileage",
        notes,
        submitted_by_user AS "submittedByUser",
@@ -73,6 +78,11 @@ export const createGeniusFuelReceipt = async ({
   gallons,
   receiptReference,
   receiptImageUrl,
+  paymentCardImageUrl,
+  paymentCardLast4,
+  requestVehicleMileage,
+  previousVehicleMileage,
+  milesSinceLastFuel,
   vehicleMileage,
   notes,
   submittedByUser,
@@ -85,6 +95,17 @@ export const createGeniusFuelReceipt = async ({
   const dateKey = normalizeDateKey(serviceDate);
   const normalizedReference = normalizeText(receiptReference);
   const normalizedImageUrl = normalizeText(receiptImageUrl).slice(0, 400000);
+  const normalizedPaymentCardImageUrl = normalizeText(paymentCardImageUrl).slice(0, 400000);
+  const normalizedPaymentCardLast4 = normalizeText(paymentCardLast4).replace(/\D/g, '').slice(-4);
+  const normalizedRequestVehicleMileage = requestVehicleMileage != null && Number.isFinite(Number(requestVehicleMileage)) && Number(requestVehicleMileage) >= 0
+    ? Math.round(Number(requestVehicleMileage) * 10) / 10
+    : null;
+  const normalizedPreviousVehicleMileage = previousVehicleMileage != null && Number.isFinite(Number(previousVehicleMileage)) && Number(previousVehicleMileage) >= 0
+    ? Math.round(Number(previousVehicleMileage) * 10) / 10
+    : null;
+  const normalizedMilesSinceLastFuel = milesSinceLastFuel != null && Number.isFinite(Number(milesSinceLastFuel)) && Number(milesSinceLastFuel) >= 0
+    ? Math.round(Number(milesSinceLastFuel) * 10) / 10
+    : null;
   const normalizedMileage = vehicleMileage != null && Number.isFinite(Number(vehicleMileage)) && Number(vehicleMileage) >= 0
     ? Math.round(Number(vehicleMileage) * 10) / 10
     : null;
@@ -108,6 +129,11 @@ export const createGeniusFuelReceipt = async ({
        gallons,
        receipt_reference,
        receipt_image_url,
+      payment_card_image_url,
+      payment_card_last4,
+      request_vehicle_mileage,
+      previous_vehicle_mileage,
+      miles_since_last_fuel,
        vehicle_mileage,
        notes,
        submitted_by_user,
@@ -115,7 +141,7 @@ export const createGeniusFuelReceipt = async ({
        source,
        created_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
      RETURNING
        id,
        driver_id AS "driverId",
@@ -124,6 +150,11 @@ export const createGeniusFuelReceipt = async ({
        gallons,
        receipt_reference AS "receiptReference",
        receipt_image_url AS "receiptImageUrl",
+      payment_card_image_url AS "paymentCardImageUrl",
+      payment_card_last4 AS "paymentCardLast4",
+      request_vehicle_mileage AS "requestVehicleMileage",
+      previous_vehicle_mileage AS "previousVehicleMileage",
+      miles_since_last_fuel AS "milesSinceLastFuel",
        vehicle_mileage AS "vehicleMileage",
        notes,
        submitted_by_user AS "submittedByUser",
@@ -138,6 +169,11 @@ export const createGeniusFuelReceipt = async ({
       toGallons(gallons),
       normalizedReference,
       normalizedImageUrl,
+      normalizedPaymentCardImageUrl,
+      normalizedPaymentCardLast4,
+      normalizedRequestVehicleMileage,
+      normalizedPreviousVehicleMileage,
+      normalizedMilesSinceLastFuel,
       normalizedMileage,
       normalizeText(notes),
       normalizeText(submittedByUser),
@@ -293,6 +329,9 @@ export const createGeniusPayoutRun = async ({
       amount: Number(receipt?.amount) || 0,
       gallons: Number(receipt?.gallons) || 0,
       receiptReference: receipt?.receiptReference || '',
+      requestVehicleMileage: receipt?.requestVehicleMileage != null ? Number(receipt.requestVehicleMileage) : null,
+      previousVehicleMileage: receipt?.previousVehicleMileage != null ? Number(receipt.previousVehicleMileage) : null,
+      milesSinceLastFuel: receipt?.milesSinceLastFuel != null ? Number(receipt.milesSinceLastFuel) : null,
       createdAt: receipt?.createdAt || ''
     }))
   };
@@ -377,22 +416,72 @@ const FUEL_REQUEST_COLS = `
   transfer_reference AS "transferReference",
   transfer_notes AS "transferNotes",
   receipt_image_url AS "receiptImageUrl",
+  payment_card_image_url AS "paymentCardImageUrl",
+  payment_card_last4 AS "paymentCardLast4",
+  requested_mileage AS "requestedMileage",
+  last_fuel_mileage AS "lastFuelMileage",
+  miles_since_last_fuel AS "milesSinceLastFuel",
   gallons,
   vehicle_mileage AS "vehicleMileage",
   receipt_submitted_at AS "receiptSubmittedAt",
   genius_receipt_id AS "geniusReceiptId"
 `;
 
-export const createFuelRequest = async ({ driverId, driverName }) => {
+export const createFuelRequest = async ({ driverId, driverName, requestedMileage }) => {
   await runMigrations();
   const normalizedDriverId = normalizeText(driverId);
   const normalizedDriverName = normalizeText(driverName);
+  const normalizedRequestedMileage = requestedMileage != null && Number.isFinite(Number(requestedMileage)) && Number(requestedMileage) >= 0
+    ? Math.round(Number(requestedMileage) * 10) / 10
+    : null;
   if (!normalizedDriverId) throw new Error('driverId is required.');
+
+  if (normalizedRequestedMileage === null) throw new Error('Current mileage is required.');
+
+  const lastFuelRow = await queryOne(
+    `SELECT vehicle_mileage AS "vehicleMileage"
+     FROM genius_fuel_requests
+     WHERE driver_id = $1
+       AND status = 'receipt_submitted'
+       AND vehicle_mileage IS NOT NULL
+     ORDER BY receipt_submitted_at DESC NULLS LAST, requested_at DESC
+     LIMIT 1`,
+    [normalizedDriverId]
+  );
+
+  const lastFuelMileage = lastFuelRow?.vehicleMileage != null
+    ? Math.round(Number(lastFuelRow.vehicleMileage) * 10) / 10
+    : null;
+
+  if (lastFuelMileage != null && normalizedRequestedMileage < lastFuelMileage) {
+    throw new Error(`Current mileage (${normalizedRequestedMileage.toFixed(1)}) cannot be below last fuel mileage (${lastFuelMileage.toFixed(1)}).`);
+  }
+
+  const milesSinceLastFuel = lastFuelMileage != null
+    ? Math.round((normalizedRequestedMileage - lastFuelMileage) * 10) / 10
+    : null;
+
   return await queryOne(
-    `INSERT INTO genius_fuel_requests (id, driver_id, driver_name, status, requested_at)
-     VALUES ($1, $2, $3, 'pending', NOW())
+    `INSERT INTO genius_fuel_requests (
+      id,
+      driver_id,
+      driver_name,
+      status,
+      requested_at,
+      requested_mileage,
+      last_fuel_mileage,
+      miles_since_last_fuel
+    )
+     VALUES ($1, $2, $3, 'pending', NOW(), $4, $5, $6)
      RETURNING ${FUEL_REQUEST_COLS}`,
-    [randomUUID(), normalizedDriverId, normalizedDriverName]
+    [
+      randomUUID(),
+      normalizedDriverId,
+      normalizedDriverName,
+      normalizedRequestedMileage,
+      lastFuelMileage,
+      milesSinceLastFuel
+    ]
   );
 };
 
@@ -463,6 +552,8 @@ export const approveFuelRequest = async ({
 export const submitFuelRequestReceipt = async ({
   requestId,
   receiptImageUrl,
+  paymentCardImageUrl,
+  paymentCardLast4,
   gallons,
   vehicleMileage
 }) => {
@@ -471,6 +562,10 @@ export const submitFuelRequestReceipt = async ({
   if (!normalizedId) throw new Error('requestId is required.');
   const normalizedImageUrl = normalizeText(receiptImageUrl).slice(0, 400000);
   if (!normalizedImageUrl) throw new Error('Receipt photo is required.');
+  const normalizedPaymentCardImageUrl = normalizeText(paymentCardImageUrl).slice(0, 400000);
+  if (!normalizedPaymentCardImageUrl) throw new Error('Payment card photo is required.');
+  const normalizedPaymentCardLast4 = normalizeText(paymentCardLast4).replace(/\D/g, '').slice(-4);
+  if (!/^\d{4}$/.test(normalizedPaymentCardLast4)) throw new Error('Last 4 card digits are required.');
   const normalizedGallons = toGallons(gallons);
   if (normalizedGallons <= 0) throw new Error('Gallons is required.');
   const normalizedMileage = vehicleMileage != null && Number.isFinite(Number(vehicleMileage)) && Number(vehicleMileage) >= 0
@@ -481,12 +576,21 @@ export const submitFuelRequestReceipt = async ({
     `UPDATE genius_fuel_requests
      SET status = 'receipt_submitted',
          receipt_image_url = $2,
-         gallons = $3,
-         vehicle_mileage = $4,
+         payment_card_image_url = $3,
+         payment_card_last4 = $4,
+         gallons = $5,
+         vehicle_mileage = $6,
          receipt_submitted_at = NOW()
      WHERE id = $1 AND status = 'approved'
      RETURNING ${FUEL_REQUEST_COLS}`,
-    [normalizedId, normalizedImageUrl, normalizedGallons, normalizedMileage]
+    [
+      normalizedId,
+      normalizedImageUrl,
+      normalizedPaymentCardImageUrl,
+      normalizedPaymentCardLast4,
+      normalizedGallons,
+      normalizedMileage
+    ]
   );
   if (!row) throw new Error('Request not found or not in approved status.');
   return row;

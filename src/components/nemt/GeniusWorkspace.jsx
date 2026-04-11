@@ -270,6 +270,23 @@ const GeniusWorkspace = () => {
     }));
   }, [driverSummaries]);
 
+  const sidebarDrivers = useMemo(() => {
+    return drivers
+      .map(driver => ({
+        id: String(driver?.id || '').trim(),
+        name: String(driver?.name || driver?.displayName || driver?.username || driver?.id || '').trim() || 'Driver'
+      }))
+      .filter(driver => driver.id)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [drivers]);
+
+  const scrollToSection = sectionId => {
+    if (typeof document === 'undefined') return;
+    const node = document.getElementById(sectionId);
+    if (!node) return;
+    node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const updateFuelReceiptForm = (field, value) => {
     setFuelReceiptForm(current => ({
       ...current,
@@ -484,7 +501,7 @@ const GeniusWorkspace = () => {
               <h2 className="mb-0" style={{ fontWeight: 800 }}>Genius</h2>
             </div>
             <CardBody className="p-4 p-lg-5">
-              <p className="text-muted mb-4">Enter your personal 6-digit code to open Genius. This area is restricted to Robert and Balbino.</p>
+              <p className="text-muted mb-4">Enter your personal 6-digit code to open Genius. This area is restricted.</p>
               <Form onSubmit={handleUnlock} className="d-flex flex-column gap-3">
                 <Form.Control value={code} onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" maxLength={6} placeholder="Enter 6-digit code" size="lg" />
                 {unlockError ? <Alert variant="danger" className="mb-0">{unlockError}</Alert> : null}
@@ -509,12 +526,37 @@ const GeniusWorkspace = () => {
               <Image src="/genius/genius-horizontal.png" alt="Genius" width={120} height={26} priority style={{ height: 'auto' }} />
             </div>
             <div className="small text-uppercase text-muted mb-2" style={{ letterSpacing: '0.12em' }}>Main</div>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 9 }}>Dashboard</div>
-            <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 9 }}>Payouts</div>
-            <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 9 }}>Fuel Receipts</div>
-            <div style={{ color: '#6b7280', fontSize: 14, marginBottom: 9 }}>Driver Review</div>
+            <button type="button" onClick={() => scrollToSection('genius-dashboard')} style={{ display: 'block', border: 'none', background: 'transparent', padding: 0, marginBottom: 9, fontWeight: 700, fontSize: 14, color: '#111827', cursor: 'pointer' }}>Dashboard</button>
+            <button type="button" onClick={() => scrollToSection('genius-payouts')} style={{ display: 'block', border: 'none', background: 'transparent', padding: 0, marginBottom: 9, fontSize: 14, color: '#6b7280', cursor: 'pointer' }}>Payouts</button>
+            <button type="button" onClick={() => scrollToSection('genius-fuel-receipts')} style={{ display: 'block', border: 'none', background: 'transparent', padding: 0, marginBottom: 9, fontSize: 14, color: '#6b7280', cursor: 'pointer' }}>Fuel Receipts</button>
+            <button type="button" onClick={() => scrollToSection('genius-driver-review')} style={{ display: 'block', border: 'none', background: 'transparent', padding: 0, marginBottom: 9, fontSize: 14, color: '#6b7280', cursor: 'pointer' }}>Driver Review</button>
             <div style={{ marginTop: 28, borderTop: '1px solid #ececec', paddingTop: 14 }}>
-              <Badge bg="dark" className="px-2 py-2">Private: Robert + Balbino</Badge>
+              <div className="small text-uppercase text-muted mb-2" style={{ letterSpacing: '0.12em' }}>Drivers</div>
+              <div style={{ maxHeight: 220, overflowY: 'auto', paddingRight: 6 }}>
+                {sidebarDrivers.length === 0 ? <div className="small text-muted">No drivers</div> : sidebarDrivers.map(driver => <button
+                  key={driver.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDriverId(driver.id);
+                    setOnlyAssigned(true);
+                    scrollToSection('genius-payouts');
+                  }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    border: selectedDriverId === driver.id ? '1px solid #22c55e' : '1px solid #e5e7eb',
+                    background: selectedDriverId === driver.id ? '#ecfdf5' : '#fff',
+                    borderRadius: 8,
+                    padding: '6px 8px',
+                    marginBottom: 6,
+                    fontSize: 12,
+                    color: '#111827',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {driver.name}
+                </button>)}
+              </div>
             </div>
           </div>
         </Col>
@@ -526,7 +568,7 @@ const GeniusWorkspace = () => {
               <Button style={{ borderRadius: 18, backgroundColor: '#eab308', borderColor: '#eab308', color: '#111827', fontWeight: 700 }}>+ Add New</Button>
             </div>
 
-            <Card className="border-0 mb-3" style={{ background: '#f7f7f8', borderRadius: 14 }}>
+            <Card id="genius-dashboard" className="border-0 mb-3" style={{ background: '#f7f7f8', borderRadius: 14 }}>
               <CardBody className="py-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
                 <div>
                   <div className="small text-muted">Revenue Source</div>
@@ -540,7 +582,7 @@ const GeniusWorkspace = () => {
               </CardBody>
             </Card>
 
-            <Row className="g-3 mb-3">
+            <Row id="genius-driver-review" className="g-3 mb-3">
               {paymentCards.map(card => <Col xl={3} md={6} key={card.title}>
                 <Card className="border-0 h-100" style={{ background: '#f4f4f5', borderRadius: 14 }}>
                   <CardBody>
@@ -587,7 +629,7 @@ const GeniusWorkspace = () => {
               </Col>
             </Row>
 
-            <Card className="border-0 mb-3" style={{ borderRadius: 14 }}>
+            <Card id="genius-payouts" className="border-0 mb-3" style={{ borderRadius: 14 }}>
               <CardBody>
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <div style={{ fontWeight: 700 }}>Run payout</div>
@@ -604,7 +646,7 @@ const GeniusWorkspace = () => {
               </CardBody>
             </Card>
 
-            <Card className="border-0 mb-3" style={{ borderRadius: 14 }}>
+            <Card id="genius-fuel-receipts" className="border-0 mb-3" style={{ borderRadius: 14 }}>
               <CardBody>
                 <div className="d-flex justify-content-between align-items-center mb-3">
                   <div style={{ fontWeight: 700 }}>Fuel intake</div>
@@ -625,6 +667,37 @@ const GeniusWorkspace = () => {
                 </Form>
                 {fuelReceiptError ? <Alert variant="danger" className="mt-3 mb-0">{fuelReceiptError}</Alert> : null}
                 {fuelReceiptSuccess ? <Alert variant="success" className="mt-3 mb-0">{fuelReceiptSuccess}</Alert> : null}
+
+                <div className="mt-3">
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <div style={{ fontWeight: 700 }}>Recent fuel mileage tracking</div>
+                    <div className="small text-muted">Latest 10 receipts</div>
+                  </div>
+                  <Table responsive size="sm" hover>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Driver</th>
+                        <th>Request Odo</th>
+                        <th>Prev Odo</th>
+                        <th>Miles Since Last Fuel</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recentFuelReceipts.slice(0, 10).length === 0 ? (
+                        <tr><td colSpan={5} className="text-center text-muted py-3">No fuel receipts yet.</td></tr>
+                      ) : recentFuelReceipts.slice(0, 10).map(row => (
+                        <tr key={row.id}>
+                          <td>{row?.serviceDate || '-'}</td>
+                          <td>{row?.driverId || '-'}</td>
+                          <td>{row?.requestVehicleMileage != null ? Number(row.requestVehicleMileage).toFixed(1) : '-'}</td>
+                          <td>{row?.previousVehicleMileage != null ? Number(row.previousVehicleMileage).toFixed(1) : '-'}</td>
+                          <td>{row?.milesSinceLastFuel != null ? Number(row.milesSinceLastFuel).toFixed(1) : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
               </CardBody>
             </Card>
 

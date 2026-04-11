@@ -29,7 +29,7 @@ const resolveDriverContext = async (req, body = null) => {
   const driverId = String(req.nextUrl.searchParams.get('driverId') || body?.driverId || '').trim();
   if (!driverId) return { error: NextResponse.json({ ok: false, error: 'Authentication required.' }, { status: 401 }) };
 
-  const mobileAuth = await authorizeMobileDriverRequest(req, driverId);
+  const mobileAuth = await authorizeMobileDriverRequest(req, driverId, { allowLegacyWithoutSession: true });
   if (mobileAuth.response) return { error: mobileAuth.response };
 
   const driver = await findDriverById(driverId);

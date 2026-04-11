@@ -37,6 +37,11 @@ export type DriverFuelRequest = {
   transferReference: string | null;
   transferNotes: string | null;
   receiptImageUrl: string | null;
+  paymentCardImageUrl: string | null;
+  paymentCardLast4: string | null;
+  requestedMileage: number | null;
+  lastFuelMileage: number | null;
+  milesSinceLastFuel: number | null;
   gallons: number | null;
   vehicleMileage: number | null;
   receiptSubmittedAt: string | null;

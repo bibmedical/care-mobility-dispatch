@@ -5,7 +5,8 @@ const normalizeApiBaseUrl = (value?: string) => {
   return normalizedValue.replace(/\/$/, '');
 };
 
-const resolvedApiBaseUrl = normalizeApiBaseUrl(process.env.EXPO_PUBLIC_DRIVER_API_BASE_URL) || 'https://care-mobility-dispatch-web.onrender.com';
+// Force Render API during Expo Go testing to avoid local DB-only failures.
+const resolvedApiBaseUrl = 'https://care-mobility-dispatch-web.onrender.com';
 
 export const DRIVER_APP_CONFIG = {
   apiBaseUrl: resolvedApiBaseUrl,

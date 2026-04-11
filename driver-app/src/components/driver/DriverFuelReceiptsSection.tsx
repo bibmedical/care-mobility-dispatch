@@ -20,12 +20,15 @@ type ReceiptForm = {
   gallons: string;
   vehicleMileage: string;
   imageUri: string;
+  cardImageUri: string;
+  paymentCardLast4: string;
 };
 
-const EMPTY_RECEIPT: ReceiptForm = { gallons: '', vehicleMileage: '', imageUri: '' };
+const EMPTY_RECEIPT: ReceiptForm = { gallons: '', vehicleMileage: '', imageUri: '', cardImageUri: '', paymentCardLast4: '' };
 
 export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
   const [receiptForm, setReceiptForm] = useState<ReceiptForm>(EMPTY_RECEIPT);
+  const [requestMileage, setRequestMileage] = useState('');
   const [photoError, setPhotoError] = useState('');
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
 
@@ -50,10 +53,19 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
   const activeRequest: DriverFuelRequest | undefined = runtime.fuelRequests
     .find(r => r.status === 'pending' || r.status === 'approved');
 
+  const lastCompletedRequest: DriverFuelRequest | undefined = runtime.fuelRequests
+    .find(r => r.status === 'receipt_submitted' && r.vehicleMileage != null);
+
+  const requestedMileageNumber = requestMileage !== '' ? Number(requestMileage) : NaN;
+  const projectedMilesSinceLastFuel =
+    Number.isFinite(requestedMileageNumber) && requestedMileageNumber >= 0 && lastCompletedRequest?.vehicleMileage != null
+      ? Math.round((requestedMileageNumber - Number(lastCompletedRequest.vehicleMileage)) * 10) / 10
+      : null;
+
   const set = (key: keyof ReceiptForm, value: string) =>
     setReceiptForm(prev => ({ ...prev, [key]: value }));
 
-  const pickPhoto = async (source: 'camera' | 'gallery') => {
+  const pickPhoto = async (source: 'camera' | 'gallery', target: 'imageUri' | 'cardImageUri' = 'imageUri') => {
     setPhotoError('');
     try {
       let result;
@@ -73,7 +85,7 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
         initialQuality: 0.48,
         maxApproxBytes: 320_000
       });
-      set('imageUri', compressedDataUrl);
+      set(target, compressedDataUrl);
     } catch {
       setPhotoError('Unable to take photo. Try again.');
     } finally {
@@ -88,6 +100,15 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
 
     if (!receiptForm.imageUri) {
       runtime.setFuelRequestError('Receipt photo is required.');
+      return;
+    }
+    if (!receiptForm.cardImageUri) {
+      runtime.setFuelRequestError('Payment card photo is required.');
+      return;
+    }
+    const digitsOnly = receiptForm.paymentCardLast4.replace(/\D/g, '');
+    if (digitsOnly.length !== 4) {
+      runtime.setFuelRequestError('Last 4 card digits are required.');
       return;
     }
     const gallons = parseFloat(receiptForm.gallons);
@@ -105,6 +126,8 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
       requestId: activeRequest.id,
       serviceDate: todayKey(),
       receiptImageUrl: receiptForm.imageUri,
+      paymentCardImageUrl: receiptForm.cardImageUri,
+      paymentCardLast4: digitsOnly,
       gallons,
       vehicleMileage: mileage
     });
@@ -128,6 +151,11 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
           <Text style={styles.statusMeta}>
             Requested at {new Date(activeRequest.requestedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
+          {activeRequest.milesSinceLastFuel != null ? (
+            <Text style={styles.statusMeta}>
+              Miles since last fuel: {Number(activeRequest.milesSinceLastFuel).toFixed(1)} mi
+            </Text>
+          ) : null}
         </View>
         <Pressable style={styles.refreshButton} onPress={() => void runtime.loadFuelRequests()}>
           <Text style={styles.refreshButtonText}>Refresh Status</Text>
@@ -199,6 +227,42 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
             </View>
           )}
 
+          <Text style={styles.label}>💳  Photo of Card Used to Pay <Text style={styles.required}>*</Text></Text>
+          {receiptForm.cardImageUri ? (
+            <View style={styles.photoWrap}>
+              <Image source={{ uri: receiptForm.cardImageUri }} style={styles.photo} resizeMode="cover" />
+              <Pressable onPress={() => set('cardImageUri', '')} style={styles.removePhoto}>
+                <Text style={styles.removePhotoText}>Remove</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {isProcessingPhoto ? (
+            <View style={styles.processingRow}>
+              <ActivityIndicator color={accent} />
+              <Text style={styles.processingText}>Processing photo...</Text>
+            </View>
+          ) : (
+            <View style={styles.photoBtns}>
+              <Pressable style={[styles.photoBtn, { backgroundColor: accent }]} onPress={() => void pickPhoto('camera', 'cardImageUri')}>
+                <Text style={styles.photoBtnText}>📷  Camera</Text>
+              </Pressable>
+              <Pressable style={[styles.photoBtn, styles.photoBtnSecondary]} onPress={() => void pickPhoto('gallery', 'cardImageUri')}>
+                <Text style={[styles.photoBtnText, { color: accent }]}>🖼  Gallery</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <Text style={styles.label}>Last 4 Card Digits <Text style={styles.required}>*</Text></Text>
+          <TextInput
+            style={styles.input}
+            value={receiptForm.paymentCardLast4}
+            onChangeText={v => set('paymentCardLast4', v.replace(/\D/g, '').slice(0, 4))}
+            placeholder="e.g. 1234"
+            keyboardType="number-pad"
+            placeholderTextColor={driverTheme.colors.textMuted}
+            maxLength={4}
+          />
+
           <Text style={styles.label}>Gallons <Text style={styles.required}>*</Text></Text>
           <TextInput
             style={styles.input}
@@ -254,6 +318,27 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
         <Text style={styles.heroBody}>
           Need fuel? Tap the button below to notify dispatch. Once approved and funds are sent to you, you&apos;ll be prompted to submit your receipt with the gallons and mileage.
         </Text>
+        <Text style={styles.statusMeta}>
+          Last recorded fuel mileage: {lastCompletedRequest?.vehicleMileage != null ? Number(lastCompletedRequest.vehicleMileage).toFixed(1) : 'N/A'}
+        </Text>
+      </View>
+
+      <View style={styles.formCard}>
+        <Text style={styles.formTitle}>Current Odometer</Text>
+        <Text style={styles.formSubtitle}>Required before requesting fuel.</Text>
+        <TextInput
+          style={styles.input}
+          value={requestMileage}
+          onChangeText={setRequestMileage}
+          placeholder="e.g. 125200"
+          keyboardType="decimal-pad"
+          placeholderTextColor={driverTheme.colors.textMuted}
+        />
+        {projectedMilesSinceLastFuel != null ? (
+          <Text style={styles.statusMeta}>
+            Since last fuel, you drove {projectedMilesSinceLastFuel.toFixed(1)} miles.
+          </Text>
+        ) : null}
       </View>
 
       {runtime.fuelRequestError ? (
@@ -269,7 +354,21 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
 
       <Pressable
         style={[styles.requestBtn, { backgroundColor: accent }, runtime.isSubmittingFuelRequest ? styles.submitBtnDisabled : null]}
-        onPress={() => void runtime.submitFuelRequest()}
+        onPress={() => {
+          const mileage = Number(requestMileage);
+          if (!Number.isFinite(mileage) || mileage < 0) {
+            runtime.setFuelRequestError('Current mileage is required.');
+            return;
+          }
+          if (lastCompletedRequest?.vehicleMileage != null && mileage < Number(lastCompletedRequest.vehicleMileage)) {
+            runtime.setFuelRequestError('Current mileage cannot be less than your last fuel mileage.');
+            return;
+          }
+          void (async () => {
+            const ok = await runtime.submitFuelRequest({ requestedMileage: mileage });
+            if (ok) setRequestMileage('');
+          })();
+        }}
         disabled={runtime.isSubmittingFuelRequest}
       >
         {runtime.isSubmittingFuelRequest
@@ -295,6 +394,7 @@ function renderHistory(requests: DriverFuelRequest[]) {
             {r.approvedAmount != null ? `$${Number(r.approvedAmount).toFixed(2)}` : '—'}
             {r.gallons != null ? `  ·  ${Number(r.gallons).toFixed(3)} gal` : ''}
             {r.vehicleMileage != null ? `  ·  ${Number(r.vehicleMileage).toFixed(1)} mi` : ''}
+            {r.milesSinceLastFuel != null ? `  ·  +${Number(r.milesSinceLastFuel).toFixed(1)} mi since last fuel` : ''}
           </Text>
           {r.approvedByUser ? <Text style={styles.historyApprover}>Approved by {r.approvedByUser}</Text> : null}
         </View>

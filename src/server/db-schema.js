@@ -222,6 +222,11 @@ const _runMigrationsOnce = async () => {
       gallons            NUMERIC(12, 3) NOT NULL DEFAULT 0,
       receipt_reference  TEXT NOT NULL DEFAULT '',
       receipt_image_url  TEXT NOT NULL DEFAULT '',
+      payment_card_image_url TEXT NOT NULL DEFAULT '',
+      payment_card_last4 TEXT NOT NULL DEFAULT '',
+      request_vehicle_mileage NUMERIC(10, 1),
+      previous_vehicle_mileage NUMERIC(10, 1),
+      miles_since_last_fuel NUMERIC(10, 1),
       notes              TEXT NOT NULL DEFAULT '',
       submitted_by_user  TEXT NOT NULL DEFAULT '',
       submitted_by_role  TEXT NOT NULL DEFAULT '',
@@ -265,6 +270,11 @@ const _runMigrationsOnce = async () => {
       transfer_reference    TEXT,
       transfer_notes        TEXT,
       receipt_image_url     TEXT,
+      payment_card_image_url TEXT,
+      payment_card_last4    TEXT,
+      requested_mileage     NUMERIC(10, 1),
+      last_fuel_mileage     NUMERIC(10, 1),
+      miles_since_last_fuel NUMERIC(10, 1),
       gallons               NUMERIC(12, 3),
       vehicle_mileage       NUMERIC(10, 1),
       receipt_submitted_at  TIMESTAMPTZ,
@@ -278,6 +288,46 @@ const _runMigrationsOnce = async () => {
   // ── Additive column migrations (safe to run repeatedly) ──────────────────────
   await query(`
     ALTER TABLE genius_fuel_receipts ADD COLUMN IF NOT EXISTS vehicle_mileage NUMERIC(10, 1)
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_receipts ADD COLUMN IF NOT EXISTS payment_card_image_url TEXT NOT NULL DEFAULT ''
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_receipts ADD COLUMN IF NOT EXISTS payment_card_last4 TEXT NOT NULL DEFAULT ''
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_requests ADD COLUMN IF NOT EXISTS payment_card_image_url TEXT
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_requests ADD COLUMN IF NOT EXISTS payment_card_last4 TEXT
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_requests ADD COLUMN IF NOT EXISTS requested_mileage NUMERIC(10, 1)
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_requests ADD COLUMN IF NOT EXISTS last_fuel_mileage NUMERIC(10, 1)
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_requests ADD COLUMN IF NOT EXISTS miles_since_last_fuel NUMERIC(10, 1)
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_receipts ADD COLUMN IF NOT EXISTS request_vehicle_mileage NUMERIC(10, 1)
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_receipts ADD COLUMN IF NOT EXISTS previous_vehicle_mileage NUMERIC(10, 1)
+  `);
+
+  await query(`
+    ALTER TABLE genius_fuel_receipts ADD COLUMN IF NOT EXISTS miles_since_last_fuel NUMERIC(10, 1)
   `);
 
   // ── Seed singleton rows in 1 round trip ──────────────────────────────────────
