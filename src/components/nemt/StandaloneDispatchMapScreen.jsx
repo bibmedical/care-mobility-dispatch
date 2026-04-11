@@ -147,15 +147,26 @@ const getVehicleVariantIndex = key => {
 
 const getVehicleVariantUrl = key => `/assets/gpscars/car-${String(getVehicleVariantIndex(key) + 1).padStart(2, '0')}.svg`;
 
-const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '' }) => {
+const resolveVehicleIconUrl = (driverKey, vehicleSvgPath = '') => {
+  const customPath = String(vehicleSvgPath || '').trim();
+  if (!customPath) return getVehicleVariantUrl(driverKey);
+  return customPath.startsWith('/') ? customPath : `/${customPath.replace(/^\/+/, '')}`;
+};
+
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false, driverKey = '', vehicleIconScalePercent = 100, vehicleIconSvgPath = '' }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
-  const vehicleVariantUrl = getVehicleVariantUrl(driverKey);
+  const normalizedScale = Math.min(200, Math.max(70, Number(vehicleIconScalePercent) || 100));
+  const shellSize = Math.round(60 * normalizedScale / 100);
+  const bodyWidth = Math.round(34 * normalizedScale / 100);
+  const bodyHeight = Math.round(48 * normalizedScale / 100);
+  const imageSizePercent = Math.round(Math.min(190, Math.max(110, 132 * normalizedScale / 100)));
+  const vehicleVariantUrl = resolveVehicleIconUrl(driverKey, vehicleIconSvgPath);
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:28px;height:40px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${vehicleVariantUrl}" alt="car" style="width:124%;height:124%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" /></div></div>`,
-    iconSize: [48, 48],
-    iconAnchor: [24, 24],
-    popupAnchor: [0, -20]
+    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${vehicleVariantUrl}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" /></div></div>`,
+    iconSize: [shellSize, shellSize],
+    iconAnchor: [Math.round(shellSize / 2), Math.round(shellSize / 2)],
+    popupAnchor: [0, -Math.round(shellSize * 0.4)]
   });
 };
 
@@ -1048,7 +1059,13 @@ const StandaloneDispatchMapScreen = () => {
               return <Polyline key={`route-option-${routeOption.id}`} positions={routeOption.geometry} pathOptions={getDashboardRouteStyle(index === selectedDashboardRouteIndex, index)} />;
             }) : null}
               {activeDashboardViewMode !== 'route' && routeGeometry.length > 1 && !hideRoutes ? <Polyline positions={routeGeometry} pathOptions={{ color: '#f59e0b', weight: 4, dashArray: '10 8' }} /> : null}
-              {selectedDriverHasPosition ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({ heading: selectedDriver.heading, isOnline: selectedDriver.live === 'Online', driverKey: selectedDriver.id || selectedDriver.name })}>
+              {selectedDriverHasPosition ? <Marker position={selectedDriver.position} icon={createLiveVehicleIcon({
+              heading: selectedDriver.heading,
+              isOnline: selectedDriver.live === 'Online',
+              driverKey: selectedDriver.id || selectedDriver.name,
+              vehicleIconScalePercent: selectedDriver?.gpsSettings?.vehicleIconScalePercent,
+              vehicleIconSvgPath: selectedDriver?.gpsSettings?.vehicleIconSvgPath
+            })}>
                   <Popup>
                     <div className="fw-semibold">{selectedDriver.name}</div>
                     <div>{selectedDriver.live || 'Offline'}</div>

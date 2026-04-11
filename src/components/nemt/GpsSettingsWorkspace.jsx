@@ -12,7 +12,9 @@ const DEFAULT_GPS_SETTINGS = {
   fgTimeIntervalMs: 5000,
   fgDistanceIntervalMeters: 8,
   bgTimeIntervalMs: 15000,
-  bgDistanceIntervalMeters: 12
+  bgDistanceIntervalMeters: 12,
+  vehicleIconScalePercent: 100,
+  vehicleIconSvgPath: ''
 };
 
 const clamp = (value, min, max) => {
@@ -23,12 +25,16 @@ const clamp = (value, min, max) => {
 
 const normalizeGpsSettings = value => {
   const settings = value && typeof value === 'object' ? value : {};
+  const rawVehicleIconSvgPath = String(settings.vehicleIconSvgPath || '').trim();
+  const normalizedVehicleIconSvgPath = rawVehicleIconSvgPath ? `/${rawVehicleIconSvgPath.replace(/^\/+/, '')}` : '';
   return {
     mapRadiusMeters: clamp(settings.mapRadiusMeters ?? DEFAULT_GPS_SETTINGS.mapRadiusMeters, 100, 5000),
     fgTimeIntervalMs: clamp(settings.fgTimeIntervalMs ?? DEFAULT_GPS_SETTINGS.fgTimeIntervalMs, 2000, 30000),
     fgDistanceIntervalMeters: clamp(settings.fgDistanceIntervalMeters ?? DEFAULT_GPS_SETTINGS.fgDistanceIntervalMeters, 3, 100),
     bgTimeIntervalMs: clamp(settings.bgTimeIntervalMs ?? DEFAULT_GPS_SETTINGS.bgTimeIntervalMs, 5000, 120000),
-    bgDistanceIntervalMeters: clamp(settings.bgDistanceIntervalMeters ?? DEFAULT_GPS_SETTINGS.bgDistanceIntervalMeters, 5, 200)
+    bgDistanceIntervalMeters: clamp(settings.bgDistanceIntervalMeters ?? DEFAULT_GPS_SETTINGS.bgDistanceIntervalMeters, 5, 200),
+    vehicleIconScalePercent: clamp(settings.vehicleIconScalePercent ?? DEFAULT_GPS_SETTINGS.vehicleIconScalePercent, 70, 200),
+    vehicleIconSvgPath: normalizedVehicleIconSvgPath
   };
 };
 
@@ -70,13 +76,24 @@ const GpsSettingsWorkspace = () => {
   const selectedDriver = drivers.find(driver => driver.id === selectedDriverId) || null;
   const selectedGpsSettings = selectedDriver ? gpsDrafts[selectedDriver.id] || normalizeGpsSettings(selectedDriver.gpsSettings) : normalizeGpsSettings({});
 
-  const updateDraft = (field, value) => {
+  const updateNumericDraft = (field, value) => {
     if (!selectedDriver) return;
     setGpsDrafts(current => ({
       ...current,
       [selectedDriver.id]: {
         ...normalizeGpsSettings(current[selectedDriver.id]),
         [field]: Number(value)
+      }
+    }));
+  };
+
+  const updateTextDraft = (field, value) => {
+    if (!selectedDriver) return;
+    setGpsDrafts(current => ({
+      ...current,
+      [selectedDriver.id]: {
+        ...normalizeGpsSettings(current[selectedDriver.id]),
+        [field]: String(value || '')
       }
     }));
   };
@@ -167,7 +184,7 @@ const GpsSettingsWorkspace = () => {
                       min={100}
                       max={5000}
                       value={selectedGpsSettings.mapRadiusMeters}
-                      onChange={event => updateDraft('mapRadiusMeters', event.target.value)}
+                      onChange={event => updateNumericDraft('mapRadiusMeters', event.target.value)}
                     />
                     <div className="small text-secondary mt-1">Visible area around this driver on dispatch map.</div>
                   </Col>
@@ -180,7 +197,7 @@ const GpsSettingsWorkspace = () => {
                       max={30000}
                       step={500}
                       value={selectedGpsSettings.fgTimeIntervalMs}
-                      onChange={event => updateDraft('fgTimeIntervalMs', event.target.value)}
+                      onChange={event => updateNumericDraft('fgTimeIntervalMs', event.target.value)}
                     />
                     <div className="small text-secondary mt-1">How often the app sends GPS while open.</div>
                   </Col>
@@ -192,7 +209,7 @@ const GpsSettingsWorkspace = () => {
                       min={3}
                       max={100}
                       value={selectedGpsSettings.fgDistanceIntervalMeters}
-                      onChange={event => updateDraft('fgDistanceIntervalMeters', event.target.value)}
+                      onChange={event => updateNumericDraft('fgDistanceIntervalMeters', event.target.value)}
                     />
                     <div className="small text-secondary mt-1">Minimum movement before sending next GPS update.</div>
                   </Col>
@@ -205,7 +222,7 @@ const GpsSettingsWorkspace = () => {
                       max={120000}
                       step={1000}
                       value={selectedGpsSettings.bgTimeIntervalMs}
-                      onChange={event => updateDraft('bgTimeIntervalMs', event.target.value)}
+                      onChange={event => updateNumericDraft('bgTimeIntervalMs', event.target.value)}
                     />
                     <div className="small text-secondary mt-1">How often GPS sync runs with app in background.</div>
                   </Col>
@@ -217,9 +234,33 @@ const GpsSettingsWorkspace = () => {
                       min={5}
                       max={200}
                       value={selectedGpsSettings.bgDistanceIntervalMeters}
-                      onChange={event => updateDraft('bgDistanceIntervalMeters', event.target.value)}
+                      onChange={event => updateNumericDraft('bgDistanceIntervalMeters', event.target.value)}
                     />
                     <div className="small text-secondary mt-1">Minimum movement required in background mode.</div>
+                  </Col>
+
+                  <Col md={6}>
+                    <Form.Label>Vehicle Icon Size (%)</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min={70}
+                      max={200}
+                      step={5}
+                      value={selectedGpsSettings.vehicleIconScalePercent}
+                      onChange={event => updateNumericDraft('vehicleIconScalePercent', event.target.value)}
+                    />
+                    <div className="small text-secondary mt-1">Per-driver map car size. 100 = default.</div>
+                  </Col>
+
+                  <Col md={6}>
+                    <Form.Label>Vehicle SVG Path (optional)</Form.Label>
+                    <Form.Control
+                      type="text"
+                      value={selectedGpsSettings.vehicleIconSvgPath}
+                      placeholder="/assets/gpscars/car-01.svg"
+                      onChange={event => updateTextDraft('vehicleIconSvgPath', event.target.value)}
+                    />
+                    <div className="small text-secondary mt-1">Use an SVG in public/assets, ex: /assets/gpscars/car-07.svg</div>
                   </Col>
                 </Row>
               )}

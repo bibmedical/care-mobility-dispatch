@@ -10,7 +10,9 @@ const DRIVER_GPS_DEFAULTS = {
   fgTimeIntervalMs: 5000,
   fgDistanceIntervalMeters: 8,
   bgTimeIntervalMs: 15000,
-  bgDistanceIntervalMeters: 12
+  bgDistanceIntervalMeters: 12,
+  vehicleIconScalePercent: 100,
+  vehicleIconSvgPath: ''
 };
 
 const clampNumeric = (value, min, max, fallback) => {
@@ -21,12 +23,16 @@ const clampNumeric = (value, min, max, fallback) => {
 
 export const normalizeDriverGpsSettings = value => {
   const settings = value && typeof value === 'object' ? value : {};
+  const rawVehicleIconSvgPath = String(settings.vehicleIconSvgPath || '').trim();
+  const normalizedVehicleIconSvgPath = rawVehicleIconSvgPath ? `/${rawVehicleIconSvgPath.replace(/^\/+/, '')}` : '';
   return {
     mapRadiusMeters: clampNumeric(settings.mapRadiusMeters, 100, 5000, DRIVER_GPS_DEFAULTS.mapRadiusMeters),
     fgTimeIntervalMs: clampNumeric(settings.fgTimeIntervalMs, 2000, 30000, DRIVER_GPS_DEFAULTS.fgTimeIntervalMs),
     fgDistanceIntervalMeters: clampNumeric(settings.fgDistanceIntervalMeters, 3, 100, DRIVER_GPS_DEFAULTS.fgDistanceIntervalMeters),
     bgTimeIntervalMs: clampNumeric(settings.bgTimeIntervalMs, 5000, 120000, DRIVER_GPS_DEFAULTS.bgTimeIntervalMs),
-    bgDistanceIntervalMeters: clampNumeric(settings.bgDistanceIntervalMeters, 5, 200, DRIVER_GPS_DEFAULTS.bgDistanceIntervalMeters)
+    bgDistanceIntervalMeters: clampNumeric(settings.bgDistanceIntervalMeters, 5, 200, DRIVER_GPS_DEFAULTS.bgDistanceIntervalMeters),
+    vehicleIconScalePercent: clampNumeric(settings.vehicleIconScalePercent, 70, 200, DRIVER_GPS_DEFAULTS.vehicleIconScalePercent),
+    vehicleIconSvgPath: normalizedVehicleIconSvgPath
   };
 };
 
