@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import Link from 'next/link';
 import { signOut, useSession } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Collapse } from 'react-bootstrap';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { findAllParent, findMenuItem, getMenuItemFromURL } from '@/helpers/menu';
@@ -118,42 +118,44 @@ const AppMenu = ({
   const pathname = usePathname();
   const [activeMenuItems, setActiveMenuItems] = useState([]);
   const currentUserId = String(session?.user?.id || '').trim();
-  const visibleMenuItems = (menuItems || []).reduce((items, item) => {
-    const allowedUserIds = Array.isArray(item?.allowedUserIds) ? item.allowedUserIds.map(value => String(value || '').trim()).filter(Boolean) : [];
-    if (allowedUserIds.length > 0 && !allowedUserIds.includes(currentUserId)) {
-      return items;
-    }
+  const visibleMenuItems = useMemo(() => {
+    const isAllowed = item => {
+      const allowedUserIds = Array.isArray(item?.allowedUserIds) ? item.allowedUserIds.map(value => String(value || '').trim()).filter(Boolean) : [];
+      if (allowedUserIds.length === 0) return true;
+      // Avoid locking the whole sidebar while the session is still resolving.
+      if (!currentUserId) return true;
+      return allowedUserIds.includes(currentUserId);
+    };
 
-    if (Array.isArray(item?.children) && item.children.length > 0) {
-      const visibleChildren = item.children.reduce((children, child) => {
-        const childAllowedUserIds = Array.isArray(child?.allowedUserIds) ? child.allowedUserIds.map(value => String(value || '').trim()).filter(Boolean) : [];
-        if (childAllowedUserIds.length > 0 && !childAllowedUserIds.includes(currentUserId)) {
-          return children;
+    const filterItems = items => {
+      return (items || []).reduce((acc, item) => {
+        if (item?.isTitle) {
+          acc.push(item);
+          return acc;
         }
-        children.push(child.children ? {
-          ...child,
-          children: (child.children || []).filter(grandChild => {
-            const grandChildAllowedUserIds = Array.isArray(grandChild?.allowedUserIds) ? grandChild.allowedUserIds.map(value => String(value || '').trim()).filter(Boolean) : [];
-            return grandChildAllowedUserIds.length === 0 || grandChildAllowedUserIds.includes(currentUserId);
-          })
-        } : child);
-        return children;
+
+        if (!isAllowed(item)) {
+          return acc;
+        }
+
+        if (Array.isArray(item?.children) && item.children.length > 0) {
+          const children = filterItems(item.children);
+          if (children.length === 0) {
+            return acc;
+          }
+          acc.push({ ...item,
+            children
+          });
+          return acc;
+        }
+
+        acc.push(item);
+        return acc;
       }, []);
+    };
 
-      if (!item.isTitle && visibleChildren.length === 0) {
-        return items;
-      }
-
-      items.push({
-        ...item,
-        children: visibleChildren
-      });
-      return items;
-    }
-
-    items.push(item);
-    return items;
-  }, []);
+    return filterItems(menuItems || []);
+  }, [menuItems, currentUserId]);
   const toggleMenu = (menuItem, show) => {
     if (show) setActiveMenuItems([menuItem.key, ...findAllParent(visibleMenuItems, menuItem)]);
   };
