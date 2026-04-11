@@ -200,6 +200,17 @@ html[data-bs-theme="dark"] {
             transform: translateX(calc(-1 * (var(--#{$prefix}startbar-width) - 6px)));
             transition: transform 0.2s ease, box-shadow 0.2s ease;
 
+            // Extend the hover target into the viewport so reveal is easy to trigger.
+            &::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                right: -24px;
+                width: 28px;
+                height: 100vh;
+                background: transparent;
+            }
+
             &:hover {
                 transform: translateX(0);
                 box-shadow: 4px 0 24px rgba(0, 0, 0, 0.13);
