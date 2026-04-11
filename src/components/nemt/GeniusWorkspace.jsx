@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
 import { useSession } from 'next-auth/react';
+import Image from 'next/image';
 import { useNemtContext } from '@/context/useNemtContext';
 import { getTripBillingAmount } from '@/helpers/nemt-billing';
 import { getTripServiceDateKey, isTripAssignedToDriver } from '@/helpers/nemt-dispatch-state';
@@ -444,6 +445,10 @@ const GeniusWorkspace = () => {
         <Col xl={6} lg={7} md={9}>
           <Card className="shadow-sm border-0" style={{ borderRadius: 22, overflow: 'hidden' }}>
             <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #2563eb 100%)', color: '#fff', padding: '1.2rem 1.4rem' }}>
+              <div className="d-flex align-items-center gap-2 mb-3">
+                <Image src="/genius/genius-icon.png" alt="Genius icon" width={28} height={28} priority />
+                <Image src="/genius/genius-horizontal.png" alt="Genius" width={132} height={32} priority style={{ height: 'auto' }} />
+              </div>
               <div className="small text-uppercase" style={{ letterSpacing: '0.18em', opacity: 0.8 }}>Private Billing</div>
               <h2 className="mb-0" style={{ fontWeight: 800 }}>Genius</h2>
             </div>
@@ -466,6 +471,9 @@ const GeniusWorkspace = () => {
   return <div className="container-fluid py-4">
     <div className="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
       <div>
+        <div className="mb-2">
+          <Image src="/genius/genius-horizontal.png" alt="Genius" width={170} height={40} priority style={{ height: 'auto' }} />
+        </div>
         <div className="small text-uppercase text-muted" style={{ letterSpacing: '0.18em' }}>Private Billing Engine</div>
         <h1 className="mb-1" style={{ fontWeight: 800 }}>Genius</h1>
         <div className="text-muted">Original internal workspace for SafeRide trip revenue, driver payout review, and audit-safe calculations.</div>
