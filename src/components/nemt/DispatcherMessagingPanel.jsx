@@ -748,7 +748,8 @@ const DispatcherMessagingPanel = ({
     reader.onload = () => {
       const image = new Image();
       image.onload = () => {
-        const maxSide = 1280;
+        const maxSide = 1080;
+        const maxDataUrlLength = 380_000;
         const scale = Math.min(1, maxSide / Math.max(image.width || 1, image.height || 1));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(image.width * scale));
@@ -759,7 +760,13 @@ const DispatcherMessagingPanel = ({
           return;
         }
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.72));
+        let quality = 0.56;
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        while (dataUrl.length > maxDataUrlLength && quality > 0.3) {
+          quality = Math.round((quality - 0.06) * 100) / 100;
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
+        resolve(dataUrl);
       };
       image.onerror = () => reject(new Error('Unable to read image.'));
       image.src = String(reader.result || '');

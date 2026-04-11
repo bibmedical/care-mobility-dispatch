@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { driverSharedStyles, driverTheme } from './driverTheme';
 import { getTripTone, getTripWindow } from './driverUtils';
+import { compressImageToJpegDataUrl } from '../../utils/imageCompression';
 
 type Props = {
   runtime: DriverRuntime;
@@ -230,12 +231,16 @@ export const DriverTripsSection = ({ runtime }: Props) => {
         }
         const cameraResult = await ImagePicker.launchCameraAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.35,
+          quality: 0.6,
           allowsEditing: true,
-          base64: true
         });
-        if (cameraResult.canceled || !cameraResult.assets?.[0]?.base64) return;
-        setCancelPhotoDataUrl(`data:image/jpeg;base64,${cameraResult.assets[0].base64}`);
+        if (cameraResult.canceled || !cameraResult.assets?.[0]?.uri) return;
+        const compressedDataUrl = await compressImageToJpegDataUrl(cameraResult.assets[0].uri, {
+          maxSide: 1080,
+          initialQuality: 0.44,
+          maxApproxBytes: 280_000
+        });
+        setCancelPhotoDataUrl(compressedDataUrl);
       } catch {
         openSettings();
       }
@@ -250,12 +255,16 @@ export const DriverTripsSection = ({ runtime }: Props) => {
         }
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.35,
+          quality: 0.6,
           allowsEditing: true,
-          base64: true
         });
-        if (result.canceled || !result.assets?.[0]?.base64) return;
-        setCancelPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
+        if (result.canceled || !result.assets?.[0]?.uri) return;
+        const compressedDataUrl = await compressImageToJpegDataUrl(result.assets[0].uri, {
+          maxSide: 1080,
+          initialQuality: 0.44,
+          maxApproxBytes: 280_000
+        });
+        setCancelPhotoDataUrl(compressedDataUrl);
       } catch {
         openSettings();
       }
@@ -312,13 +321,17 @@ export const DriverTripsSection = ({ runtime }: Props) => {
         }
         const cameraResult = await ImagePicker.launchCameraAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.3,
+          quality: 0.6,
           allowsEditing: true,
           aspect: [1, 1],
-          base64: true
         });
-        if (cameraResult.canceled || !cameraResult.assets?.[0]?.base64) return;
-        setCompletionPhotoDataUrl(`data:image/jpeg;base64,${cameraResult.assets[0].base64}`);
+        if (cameraResult.canceled || !cameraResult.assets?.[0]?.uri) return;
+        const compressedDataUrl = await compressImageToJpegDataUrl(cameraResult.assets[0].uri, {
+          maxSide: 1080,
+          initialQuality: 0.42,
+          maxApproxBytes: 280_000
+        });
+        setCompletionPhotoDataUrl(compressedDataUrl);
       } catch {
         openSettings();
       }
@@ -333,13 +346,17 @@ export const DriverTripsSection = ({ runtime }: Props) => {
         }
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.3,
+          quality: 0.6,
           allowsEditing: true,
           aspect: [1, 1],
-          base64: true
         });
-        if (result.canceled || !result.assets?.[0]?.base64) return;
-        setCompletionPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
+        if (result.canceled || !result.assets?.[0]?.uri) return;
+        const compressedDataUrl = await compressImageToJpegDataUrl(result.assets[0].uri, {
+          maxSide: 1080,
+          initialQuality: 0.42,
+          maxApproxBytes: 280_000
+        });
+        setCompletionPhotoDataUrl(compressedDataUrl);
       } catch {
         openSettings();
       }

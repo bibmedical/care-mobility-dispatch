@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { driverSharedStyles, driverTheme } from './driverTheme';
 import { DriverDocumentValue, DriverDocuments } from '../../types/driver';
+import { compressImageToJpegDataUrl } from '../../utils/imageCompression';
 
 type Props = {
   runtime: DriverRuntime;
@@ -54,20 +55,23 @@ export const DriverDocumentsSection = ({ runtime }: Props) => {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
+      quality: 0.8,
       allowsEditing: documentKey === 'profilePhoto',
-      base64: true
     });
 
-    if (result.canceled || !result.assets?.[0]?.base64) {
+    if (result.canceled || !result.assets?.[0]?.uri) {
       setActiveUploadKey('');
       return;
     }
 
     const asset = result.assets[0];
-    const mimeType = asset.mimeType || 'image/jpeg';
+    const compressedDataUrl = await compressImageToJpegDataUrl(asset.uri, {
+      maxSide: 1280,
+      initialQuality: 0.52,
+      maxApproxBytes: 340_000
+    });
     const fallbackFileName = `${documentKey}-${Date.now()}.jpg`;
-    await runtime.uploadDriverDocument(documentKey, `data:${mimeType};base64,${asset.base64}`, asset.fileName || fallbackFileName);
+    await runtime.uploadDriverDocument(documentKey, compressedDataUrl, asset.fileName || fallbackFileName);
     setActiveUploadKey('');
   };
 

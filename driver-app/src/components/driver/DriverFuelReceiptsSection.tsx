@@ -1,11 +1,11 @@
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { DriverFuelRequest } from '../../types/driver';
 import { getDriverAccentColor } from './driverColor';
 import { driverTheme } from './driverTheme';
+import { compressImageToJpegDataUrl } from '../../utils/imageCompression';
 
 type Props = {
   runtime: DriverRuntime;
@@ -68,13 +68,12 @@ export const DriverFuelReceiptsSection = ({ runtime }: Props) => {
       }
       if (result.canceled || !result.assets?.[0]) return;
       setIsProcessingPhoto(true);
-      const optimized = await ImageManipulator.manipulateAsync(
-        result.assets[0].uri,
-        [{ resize: { width: 800 } }],
-        { compress: 0.45, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-      );
-      if (!optimized.base64) { setPhotoError('Unable to process photo. Try again.'); return; }
-      set('imageUri', `data:image/jpeg;base64,${optimized.base64}`);
+      const compressedDataUrl = await compressImageToJpegDataUrl(result.assets[0].uri, {
+        maxSide: 1080,
+        initialQuality: 0.48,
+        maxApproxBytes: 320_000
+      });
+      set('imageUri', compressedDataUrl);
     } catch {
       setPhotoError('Unable to take photo. Try again.');
     } finally {

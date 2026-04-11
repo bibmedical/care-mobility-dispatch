@@ -5,6 +5,7 @@ import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { formatShortClock } from './driverUtils';
 import { DriverMessage } from '../../types/driver';
 import { driverTheme } from './driverTheme';
+import { compressImageToJpegDataUrl } from '../../utils/imageCompression';
 
 type Props = {
   runtime: DriverRuntime;
@@ -76,14 +77,18 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.35,
-        base64: true,
+        quality: 0.6,
         allowsEditing: true
       });
 
-      if (result.canceled || !result.assets?.[0]?.base64) return;
+      if (result.canceled || !result.assets?.[0]?.uri) return;
 
-      setSelectedPhotoDataUrl(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      const compressedDataUrl = await compressImageToJpegDataUrl(result.assets[0].uri, {
+        maxSide: 1080,
+        initialQuality: 0.46,
+        maxApproxBytes: 300_000
+      });
+      setSelectedPhotoDataUrl(compressedDataUrl);
     } catch {
       setSelectedPhotoDataUrl('');
     }
