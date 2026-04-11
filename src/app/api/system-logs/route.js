@@ -1,5 +1,6 @@
 import { getServerSession } from 'next-auth';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
+import { isAdminRole } from '@/helpers/system-users';
 import { clearAllActivityLogs, getAllActivityLogs, getActivityLogsByRole, getActivityLogsByUserId, getActivityLogsSummary, logPresenceHeartbeat, logUserActionEvent } from '@/server/activity-logs-store';
 
 export async function GET(req) {
@@ -53,6 +54,9 @@ export async function POST(req) {
     const ipAddress = String(req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '').split(',')[0].trim();
 
     if (isClearAllRequest) {
+      if (!isAdminRole(session?.user?.role)) {
+        return Response.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
       const remaining = await clearAllActivityLogs();
       return Response.json({ success: true, remaining });
     }

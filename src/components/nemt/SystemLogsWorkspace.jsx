@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import { useNotificationContext } from '@/context/useNotificationContext';
 import { useLayoutContext } from '@/context/useLayoutContext';
+import { isAdminRole } from '@/helpers/system-users';
 import styles from './SystemLogsWorkspace.module.scss';
 
 const SESSION_EVENT_TYPES = new Set(['LOGIN', 'LOGOUT']);
@@ -330,8 +332,10 @@ const buildDriverAlertSummary = log => {
 };
 
 const SystemLogsWorkspace = () => {
+  const { data: session } = useSession();
   const { showNotification } = useNotificationContext();
   const { themeMode } = useLayoutContext();
+  const canClearLogs = isAdminRole(session?.user?.role);
 
   const [logs, setLogs] = useState([]);
   const [allLogs, setAllLogs] = useState([]);
@@ -803,9 +807,11 @@ const SystemLogsWorkspace = () => {
 
         <div className={styles.controlsMeta}>
           <span>{stats.todayEvents} eventos hoy en todo el sistema</span>
-          <button onClick={handleClearAllLogs} className={styles.backButton} disabled={loading}>
-            Limpiar Logs
-          </button>
+          {canClearLogs ? (
+            <button onClick={handleClearAllLogs} className={styles.backButton} disabled={loading}>
+              Limpiar Logs
+            </button>
+          ) : null}
           <button onClick={fetchLogs} className={styles.button} disabled={loading}>
             {loading ? 'Cargando...' : 'Actualizar'}
           </button>
