@@ -3075,31 +3075,44 @@ const DispatcherWorkspace = () => {
     });
   };
 
+  const handleDetachedMapReset = () => {
+    setMapCityQuickFilter('');
+    setMapZipQuickFilter('');
+    setSelectedTripIds([]);
+    setSelectedDriverId(null);
+    setIsManualDriverScope(false);
+    setSelectedRouteId('');
+    setFollowSelectedDriver(false);
+    router.replace('/dispatcher');
+  };
+
   const mapInteractionLocked = mapLocked && !isDispatchMapDetached;
 
   const renderDispatchMapPanel = () => <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
       <CardBody className="p-0">
         {showInlineMap ? <div className="position-relative h-100">
           {!isDispatchMapDetached ? <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'scroll', overflowY: 'hidden', scrollbarGutter: 'stable both-edges', whiteSpace: 'nowrap' }}>
-            <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapInteractionLocked}>Clear</Button>
-            <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
-              <option value="">City</option>
-              {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
-            </Form.Select>
-            <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 130, ...dispatcherSurfaceStyles.select }}>
-              <option value="">ZIP Code</option>
-              {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
-            </Form.Select>
-            <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
-              <option value="auto">Map: Auto</option>
-              <option value="openstreetmap">Map: OSM</option>
-              <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
-            </Form.Select>
-            <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapInteractionLocked}>All drivers</Button>
-            <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked || !selectedDriver?.hasRealLocation}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button>
-            <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
-            <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
-            {!isDetachedMapMode ? <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button> : null}
+            {isDetachedMapMode ? <Button variant="dark" size="sm" onClick={handleDetachedMapReset}>RESET</Button> : <>
+                <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapInteractionLocked}>Clear</Button>
+                <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
+                  <option value="">City</option>
+                  {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
+                </Form.Select>
+                <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 130, ...dispatcherSurfaceStyles.select }}>
+                  <option value="">ZIP Code</option>
+                  {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
+                </Form.Select>
+                <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
+                  <option value="auto">Map: Auto</option>
+                  <option value="openstreetmap">Map: OSM</option>
+                  <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
+                </Form.Select>
+                <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapInteractionLocked}>All drivers</Button>
+                <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked || !selectedDriver?.hasRealLocation}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button>
+                <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
+                <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
+                {!isDetachedMapMode ? <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button> : null}
+              </>}
           </div> : null}
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%', cursor: mapInteractionLocked ? 'not-allowed' : 'grab' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}-${detachedMapResizeTick}`} />

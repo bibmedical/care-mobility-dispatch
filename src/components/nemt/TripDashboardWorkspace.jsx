@@ -3282,6 +3282,16 @@ const TripDashboardWorkspace = () => {
     }
   };
 
+  const handleDetachedMapReset = () => {
+    setMapCityQuickFilter('');
+    setMapZipQuickFilter('');
+    setSelectedTripIds([]);
+    setSelectedDriverId(null);
+    setSelectedRouteId(null);
+    setShowRoute(true);
+    router.replace('/trip-dashboard');
+  };
+
   const driverPanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
@@ -3404,30 +3414,32 @@ const TripDashboardWorkspace = () => {
                 Hide Map
               </Button> : null}
             <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'scroll', overflowY: 'hidden', scrollbarGutter: 'stable both-edges', whiteSpace: 'nowrap' }}>
-              <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
-              <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
-                <option value="">City</option>
-                {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
-              </Form.Select>
-              <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} style={mapQuickZipControlStyle}>
-                <option value="">ZIP Code</option>
-                {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
-              </Form.Select>
-              <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
-                <option value="auto">Map: Auto</option>
-                <option value="openstreetmap">Map: OSM</option>
-                <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
-              </Form.Select>
-              <Button variant="dark" size="sm" onClick={() => {
-            setShowBottomPanels(true);
-            setPanelView(TRIP_DASHBOARD_PANEL_VIEWS.both);
-            if (isStandardLayout && showMapPane) {
-              setRightPanelCollapsed(false);
-              setColumnSplit(current => clamp(current, 38, 68));
-            }
-            setStatusMessage('Bottom panels anchored.');
-          }}>Panels anchored</Button>
-              {!detached ? <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button> : null}
+              {detached ? <Button variant="dark" size="sm" onClick={handleDetachedMapReset}>RESET</Button> : <>
+                  <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
+                  <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
+                    <option value="">City</option>
+                    {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
+                  </Form.Select>
+                  <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} style={mapQuickZipControlStyle}>
+                    <option value="">ZIP Code</option>
+                    {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
+                  </Form.Select>
+                  <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
+                    <option value="auto">Map: Auto</option>
+                    <option value="openstreetmap">Map: OSM</option>
+                    <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
+                  </Form.Select>
+                  <Button variant="dark" size="sm" onClick={() => {
+                setShowBottomPanels(true);
+                setPanelView(TRIP_DASHBOARD_PANEL_VIEWS.both);
+                if (isStandardLayout && showMapPane) {
+                  setRightPanelCollapsed(false);
+                  setColumnSplit(current => clamp(current, 38, 68));
+                }
+                setStatusMessage('Bottom panels anchored.');
+              }}>Panels anchored</Button>
+                  {!detached ? <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button> : null}
+                </>}
             </div>
             {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
           zIndex: 500,
