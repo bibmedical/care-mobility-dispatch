@@ -1198,23 +1198,7 @@ const TripDashboardWorkspace = () => {
             Peek panel
           </Button> : null;
       case 'toolbar-edit':
-        return <>
-            {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)}>Edit toolbar</Button>}
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleResetToolbarLayout}>Reset toolbar</Button>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-            setShowToolbarTools(current => !current);
-            setShowColumnPicker(false);
-          }}>Toolbar</Button>
-            {showToolbarTools ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 82, width: 300 }}>
-                <CardBody className="p-3 text-dark">
-                  <div className="fw-semibold mb-2">Toolbar</div>
-                  <div className="small text-muted mb-3">Turn each toolbar block on or off.</div>
-                  <div className="d-flex flex-column gap-2" style={{ maxHeight: 300, overflowY: 'auto' }}>
-                    {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`toolbar-tools-${blockId}`} type="switch" id={`toolbar-tools-switch-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
-                  </div>
-                </CardBody>
-              </Card> : null}
-          </>;
+        return null;
       case 'columns':
         return <>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
