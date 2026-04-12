@@ -3,6 +3,7 @@ import { query, queryOne, queryRows } from '@/server/db';
 const STALE_OPEN_SESSION_MS = 18 * 60 * 60 * 1000;
 const ACTIVE_WEB_HEARTBEAT_WINDOW_MS = parseInt(process.env.ACTIVE_WEB_HEARTBEAT_WINDOW_MS || '180000', 10);
 const ACTIVE_WEB_LOGIN_GRACE_MS = parseInt(process.env.ACTIVE_WEB_LOGIN_GRACE_MS || '120000', 10);
+const isOperationalActivityLoggingEnabled = () => String(process.env.ENABLE_ACTIVITY_ACTION_LOGS || '').trim().toLowerCase() === 'true';
 
 const toIsoTimestamp = value => {
   const parsed = new Date(value);
@@ -351,6 +352,7 @@ export const logUserActionEvent = async ({
   metadata = null
 }) => {
   try {
+    if (!isOperationalActivityLoggingEnabled()) return null;
     if (!userId) return null;
     const logEntry = buildBaseLogEntry({
       userId,
@@ -384,6 +386,7 @@ export const logPresenceHeartbeat = async ({
   minIntervalMs = 60 * 1000
 }) => {
   try {
+    if (!isOperationalActivityLoggingEnabled()) return null;
     if (!userId) return null;
 
     const latestHeartbeat = await getLatestPresenceHeartbeat(userId);

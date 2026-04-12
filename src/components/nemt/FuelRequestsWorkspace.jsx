@@ -2,6 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+const API_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = async (input, init = {}) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
 const STATUS_LABELS = {
   all: 'All',
   pending: 'REQUESTING FUEL',
@@ -50,13 +66,13 @@ export default function FuelRequestsWorkspace() {
     setError('');
     try {
       const query = filter === 'all' ? '' : `?status=${encodeURIComponent(filter)}`;
-      const res = await fetch(`/api/fuel-requests${query}`);
+      const res = await fetchWithTimeout(`/api/fuel-requests${query}`);
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Load failed.');
       const nextRows = Array.isArray(data.rows) ? data.rows : [];
       setRows(nextRows);
     } catch (err) {
-      setError(err?.message || 'Unable to load fuel requests.');
+      setError(err?.name === 'AbortError' ? 'Fuel Requests timed out.' : err?.message || 'Unable to load fuel requests.');
     } finally {
       setLoading(false);
     }
@@ -134,7 +150,7 @@ export default function FuelRequestsWorkspace() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/fuel-requests/${encodeURIComponent(approving.id)}/approve`, {
+      const res = await fetchWithTimeout(`/api/fuel-requests/${encodeURIComponent(approving.id)}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -2,6 +2,22 @@
 
 import { useEffect, useState } from 'react';
 
+const API_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = async (input, init = {}) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
 const delay = ms => new Promise(resolve => {
   if (typeof window !== 'undefined') {
     window.setTimeout(resolve, ms);
@@ -23,7 +39,7 @@ const fetchAdminPayloadWithRetry = async (attempts = 3) => {
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch('/api/nemt/admin', {
+      const response = await fetchWithTimeout('/api/nemt/admin', {
         cache: 'no-store',
         credentials: 'same-origin'
       });
@@ -76,7 +92,7 @@ const useNemtAdminApi = () => {
     setSaving(true);
     setError('');
     try {
-      const response = await fetch('/api/nemt/admin', {
+      const response = await fetchWithTimeout('/api/nemt/admin', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -91,7 +107,7 @@ const useNemtAdminApi = () => {
       }
       return payload;
     } catch (saveError) {
-      const message = saveError.message || 'Unable to save admin data';
+      const message = saveError?.name === 'AbortError' ? 'Saving admin data timed out.' : saveError.message || 'Unable to save admin data';
       setError(message);
       throw saveError;
     } finally {

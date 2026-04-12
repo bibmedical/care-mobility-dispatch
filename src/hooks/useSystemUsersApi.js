@@ -2,6 +2,22 @@
 
 import { useEffect, useState } from 'react';
 
+const API_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = async (input, init = {}) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
 const parseApiPayload = async response => {
   const rawText = await response.text();
   if (!rawText) {
@@ -45,14 +61,14 @@ const useSystemUsersApi = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/system-users', { cache: 'no-store' });
+      const response = await fetchWithTimeout('/api/system-users', { cache: 'no-store' });
       const { payload, rawText } = await parseApiPayload(response);
       if (!response.ok || !payload) {
         throw new Error(getApiErrorMessage(response, payload, 'Unable to load users', rawText));
       }
       setData(payload);
     } catch (fetchError) {
-      setError(fetchError.message || 'Unable to load users');
+      setError(fetchError?.name === 'AbortError' ? 'User Management request timed out.' : fetchError.message || 'Unable to load users');
     } finally {
       setLoading(false);
     }
@@ -62,7 +78,7 @@ const useSystemUsersApi = () => {
     setSaving(true);
     setError('');
     try {
-      const response = await fetch('/api/system-users', {
+      const response = await fetchWithTimeout('/api/system-users', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -79,7 +95,7 @@ const useSystemUsersApi = () => {
       }
       return payload;
     } catch (saveError) {
-      const message = saveError.message || 'Unable to save users';
+      const message = saveError?.name === 'AbortError' ? 'Saving users timed out.' : saveError.message || 'Unable to save users';
       setError(message);
       throw saveError;
     } finally {

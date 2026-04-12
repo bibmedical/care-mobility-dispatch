@@ -18,6 +18,21 @@ const getTripTypeCode = trip => {
 };
 
 const formatTodayDate = () => new Date().toISOString().slice(0, 10);
+const API_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = async (input, init = {}) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
 
 const GeniusWorkspace = () => {
   const { data: session } = useSession();
@@ -93,7 +108,7 @@ const GeniusWorkspace = () => {
         if (selectedDate !== 'all') query.set('serviceDate', selectedDate);
         if (selectedDriverId !== 'all') query.set('driverId', selectedDriverId);
 
-        const response = await fetch(`/api/genius/receipts?${query.toString()}`, { cache: 'no-store' });
+        const response = await fetchWithTimeout(`/api/genius/receipts?${query.toString()}`, { cache: 'no-store' });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload?.success === false) {
           throw new Error(payload?.error || 'Unable to load fuel receipts');
@@ -104,7 +119,7 @@ const GeniusWorkspace = () => {
         }
       } catch (error) {
         if (!ignore) {
-          setFuelReceiptError(error?.message || 'Unable to load fuel receipts');
+          setFuelReceiptError(error?.name === 'AbortError' ? 'Genius fuel receipts timed out.' : error?.message || 'Unable to load fuel receipts');
           setFuelReceipts([]);
         }
       } finally {
@@ -135,7 +150,7 @@ const GeniusWorkspace = () => {
         if (selectedDate !== 'all') query.set('serviceDate', selectedDate);
         if (selectedDriverId !== 'all') query.set('driverId', selectedDriverId);
 
-        const response = await fetch(`/api/genius/payouts?${query.toString()}`, { cache: 'no-store' });
+        const response = await fetchWithTimeout(`/api/genius/payouts?${query.toString()}`, { cache: 'no-store' });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload?.success === false) {
           throw new Error(payload?.error || 'Unable to load payout receipts');
@@ -146,7 +161,7 @@ const GeniusWorkspace = () => {
         }
       } catch (error) {
         if (!ignore) {
-          setPayoutError(error?.message || 'Unable to load payout receipts');
+          setPayoutError(error?.name === 'AbortError' ? 'Genius payouts timed out.' : error?.message || 'Unable to load payout receipts');
           setPayoutReceipts([]);
         }
       } finally {
