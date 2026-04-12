@@ -929,11 +929,9 @@ const DispatcherWorkspace = () => {
     };
 
     window.addEventListener('storage', handleStorage);
-    const pollId = window.setInterval(applySnapshot, 2500);
 
     return () => {
       window.removeEventListener('storage', handleStorage);
-      window.clearInterval(pollId);
     };
   }, [isDetachedMapMode]);
 

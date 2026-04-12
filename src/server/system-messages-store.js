@@ -52,7 +52,7 @@ export const readSystemMessages = async () => {
   let messages;
   try {
     await ensureTable();
-    const result = await query(`SELECT * FROM system_messages ORDER BY created_at DESC`);
+    const result = await query(`SELECT * FROM system_messages ORDER BY created_at DESC LIMIT 500`);
     messages = result.rows.map(row => ({
       id: row.id,
       driverId: row.driver_id,

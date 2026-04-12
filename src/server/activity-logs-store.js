@@ -43,6 +43,7 @@ const fetchAllLogsDesc = async () => {
     SELECT id, user_id, user_name, user_role, user_email, ip_address, event_type, event_label, target, metadata, timestamp, date, time
     FROM activity_logs
     ORDER BY timestamp DESC
+    LIMIT 5000
   `);
   return rows.map(mapRowToLog);
 };
