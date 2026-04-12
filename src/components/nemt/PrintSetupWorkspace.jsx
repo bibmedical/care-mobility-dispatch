@@ -177,8 +177,8 @@ const PrintSetupWorkspace = () => {
               <div>
                 <h6 className="mb-2">Accesos rapidos</h6>
                 <div className="d-flex gap-2 flex-wrap">
-                  <Button as={Link} href="/trip-dashboard" variant="primary" size="sm">Abrir Trip Dashboard</Button>
-                  <Button as={Link} href="/dispatcher" variant="outline-secondary" size="sm">Abrir Dispatcher</Button>
+                  <Link href="/trip-dashboard" className="btn btn-primary btn-sm">Abrir Trip Dashboard</Link>
+                  <Link href="/dispatcher" className="btn btn-outline-secondary btn-sm">Abrir Dispatcher</Link>
                 </div>
               </div>
             </CardBody>

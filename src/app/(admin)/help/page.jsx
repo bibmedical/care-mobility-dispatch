@@ -1,6 +1,6 @@
 import PageTitle from '@/components/PageTitle';
 import Link from 'next/link';
-import { Badge, Button, Card, CardBody, Col, Row, Table } from 'react-bootstrap';
+import { Badge, Card, CardBody, Col, Row, Table } from 'react-bootstrap';
 
 export const metadata = {
   title: 'Help'
@@ -149,8 +149,8 @@ const HelpPage = () => {
               <p className="text-muted mb-0">Indice alfabetico para ubicar cada modulo del sistema, que hace y donde abrirlo.</p>
             </div>
             <div className="d-flex flex-wrap gap-2">
-              <Button as={Link} href="/dispatcher" variant="primary">Open Dispatcher</Button>
-              <Button as={Link} href="/system-messages" variant="outline-primary">Open System Messages</Button>
+              <Link href="/dispatcher" className="btn btn-primary">Open Dispatcher</Link>
+              <Link href="/system-messages" className="btn btn-outline-primary">Open System Messages</Link>
             </div>
           </div>
         </CardBody>
@@ -355,7 +355,7 @@ const HelpPage = () => {
                     <td className="fw-semibold">{entry.module}</td>
                     <td>{entry.instruction}</td>
                     <td>
-                      <Button as={Link} href={entry.route} variant="outline-secondary" size="sm">{entry.route}</Button>
+                      <Link href={entry.route} className="btn btn-outline-secondary btn-sm">{entry.route}</Link>
                     </td>
                   </tr>)}
               </tbody>

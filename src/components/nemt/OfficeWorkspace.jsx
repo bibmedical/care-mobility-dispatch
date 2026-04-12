@@ -42,7 +42,7 @@ const OfficeWorkspace = () => {
             <CardBody>
               <h4 className="mb-2">Print Setup</h4>
               <p className="text-muted mb-3">Choose the template you want to use when printing routes.</p>
-              <Button as={Link} href="/settings/office/print-setup" variant="primary">Open Print Setup</Button>
+              <Link href="/settings/office/print-setup" className="btn btn-primary">Open Print Setup</Link>
             </CardBody>
           </Card>
         </Col>
@@ -51,7 +51,7 @@ const OfficeWorkspace = () => {
             <CardBody>
               <h4 className="mb-2">Templates</h4>
               <p className="text-muted mb-3">Prepare office templates and keep this space ready for more layouts.</p>
-              <Button as={Link} href="/settings/office/templates" variant="outline-secondary">Open Templates</Button>
+              <Link href="/settings/office/templates" className="btn btn-outline-secondary">Open Templates</Link>
             </CardBody>
           </Card>
         </Col>
@@ -60,7 +60,7 @@ const OfficeWorkspace = () => {
             <CardBody>
               <h4 className="mb-2">Printers</h4>
               <p className="text-muted mb-3">Keep a separate module for printers and print destinations.</p>
-              <Button as={Link} href="/settings/office/printers" variant="outline-secondary">Open Printers</Button>
+              <Link href="/settings/office/printers" className="btn btn-outline-secondary">Open Printers</Link>
             </CardBody>
           </Card>
         </Col>
