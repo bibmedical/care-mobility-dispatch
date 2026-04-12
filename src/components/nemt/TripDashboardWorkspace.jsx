@@ -1152,9 +1152,6 @@ const TripDashboardWorkspace = () => {
       case 'trip-search':
         return <div className="d-flex align-items-center gap-2 flex-nowrap">
             <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, patient, phone, address..." style={{ width: 130 }} />
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setToolbarCollapsed(true)} title="Hide menu">
-              <IconifyIcon icon="iconoir:eye-closed" />
-            </Button>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
             setTopButtonsRowCollapsed(current => !current);
             setShowToolbarTools(false);
@@ -3676,7 +3673,7 @@ const TripDashboardWorkspace = () => {
               </CardBody>
             </Card> : <Card className="h-100">
             <CardBody className="p-0 d-flex flex-column h-100">
-              {toolbarCollapsed ? <div className="d-flex align-items-center justify-content-between p-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+              {(toolbarCollapsed && false) ? <div className="d-flex align-items-center justify-content-between p-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                   <button type="button" onClick={() => setToolbarCollapsed(false)} style={{
                 borderRadius: 10,
                 border: '1px solid rgba(15, 23, 42, 0.25)',

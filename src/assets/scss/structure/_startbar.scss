@@ -197,32 +197,26 @@ html[data-bs-theme="dark"] {
 @include media-breakpoint-up(xl) {
     body[data-sidebar-size="collapsed"] {
         .startbar {
-            transform: translateX(calc(-1 * (var(--#{$prefix}startbar-width) - 10px)));
-            transition: transform 0.16s ease-out, box-shadow 0.16s ease-out;
+            transform: translateX(calc(-1 * var(--#{$prefix}startbar-width)));
+            transition: transform 0.18s ease-out;
             will-change: transform;
-            overflow: visible;
-
-            // Invisible trigger area so reveal works without pixel-perfect aiming.
-            &::after {
-                content: "";
-                position: absolute;
-                top: 0;
-                right: -42px;
-                width: 42px;
-                height: 100vh;
-                background: transparent;
-            }
-
-            &:hover {
-                transform: translateX(0);
-                box-shadow: 6px 0 24px rgba(15, 23, 42, 0.2);
-                z-index: 1006;
-            }
         }
 
         .page-wrapper {
             .page-content {
-                margin-left: 10px;
+                margin-left: 0;
+            }
+        }
+    }
+
+    body[data-sidebar-size="default"] {
+        .startbar {
+            transform: translateX(0);
+        }
+
+        .page-wrapper {
+            .page-content {
+                margin-left: var(--bs-startbar-width);
             }
         }
     }
