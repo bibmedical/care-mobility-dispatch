@@ -64,7 +64,10 @@ const useInactivityLogout = ({ enabled = true } = {}) => {
         fetch('/api/auth/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: session.user.id })
+          body: JSON.stringify({
+            userId: session.user.id,
+            authSessionId: session.user.authSessionId
+          })
         }).catch(err => console.error('Failed to log inactivity logout:', err));
       }
       

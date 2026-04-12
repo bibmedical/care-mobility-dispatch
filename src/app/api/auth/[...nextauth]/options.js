@@ -2,8 +2,8 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { randomBytes } from 'crypto';
 import { authorizePersistedSystemUser, findPersistedSystemUserByIdentifier } from '@/server/system-users-store';
 import { logLoginFailure } from '@/server/login-failures-store';
-import { hasRecentOpenWebSession, logLoginEvent, releaseOpenWebSession } from '@/server/activity-logs-store';
 import { consumeVerifiedTemp2FASession } from '@/server/temp-2fa-session-store';
+import { createWebAuthSession, hasActiveWebSession, revokeOtherWebAuthSessions } from '@/server/web-auth-session-store';
 
 const isLocalPasswordlessWebEnabled = () => process.env.NODE_ENV !== 'production';
 
@@ -22,7 +22,7 @@ const getRequestIp = req => {
   return normalizeIp(forwarded || realIp || socketIp || '');
 };
 
-const isWebDuplicateSessionGuardEnabled = () => process.env.NODE_ENV === 'production' || String(process.env.ENABLE_WEB_SESSION_GUARD || '').trim().toLowerCase() === 'true';
+const isWebDuplicateSessionGuardEnabled = () => String(process.env.ENABLE_WEB_SESSION_GUARD || '').trim().toLowerCase() === 'true';
 
 export const options = {
   providers: [CredentialsProvider({
@@ -53,6 +53,7 @@ export const options = {
     async authorize(credentials, req) {
       try {
         const requestIp = getRequestIp(req);
+        const userAgent = typeof req?.headers?.get === 'function' ? req.headers.get('user-agent') : req?.headers?.['user-agent'];
         const clientType = credentials?.clientType ?? 'web';
         const forceSessionTakeover = String(credentials?.forceSessionTakeover || '').trim().toLowerCase() === 'true';
         const identifier = String(credentials?.identifier || '').trim();
@@ -68,11 +69,10 @@ export const options = {
           });
 
         if (result && clientType === 'web' && isWebDuplicateSessionGuardEnabled()) {
-          const hasActiveSession = await hasRecentOpenWebSession(result.id, { requestIp });
+          const hasActiveSession = await hasActiveWebSession(result.id, { requestIp });
           if (hasActiveSession) {
             if (forceSessionTakeover) {
-              await releaseOpenWebSession(result.id, {
-                ipAddress: requestIp,
+              await revokeOtherWebAuthSessions(result.id, {
                 reason: 'Forced takeover during credentials login'
               });
             } else {
@@ -103,7 +103,9 @@ export const options = {
 
         return result ? {
           ...result,
-          loginIp: requestIp
+          loginIp: requestIp,
+          authSessionId: randomBytes(24).toString('hex'),
+          userAgent: String(userAgent || '')
         } : null;
       } catch (error) {
         // Log failed attempt on error
@@ -137,6 +139,7 @@ export const options = {
       // User has already been verified by email verification endpoint
       try {
         const requestIp = getRequestIp(req);
+        const userAgent = typeof req?.headers?.get === 'function' ? req.headers.get('user-agent') : req?.headers?.['user-agent'];
         const user = JSON.parse(credentials?.user || '{}');
         if (!user.id || !user.email) {
           // Log failed attempt
@@ -150,7 +153,9 @@ export const options = {
         }
         return {
           ...user,
-          loginIp: requestIp
+          loginIp: requestIp,
+          authSessionId: randomBytes(24).toString('hex'),
+          userAgent: String(userAgent || '')
         };
       } catch (error) {
         // Log failed attempt
@@ -171,20 +176,22 @@ export const options = {
   callbacks: {
     async signIn({
       user,
-      account,
-      profile,
-      email,
-      credentials
+      account
     }) {
-      // Log successful login
-      if (user && user.id) {
-        void logLoginEvent(
-          user.id,
-          user.username || user.email,
-          user.role || 'unknown',
-          user.email,
-          normalizeIp(user.loginIp || '')
-        ).catch(err => console.error('Failed to log login event:', err));
+      if (user?.id && user?.authSessionId && account?.provider) {
+        try {
+          await createWebAuthSession({
+            sessionId: user.authSessionId,
+            userId: user.id,
+            username: user.username || user.email,
+            email: user.email,
+            role: user.role || 'unknown',
+            ipAddress: normalizeIp(user.loginIp || ''),
+            userAgent: user.userAgent || ''
+          });
+        } catch (error) {
+          console.error('Failed to create web auth session:', error);
+        }
       }
       return true;
     },
@@ -206,6 +213,7 @@ export const options = {
         };
         token.loginIp = normalizeIp(user.loginIp || '');
         token.authenticatedAt = Date.now();
+        token.authSessionId = user.authSessionId || '';
       }
       return token;
     },
@@ -216,7 +224,8 @@ export const options = {
       session.user = {
         ...token.user,
         name: token.user ? `${token.user.firstName} ${token.user.lastName}`.trim() : '',
-        inactivityTimeoutMinutes: token.user?.inactivityTimeoutMinutes || 15
+        inactivityTimeoutMinutes: token.user?.inactivityTimeoutMinutes || 15,
+        authSessionId: token.authSessionId || ''
       };
       return Promise.resolve(session);
     }

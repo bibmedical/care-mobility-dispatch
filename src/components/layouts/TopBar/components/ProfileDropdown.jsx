@@ -23,7 +23,10 @@ const ProfileDropdown = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           keepalive: true,
-          body: JSON.stringify({ userId: session.user.id })
+          body: JSON.stringify({
+            userId: session.user.id,
+            authSessionId: session.user.authSessionId
+          })
         }).catch(err => console.error('Failed to log logout:', err));
       }
     } catch (error) {

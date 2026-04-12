@@ -1,12 +1,12 @@
 import { authorizePersistedSystemUser, findPersistedSystemUserByIdentifier } from '@/server/system-users-store';
 import { getRecentFailures, logLoginFailure } from '@/server/login-failures-store';
 import { createTemp2FASession } from '@/server/temp-2fa-session-store';
-import { hasRecentOpenWebSession, releaseOpenWebSession } from '@/server/activity-logs-store';
+import { hasActiveWebSession, revokeOtherWebAuthSessions } from '@/server/web-auth-session-store';
 import { randomBytes } from 'crypto';
 const MAX_LOGIN_FAILURES = parseInt(process.env.LOGIN_MAX_FAILURES || '5', 10);
 const LOGIN_LOCK_WINDOW_MINUTES = parseInt(process.env.LOGIN_LOCK_WINDOW_MINUTES || '15', 10);
 const isLocalPasswordlessWebEnabled = () => process.env.NODE_ENV !== 'production';
-const isWebDuplicateSessionGuardEnabled = () => process.env.NODE_ENV === 'production' || String(process.env.ENABLE_WEB_SESSION_GUARD || '').trim().toLowerCase() === 'true';
+const isWebDuplicateSessionGuardEnabled = () => String(process.env.ENABLE_WEB_SESSION_GUARD || '').trim().toLowerCase() === 'true';
 
 const normalizeIp = value => {
   const raw = String(value ?? '').split(',')[0].trim();
@@ -135,12 +135,11 @@ export async function POST(req) {
     }
 
     const hasActiveSession = isWebDuplicateSessionGuardEnabled()
-      ? await hasRecentOpenWebSession(user.id, { requestIp })
+      ? await hasActiveWebSession(user.id, { requestIp })
       : false;
     if (hasActiveSession) {
       if (shouldForceSessionTakeover) {
-        await releaseOpenWebSession(user.id, {
-          ipAddress: requestIp,
+        await revokeOtherWebAuthSessions(user.id, {
           reason: 'Forced takeover during pre-login validation'
         });
       } else {

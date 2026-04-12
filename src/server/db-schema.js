@@ -158,6 +158,22 @@ const _runMigrationsOnce = async () => {
     );
     CREATE INDEX IF NOT EXISTS idx_login_failures_identifier ON login_failures(identifier);
     CREATE INDEX IF NOT EXISTS idx_login_failures_timestamp ON login_failures(timestamp DESC);
+    CREATE TABLE IF NOT EXISTS web_auth_sessions (
+      session_id     TEXT PRIMARY KEY,
+      user_id        TEXT NOT NULL,
+      user_name      TEXT,
+      user_email     TEXT,
+      user_role      TEXT,
+      ip_address     TEXT,
+      user_agent     TEXT,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at     TIMESTAMPTZ NOT NULL,
+      revoked_at     TIMESTAMPTZ,
+      revoked_reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_web_auth_sessions_user_id ON web_auth_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_web_auth_sessions_active ON web_auth_sessions(user_id, revoked_at, expires_at DESC);
     CREATE TABLE IF NOT EXISTS driver_mobile_sessions (
       driver_id      TEXT PRIMARY KEY,
       driver_name    TEXT,

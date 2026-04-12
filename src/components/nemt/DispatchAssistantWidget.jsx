@@ -773,7 +773,10 @@ const DispatchAssistantWidget = () => {
               await fetch('/api/auth/logout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: session.user.id })
+                body: JSON.stringify({
+                  userId: session.user.id,
+                  authSessionId: session.user.authSessionId
+                })
               }).catch(err => console.error('Failed to log logout:', err));
             } catch (error) {
               console.error('Error in logout logging:', error);

@@ -76,7 +76,10 @@ const MenuItemLink = ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           keepalive: true,
-          body: JSON.stringify({ userId: session.user.id })
+          body: JSON.stringify({
+            userId: session.user.id,
+            authSessionId: session.user.authSessionId
+          })
         }).catch(error => console.error('Failed to log logout:', error));
       }
     } catch (error) {
