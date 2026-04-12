@@ -1,11 +1,21 @@
 import { authorizePersistedSystemUser, findPersistedSystemUserByIdentifier } from '@/server/system-users-store';
 import { getRecentFailures, logLoginFailure } from '@/server/login-failures-store';
 import { createTemp2FASession } from '@/server/temp-2fa-session-store';
-import { hasRecentOpenWebSession } from '@/server/activity-logs-store';
+import { hasRecentOpenWebSession, releaseOpenWebSession } from '@/server/activity-logs-store';
 import { randomBytes } from 'crypto';
 const MAX_LOGIN_FAILURES = parseInt(process.env.LOGIN_MAX_FAILURES || '5', 10);
 const LOGIN_LOCK_WINDOW_MINUTES = parseInt(process.env.LOGIN_LOCK_WINDOW_MINUTES || '15', 10);
 const isLocalPasswordlessWebEnabled = () => process.env.NODE_ENV !== 'production';
+const isWebDuplicateSessionGuardEnabled = () => process.env.NODE_ENV === 'production' || String(process.env.ENABLE_WEB_SESSION_GUARD || '').trim().toLowerCase() === 'true';
+
+const normalizeIp = value => {
+  const raw = String(value ?? '').split(',')[0].trim();
+  if (!raw) return '';
+  if (raw === '::1' || raw === '127.0.0.1' || raw === '::ffff:127.0.0.1') return 'localhost';
+  return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
+};
+
+const getRequestIp = req => normalizeIp(req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || '');
 
 const formatRemainingTime = totalSeconds => {
   const seconds = Math.max(0, Math.ceil(totalSeconds));
@@ -51,7 +61,9 @@ const getLockRemainingMs = failures => {
 
 export async function POST(req) {
   try {
-    const { identifier, password } = await req.json();
+    const requestIp = getRequestIp(req);
+    const { identifier, password, forceSessionTakeover } = await req.json();
+    const shouldForceSessionTakeover = String(forceSessionTakeover || '').trim().toLowerCase() === 'true';
 
     if (!identifier || (!password && !isLocalPasswordlessWebEnabled())) {
       return new Response(JSON.stringify({ error: 'Missing credentials' }), {
@@ -122,15 +134,25 @@ export async function POST(req) {
       });
     }
 
-    const hasActiveSession = await hasRecentOpenWebSession(user.id);
+    const hasActiveSession = isWebDuplicateSessionGuardEnabled()
+      ? await hasRecentOpenWebSession(user.id, { requestIp })
+      : false;
     if (hasActiveSession) {
+      if (shouldForceSessionTakeover) {
+        await releaseOpenWebSession(user.id, {
+          ipAddress: requestIp,
+          reason: 'Forced takeover during pre-login validation'
+        });
+      } else {
       return new Response(JSON.stringify({
         error: 'This account is already active in another web session.',
-        message: 'This account is already active in another web session. Sign out there first, then try again.'
+        message: 'This account is already active in another web session. Sign out there first, then try again.',
+        canForceTakeover: true
       }), {
         status: 409,
         headers: { 'Content-Type': 'application/json' }
       });
+      }
     }
 
     const storedWebCode = String(user?.webLoginCode || '').replace(/\D/g, '').slice(0, 6);

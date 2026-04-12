@@ -1,4 +1,4 @@
-import { query, queryRows } from '@/server/db';
+import { query, queryOne, queryRows } from '@/server/db';
 
 const STALE_OPEN_SESSION_MS = 18 * 60 * 60 * 1000;
 const ACTIVE_WEB_HEARTBEAT_WINDOW_MS = parseInt(process.env.ACTIVE_WEB_HEARTBEAT_WINDOW_MS || '180000', 10);
@@ -48,21 +48,55 @@ const fetchAllLogsDesc = async () => {
   return rows.map(mapRowToLog);
 };
 
-const getLatestPresenceHeartbeat = async userId => {
+const getLatestPresenceHeartbeat = async (userId, sinceTimestamp = null) => {
   if (!userId) return null;
-  const rows = await queryRows(
+
+  const params = [String(userId)];
+  const timestampFilter = sinceTimestamp ? 'AND timestamp >= $2::timestamptz' : '';
+  if (sinceTimestamp) {
+    params.push(toIsoTimestamp(sinceTimestamp));
+  }
+
+  const row = await queryOne(
     `
       SELECT id, user_id, user_name, user_role, user_email, ip_address, event_type, event_label, target, metadata, timestamp, date, time
       FROM activity_logs
       WHERE user_id = $1
         AND event_type = 'ACTION'
         AND event_label = 'Presence heartbeat'
+        ${timestampFilter}
       ORDER BY timestamp DESC
+      LIMIT 1
+    `,
+    params
+  );
+
+  return row ? mapRowToLog(row) : null;
+};
+
+const getLatestOpenLoginForUser = async userId => {
+  if (!userId) return null;
+
+  const row = await queryOne(
+    `
+      SELECT login.id, login.user_id, login.user_name, login.user_role, login.user_email, login.ip_address, login.event_type, login.event_label, login.target, login.metadata, login.timestamp, login.date, login.time
+      FROM activity_logs AS login
+      WHERE login.user_id = $1
+        AND login.event_type = 'LOGIN'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM activity_logs AS logout
+          WHERE logout.user_id = login.user_id
+            AND logout.event_type = 'LOGOUT'
+            AND logout.timestamp > login.timestamp
+        )
+      ORDER BY login.timestamp DESC
       LIMIT 1
     `,
     [String(userId)]
   );
-  return rows[0] ? mapRowToLog(rows[0]) : null;
+
+  return row ? mapRowToLog(row) : null;
 };
 
 const insertLog = async logEntry => {
@@ -154,13 +188,17 @@ const getOpenSessionsByUserId = logs => {
   return openSessions;
 };
 
-export const hasRecentOpenWebSession = async userId => {
+export const hasRecentOpenWebSession = async (userId, options = {}) => {
   try {
     const normalizedUserId = String(userId || '').trim();
     if (!normalizedUserId) return false;
 
-    const logs = await fetchAllLogsDesc();
-    const openSession = getOpenSessionsByUserId(logs).get(normalizedUserId);
+    const requestIp = String(options?.requestIp || '').trim();
+    if (process.env.NODE_ENV !== 'production' && (!requestIp || requestIp === 'localhost')) {
+      return false;
+    }
+
+    const openSession = await getLatestOpenLoginForUser(normalizedUserId);
     if (!openSession?.timestamp) return false;
 
     const nowMs = Date.now();
@@ -170,7 +208,7 @@ export const hasRecentOpenWebSession = async userId => {
       return false;
     }
 
-    const latestHeartbeat = await getLatestPresenceHeartbeat(normalizedUserId);
+    const latestHeartbeat = await getLatestPresenceHeartbeat(normalizedUserId, openSession.timestamp);
     if (latestHeartbeat?.timestamp) {
       const heartbeatTimestampMs = new Date(latestHeartbeat.timestamp).getTime();
       const heartbeatAgeMs = nowMs - heartbeatTimestampMs;
@@ -197,12 +235,11 @@ export const hasRecentOpenWebSession = async userId => {
  */
 export const logLoginEvent = async (userId, userName, userRole, userEmail, ipAddress = '') => {
   try {
-    const logs = await fetchAllLogsDesc();
-    const openSessions = getOpenSessionsByUserId(logs);
-    const openSession = openSessions.get(userId);
-    if (openSession) {
+    const openSession = await getLatestOpenLoginForUser(userId);
+    if (openSession?.timestamp) {
       const openSessionAgeMs = Date.now() - new Date(openSession.timestamp).getTime();
-      if (Number.isFinite(openSessionAgeMs) && openSessionAgeMs >= 0 && openSessionAgeMs < STALE_OPEN_SESSION_MS) {
+      const sameIp = String(openSession.ipAddress || '').trim() === String(ipAddress || '').trim();
+      if (Number.isFinite(openSessionAgeMs) && openSessionAgeMs >= 0 && openSessionAgeMs < 60_000 && sameIp) {
         return openSession;
       }
     }
@@ -252,6 +289,39 @@ export const logLogoutEvent = async (userId) => {
     return logEntry;
   } catch (error) {
     console.error('Error logging logout event:', error);
+  }
+};
+
+export const releaseOpenWebSession = async (userId, options = {}) => {
+  try {
+    const normalizedUserId = String(userId || '').trim();
+    if (!normalizedUserId) return null;
+
+    const openSession = await getLatestOpenLoginForUser(normalizedUserId);
+    if (!openSession?.timestamp) return null;
+
+    const logEntry = buildBaseLogEntry({
+      userId: normalizedUserId,
+      userName: openSession.userName || 'Unknown',
+      userRole: openSession.userRole || 'Unknown',
+      userEmail: openSession.userEmail || 'Unknown',
+      ipAddress: String(options?.ipAddress || openSession.ipAddress || '').trim(),
+      eventType: 'LOGOUT',
+      eventLabel: 'Signed out',
+      target: 'session-takeover',
+      metadata: {
+        kind: 'session-takeover',
+        reason: String(options?.reason || 'Session takeover').trim() || 'Session takeover',
+        replacedLoginId: openSession.id,
+        replacedLoginTimestamp: openSession.timestamp
+      }
+    });
+
+    await insertLog(logEntry);
+    return logEntry;
+  } catch (error) {
+    console.error('Error releasing open web session:', error);
+    return null;
   }
 };
 

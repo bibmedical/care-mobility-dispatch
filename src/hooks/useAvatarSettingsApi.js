@@ -2,6 +2,22 @@
 
 import { useEffect, useState } from 'react';
 
+const API_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = async (input, init = {}) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(new Error('Request timeout')), API_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
 const parseApiResponse = async response => {
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   if (contentType.includes('application/json')) {
@@ -25,12 +41,13 @@ const useAvatarSettingsApi = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/avatar', { cache: 'no-store' });
+      const response = await fetchWithTimeout('/api/avatar', { cache: 'no-store' });
       const payload = await parseApiResponse(response);
       if (!response.ok) throw new Error(payload?.error || 'Unable to load avatar settings');
       setData(payload);
     } catch (fetchError) {
-      setError(fetchError.message || 'Unable to load avatar settings');
+      const message = fetchError?.name === 'AbortError' ? 'Avatar settings request timed out.' : fetchError.message || 'Unable to load avatar settings';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -40,7 +57,7 @@ const useAvatarSettingsApi = () => {
     setSaving(true);
     setError('');
     try {
-      const response = await fetch('/api/avatar', {
+      const response = await fetchWithTimeout('/api/avatar', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -57,7 +74,7 @@ const useAvatarSettingsApi = () => {
       }
       return payload;
     } catch (saveError) {
-      const message = saveError.message || 'Unable to save avatar settings';
+      const message = saveError?.name === 'AbortError' ? 'Saving avatar settings timed out.' : saveError.message || 'Unable to save avatar settings';
       setError(message);
       throw saveError;
     } finally {

@@ -82,6 +82,8 @@ const LoginForm = () => {
     setupWebCodeAndLogin,
     cancel2FA,
     lockoutStatus
+    ,duplicateSessionState
+    ,retryWithSessionTakeover
   } = useSignIn();
 
   const [identifier, setIdentifier] = useState('');
@@ -154,6 +156,11 @@ const LoginForm = () => {
         </Alert> : null}
 
         {loginMode === 'credentials' ? <div className="mt-4 mb-2">
+          {duplicateSessionState?.canForceTakeover ? <Alert variant="warning" className="mb-3 py-2">
+              <div className="fw-semibold">Another session is still open</div>
+              <div className="small mb-2">If that session is stale, you can close it and continue signing in here.</div>
+              <Button type="button" size="sm" variant="dark" onClick={() => void retryWithSessionTakeover()} disabled={loading}>Close other session and sign in</Button>
+            </Alert> : null}
           {lockoutStatus?.isBlocked ? <Alert variant="danger" className="mb-3 py-2">
               <div className="fw-semibold">Account temporarily locked</div>
               <div className="small">{lockoutStatus.message}</div>

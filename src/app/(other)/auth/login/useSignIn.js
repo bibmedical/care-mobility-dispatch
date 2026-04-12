@@ -47,6 +47,7 @@ const useSignIn = () => {
   const [confirmSetupCode, setConfirmSetupCode] = useState('');
   const [pendingLogin, setPendingLogin] = useState(null);
   const [lockoutStatus, setLockoutStatus] = useState(null);
+  const [duplicateSessionState, setDuplicateSessionState] = useState(null);
 
   const { push } = useRouter();
   const { showNotification } = useNotificationContext();
@@ -57,6 +58,7 @@ const useSignIn = () => {
     const normalizedPassword = String(values?.password || '').trim();
     const normalizedCompanyKey = String(values?.companyKey || '').trim().toUpperCase();
     const normalizedPortalPage = PAGE_OPTIONS.some(option => option.value === values?.portalPage) ? values.portalPage : PAGE_OPTIONS[0].value;
+    const forceSessionTakeover = values?.forceSessionTakeover === true;
 
     if (!normalizedIdentifier) {
       showNotification({
@@ -91,7 +93,8 @@ const useSignIn = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           identifier: normalizedIdentifier,
-          password: normalizedPassword
+          password: normalizedPassword,
+          forceSessionTakeover
         })
       });
 
@@ -108,6 +111,16 @@ const useSignIn = () => {
           });
         }
 
+        if (preLoginResponse.status === 409 && preLoginData?.canForceTakeover) {
+          setDuplicateSessionState({
+            identifier: normalizedIdentifier,
+            password: normalizedPassword,
+            companyKey: normalizedCompanyKey,
+            portalPage: normalizedPortalPage,
+            canForceTakeover: true
+          });
+        }
+
         showNotification({
           message: preLoginData.message || preLoginData.error || 'Unable to sign in',
           variant: 'danger'
@@ -115,6 +128,8 @@ const useSignIn = () => {
         setLoading(false);
         return false;
       }
+
+      setDuplicateSessionState(null);
 
       if (preLoginData.requires2FA) {
         // Store info for 2FA verification
@@ -124,7 +139,8 @@ const useSignIn = () => {
           password: normalizedPassword,
           tempToken: preLoginData.tempToken,
           method: loginMethod,
-          portalPage: normalizedPortalPage
+          portalPage: normalizedPortalPage,
+          forceSessionTakeover
         });
         const setupRequired = Boolean(preLoginData.requiresCodeSetup || loginMethod === 'web-pin-setup');
         setRequiresCodeSetup(setupRequired);
@@ -144,7 +160,8 @@ const useSignIn = () => {
         redirect: false,
         identifier: normalizedIdentifier,
         password: normalizedPassword,
-        clientType: 'web'
+        clientType: 'web',
+        forceSessionTakeover: forceSessionTakeover ? 'true' : 'false'
       });
 
       if (response?.ok) {
@@ -278,7 +295,8 @@ const useSignIn = () => {
         password: pendingLogin.password,
         clientType: 'web',
         webLoginToken: pendingLogin.tempToken,
-        webLoginMode: pendingLogin.method || 'web-pin'
+        webLoginMode: pendingLogin.method || 'web-pin',
+        forceSessionTakeover: pendingLogin.forceSessionTakeover ? 'true' : 'false'
       });
 
       if (signInResponse?.ok) {
@@ -376,7 +394,8 @@ const useSignIn = () => {
         password: pendingLogin.password,
         clientType: 'web',
         webLoginToken: pendingLogin.tempToken,
-        webLoginMode: 'web-pin-setup'
+        webLoginMode: 'web-pin-setup',
+        forceSessionTakeover: pendingLogin.forceSessionTakeover ? 'true' : 'false'
       });
 
       if (signInResponse?.ok) {
@@ -476,6 +495,7 @@ const useSignIn = () => {
     codeValue,
     setCodeValue,
     lockoutStatus,
+    duplicateSessionState,
     portalPageValue,
     setPortalPageValue,
     requires2FA,
@@ -488,7 +508,11 @@ const useSignIn = () => {
     setConfirmSetupCode,
     verify2FALogin,
     setupWebCodeAndLogin,
-    cancel2FA
+    cancel2FA,
+    retryWithSessionTakeover: () => submitCredentialsLogin({
+      ...duplicateSessionState,
+      forceSessionTakeover: true
+    })
   };
 };
 

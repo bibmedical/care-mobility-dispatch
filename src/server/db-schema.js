@@ -136,6 +136,7 @@ const _runMigrationsOnce = async () => {
     );
     CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
     CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_activity_logs_user_type_time ON activity_logs(user_id, event_type, timestamp DESC);
     CREATE TABLE IF NOT EXISTS blacklist_entries (
       id           TEXT PRIMARY KEY,
       name         TEXT,

@@ -2,7 +2,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { randomBytes } from 'crypto';
 import { authorizePersistedSystemUser, findPersistedSystemUserByIdentifier } from '@/server/system-users-store';
 import { logLoginFailure } from '@/server/login-failures-store';
-import { hasRecentOpenWebSession, logLoginEvent } from '@/server/activity-logs-store';
+import { hasRecentOpenWebSession, logLoginEvent, releaseOpenWebSession } from '@/server/activity-logs-store';
 import { consumeVerifiedTemp2FASession } from '@/server/temp-2fa-session-store';
 
 const isLocalPasswordlessWebEnabled = () => process.env.NODE_ENV !== 'production';
@@ -21,6 +21,8 @@ const getRequestIp = req => {
   const socketIp = req?.socket?.remoteAddress;
   return normalizeIp(forwarded || realIp || socketIp || '');
 };
+
+const isWebDuplicateSessionGuardEnabled = () => process.env.NODE_ENV === 'production' || String(process.env.ENABLE_WEB_SESSION_GUARD || '').trim().toLowerCase() === 'true';
 
 export const options = {
   providers: [CredentialsProvider({
@@ -52,6 +54,7 @@ export const options = {
       try {
         const requestIp = getRequestIp(req);
         const clientType = credentials?.clientType ?? 'web';
+        const forceSessionTakeover = String(credentials?.forceSessionTakeover || '').trim().toLowerCase() === 'true';
         const identifier = String(credentials?.identifier || '').trim();
         const password = String(credentials?.password || '').trim();
         const webLoginToken = String(credentials?.webLoginToken || '').trim();
@@ -64,10 +67,17 @@ export const options = {
             clientType
           });
 
-        if (result && clientType === 'web') {
-          const hasActiveSession = await hasRecentOpenWebSession(result.id);
+        if (result && clientType === 'web' && isWebDuplicateSessionGuardEnabled()) {
+          const hasActiveSession = await hasRecentOpenWebSession(result.id, { requestIp });
           if (hasActiveSession) {
-            throw new Error('This account is already active on another web session.');
+            if (forceSessionTakeover) {
+              await releaseOpenWebSession(result.id, {
+                ipAddress: requestIp,
+                reason: 'Forced takeover during credentials login'
+              });
+            } else {
+              throw new Error('This account is already active on another web session.');
+            }
           }
 
           const hasVerifiedWebChallenge = await consumeVerifiedTemp2FASession({
