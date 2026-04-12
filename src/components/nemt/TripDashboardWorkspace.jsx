@@ -19,6 +19,7 @@ import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leafl
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
+import { FixedSizeList as List } from 'react-window';
 import { useSession } from 'next-auth/react';
 
 const greenToolbarButtonStyle = {
@@ -3429,22 +3430,39 @@ const TripDashboardWorkspace = () => {
               </tr>
             </thead>
             <tbody>
-              {routeTrips.length > 0 ? routeTrips.map(trip => <tr key={trip.id} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
-                  <td className="fw-semibold">{trip.id}{getTripAddedByLabel(trip) ? <div className="small mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}</td>
-                  <td><Badge bg={getTripTypeLabel(trip) === 'STR' ? 'danger' : getTripTypeLabel(trip) === 'W' ? 'warning' : 'success'} text={getTripTypeLabel(trip) === 'W' ? 'dark' : undefined}>{getTripTypeLabel(trip)}</Badge></td>
-                  <td>{trip.miles || '-'}</td>
-                  <td>{trip.pickup}</td>
-                  <td>{trip.dropoff}</td>
-                  <td>{trip.rider}</td>
-                  <td>{trip.patientPhoneNumber || '-'}</td>
-                  <td>
-                    <div className="d-flex align-items-center justify-content-center">
-                      <Form.Check className="trip-dashboard-selector" checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => toggleTripSelection(trip.id)} />
-                    </div>
-                  </td>
-                </tr>) : <tr>
+              {routeTrips.length > 0 ? (
+                <List
+                  height={400}
+                  itemCount={routeTrips.length}
+                  itemSize={48}
+                  width="100%"
+                  style={{overflowX: 'hidden'}}
+                >
+                  {({ index, style }) => {
+                    const trip = routeTrips[index];
+                    return (
+                      <tr key={trip.id} style={style} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
+                        <td className="fw-semibold">{trip.id}{getTripAddedByLabel(trip) ? <div className="small mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}</td>
+                        <td><Badge bg={getTripTypeLabel(trip) === 'STR' ? 'danger' : getTripTypeLabel(trip) === 'W' ? 'warning' : 'success'} text={getTripTypeLabel(trip) === 'W' ? 'dark' : undefined}>{getTripTypeLabel(trip)}</Badge></td>
+                        <td>{trip.miles || '-'}</td>
+                        <td>{trip.pickup}</td>
+                        <td>{trip.dropoff}</td>
+                        <td>{trip.rider}</td>
+                        <td>{trip.patientPhoneNumber || '-'}</td>
+                        <td>
+                          <div className="d-flex align-items-center justify-content-center">
+                            <Form.Check className="trip-dashboard-selector" checked={selectedTripIdSet.has(normalizeTripId(trip.id))} onChange={() => toggleTripSelection(trip.id)} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }}
+                </List>
+              ) : (
+                <tr>
                   <td colSpan={8} className="text-center text-muted py-4">Select a route, a driver, or trips to view the route menu.</td>
-                </tr>}
+                </tr>
+              )}
             </tbody>
           </Table>
         </div>
