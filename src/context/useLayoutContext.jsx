@@ -154,7 +154,9 @@ const LayoutProvider = ({
     resetSettings
   }), [settings])}>
       {children}
-      <div className="startbar-overlay d-print-none" onClick={() => changeMenuSize('collapsed')} />
+      {settings.menu.size === 'default' && (
+        <div className="startbar-overlay d-print-none" onClick={() => changeMenuSize('collapsed')} />
+      )}
     </ThemeContext.Provider>;
 };
 export { LayoutProvider, useLayoutContext };

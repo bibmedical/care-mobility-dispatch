@@ -10,7 +10,7 @@ const layout = ({
       <div className="d-print-none" style={{ position: 'fixed', left: 10, top: 10, zIndex: 2100 }}>
         <LeftSideBarToggle />
       </div>
-      <div className="startbar-overlay d-print-none" />
+      {/* Overlay is now rendered conditionally by LayoutProvider only when sidebar is open */}
       <div className="page-wrapper">
         <div className="page-content">
           <Container fluid>
