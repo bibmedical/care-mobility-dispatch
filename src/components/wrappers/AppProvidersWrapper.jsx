@@ -25,7 +25,7 @@ const AppProvidersWrapper = ({
   const currentPathname = typeof pathname === 'string' ? pathname : '';
   const isAuthRoute = currentPathname.startsWith('/auth/') || matchesRoutePrefix(currentPathname, '/maintenance');
   const shouldUseDispatchState = !isAuthRoute;
-  const showAssistantWidget = !isAuthRoute && currentPathname !== '/map-screen';
+  const showAssistantWidget = !isAuthRoute;
 
   const content = shouldUseDispatchState ? <NemtProvider syncEnabled>
       {children}

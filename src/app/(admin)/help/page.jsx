@@ -227,8 +227,8 @@ const HelpPage = () => {
                 <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>March 31, 2026 — Evening</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
-                <li>3 layout modes: <strong>Normal</strong>, <strong>Focus Right</strong> (map popout expands right column full height), <strong>Stacked</strong> (panels stacked vertically)</li>
-                <li>Map popout automatically activates Focus Right layout</li>
+                <li>3 layout modes: <strong>Normal</strong>, <strong>Focus Right</strong> (map-focused right column), <strong>Stacked</strong> (panels stacked vertically)</li>
+                <li>Focus Right keeps the map emphasized inside the workspace without opening a separate window</li>
                 <li>Panel visibility controls: Both / VDRS / Routes / Hide bottom panels</li>
                 <li>Swap button to reverse VDRS ↔ Routes panel order</li>
                 <li>Restore button — one click returns to Normal layout</li>

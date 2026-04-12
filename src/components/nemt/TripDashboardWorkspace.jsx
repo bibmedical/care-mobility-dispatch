@@ -13,7 +13,7 @@ import { useNotificationContext } from '@/context/useNotificationContext';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
@@ -147,11 +147,10 @@ const TRIP_DASHBOARD_TRIPS_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TRIPS_V
 const TRIP_DASHBOARD_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW1_BLOCKS__';
 const TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS = ['date-controls', 'trip-search', 'driver-assigned', 'action-buttons', 'leg-buttons', 'type-buttons', 'closed-route'];
 const TRIP_DASHBOARD_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW2_BLOCKS__';
-const TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS = ['show-map', 'peek-panel', 'toolbar-edit', 'columns', 'map-screen', 'layout', 'panels', 'trip-order'];
+const TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS = ['show-map', 'peek-panel', 'toolbar-edit', 'columns', 'layout', 'panels', 'trip-order'];
 const TRIP_DASHBOARD_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW3_BLOCKS__';
 const TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS = ['driver-select', 'secondary-driver', 'zip-filter', 'route-filter', 'theme-toggle', 'metric-miles', 'metric-duration'];
 const TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TOOLBAR_VISIBILITY__';
-const MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_TRIP_DASHBOARD_STATE__';
 const CLOSED_ROUTE_STATE_KEY = '__CARE_MOBILITY_CLOSED_ROUTE_STATE__';
 const TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH = 56;
 const TRIP_DASHBOARD_RIGHT_PANEL_EXPANDED_SPLIT = 50;
@@ -171,7 +170,6 @@ const TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS = {
   'peek-panel': 'Panel peek',
   'toolbar-edit': 'Toolbar editor',
   'columns': 'Columns',
-  'map-screen': 'Map screen',
   'layout': 'Layout',
   'panels': 'Panels',
   'trip-order': 'Trip order',
@@ -633,8 +631,6 @@ const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScale
 
 const TripDashboardWorkspace = () => {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const isDetachedMapMode = searchParams?.get('detachedMap') === '1';
   const { data: session } = useSession();
   const { changeTheme, themeMode } = useLayoutContext();
   const { data: smsData } = useSmsIntegrationApi();
@@ -763,7 +759,6 @@ const TripDashboardWorkspace = () => {
   const tripTableElementRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
   const lastMapScreenStatePayloadRef = useRef('');
-  const detachedMapSnapshotRef = useRef('');
   const layoutHydratedRef = useRef(false);
   const panelViewHydratedRef = useRef(false);
   const panelOrderHydratedRef = useRef(false);
@@ -1205,17 +1200,6 @@ const TripDashboardWorkspace = () => {
                 </CardBody>
               </Card> : null}
           </>;
-      case 'map-screen':
-        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={showInlineMap ? handleOpenMapWindow : () => {
-          setShowInlineMap(true);
-          setShowMapPane(true);
-          if (layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight) {
-            setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
-            setShowBottomPanels(true);
-            setRightPanelCollapsed(false);
-            setColumnSplit(58);
-          }
-        }}>{showInlineMap ? 'Map screen' : 'Show map here'}</Button>;
       case 'layout':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">Layout</span>
@@ -1680,66 +1664,6 @@ const TripDashboardWorkspace = () => {
     const name = String(entry?.addedBy || '').trim() || 'Dispatcher';
     return `Added by ${name}`;
   };
-
-  useEffect(() => {
-    if (isDetachedMapMode) return;
-    const payload = {
-      tripDateFilter,
-      selectedTripIds,
-      selectedDriverId,
-      selectedRouteId,
-      activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
-      routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean).sort((left, right) => left.localeCompare(right))
-    };
-    const payloadText = JSON.stringify(payload);
-    if (lastMapScreenStatePayloadRef.current === payloadText) return;
-    lastMapScreenStatePayloadRef.current = payloadText;
-    window.localStorage.setItem(MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY, payloadText);
-  }, [activeDateTripIdSet, isDetachedMapMode, routeTrips, selectedDriverId, selectedRouteId, selectedTripIds, tripDateFilter]);
-
-  useEffect(() => {
-    if (!isDetachedMapMode || typeof window === 'undefined') return;
-
-    const applySnapshot = () => {
-      try {
-        const raw = window.localStorage.getItem(MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY);
-        if (!raw) return;
-        if (raw === detachedMapSnapshotRef.current) return;
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') return;
-
-        detachedMapSnapshotRef.current = raw;
-
-        const nextTripDateFilter = String(parsed.tripDateFilter || 'all');
-        const nextSelectedTripIds = Array.isArray(parsed.selectedTripIds)
-          ? parsed.selectedTripIds.map(value => String(value || '').trim()).filter(Boolean)
-          : [];
-        const nextSelectedDriverId = String(parsed.selectedDriverId || '').trim() || null;
-        const nextSelectedRouteId = String(parsed.selectedRouteId || '').trim() || null;
-
-        setTripDateFilter(nextTripDateFilter);
-        setSelectedTripIds(nextSelectedTripIds);
-        setSelectedDriverId(nextSelectedDriverId);
-        setSelectedRouteId(nextSelectedRouteId);
-        setShowInlineMap(true);
-      } catch {}
-    };
-
-    applySnapshot();
-
-    const handleStorage = event => {
-      if (event?.key && event.key !== MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY) return;
-      applySnapshot();
-    };
-
-    window.addEventListener('storage', handleStorage);
-    const pollId = window.setInterval(applySnapshot, 2500);
-
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-      window.clearInterval(pollId);
-    };
-  }, [isDetachedMapMode]);
 
   const routeStops = useMemo(() => {
     if (!showRoute) return [];
@@ -3024,40 +2948,6 @@ const TripDashboardWorkspace = () => {
     transition: 'background-color 0.15s'
   };
 
-  const handleOpenMapWindow = () => {
-    const mapUrl = `/trip-dashboard?detachedMap=1`;
-    const payload = {
-      tripDateFilter,
-      selectedTripIds,
-      selectedDriverId,
-      selectedRouteId,
-      activeDateTripIds: activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [],
-      routeTripIds: routeTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean).sort((left, right) => left.localeCompare(right))
-    };
-    window.localStorage.setItem('__CARE_MOBILITY_MAP_SCREEN_SOURCE__', 'dashboard');
-    window.localStorage.setItem(MAP_SCREEN_TRIP_DASHBOARD_STATE_KEY, JSON.stringify(payload));
-    const popup = window.open(mapUrl, 'care-mobility-map', 'popup=yes,width=1600,height=900,resizable=yes,scrollbars=no');
-    if (popup) {
-      popup.focus();
-      setShowInlineMap(false);
-      setLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
-      setShowMapPane(false);
-      setShowBottomPanels(true);
-      setRightPanelCollapsed(false);
-      setColumnSplit(current => clamp(current, 28, 40));
-      setStatusMessage('Map opened on another screen. Focus Right activated.');
-      return;
-    }
-    window.open(mapUrl, '_blank', 'noopener,noreferrer');
-    setShowInlineMap(false);
-    setLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
-    setShowMapPane(false);
-    setShowBottomPanels(true);
-    setRightPanelCollapsed(false);
-    setColumnSplit(current => clamp(current, 28, 40));
-    setStatusMessage('Map opened in another tab. Focus Right activated.');
-  };
-
   const handlePopOutDrivers = () => {
     const driversUrl = `/panels/drivers`;
     const payload = {
@@ -3329,16 +3219,6 @@ const TripDashboardWorkspace = () => {
     }
   };
 
-  const handleDetachedMapReset = () => {
-    setMapCityQuickFilter('');
-    setMapZipQuickFilter('');
-    setSelectedTripIds([]);
-    setSelectedDriverId(null);
-    setSelectedRouteId(null);
-    setShowRoute(true);
-    router.replace('/trip-dashboard');
-  };
-
   const driverPanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
@@ -3455,17 +3335,17 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
-  const renderTripMapPanel = ({ detached = false } = {}) => <Card className="h-100">
+  const renderTripMapPanel = () => <Card className="h-100">
       <CardBody className="p-0 d-flex flex-column h-100 position-relative">
         {showInlineMap ? <div className="position-relative h-100">
-            {!detached ? <Button variant="warning" type="button" onClick={() => {
+            <Button variant="warning" type="button" onClick={() => {
           setShowMapPane(false);
           setStatusMessage('Map hidden in Trip Dashboard.');
         }} style={yellowMapTabStyle}>
                 Hide Map
-              </Button> : null}
+              </Button>
             <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'scroll', overflowY: 'hidden', scrollbarGutter: 'stable both-edges', whiteSpace: 'nowrap' }}>
-              {detached ? <Button variant="dark" size="sm" onClick={handleDetachedMapReset}>RESET</Button> : <>
+              <>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
                   <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="">City</option>
@@ -3489,8 +3369,7 @@ const TripDashboardWorkspace = () => {
                 }
                 setStatusMessage('Bottom panels anchored.');
               }}>Panels anchored</Button>
-                  {!detached ? <Button variant="dark" size="sm" onClick={handleOpenMapWindow}>Pop Out</Button> : null}
-                </>}
+                </>
             </div>
             {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
           zIndex: 500,
@@ -3553,11 +3432,10 @@ const TripDashboardWorkspace = () => {
                 </Marker>)}
             </MapContainer>
           </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
-            <div className="fw-semibold fs-5">Map moved to another screen</div>
-            <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Open the map on the other screen and keep route, trip, and driver management here.</div>
+            <div className="fw-semibold fs-5">Map hidden</div>
+            <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Show the map here again when you need route, trip, and driver management.</div>
             <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
               <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
-              {!detached ? <Button variant="outline-light" size="sm" onClick={handleOpenMapWindow}>Open Map Window Again</Button> : null}
             </div>
           </div>}
       </CardBody>
@@ -3582,12 +3460,6 @@ const TripDashboardWorkspace = () => {
   }];
 
   const dockPanelsVisible = dockPanelsOrdered.filter(panel => panel.visible);
-
-  if (isDetachedMapMode) {
-    return <div style={{ width: '100vw', height: '100vh', padding: 6, backgroundColor: '#0f172a' }}>
-      {renderTripMapPanel({ detached: true })}
-    </div>;
-  }
 
   return <>
       {(!showDriversPanel || !showRoutesPanel || !showTripsPanel) && <div style={{

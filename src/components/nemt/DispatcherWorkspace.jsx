@@ -14,7 +14,7 @@ import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
@@ -34,10 +34,9 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 const DISPATCHER_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW1_BLOCKS__';
 const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'selected-count', 'day-summary'];
 const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
-const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'toolbar-edit', 'columns', 'map-screen', 'trip-order'];
+const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'toolbar-edit', 'columns', 'trip-order'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
 const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['zip-filter', 'route-filter', 'table-view-mode', 'metric-miles', 'metric-duration'];
-const MAP_SCREEN_DISPATCHER_STATE_KEY = '__CARE_MOBILITY_MAP_SCREEN_DISPATCHER_STATE__';
 const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
 const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
 
@@ -796,8 +795,6 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const DispatcherWorkspace = () => {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const isDetachedMapMode = searchParams?.get('detachedMap') === '1';
   const { themeMode } = useLayoutContext();
   const isDarkMode = themeMode === 'dark';
   const dispatcherSurfaceStyles = useMemo(() => buildDispatcherSurfaceStyles(isDarkMode), [isDarkMode]);
@@ -846,16 +843,6 @@ const DispatcherWorkspace = () => {
   const [showInfo, setShowInfo] = useState(true);
   const [showRoute, setShowRoute] = useState(true);
   const [showInlineMap, setShowInlineMap] = useState(true);
-  const [isDispatchMapDetached, setIsDispatchMapDetached] = useState(false);
-  const [detachedMapPosition, setDetachedMapPosition] = useState({ x: 18, y: 96 });
-  const [isDraggingDetachedMap, setIsDraggingDetachedMap] = useState(false);
-  const [detachedMapResizeTick, setDetachedMapResizeTick] = useState(0);
-  const detachedMapDragOffsetRef = useRef({ x: 0, y: 0 });
-  const detachedMapWindowRef = useRef(null);
-  const detachedMapPortalContainerRef = useRef(null);
-  const detachedMapReactRootRef = useRef(null);
-  const detachedMapClosingRef = useRef(false);
-  const detachedMapSnapshotRef = useRef('');
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -893,49 +880,6 @@ const DispatcherWorkspace = () => {
   });
 
   useEffect(() => {
-    if (!isDetachedMapMode || typeof window === 'undefined') return;
-
-    const applySnapshot = () => {
-      try {
-        const raw = window.localStorage.getItem(MAP_SCREEN_DISPATCHER_STATE_KEY);
-        if (!raw) return;
-        if (raw === detachedMapSnapshotRef.current) return;
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') return;
-
-        detachedMapSnapshotRef.current = raw;
-
-        const nextTripDateFilter = String(parsed.tripDateFilter || 'all');
-        const nextSelectedTripIds = Array.isArray(parsed.selectedTripIds)
-          ? parsed.selectedTripIds.map(value => String(value || '').trim()).filter(Boolean)
-          : [];
-        const nextSelectedDriverId = String(parsed.selectedDriverId || '').trim() || null;
-        const nextSelectedRouteId = String(parsed.selectedRouteId || '').trim() || null;
-        const nextDriverScopeMode = String(parsed.driverScopeMode || '').trim().toLowerCase();
-
-        setTripDateFilter(nextTripDateFilter);
-        setSelectedTripIds(nextSelectedTripIds);
-        setSelectedDriverId(nextSelectedDriverId);
-        setSelectedRouteId(nextSelectedRouteId);
-        setIsManualDriverScope(nextDriverScopeMode === 'manual');
-        setShowInlineMap(true);
-      } catch {}
-    };
-
-    applySnapshot();
-    const handleStorage = event => {
-      if (event?.key && event.key !== MAP_SCREEN_DISPATCHER_STATE_KEY) return;
-      applySnapshot();
-    };
-
-    window.addEventListener('storage', handleStorage);
-
-    return () => {
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, [isDetachedMapMode]);
-
-  useEffect(() => {
     setSelectedDriverId(null);
     setIsManualDriverScope(false);
     setSelectedSecondaryDriverId('');
@@ -943,89 +887,6 @@ const DispatcherWorkspace = () => {
     setDoCityFilter('');
   }, []);
 
-  useEffect(() => {
-    if (!isDraggingDetachedMap) return;
-
-    const handleMouseMove = event => {
-      setDetachedMapPosition({
-        x: Math.max(8, event.clientX - detachedMapDragOffsetRef.current.x),
-        y: Math.max(56, event.clientY - detachedMapDragOffsetRef.current.y)
-      });
-    };
-
-    const handleMouseUp = () => {
-      setIsDraggingDetachedMap(false);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDraggingDetachedMap]);
-
-  useEffect(() => {
-    if (!isDispatchMapDetached) {
-      detachedMapClosingRef.current = true;
-      if (detachedMapReactRootRef.current) {
-        try {
-          detachedMapReactRootRef.current.unmount();
-        } catch {}
-      }
-      detachedMapReactRootRef.current = null;
-      if (detachedMapWindowRef.current && !detachedMapWindowRef.current.closed) {
-        detachedMapWindowRef.current.close();
-      }
-      detachedMapWindowRef.current = null;
-      detachedMapPortalContainerRef.current = null;
-      setDetachedMapResizeTick(0);
-      window.setTimeout(() => {
-        detachedMapClosingRef.current = false;
-      }, 0);
-      return;
-    }
-
-    detachedMapClosingRef.current = false;
-
-    const popupUrl = new URL('/dispatcher?detachedMap=1', window.location.origin).toString();
-    const popupWindow = window.open(popupUrl, 'care-mobility-dispatch-map', 'popup=yes,width=1500,height=900,left=80,top=60,resizable=yes,scrollbars=no');
-    if (!popupWindow) {
-      setStatusMessage('Popup blocked. Allow popups to open Dispatch map on another screen.');
-      setIsDispatchMapDetached(false);
-      return;
-    }
-
-    const handlePopupClose = () => {
-      if (detachedMapClosingRef.current) return;
-      detachedMapClosingRef.current = true;
-      setIsDispatchMapDetached(false);
-      detachedMapPortalContainerRef.current = null;
-      detachedMapWindowRef.current = null;
-    };
-
-    popupWindow.addEventListener('beforeunload', handlePopupClose);
-    popupWindow.focus();
-
-    detachedMapWindowRef.current = popupWindow;
-    detachedMapPortalContainerRef.current = null;
-    detachedMapReactRootRef.current = null;
-    setStatusMessage('Dispatch map opened in external window.');
-
-    return () => {
-      try {
-        popupWindow.removeEventListener('beforeunload', handlePopupClose);
-      } catch {}
-      detachedMapReactRootRef.current = null;
-    };
-  }, [isDispatchMapDetached]);
-
-  useEffect(() => () => {
-    if (detachedMapWindowRef.current && !detachedMapWindowRef.current.closed) {
-      detachedMapWindowRef.current.close();
-    }
-  }, []);
   const [columnWidths, setColumnWidths] = useState({});
   const [draggingTripColumnKey, setDraggingTripColumnKey] = useState(null);
   const workspaceRef = useRef(null);
@@ -1214,8 +1075,6 @@ const DispatcherWorkspace = () => {
     setToolbarRow2Order(normalizedRows.row2);
     setToolbarRow3Order(normalizedRows.row3);
     const restoredLayout = persistDispatcherLayout(DEFAULT_DISPATCHER_LAYOUT);
-    setIsDispatchMapDetached(false);
-    setDetachedMapPosition({ x: 18, y: 96 });
     void saveUserPreferences({
       ...userPreferences,
       dispatcherLayout: restoredLayout,
@@ -1418,8 +1277,6 @@ const DispatcherWorkspace = () => {
     setToolbarRow3Order(defaultRow3Order);
     setIsToolbarEditMode(false);
     clearDraggingToolbarBlockIds();
-    setIsDispatchMapDetached(false);
-    setDetachedMapPosition({ x: 18, y: 96 });
     try {
       void saveUserPreferences({
         ...userPreferences,
@@ -1529,10 +1386,6 @@ const DispatcherWorkspace = () => {
                 </CardBody>
               </Card> : null}
           </>;
-      case 'map-screen':
-        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapLocked}>
-            {isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}
-          </Button>;
       case 'trip-order':
         return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle} disabled={mapLocked}>
             {tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}
@@ -1633,25 +1486,6 @@ const DispatcherWorkspace = () => {
     if (tripDateFilter === 'all') return null;
     return new Set(trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter).map(trip => String(trip?.id || '').trim()).filter(Boolean));
   }, [tripDateFilter, routePlans, trips]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (isDetachedMapMode) return;
-
-    const activeDateTripIds = activeDateTripIdSet ? Array.from(activeDateTripIdSet) : [];
-    const routeTripIds = selectedRoute && Array.isArray(selectedRoute.tripIds) ? selectedRoute.tripIds.map(value => String(value || '').trim()).filter(Boolean) : [];
-    const payload = {
-      tripDateFilter,
-      selectedTripIds,
-      selectedDriverId: selectedDriverId || '',
-      driverScopeMode: isManualDriverScope ? 'manual' : 'implicit',
-      selectedRouteId: selectedRouteId || '',
-      activeDateTripIds,
-      routeTripIds
-    };
-
-    window.localStorage.setItem(MAP_SCREEN_DISPATCHER_STATE_KEY, JSON.stringify(payload));
-  }, [activeDateTripIdSet, isDetachedMapMode, isManualDriverScope, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds, tripDateFilter]);
 
   const hasSelectedTrips = selectedTripIds.length > 0;
   const isTripAssignedToSelectedDriver = trip => isTripAssignedToDriver(trip, selectedDriverId);
@@ -3024,7 +2858,7 @@ const DispatcherWorkspace = () => {
   const workspaceHeight = 'calc(100dvh - 12px)';
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
-  const inlineMapVisible = dispatcherLayout.mapVisible && showInlineMap && !isDispatchMapDetached;
+  const inlineMapVisible = dispatcherLayout.mapVisible && showInlineMap;
   const actionsPanelVisible = dispatcherLayout.actionsVisible;
   const hasLeftColumn = inlineMapVisible || dispatcherLayout.messagingVisible;
   const hasRightColumn = dispatcherLayout.tripsVisible || actionsPanelVisible;
@@ -3073,24 +2907,13 @@ const DispatcherWorkspace = () => {
     });
   };
 
-  const handleDetachedMapReset = () => {
-    setMapCityQuickFilter('');
-    setMapZipQuickFilter('');
-    setSelectedTripIds([]);
-    setSelectedDriverId(null);
-    setIsManualDriverScope(false);
-    setSelectedRouteId('');
-    setFollowSelectedDriver(false);
-    router.replace('/dispatcher');
-  };
-
-  const mapInteractionLocked = mapLocked && !isDispatchMapDetached;
+  const mapInteractionLocked = mapLocked;
 
   const renderDispatchMapPanel = () => <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
       <CardBody className="p-0">
         {showInlineMap ? <div className="position-relative h-100">
-          {!isDispatchMapDetached ? <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'scroll', overflowY: 'hidden', scrollbarGutter: 'stable both-edges', whiteSpace: 'nowrap' }}>
-            {isDetachedMapMode ? <Button variant="dark" size="sm" onClick={handleDetachedMapReset}>RESET</Button> : <>
+          <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'scroll', overflowY: 'hidden', scrollbarGutter: 'stable both-edges', whiteSpace: 'nowrap' }}>
+            <>
                 <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapInteractionLocked}>Clear</Button>
                 <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
                   <option value="">City</option>
@@ -3109,11 +2932,10 @@ const DispatcherWorkspace = () => {
                 <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked || !selectedDriver?.hasRealLocation}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button>
                 <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
                 <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
-                {!isDetachedMapMode ? <Button variant={isDispatchMapDetached ? 'warning' : 'dark'} size="sm" onClick={() => setIsDispatchMapDetached(current => !current)} disabled={mapInteractionLocked}>{isDispatchMapDetached ? 'Attach Dispatch' : 'Dispatch'}</Button> : null}
-              </>}
-          </div> : null}
+              </>
+          </div>
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%', cursor: mapInteractionLocked ? 'not-allowed' : 'grab' }}>
-            <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-${isDispatchMapDetached ? 'detached' : 'inline'}-${detachedMapResizeTick}`} />
+            <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-inline`} />
             <DispatchMapInteractionController enabled={!mapInteractionLocked} />
             <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
             <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapInteractionLocked} onPause={() => {
@@ -3199,12 +3021,6 @@ const DispatcherWorkspace = () => {
           </div>}
       </CardBody>
     </Card>;
-
-  if (isDetachedMapMode) {
-    return <div style={{ width: '100vw', height: '100vh', padding: 6, backgroundColor: '#0f172a' }}>
-        {renderDispatchMapPanel()}
-      </div>;
-  }
 
   return <>
       <div style={{

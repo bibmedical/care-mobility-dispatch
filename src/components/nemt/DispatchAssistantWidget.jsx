@@ -553,7 +553,7 @@ const DispatchAssistantWidget = () => {
     } : currentState);
   }, [assistantName, assistantVisible, open]);
 
-  if (pathname?.startsWith('/auth') || pathname === '/map-screen') {
+  if (pathname?.startsWith('/auth')) {
     return null;
   }
 
