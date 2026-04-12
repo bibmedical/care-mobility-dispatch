@@ -835,14 +835,23 @@ const TripDashboardWorkspace = () => {
   const compactToolbarOutlineVariant = isDarkTheme ? 'outline-light' : 'outline-dark';
   const compactToolbarActiveVariant = isDarkTheme ? 'success' : 'dark';
   const compactToolbarLabelStyle = isDarkTheme ? { color: '#cbd5e1' } : undefined;
-  const compactToolbarDestinationSelectStyle = isDarkTheme
+  const compactToolbarSelectBaseStyle = isDarkTheme
     ? {
-      width: 140,
       backgroundColor: '#0f172a',
       color: '#e5e7eb',
-      borderColor: '#334155'
+      borderColor: '#334155',
+      colorScheme: 'dark'
     }
-    : { width: 140 };
+    : {
+      backgroundColor: '#ffffff',
+      color: '#08131a',
+      borderColor: 'rgba(8, 19, 26, 0.35)',
+      colorScheme: 'light'
+    };
+  const compactToolbarDestinationSelectStyle = {
+    ...compactToolbarSelectBaseStyle,
+    width: 140
+  };
   const offlineDriverBadgeStyle = isDarkTheme
     ? {
       backgroundColor: '#475569',
@@ -1128,7 +1137,7 @@ const TripDashboardWorkspace = () => {
             <Button variant={tripDateFilter === todayDateKey ? 'dark' : 'outline-dark'} size="sm" style={tripDateFilter === todayDateKey ? undefined : greenToolbarButtonStyle} onClick={() => setTripDateFilter(todayDateKey)}>Today</Button>
           </div>;
       case 'status-filter':
-        return <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 150 }}>
+        return <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 150 }}>
             <option value="all">All</option>
             <option value="unassigned">Unassigned</option>
             <option value="assigned">Assigned</option>
@@ -1262,24 +1271,24 @@ const TripDashboardWorkspace = () => {
   const renderToolbarRow3Block = blockId => {
     switch (blockId) {
       case 'driver-select':
-        return <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ width: 220 }}>
+        return <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 220 }}>
             <option value="">Select driver</option>
             {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
           </Form.Select>;
       case 'secondary-driver':
-        return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 220 }}>
+        return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 220 }}>
             <option value="">Secondary driver</option>
             {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
           </Form.Select>;
       case 'zip-filter':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">ZIP</span>
-            <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} style={{ width: 110 }} title="Pickup ZIP">
+            <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 110 }} title="Pickup ZIP">
               <option value="">PU ZIP</option>
               {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
             </Form.Select>
             <span className="text-muted small">→</span>
-            <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} style={{ width: 110 }} title="Dropoff ZIP">
+            <Form.Select size="sm" value={dropoffZipFilter} onChange={e => setDropoffZipFilter(e.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 110 }} title="Dropoff ZIP">
               <option value="">DO ZIP</option>
               {availableDropoffZips.map(zip => <option key={`do-zip-${zip}`} value={zip}>{zip}</option>)}
             </Form.Select>
@@ -1288,7 +1297,7 @@ const TripDashboardWorkspace = () => {
       case 'route-filter':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">Route</span>
-            <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} style={{ width: 140 }} title="Pickup city">
+            <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} style={compactToolbarDestinationSelectStyle} title="Pickup city">
               <option value="">Origin</option>
               {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
             </Form.Select>
