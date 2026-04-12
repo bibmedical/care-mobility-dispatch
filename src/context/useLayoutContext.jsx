@@ -154,9 +154,12 @@ const LayoutProvider = ({
     resetSettings
   }), [settings])}>
       {children}
-      {settings.menu.size === 'default' && (
-        <div className="startbar-overlay d-print-none" onClick={() => changeMenuSize('collapsed')} />
-      )}
+      {/* Overlay solo visible si sidebar está abierto y en mobile o forzado por clase */}
+      <div
+        className={`startbar-overlay d-print-none${settings.menu.size === 'default' ? ' startbar-enable' : ''}`}
+        style={{ display: settings.menu.size === 'default' ? undefined : 'none' }}
+        onClick={() => settings.menu.size === 'default' && changeMenuSize('collapsed')}
+      />
     </ThemeContext.Provider>;
 };
 export { LayoutProvider, useLayoutContext };
