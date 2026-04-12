@@ -40,8 +40,6 @@ try {
     const revealZoneId = 'startbar-reveal-zone';
     const revealZoneWidth = 24;
     const hoverRevealStateAttr = 'data-sidebar-hover-revealed';
-    let pointerX = -1;
-    let pointerY = -1;
 
     const isDesktopViewport = () => window.innerWidth >= 1024;
 
@@ -76,15 +74,7 @@ try {
         if (!startbar) return;
         if (document.body.getAttribute(hoverRevealStateAttr) !== 'true') return;
         if (document.body.getAttribute('data-sidebar-size') !== 'default') return;
-        if (pointerX < 0 || pointerY < 0) return;
-
-        const startbarBounds = startbar.getBoundingClientRect();
-        const overSidebar = pointerX >= startbarBounds.left && pointerX <= startbarBounds.right && pointerY >= startbarBounds.top && pointerY <= startbarBounds.bottom;
-        const overRevealZone = pointerX >= 0 && pointerX <= revealZoneWidth;
-
-        if (!overSidebar && !overRevealZone) {
-            collapseSidebar();
-        }
+        collapseSidebar();
     };
 
     const revealZone = ensureRevealZone();
@@ -98,19 +88,13 @@ try {
     revealZone.addEventListener('mouseenter', revealSidebar);
     revealZone.addEventListener('click', revealSidebar);
 
-    startbar?.addEventListener('mouseleave', () => {
+    startbar?.addEventListener('mouseenter', () => {
         window.clearTimeout(window.__cmSidebarAutoCollapseTimer);
-        window.__cmSidebarAutoCollapseTimer = window.setTimeout(tryAutoCollapseAfterReveal, 90);
     });
 
-    document.addEventListener('mousemove', (event) => {
-        pointerX = event.clientX;
-        pointerY = event.clientY;
-        if (!isDesktopViewport()) return;
-        if (document.body.getAttribute(hoverRevealStateAttr) !== 'true') return;
-        if (document.body.getAttribute('data-sidebar-size') !== 'default') return;
+    startbar?.addEventListener('mouseleave', () => {
         window.clearTimeout(window.__cmSidebarAutoCollapseTimer);
-        window.__cmSidebarAutoCollapseTimer = window.setTimeout(tryAutoCollapseAfterReveal, 90);
+        window.__cmSidebarAutoCollapseTimer = window.setTimeout(tryAutoCollapseAfterReveal, 120);
     });
 
     collapsedToggle?.addEventListener('click', function () {
@@ -134,6 +118,12 @@ try {
     window.addEventListener('resize', () => {
         changeSidebarSize()
     })
+
+    window.addEventListener('blur', () => {
+        if (document.body.getAttribute(hoverRevealStateAttr) === 'true') {
+            collapseSidebar();
+        }
+    });
 
     changeSidebarSize();
 
