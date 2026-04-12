@@ -145,7 +145,7 @@ const TRIP_DASHBOARD_DRIVERS_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_DRIVE
 const TRIP_DASHBOARD_ROUTES_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROUTES_VISIBLE__';
 const TRIP_DASHBOARD_TRIPS_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TRIPS_VISIBLE__';
 const TRIP_DASHBOARD_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW1_BLOCKS__';
-const TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS = ['date-controls', 'status-filter', 'trip-search', 'driver-assigned', 'action-buttons', 'leg-buttons', 'type-buttons', 'closed-route'];
+const TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS = ['date-controls', 'trip-search', 'driver-assigned', 'action-buttons', 'leg-buttons', 'type-buttons', 'closed-route'];
 const TRIP_DASHBOARD_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW2_BLOCKS__';
 const TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS = ['show-map', 'peek-panel', 'toolbar-edit', 'columns', 'map-screen', 'layout', 'panels', 'trip-order'];
 const TRIP_DASHBOARD_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW3_BLOCKS__';
@@ -1138,17 +1138,7 @@ const TripDashboardWorkspace = () => {
             <Button variant={tripDateFilter === todayDateKey ? 'dark' : 'outline-dark'} size="sm" style={tripDateFilter === todayDateKey ? undefined : greenToolbarButtonStyle} onClick={() => setTripDateFilter(todayDateKey)}>Today</Button>
           </div>;
       case 'status-filter':
-        return <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 150 }}>
-            <option value="all">All</option>
-            <option value="unassigned">Unassigned</option>
-            <option value="assigned">Assigned</option>
-            <option value="inprogress">In progress</option>
-            <option value="willcall">Will Call</option>
-            <option value="confirm">Confirmed</option>
-            <option value="unconfirm">Unconfirmed</option>
-            <option value="block">Blocked</option>
-            <option value="cancelled">Cancelled</option>
-          </Form.Select>;
+        return null;
       case 'trip-search':
         return <div className="d-flex align-items-center gap-2 flex-nowrap">
             <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, patient, phone, address..." style={{ width: 130 }} />
@@ -3855,6 +3845,18 @@ const TripDashboardWorkspace = () => {
               } : isDarkTheme ? undefined : greenToolbarButtonStyle} onClick={handleToggleClosedRoute} title="Lock route by driver/day. New trips added later will show who added them.">
                     {isActiveRouteClosed ? 'Route closed' : 'Close route'}
                   </Button>
+                  <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 130, marginLeft: 8 }}>
+                    <option value="all">All</option>
+                    <option value="unassigned">Unassigned</option>
+                    <option value="assigned">Assigned</option>
+                    <option value="inprogress">In progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="willcall">WillCall</option>
+                    <option value="confirm">Confirmed</option>
+                    <option value="unconfirm">Unconfirmed</option>
+                    <option value="cancelled">Cancelled</option>
+                    <option value="block">Blocked</option>
+                  </Form.Select>
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border bg-light-subtle text-dark" style={{ borderColor: 'rgba(15, 23, 42, 0.12)' }}>
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                     <div>
