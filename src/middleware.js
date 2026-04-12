@@ -29,7 +29,7 @@ export default withAuth(
     const driverUser = isDriverRole(role);
 
     if (pathname === '/') {
-      return NextResponse.redirect(new URL(driverUser ? DRIVER_PORTAL_PATH : '/trip-analytics', request.url));
+      return NextResponse.redirect(new URL(driverUser ? DRIVER_PORTAL_PATH : '/dispatcher', request.url));
     }
 
     // Allow access to login page even if logged in - user can logout and re-authenticate
@@ -38,7 +38,7 @@ export default withAuth(
     }
 
     if (AUTH_ROUTES.some(route => pathname.startsWith(route)) && request.nextauth.token) {
-      return NextResponse.redirect(new URL(driverUser ? DRIVER_PORTAL_PATH : '/trip-analytics', request.url));
+      return NextResponse.redirect(new URL(driverUser ? DRIVER_PORTAL_PATH : '/dispatcher', request.url));
     }
 
     if (driverUser && !pathname.startsWith(DRIVER_PORTAL_PATH)) {
