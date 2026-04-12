@@ -1,6 +1,8 @@
 import { query, queryRows } from '@/server/db';
 
 const STALE_OPEN_SESSION_MS = 18 * 60 * 60 * 1000;
+const ACTIVE_WEB_HEARTBEAT_WINDOW_MS = parseInt(process.env.ACTIVE_WEB_HEARTBEAT_WINDOW_MS || '180000', 10);
+const ACTIVE_WEB_LOGIN_GRACE_MS = parseInt(process.env.ACTIVE_WEB_LOGIN_GRACE_MS || '120000', 10);
 
 const toIsoTimestamp = value => {
   const parsed = new Date(value);
@@ -160,8 +162,29 @@ export const hasRecentOpenWebSession = async userId => {
     const openSession = getOpenSessionsByUserId(logs).get(normalizedUserId);
     if (!openSession?.timestamp) return false;
 
-    const ageMs = Date.now() - new Date(openSession.timestamp).getTime();
-    return Number.isFinite(ageMs) && ageMs >= 0 && ageMs < STALE_OPEN_SESSION_MS;
+    const nowMs = Date.now();
+    const openSessionTimestampMs = new Date(openSession.timestamp).getTime();
+    const openSessionAgeMs = nowMs - openSessionTimestampMs;
+    if (!Number.isFinite(openSessionAgeMs) || openSessionAgeMs < 0 || openSessionAgeMs >= STALE_OPEN_SESSION_MS) {
+      return false;
+    }
+
+    const latestHeartbeat = await getLatestPresenceHeartbeat(normalizedUserId);
+    if (latestHeartbeat?.timestamp) {
+      const heartbeatTimestampMs = new Date(latestHeartbeat.timestamp).getTime();
+      const heartbeatAgeMs = nowMs - heartbeatTimestampMs;
+      const heartbeatBelongsToOpenSession = Number.isFinite(heartbeatTimestampMs)
+        && heartbeatTimestampMs >= openSessionTimestampMs;
+      if (heartbeatBelongsToOpenSession
+        && Number.isFinite(heartbeatAgeMs)
+        && heartbeatAgeMs >= 0
+        && heartbeatAgeMs <= ACTIVE_WEB_HEARTBEAT_WINDOW_MS) {
+        return true;
+      }
+    }
+
+    // Keep a short grace window right after login while the first heartbeat arrives.
+    return openSessionAgeMs <= ACTIVE_WEB_LOGIN_GRACE_MS;
   } catch (error) {
     console.error('Error checking recent open web session:', error);
     return false;
