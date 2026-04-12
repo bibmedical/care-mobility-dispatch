@@ -1733,7 +1733,10 @@ const TripDashboardWorkspace = () => {
     };
 
     window.addEventListener('storage', handleStorage);
-    const pollId = window.setInterval(applySnapshot, 2500);
+    const pollId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      applySnapshot();
+    }, 5000);
 
     return () => {
       window.removeEventListener('storage', handleStorage);
@@ -2346,8 +2349,12 @@ const TripDashboardWorkspace = () => {
     const startX = event.clientX;
     const startWidth = columnWidths[columnKey] ?? Math.round(headerCell?.getBoundingClientRect().width || 120);
 
-    const handlePointerMove = moveEvent => {
-      const delta = moveEvent.clientX - startX;
+    let rafId = null;
+    let latestClientX = startX;
+
+    const flushColumnResize = () => {
+      rafId = null;
+      const delta = latestClientX - startX;
       const minWidth = TRIP_COLUMN_MIN_WIDTHS[columnKey] ?? 56;
       const nextWidth = Math.max(minWidth, Math.min(640, startWidth + delta));
       setColumnWidths(current => ({
@@ -2356,9 +2363,16 @@ const TripDashboardWorkspace = () => {
       }));
     };
 
+    const handlePointerMove = moveEvent => {
+      latestClientX = moveEvent.clientX;
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(flushColumnResize);
+    };
+
     const stopDragging = () => {
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', stopDragging);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
@@ -2828,7 +2842,13 @@ const TripDashboardWorkspace = () => {
   useEffect(() => {
     if (!dragMode) return;
 
-    const handlePointerMove = event => {
+    let rafId = null;
+    let latestEvent = null;
+
+    const flushDragSplit = () => {
+      rafId = null;
+      const event = latestEvent;
+      if (!event) return;
       if (!workspaceRef.current) return;
       const bounds = workspaceRef.current.getBoundingClientRect();
       const nextColumnSplit = clamp((event.clientX - bounds.left) / bounds.width * 100, 28, 72);
@@ -2843,6 +2863,12 @@ const TripDashboardWorkspace = () => {
       }
     };
 
+    const handlePointerMove = event => {
+      latestEvent = event;
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(flushDragSplit);
+    };
+
     const stopDragging = () => {
       setDragMode(null);
     };
@@ -2854,6 +2880,7 @@ const TripDashboardWorkspace = () => {
     return () => {
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', stopDragging);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
       document.body.style.userSelect = '';
     };
   }, [dragMode]);

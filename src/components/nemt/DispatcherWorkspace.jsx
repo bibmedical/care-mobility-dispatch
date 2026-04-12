@@ -929,7 +929,10 @@ const DispatcherWorkspace = () => {
     };
 
     window.addEventListener('storage', handleStorage);
-    const pollId = window.setInterval(applySnapshot, 2500);
+    const pollId = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      applySnapshot();
+    }, 5000);
 
     return () => {
       window.removeEventListener('storage', handleStorage);
@@ -948,11 +951,22 @@ const DispatcherWorkspace = () => {
   useEffect(() => {
     if (!isDraggingDetachedMap) return;
 
-    const handleMouseMove = event => {
+    let rafId = null;
+    let latestEvent = null;
+
+    const flushDetachedMapPosition = () => {
+      rafId = null;
+      if (!latestEvent) return;
       setDetachedMapPosition({
-        x: Math.max(8, event.clientX - detachedMapDragOffsetRef.current.x),
-        y: Math.max(56, event.clientY - detachedMapDragOffsetRef.current.y)
+        x: Math.max(8, latestEvent.clientX - detachedMapDragOffsetRef.current.x),
+        y: Math.max(56, latestEvent.clientY - detachedMapDragOffsetRef.current.y)
       });
+    };
+
+    const handleMouseMove = event => {
+      latestEvent = event;
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(flushDetachedMapPosition);
     };
 
     const handleMouseUp = () => {
@@ -965,6 +979,7 @@ const DispatcherWorkspace = () => {
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
     };
   }, [isDraggingDetachedMap]);
 
@@ -2783,8 +2798,12 @@ const DispatcherWorkspace = () => {
     const startX = event.clientX;
     const startWidth = columnWidths[columnKey] ?? Math.round(headerCell?.getBoundingClientRect().width || 120);
 
-    const handlePointerMove = moveEvent => {
-      const delta = moveEvent.clientX - startX;
+    let rafId = null;
+    let latestClientX = startX;
+
+    const flushColumnResize = () => {
+      rafId = null;
+      const delta = latestClientX - startX;
       const minWidth = TRIP_COLUMN_MIN_WIDTHS[columnKey] ?? 56;
       const nextWidth = Math.max(minWidth, Math.min(640, startWidth + delta));
       setColumnWidths(current => ({
@@ -2793,9 +2812,16 @@ const DispatcherWorkspace = () => {
       }));
     };
 
+    const handlePointerMove = moveEvent => {
+      latestClientX = moveEvent.clientX;
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(flushColumnResize);
+    };
+
     const stopDragging = () => {
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', stopDragging);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
     };
@@ -2955,7 +2981,13 @@ const DispatcherWorkspace = () => {
   useEffect(() => {
     if (!dragMode) return;
 
-    const handlePointerMove = event => {
+    let rafId = null;
+    let latestEvent = null;
+
+    const flushDragSplit = () => {
+      rafId = null;
+      const event = latestEvent;
+      if (!event) return;
       if (!workspaceRef.current) return;
       const bounds = workspaceRef.current.getBoundingClientRect();
       const nextColumnSplit = clamp((event.clientX - bounds.left) / bounds.width * 100, 28, 72);
@@ -2970,6 +3002,12 @@ const DispatcherWorkspace = () => {
       }
     };
 
+    const handlePointerMove = event => {
+      latestEvent = event;
+      if (rafId != null) return;
+      rafId = window.requestAnimationFrame(flushDragSplit);
+    };
+
     const stopDragging = () => {
       setDragMode(null);
     };
@@ -2981,6 +3019,7 @@ const DispatcherWorkspace = () => {
     return () => {
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', stopDragging);
+      if (rafId != null) window.cancelAnimationFrame(rafId);
       document.body.style.userSelect = '';
     };
   }, [dragMode]);

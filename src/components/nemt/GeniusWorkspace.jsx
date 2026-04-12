@@ -54,6 +54,16 @@ const GeniusWorkspace = () => {
 
   const availableDates = useMemo(() => Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip, routePlans, trips)).filter(Boolean))).sort((a, b) => String(b).localeCompare(String(a))), [routePlans, trips]);
 
+  const driverNameById = useMemo(() => {
+    const map = new Map();
+    for (const driver of drivers) {
+      const key = String(driver?.id || '').trim();
+      if (!key) continue;
+      map.set(key, String(driver?.name || driver?.displayName || driver?.username || driver?.id || '').trim() || 'Unassigned');
+    }
+    return map;
+  }, [drivers]);
+
   const scopedTrips = useMemo(() => trips.filter(trip => {
     const serviceDate = getTripServiceDateKey(trip, routePlans, trips);
     if (selectedDate !== 'all' && serviceDate !== selectedDate) return false;
@@ -65,10 +75,11 @@ const GeniusWorkspace = () => {
   const tripRows = useMemo(() => scopedTrips.map(trip => {
     const tripType = getTripTypeCode(trip);
     const billingAmount = getTripBillingAmount(trip);
+    const driverId = String(trip?.driverId || '').trim();
     return {
       id: String(trip?.brokerTripId || trip?.rideId || trip?.id || '').trim(),
-      driverId: String(trip?.driverId || '').trim(),
-      driverName: drivers.find(driver => driver.id === trip.driverId)?.name || drivers.find(driver => driver.id === trip.driverId)?.displayName || 'Unassigned',
+      driverId,
+      driverName: driverNameById.get(driverId) || 'Unassigned',
       rider: String(trip?.rider || '').trim() || '-',
       tripType,
       amount: billingAmount,
@@ -77,7 +88,7 @@ const GeniusWorkspace = () => {
       dateKey: getTripServiceDateKey(trip, routePlans, trips) || '-',
       rawTrip: trip
     };
-  }).filter(row => row.amount > 0), [drivers, routePlans, scopedTrips, trips]);
+  }).filter(row => row.amount > 0), [driverNameById, routePlans, scopedTrips, trips]);
 
   useEffect(() => {
     if (!isUnlocked) return;
