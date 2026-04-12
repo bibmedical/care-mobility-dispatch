@@ -7,10 +7,6 @@ export const metadata = {
 };
 
 const HELP_ENTRIES = [{
-  module: 'AI Integrations',
-  route: '/integrations/ai',
-  instruction: 'Configure provider, validate keys and test operational prompts.'
-}, {
   module: 'Avatar',
   route: '/avatar',
   instruction: 'Manage the visual profile and quick data of the active user.'
@@ -71,10 +67,6 @@ const HELP_ENTRIES = [{
   route: '/integrations/sms',
   instruction: 'Send manual/automatic messages and review delivery status.'
 }, {
-  module: 'System Logs',
-  route: '/system-logs',
-  instruction: 'Audit sessions, actions and active time per user.'
-}, {
   module: 'System Messages',
   route: '/system-messages',
   instruction: 'Schedule internal alerts and track critical notifications.'
@@ -107,8 +99,8 @@ const QUICK_FLOW = [{
   step: '4. Confirmations',
   detail: 'Send confirmation SMS or custom messages as needed.'
 }, {
-  step: '5. Review logs',
-  detail: 'Audit actions and team sessions in System Logs.'
+  step: '5. Review messages',
+  detail: 'Check internal alerts and operational notifications in System Messages.'
 }];
 
 const HelpPage = () => {
@@ -158,7 +150,7 @@ const HelpPage = () => {
             </div>
             <div className="d-flex flex-wrap gap-2">
               <Button as={Link} href="/dispatcher" variant="primary">Open Dispatcher</Button>
-              <Button as={Link} href="/system-logs" variant="outline-primary">Open System Logs</Button>
+              <Button as={Link} href="/system-messages" variant="outline-primary">Open System Messages</Button>
             </div>
           </div>
         </CardBody>
@@ -310,7 +302,7 @@ const HelpPage = () => {
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="danger" className="fs-6 px-3 py-2">V2</Badge>
-                <span className="fw-semibold text-dark">Security Advanced + System Logs + 2FA</span>
+                <span className="fw-semibold text-dark">Security Advanced + 2FA</span>
                 <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>March 30, 2026 — Evening / Night</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
@@ -320,7 +312,6 @@ const HelpPage = () => {
                 <li>Configurable inactivity timeout + auto-logout on web sessions</li>
                 <li>Login failure logging system with admin API endpoint</li>
                 <li>IP binding and 15-minute session hardening</li>
-                <li>Full System Logs workspace: login/logout tracking, audit per user</li>
                 <li>Lock entire dispatch panel when locked — overlay disables all controls</li>
                 <li>Toolbar reorganized into 3 rows; A/U/C buttons moved to bottom panel</li>
                 <li>ZIP/City filters, Column picker fix, draggable grey divider for column resize</li>

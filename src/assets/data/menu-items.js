@@ -115,23 +115,10 @@ export const MENU_ITEMS = [{
   label: 'Integrations',
   icon: 'iconoir:plug-type-a',
   children: [{
-    key: 'integrations-ai',
-    label: 'AI',
-    url: '/integrations/ai'
-  }, {
     key: 'integrations-sms',
     label: 'SMS',
     url: '/integrations/sms'
   }]
-}, {
-  key: 'logs',
-  label: 'Logs',
-  isTitle: true
-}, {
-  key: 'system-logs',
-  label: 'System Logs',
-  icon: 'iconoir:list-select',
-  url: '/system-logs'
 }, {
   key: 'reports',
   label: 'Reports',
