@@ -771,6 +771,7 @@ const TripDashboardWorkspace = () => {
   const lastSavedPanelOrderRef = useRef('');
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const deferredRouteSearch = useDeferredValue(routeSearch);
+  const deferredTripIdSearch = useDeferredValue(tripIdSearch);
   const optOutList = useMemo(() => Array.isArray(smsData?.sms?.optOutList) ? smsData.sms.optOutList : [], [smsData?.sms?.optOutList]);
   const riderProfiles = useMemo(() => smsData?.sms?.riderProfiles || {}, [smsData?.sms?.riderProfiles]);
   const blacklistEntries = useMemo(() => Array.isArray(blacklistData?.entries) ? blacklistData.entries : [], [blacklistData?.entries]);
@@ -1150,7 +1151,7 @@ const TripDashboardWorkspace = () => {
           </Form.Select>;
       case 'trip-search':
         return <div className="d-flex align-items-center gap-2 flex-nowrap">
-            <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, patient, phone, address..." style={{ width: 260 }} />
+            <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, patient, phone, address..." style={{ width: 130 }} />
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setToolbarCollapsed(true)} title="Hide menu">
               <IconifyIcon icon="iconoir:eye-closed" />
             </Button>
@@ -1366,7 +1367,7 @@ const TripDashboardWorkspace = () => {
     if (!serviceAnimalOnly) return true;
     return Boolean(trip?.hasServiceAnimal);
   }).filter(trip => {
-    const searchValue = tripIdSearch.trim().toLowerCase();
+    const searchValue = deferredTripIdSearch.trim().toLowerCase();
     if (!searchValue) return true;
     const tokens = searchValue.split(/\s+/).filter(Boolean);
     const haystack = [trip.id, trip.brokerTripId, trip.rideId, trip.rider, trip.patientFirstName, trip.patientLastName, trip.patientName, trip.patientPhoneNumber, trip.address, trip.destination, getPickupZip(trip), getDropoffZip(trip), getPickupCity(trip), getDropoffCity(trip), trip.notes, trip.status, trip.safeRideStatus].filter(Boolean).join(' ').toLowerCase();
@@ -1381,7 +1382,7 @@ const TripDashboardWorkspace = () => {
     const zipValue = zipFilter.trim().toLowerCase();
     if (!zipValue) return true;
     return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
-  }), [dropoffZipFilter, pickupZipFilter, riderProfiles, serviceAnimalOnly, todayDateKey, tripDateFilter, tripIdSearch, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
+  }), [deferredTripIdSearch, dropoffZipFilter, pickupZipFilter, riderProfiles, serviceAnimalOnly, todayDateKey, tripDateFilter, tripLegFilter, tripStatusFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const availablePickupZips = useMemo(() => {
     const targetDropoffZip = dropoffZipFilter.trim();
     return Array.from(new Set(cityOptionTrips.filter(trip => tripMatchesZip(trip, targetDropoffZip)).flatMap(trip => [getPickupZip(trip).trim(), getDropoffZip(trip).trim()]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
@@ -3717,7 +3718,10 @@ const TripDashboardWorkspace = () => {
                 moveToolbarBlockAcrossRows(draggedBlockId, 'row1');
                 clearDraggingToolbarBlockIds();
               }}>
-                  {toolbarRow1Order.map(blockId => <div
+                  {toolbarRow1Order.map(blockId => {
+                  const renderedBlock = renderToolbarRow1Block(blockId);
+                  const shouldRenderBlock = isToolbarEditMode || isToolbarBlockEnabled(blockId);
+                  return <div
                     key={blockId}
                     draggable={isToolbarEditMode}
                     onDragStart={() => {
@@ -3743,8 +3747,9 @@ const TripDashboardWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {(isToolbarEditMode || isToolbarBlockEnabled(blockId)) && (renderToolbarRow1Block(blockId) || isToolbarEditMode ? renderToolbarRow1Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null)}
-                    </div>)}
+                      {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
+                    </div>;
+                })}
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
@@ -3757,7 +3762,10 @@ const TripDashboardWorkspace = () => {
                 moveToolbarBlockAcrossRows(draggedBlockId, 'row2');
                 clearDraggingToolbarBlockIds();
               }}>
-                  {toolbarRow2Order.map(blockId => <div
+                  {toolbarRow2Order.map(blockId => {
+                  const renderedBlock = renderToolbarRow2Block(blockId);
+                  const shouldRenderBlock = isToolbarEditMode || isToolbarBlockEnabled(blockId);
+                  return <div
                     key={blockId}
                     draggable={isToolbarEditMode}
                     onDragStart={() => {
@@ -3783,8 +3791,9 @@ const TripDashboardWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {(isToolbarEditMode || isToolbarBlockEnabled(blockId)) && (renderToolbarRow2Block(blockId) || isToolbarEditMode ? renderToolbarRow2Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null)}
-                    </div>)}
+                      {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
+                    </div>;
+                })}
                 </div>}
                 
                 {/* Row 3: Leg/Type filters and misc buttons */}
@@ -3797,7 +3806,10 @@ const TripDashboardWorkspace = () => {
                 moveToolbarBlockAcrossRows(draggedBlockId, 'row3');
                 clearDraggingToolbarBlockIds();
               }}>
-                  {toolbarRow3Order.map(blockId => <div
+                  {toolbarRow3Order.map(blockId => {
+                  const renderedBlock = renderToolbarRow3Block(blockId);
+                  const shouldRenderBlock = isToolbarEditMode || isToolbarBlockEnabled(blockId);
+                  return <div
                     key={blockId}
                     draggable={isToolbarEditMode}
                     onDragStart={() => {
@@ -3823,8 +3835,9 @@ const TripDashboardWorkspace = () => {
                     backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
                   } : undefined}
                   >
-                      {(isToolbarEditMode || isToolbarBlockEnabled(blockId)) && (renderToolbarRow3Block(blockId) || isToolbarEditMode ? renderToolbarRow3Block(blockId) || <Badge bg="secondary">{blockId}</Badge> : null)}
-                    </div>)}
+                      {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
+                    </div>;
+                })}
                 </div>
               </div>}
               {aiPlannerCollapsed ? <div className="mx-3 mt-2 mb-2 d-flex align-items-center justify-content-start gap-2 flex-wrap">
