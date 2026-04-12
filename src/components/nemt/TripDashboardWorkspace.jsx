@@ -1154,6 +1154,13 @@ const TripDashboardWorkspace = () => {
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setToolbarCollapsed(true)} title="Hide menu">
               <IconifyIcon icon="iconoir:eye-closed" />
             </Button>
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
+            setTopButtonsRowCollapsed(current => !current);
+            setShowToolbarTools(false);
+            setShowColumnPicker(false);
+          }}>
+              {topButtonsRowCollapsed ? 'Show top buttons' : 'Hide top buttons'}
+            </Button>
           </div>;
       case 'driver-assigned':
         return selectedDriver ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>{selectedDriverAssignedTripCount} assigned</Badge> : null;
@@ -1251,13 +1258,6 @@ const TripDashboardWorkspace = () => {
             setStatusMessage('Trips panel hidden.');
           }}>✕ Hide Trips</Button>
             {layoutMode !== TRIP_DASHBOARD_LAYOUTS.normal ? <Button variant="warning" size="sm" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal)}>Restore</Button> : null}
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-            setTopButtonsRowCollapsed(current => !current);
-            setShowToolbarTools(false);
-            setShowColumnPicker(false);
-          }}>
-              {topButtonsRowCollapsed ? 'Show top buttons' : 'Hide top buttons'}
-            </Button>
           </div>;
       case 'panels':
         return null;
@@ -3708,7 +3708,7 @@ const TripDashboardWorkspace = () => {
                       </Card> : null}
                   </div> : null}
                 {/* Row 1: Date selection and trip filters */}
-                <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
+                <div className={`d-flex align-items-center gap-2 ${isToolbarEditMode ? 'flex-nowrap' : 'flex-wrap'}`} style={{ minWidth: isToolbarEditMode ? 'max-content' : 0, overflowX: isToolbarEditMode ? 'auto' : 'visible', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
                 event.preventDefault();
               }} onDrop={() => {
@@ -3748,7 +3748,7 @@ const TripDashboardWorkspace = () => {
                 </div>
                 
                 {/* Row 2: Statistics and main action buttons */}
-                {topButtonsRowCollapsed ? null : <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflow: 'visible' }} onDragOver={event => {
+                {topButtonsRowCollapsed ? null : <div className={`d-flex gap-2 small position-relative ${isToolbarEditMode ? 'flex-nowrap' : 'flex-wrap'}`} style={{ minWidth: isToolbarEditMode ? 'max-content' : 0, overflowX: isToolbarEditMode ? 'auto' : 'visible', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
                 event.preventDefault();
               }} onDrop={() => {
@@ -3788,7 +3788,7 @@ const TripDashboardWorkspace = () => {
                 </div>}
                 
                 {/* Row 3: Leg/Type filters and misc buttons */}
-                <div className="d-flex gap-2 small flex-nowrap position-relative" style={{ minWidth: 'max-content', overflowX: 'visible', overflowY: 'visible' }} onDragOver={event => {
+                <div className={`d-flex gap-2 small position-relative ${isToolbarEditMode ? 'flex-nowrap' : 'flex-wrap'}`} style={{ minWidth: isToolbarEditMode ? 'max-content' : 0, overflowX: isToolbarEditMode ? 'auto' : 'visible', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
                 event.preventDefault();
               }} onDrop={() => {
