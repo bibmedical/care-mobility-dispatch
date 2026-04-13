@@ -253,9 +253,12 @@ const TRIP_DASHBOARD_PANEL_ORDERS = {
 };
 
 const getInitialTripDashboardLayoutMode = () => {
-  if (typeof window === 'undefined') return TRIP_DASHBOARD_LAYOUTS.normal;
+  if (typeof window === 'undefined') return TRIP_DASHBOARD_LAYOUTS.focusRight;
   const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
-  return Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout) ? storedLayout : TRIP_DASHBOARD_LAYOUTS.normal;
+  if (storedLayout === TRIP_DASHBOARD_LAYOUTS.normal || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
+    return TRIP_DASHBOARD_LAYOUTS.focusRight;
+  }
+  return storedLayout;
 };
 
 const getStatusBadge = status => {
@@ -3011,15 +3014,15 @@ const TripDashboardWorkspace = () => {
     if (userPreferencesLoading || layoutHydratedRef.current) return;
 
     const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY) || userPreferences?.tripDashboard?.layoutMode;
-    if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
-      setLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
-      setShowMapPane(true);
-      setShowBottomPanels(false);
+    if (!storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout) || storedLayout === TRIP_DASHBOARD_LAYOUTS.normal) {
+      setLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight);
+      setShowMapPane(false);
+      setShowBottomPanels(true);
       setShowDriversPanel(true);
       setShowRoutesPanel(true);
       setShowTripsPanel(true);
-      setRightPanelCollapsed(true);
-      setColumnSplit(94);
+      setRightPanelCollapsed(false);
+      setColumnSplit(current => clamp(current, TRIP_DASHBOARD_FOCUS_RIGHT_MIN_SPLIT, TRIP_DASHBOARD_FOCUS_RIGHT_MAX_SPLIT));
       setRowSplit(68);
       layoutHydratedRef.current = true;
       return;
