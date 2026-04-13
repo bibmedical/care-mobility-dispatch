@@ -4930,14 +4930,14 @@ const TripDashboardWorkspace = () => {
                           </div>
                         </td>
                         {showConfirmationTools ? <td style={{ width: columnWidths.notes ?? 240, minWidth: columnWidths.notes ?? 240, whiteSpace: 'nowrap' }}>
-                          <div className="d-flex align-items-center gap-1 flex-wrap" style={{ minWidth: 220 }}>
-                            <Button variant={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'success' : getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'warning' : 'outline-success'} size="sm" onClick={() => handleManualConfirm(row.trip)} style={{ minWidth: 74 }}>
+                          <div className="d-flex align-items-center gap-1 flex-nowrap" style={{ minWidth: 220, whiteSpace: 'nowrap' }}>
+                            <Button variant={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'success' : getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'warning' : 'outline-success'} size="sm" onClick={() => handleManualConfirm(row.trip)} style={{ minWidth: 104, whiteSpace: 'nowrap', flexShrink: 0 }}>
                               {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'Undo' : getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'Call Again' : 'Confirm'}
                             </Button>
-                            <Button variant="outline-danger" size="sm" onClick={() => handleCancelWithNote(row.trip)} style={{ minWidth: 68 }}>
+                            <Button variant="outline-danger" size="sm" onClick={() => handleCancelWithNote(row.trip)} style={{ width: 72, whiteSpace: 'nowrap' }}>
                               Cancel
                             </Button>
-                            <Button variant="outline-info" size="sm" onClick={() => handleOpenTripUpdateModal(row.trip)} style={{ minWidth: 68 }}>
+                            <Button variant="outline-info" size="sm" onClick={() => handleOpenTripUpdateModal(row.trip)} style={{ width: 72, whiteSpace: 'nowrap' }}>
                               Update
                             </Button>
                             <Button variant="outline-secondary" size="sm" onClick={() => handleCloneTrip(row.trip)} title="Clone trip" style={{ minWidth: 42 }}>
