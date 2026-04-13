@@ -4084,10 +4084,6 @@ const TripDashboardWorkspace = () => {
             </Button>
           </div>
           <div className="d-flex gap-2 align-items-center flex-wrap">
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => handleOpenBlacklistModal(null)}>
-              Black List
-              <Badge bg="danger" className="ms-2">{activeBlacklistEntries.length}</Badge>
-            </Button>
             <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
             setShowTripImportModal(true);
             setStatusMessage('Trip import ready in this dashboard.');

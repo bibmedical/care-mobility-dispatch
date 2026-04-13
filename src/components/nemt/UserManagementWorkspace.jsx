@@ -1,10 +1,12 @@
 'use client';
 
 import { buildPasswordForUser, getUserManagementRows, normalizePhoneDigits } from '@/helpers/system-users';
+import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSystemUsersApi from '@/hooks/useSystemUsersApi';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import VdrTabsBar from '@/components/nemt/VdrTabsBar';
 import { useLayoutContext } from '@/context/useLayoutContext';
+import { useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 
@@ -100,8 +102,10 @@ const createBlankUser = () => ({
 });
 
 const UserManagementWorkspace = () => {
+  const router = useRouter();
   const { themeMode } = useLayoutContext();
   const userShellStyles = useMemo(() => buildUserShellStyles(themeMode === 'light'), [themeMode]);
+  const { data: blacklistData } = useBlacklistApi();
   const { data, loading, saving, error, refresh, saveData } = useSystemUsersApi();
   const [search, setSearch] = useState('');
   const [syncFilter, setSyncFilter] = useState('all');
@@ -115,6 +119,7 @@ const UserManagementWorkspace = () => {
   const pageSize = 20;
 
   const users = useMemo(() => data?.users ?? [], [data]);
+  const activeBlacklistCount = useMemo(() => (Array.isArray(blacklistData?.entries) ? blacklistData.entries : []).filter(entry => String(entry?.status || 'Active').trim() === 'Active').length, [blacklistData?.entries]);
   const protectedUserIds = useMemo(() => data?.protectedUserIds ?? [], [data]);
   const rows = useMemo(() => getUserManagementRows(users, protectedUserIds), [users, protectedUserIds]);
   const syncFilterOptions = useMemo(() => Array.from(new Set(rows.map(row => row.syncStatus))), [rows]);
@@ -263,6 +268,10 @@ const UserManagementWorkspace = () => {
             openEditor(selectedUsers[0]);
           }}>
               <IconifyIcon icon="iconoir:edit-pencil" className="me-2" />Edit
+            </Button>
+            <Button className="rounded-pill" style={userShellStyles.button} onClick={() => router.push('/blacklist')}>
+              Black List
+              <span className="badge bg-danger ms-2">{activeBlacklistCount}</span>
             </Button>
           </div>
           <div className="d-flex align-items-center gap-2 ms-auto">
