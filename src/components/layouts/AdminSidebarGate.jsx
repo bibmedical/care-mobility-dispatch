@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 
 const isSidebarEnabledPath = pathname => {
   const normalizedPath = String(pathname || '').toLowerCase();
-  return normalizedPath === '/trip-dashboard' || normalizedPath.startsWith('/trip-dashboard/') || normalizedPath === '/dispatcher' || normalizedPath.startsWith('/dispatcher/');
+  return normalizedPath === '/dispatcher' || normalizedPath.startsWith('/dispatcher/');
 };
 
 const AdminSidebarGate = () => {
