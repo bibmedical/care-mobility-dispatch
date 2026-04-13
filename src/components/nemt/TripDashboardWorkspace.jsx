@@ -2333,7 +2333,7 @@ const TripDashboardWorkspace = () => {
       tripDateKey: getTripTimelineDateKey(trip, routePlans, trips)
     });
     if (blockingState.blacklistEntry) {
-      const shouldUnblock = window.confirm(`Remove ${trip.rider || 'this patient'} from Black List blocking?`);
+      const shouldUnblock = window.confirm(`Remove ${trip.rider || 'this patient'} from Black List?`);
       if (!shouldUnblock) return;
       const nextEntries = blacklistEntries.map(entry => entry.id === blockingState.blacklistEntry.id ? {
         ...entry,
@@ -2348,10 +2348,10 @@ const TripDashboardWorkspace = () => {
         status: 'Not Sent',
         provider: '',
         methodCode: 'UB',
-        message: 'Unblocked by dispatcher',
+        message: 'Removed from Black List by dispatcher',
         eventType: 'unblock'
       });
-      setStatusMessage('Passenger unblocked from Black List.');
+      setStatusMessage('Passenger removed from Black List.');
       return;
     }
     if (blockingState.optOutEntry) {
@@ -2390,7 +2390,7 @@ const TripDashboardWorkspace = () => {
       status: 'Active',
       holdUntil: '',
       notes: reasonText,
-      source: 'Trip Dashboard Block',
+      source: 'Trip Dashboard Black List',
       createdAt: nowIso,
       updatedAt: nowIso
     }, ...blacklistEntries];
@@ -2400,16 +2400,16 @@ const TripDashboardWorkspace = () => {
     });
     applyTripConfirmationState(blockReasonModalTrip, {
       status: 'Opted Out',
-      provider: 'block',
+      provider: 'blacklist',
       methodCode: 'B',
-      message: `Blocked: ${reasonText}`,
-      eventType: 'block',
-      noteLine: `[BLOCK] ${new Date().toLocaleString()}: ${reasonText}`
+      message: `Black List: ${reasonText}`,
+      eventType: 'blacklist',
+      noteLine: `[BLACK LIST] ${new Date().toLocaleString()}: ${reasonText}`
     });
     setBlockReasonModalTrip(null);
     setBlockReasonType('other');
     setBlockReasonNote('');
-    setStatusMessage('Passenger blocked from confirmation.');
+    setStatusMessage('Passenger added to Black List.');
   };
 
   const handleSendConfirmation = async () => {
@@ -4868,8 +4868,8 @@ const TripDashboardWorkspace = () => {
                         }} title={`Delete cloned copy ${row.trip.id}`} style={{ minWidth: 42 }}>
                                 D
                               </Button> : null}
-                            <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 68 }} onClick={() => void handleToggleTripBlock(row.trip)}>
-                              {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Allow' : 'Block'}
+                            <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 82 }} onClick={() => void handleToggleTripBlock(row.trip)}>
+                              {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Remove' : 'Black List'}
                             </Button>
                           </div>
                         </td> : null}
@@ -5238,7 +5238,7 @@ const TripDashboardWorkspace = () => {
 
         <Modal show={Boolean(blockReasonModalTrip)} onHide={() => setBlockReasonModalTrip(null)} centered>
           <Modal.Header closeButton>
-            <Modal.Title>Block Patient</Modal.Title>
+            <Modal.Title>Add To Black List</Modal.Title>
           </Modal.Header>
           <Modal.Body>
             <div className="small text-muted mb-2">Trip: {blockReasonModalTrip?.id}</div>
@@ -5252,7 +5252,7 @@ const TripDashboardWorkspace = () => {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setBlockReasonModalTrip(null)}>Close</Button>
-            <Button variant="dark" onClick={() => void handleConfirmBlockReason()}>Block Patient</Button>
+            <Button variant="dark" onClick={() => void handleConfirmBlockReason()}>Add To Black List</Button>
           </Modal.Footer>
         </Modal>
 
