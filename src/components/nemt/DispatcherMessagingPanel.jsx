@@ -1072,23 +1072,12 @@ const DispatcherMessagingPanel = ({
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => onOpenLayout?.()}>Layout</Button>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowPanelSettings(true)}>Sound</Button>
+          {!hideThreadList ? <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancel Add Driver' : 'Add Driver'}</Button> : null}
+          {!hideThreadList ? <Button variant="dark" size="sm" onClick={() => setShowAddOfficialDriver(current => !current)}>{showAddOfficialDriver ? 'Cancel Official Driver' : 'Official Driver'}</Button> : null}
         </div>
         {!hideThreadList ? <>
             <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 140, maxWidth: 250 }}>
               <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." style={messagingSurfaceStyles.input} spellCheck={false} autoComplete="off" />
-              <button
-                type="button"
-                onClick={() => setShowPanelSettings(true)}
-                className="border-0 rounded-circle d-inline-flex align-items-center justify-content-center"
-                style={{ width: 18, height: 18, backgroundColor: selectedChatTheme.accent, boxShadow: `0 0 0 2px ${selectedChatTheme.accent}33` }}
-                title="Messaging colors and notification sound"
-              >
-                <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block' }} />
-              </button>
-            </div>
-            <div className="d-flex gap-2 flex-wrap justify-content-end">
-              <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
-              <Button variant="dark" size="sm" onClick={() => setShowAddOfficialDriver(current => !current)}>{showAddOfficialDriver ? 'Cancelar oficial' : 'Official Driver'}</Button>
             </div>
           </> : null}
       </div>
