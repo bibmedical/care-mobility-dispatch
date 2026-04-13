@@ -1772,7 +1772,6 @@ export const NemtProvider = ({
     });
     const nextSnapshot = JSON.stringify(nextPreferences);
     if (nextSnapshot === userUiPreferencesSnapshotRef.current) return;
-    userUiPreferencesSnapshotRef.current = nextSnapshot;
     setUserUiPreferences(nextPreferences);
     void persistUserUiPreferences(nextPreferences);
   }, [persistUserUiPreferences, userUiPreferences]);
@@ -1784,7 +1783,6 @@ export const NemtProvider = ({
     });
     const nextSnapshot = JSON.stringify(nextPreferences);
     if (nextSnapshot === userUiPreferencesSnapshotRef.current) return;
-    userUiPreferencesSnapshotRef.current = nextSnapshot;
     setUserUiPreferences(nextPreferences);
     void persistUserUiPreferences(nextPreferences);
   }, [persistUserUiPreferences, userUiPreferences]);
@@ -1805,7 +1803,6 @@ export const NemtProvider = ({
     });
     const nextSnapshot = JSON.stringify(nextPreferences);
     if (nextSnapshot === userUiPreferencesSnapshotRef.current) return;
-    userUiPreferencesSnapshotRef.current = nextSnapshot;
     setUserUiPreferences(nextPreferences);
     void persistUserUiPreferences(nextPreferences);
   }, [persistUserUiPreferences, userUiPreferences]);
