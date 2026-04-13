@@ -329,7 +329,7 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   label: 'Punctuality'
 }, {
   key: 'lateMinutes',
-  label: 'Late Min'
+  label: 'Late Minutes'
 }];
 
 const LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['notes', 'miles', 'status', 'rider', 'address', 'destination'];
