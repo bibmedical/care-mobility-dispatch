@@ -208,19 +208,6 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 
 const BLACKLIST_CATEGORY_OPTIONS = ['Do Not Schedule', 'Medical Hold', 'Deceased', 'This Week Only', 'Legal / Claim', 'Safety Risk', 'Other'];
 const TRIP_CONFIRMATION_OUTPUT_COLUMNS = ['tripId', 'rider', 'phone', 'pickupTime', 'pickupAddress', 'dropoffTime', 'dropoffAddress', 'leg', 'type'];
-const BLOCK_REASON_OPTIONS = [{
-  value: 'no-show-risk',
-  label: 'No-show risk'
-}, {
-  value: 'requested-stop',
-  label: 'Patient requested stop'
-}, {
-  value: 'safety-risk',
-  label: 'Safety risk'
-}, {
-  value: 'other',
-  label: 'Other reason'
-}];
 
 const createEmptyBlacklistEntryDraft = () => ({
   name: '',
@@ -542,6 +529,27 @@ const normalizeSortValue = value => {
   return String(value).trim().toLowerCase();
 };
 
+const compareNormalizedTripSortValues = (leftValue, rightValue, direction = 'asc') => {
+  const leftEmpty = leftValue === '' || leftValue == null;
+  const rightEmpty = rightValue === '' || rightValue == null;
+
+  if (leftEmpty && rightEmpty) return 0;
+  if (leftEmpty) return 1;
+  if (rightEmpty) return -1;
+
+  let result = 0;
+  if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+    result = leftValue === rightValue ? 0 : leftValue > rightValue ? 1 : -1;
+  } else {
+    result = String(leftValue).localeCompare(String(rightValue), undefined, {
+      numeric: true,
+      sensitivity: 'base'
+    });
+  }
+
+  return direction === 'asc' ? result : -result;
+};
+
 const getTripSortValue = (trip, sortKey, getDriverName) => {
   switch (sortKey) {
     case 'trip':
@@ -794,6 +802,7 @@ const TripDashboardWorkspace = () => {
   const [showTripImportModal, setShowTripImportModal] = useState(false);
   const [blacklistSearch, setBlacklistSearch] = useState('');
   const [blacklistDraft, setBlacklistDraft] = useState(createEmptyBlacklistEntryDraft());
+  const [blacklistDraftTrip, setBlacklistDraftTrip] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
   const [showRoute, setShowRoute] = useState(true);
   const [showBottomPanels, setShowBottomPanels] = useState(() => getInitialTripDashboardLayoutMode() !== TRIP_DASHBOARD_LAYOUTS.normal);
@@ -857,9 +866,6 @@ const TripDashboardWorkspace = () => {
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
   const [cancelLegScope, setCancelLegScope] = useState('single');
-  const [blockReasonModalTrip, setBlockReasonModalTrip] = useState(null);
-  const [blockReasonType, setBlockReasonType] = useState('other');
-  const [blockReasonNote, setBlockReasonNote] = useState('');
   const [inlineTripEditCell, setInlineTripEditCell] = useState(null);
   const [inlineTripEditValue, setInlineTripEditValue] = useState('');
   const [aiPlannerMode, setAiPlannerMode] = useState('local');
@@ -991,11 +997,37 @@ const TripDashboardWorkspace = () => {
     tripDateKey: getTripTimelineDateKey(trip, routePlans, trips)
   })])), [blacklistEntries, optOutList, routePlans, smsData?.sms?.defaultCountryCode, trips]);
 
+  const handleCloseBlacklistModal = () => {
+    setShowBlacklistModal(false);
+    setBlacklistDraft(createEmptyBlacklistEntryDraft());
+    setBlacklistDraftTrip(null);
+  };
+
+  const handleOpenBlacklistModal = trip => {
+    if (trip) {
+      setBlacklistDraftTrip(trip);
+      setBlacklistDraft({
+        name: String(trip?.rider || '').trim(),
+        phone: String(trip?.patientPhoneNumber || '').trim(),
+        category: 'Do Not Schedule',
+        holdUntil: '',
+        notes: `Trip: ${trip?.id || ''}`.trim()
+      });
+      setStatusMessage(`Black List ready for ${trip?.rider || 'selected rider'}.`);
+    } else {
+      setBlacklistDraftTrip(null);
+      setBlacklistDraft(createEmptyBlacklistEntryDraft());
+    }
+    setShowBlacklistModal(true);
+  };
+
   const handleAddBlacklistEntry = async () => {
     if (!blacklistDraft.name.trim() && !blacklistDraft.phone.trim()) {
       setStatusMessage('Write a name or phone before adding to Black List.');
       return;
     }
+
+    const addedFromTrip = Boolean(blacklistDraftTrip);
 
     const nextEntry = {
       id: `blacklist-${Date.now()}`,
@@ -1005,7 +1037,7 @@ const TripDashboardWorkspace = () => {
       status: 'Active',
       holdUntil: blacklistDraft.holdUntil,
       notes: blacklistDraft.notes.trim(),
-      source: 'Trip Dashboard',
+      source: addedFromTrip ? 'Trip Dashboard Black List' : 'Trip Dashboard',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1016,6 +1048,8 @@ const TripDashboardWorkspace = () => {
         entries: [nextEntry, ...blacklistEntries]
       });
       setBlacklistDraft(createEmptyBlacklistEntryDraft());
+      setBlacklistDraftTrip(null);
+      if (addedFromTrip) setShowBlacklistModal(false);
       setStatusMessage('Black List entry added from Trip Dashboard.');
     } catch {
       setStatusMessage('Unable to save the new Black List entry.');
@@ -2371,45 +2405,7 @@ const TripDashboardWorkspace = () => {
       setStatusMessage('Passenger removed from temporary do-not-confirm list.');
       return;
     }
-    setBlockReasonModalTrip(trip);
-    setBlockReasonType('other');
-    setBlockReasonNote('');
-  };
-
-  const handleConfirmBlockReason = async () => {
-    if (!blockReasonModalTrip) return;
-    const reasonLabel = BLOCK_REASON_OPTIONS.find(option => option.value === blockReasonType)?.label || 'Other reason';
-    const details = blockReasonNote.trim();
-    const reasonText = details ? `${reasonLabel}: ${details}` : reasonLabel;
-    const nowIso = new Date().toISOString();
-    const nextEntries = [{
-      id: `bl-${Date.now()}`,
-      name: blockReasonModalTrip.rider || '',
-      phone: blockReasonModalTrip.patientPhoneNumber || '',
-      category: blockReasonType === 'safety-risk' ? 'Safety Risk' : 'Do Not Schedule',
-      status: 'Active',
-      holdUntil: '',
-      notes: reasonText,
-      source: 'Trip Dashboard Black List',
-      createdAt: nowIso,
-      updatedAt: nowIso
-    }, ...blacklistEntries];
-    await saveBlacklistData({
-      version: blacklistData?.version ?? 1,
-      entries: nextEntries
-    });
-    applyTripConfirmationState(blockReasonModalTrip, {
-      status: 'Opted Out',
-      provider: 'blacklist',
-      methodCode: 'B',
-      message: `Black List: ${reasonText}`,
-      eventType: 'blacklist',
-      noteLine: `[BLACK LIST] ${new Date().toLocaleString()}: ${reasonText}`
-    });
-    setBlockReasonModalTrip(null);
-    setBlockReasonType('other');
-    setBlockReasonNote('');
-    setStatusMessage('Passenger added to Black List.');
+    handleOpenBlacklistModal(trip);
   };
 
   const handleSendConfirmation = async () => {
@@ -2682,21 +2678,21 @@ const TripDashboardWorkspace = () => {
 
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
-      const leftAssignedToSelectedDriver = isTripAssignedToDriver(leftTrip, selectedDriverId) ? 1 : 0;
-      const rightAssignedToSelectedDriver = isTripAssignedToDriver(rightTrip, selectedDriverId) ? 1 : 0;
-      if (leftAssignedToSelectedDriver !== rightAssignedToSelectedDriver) return rightAssignedToSelectedDriver - leftAssignedToSelectedDriver;
+      if (tripOrderMode === 'custom') {
+        const leftValue = normalizeSortValue(getTripSortValue(leftTrip, tripSort.key, getDriverName));
+        const rightValue = normalizeSortValue(getTripSortValue(rightTrip, tripSort.key, getDriverName));
+        const customResult = compareNormalizedTripSortValues(leftValue, rightValue, tripSort.direction);
+        if (customResult !== 0) return customResult;
+      } else {
+        const leftAssignedToSelectedDriver = isTripAssignedToDriver(leftTrip, selectedDriverId) ? 1 : 0;
+        const rightAssignedToSelectedDriver = isTripAssignedToDriver(rightTrip, selectedDriverId) ? 1 : 0;
+        if (leftAssignedToSelectedDriver !== rightAssignedToSelectedDriver) return rightAssignedToSelectedDriver - leftAssignedToSelectedDriver;
+      }
 
       if (tripOrderMode === 'time') {
         const leftTime = leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
         const rightTime = rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
         if (leftTime !== rightTime) return leftTime - rightTime;
-      } else if (tripOrderMode === 'custom') {
-        const leftValue = normalizeSortValue(getTripSortValue(leftTrip, tripSort.key, getDriverName));
-        const rightValue = normalizeSortValue(getTripSortValue(rightTrip, tripSort.key, getDriverName));
-        if (leftValue !== rightValue) {
-          const result = leftValue > rightValue ? 1 : -1;
-          return tripSort.direction === 'asc' ? result : -result;
-        }
       } else {
         const leftOriginalIndex = tripOriginalOrderLookup.get(leftTrip.id) ?? Number.MAX_SAFE_INTEGER;
         const rightOriginalIndex = tripOriginalOrderLookup.get(rightTrip.id) ?? Number.MAX_SAFE_INTEGER;
@@ -2762,6 +2758,10 @@ const TripDashboardWorkspace = () => {
 
     const upcomingTrips = sortedTrips.filter(trip => !happenedTrips.includes(trip));
     const rows = [];
+
+    if (tripOrderMode === 'custom') {
+      return sortedTrips.map(trip => ({ type: 'trip', groupKey: 'custom-flat', trip }));
+    }
 
     if (tripDateFilter === 'all') {
       return buildGroupedRows(sortedTrips, 'all');
@@ -4048,7 +4048,7 @@ const TripDashboardWorkspace = () => {
             </Button>
           </div>
           <div className="d-flex gap-2 align-items-center flex-wrap">
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => setShowBlacklistModal(true)}>
+            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => handleOpenBlacklistModal(null)}>
               Black List
               <Badge bg="danger" className="ms-2">{activeBlacklistEntries.length}</Badge>
             </Button>
@@ -5020,7 +5020,7 @@ const TripDashboardWorkspace = () => {
           </Modal.Footer>
         </Modal>
 
-        <Modal show={showBlacklistModal} onHide={() => setShowBlacklistModal(false)} size="xl" centered scrollable>
+        <Modal show={showBlacklistModal} onHide={handleCloseBlacklistModal} size="xl" centered scrollable>
           <Modal.Header closeButton>
             <Modal.Title>Black List</Modal.Title>
           </Modal.Header>
@@ -5029,6 +5029,7 @@ const TripDashboardWorkspace = () => {
               <div>
                 <div className="fw-semibold">Manage blocked passengers without leaving Trip Dashboard.</div>
                 <div className="small text-muted">Active entries: {activeBlacklistEntries.length} of {blacklistEntries.length} total.</div>
+                {blacklistDraftTrip ? <div className="small text-muted mt-2">Trip: {blacklistDraftTrip.id} | Rider: {blacklistDraftTrip.rider || '-'}</div> : null}
                 {blacklistError ? <div className="small text-danger mt-2">{blacklistError}</div> : null}
               </div>
               <div className="d-flex gap-2 flex-wrap">
@@ -5116,7 +5117,7 @@ const TripDashboardWorkspace = () => {
             </div>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowBlacklistModal(false)}>Close</Button>
+            <Button variant="secondary" onClick={handleCloseBlacklistModal}>Close</Button>
           </Modal.Footer>
         </Modal>
 
@@ -5233,26 +5234,6 @@ const TripDashboardWorkspace = () => {
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setCancelNoteModal(null)}>Close</Button>
             <Button variant="danger" onClick={handleSaveCancelNote}>Cancel Trip</Button>
-          </Modal.Footer>
-        </Modal>
-
-        <Modal show={Boolean(blockReasonModalTrip)} onHide={() => setBlockReasonModalTrip(null)} centered>
-          <Modal.Header closeButton>
-            <Modal.Title>Add To Black List</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <div className="small text-muted mb-2">Trip: {blockReasonModalTrip?.id}</div>
-            <div className="small text-muted mb-3">Rider: {blockReasonModalTrip?.rider || '-'}</div>
-            <Form.Label className="small text-uppercase text-muted fw-semibold">Reason</Form.Label>
-            <Form.Select className="mb-3" value={blockReasonType} onChange={event => setBlockReasonType(event.target.value)}>
-              {BLOCK_REASON_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </Form.Select>
-            <Form.Label className="small text-uppercase text-muted fw-semibold">Details</Form.Label>
-            <Form.Control as="textarea" rows={3} value={blockReasonNote} onChange={event => setBlockReasonNote(event.target.value)} placeholder="Write details (optional)" />
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setBlockReasonModalTrip(null)}>Close</Button>
-            <Button variant="dark" onClick={() => void handleConfirmBlockReason()}>Add To Black List</Button>
           </Modal.Footer>
         </Modal>
 
