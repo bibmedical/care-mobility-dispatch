@@ -547,7 +547,14 @@ const TRIP_TIME_DISPLAY_MODES = {
 
 const normalizeTripTimeDisplayMode = value => String(value || '').trim() === TRIP_TIME_DISPLAY_MODES.military ? TRIP_TIME_DISPLAY_MODES.military : TRIP_TIME_DISPLAY_MODES.standard;
 
-const getInitialTripDashboardLayoutMode = () => TRIP_DASHBOARD_LAYOUTS.normal;
+const getInitialTripDashboardLayoutMode = () => {
+  if (typeof window === 'undefined') return TRIP_DASHBOARD_LAYOUTS.focusRight;
+  const storedLayout = window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
+  if (storedLayout === TRIP_DASHBOARD_LAYOUTS.normal || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout)) {
+    return TRIP_DASHBOARD_LAYOUTS.focusRight;
+  }
+  return storedLayout;
+};
 
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
@@ -5199,7 +5206,10 @@ const TripDashboardWorkspace = () => {
     const hasSavedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(dashboardPreferences.layoutMode);
     const hasSavedShowMapPane = Object.prototype.hasOwnProperty.call(dashboardPreferences, 'showMapPane');
     const resolvedLayoutMode = hasSavedLayoutMode ? dashboardPreferences.layoutMode : TRIP_DASHBOARD_LAYOUTS.normal;
-    const effectiveLayoutMode = resolvedLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && !hasSavedShowMapPane
+    const storedLayout = typeof window === 'undefined' ? null : window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
+    const effectiveLayoutMode = !storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout) || storedLayout === TRIP_DASHBOARD_LAYOUTS.normal
+      ? TRIP_DASHBOARD_LAYOUTS.focusRight
+      : resolvedLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && !hasSavedShowMapPane
       ? TRIP_DASHBOARD_LAYOUTS.normal
       : resolvedLayoutMode;
     const resolvedPanelView = Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(dashboardPreferences.panelView) ? dashboardPreferences.panelView : TRIP_DASHBOARD_PANEL_VIEWS.both;
