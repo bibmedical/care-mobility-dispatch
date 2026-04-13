@@ -11,10 +11,6 @@ export const MENU_ITEMS = [{
     label: 'Black List',
     url: '/blacklist'
   }, {
-    key: 'dispatcher-history',
-    label: 'History',
-    url: '/dispatcher/history'
-  }, {
     key: 'dispatcher-live',
     label: 'Live Board',
     url: '/dispatcher'
@@ -101,6 +97,10 @@ export const MENU_ITEMS = [{
     key: 'configuraciones-email-templates',
     label: 'Email Templates',
     url: '/settings/email-templates'
+  }, {
+    key: 'configuraciones-page-memory',
+    label: 'Page Memory',
+    url: '/settings/page-memory'
   }, {
     key: 'configuraciones-gps',
     label: 'GPS',

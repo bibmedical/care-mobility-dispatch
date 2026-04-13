@@ -181,7 +181,11 @@ const LoginForm = () => {
                 </button>
               </div>
             </FormGroup>
-            {isLocalPasswordlessWebEnabled ? <div className="small text-muted mb-3">Local development: you can sign in with username only.</div> : null}
+            {isLocalPasswordlessWebEnabled ? <div className="small text-muted mb-3">
+                Local development: you can sign in with username only. If you want to use a password, the local default format is <strong>Username@last2PhoneDigits</strong>.
+                <br />
+                Example admin login: <strong>Admin</strong> / <strong>Admin@66</strong>
+              </div> : null}
             <div className="text-end mb-3">
               <Link href="/auth/reset-pass" className="text-muted font-13">Forgot password?</Link>
             </div>

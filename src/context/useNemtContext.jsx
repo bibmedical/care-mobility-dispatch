@@ -5,7 +5,7 @@ import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import { normalizeUserPreferences } from '@/helpers/user-preferences';
 import useLocalStorage from '@/hooks/useLocalStorage';
 import { useSession } from 'next-auth/react';
-import { createContext, startTransition, use, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, startTransition, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const STORAGE_VERSION = 5;
 const INITIAL_DRIVERS = [];
@@ -52,6 +52,7 @@ const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
 const DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS = 2000;
+const TRIP_DASHBOARD_DRIVERS_SYNC_ACTIVE_POLL_MS = 15000;
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
   if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;
@@ -314,6 +315,9 @@ export const NemtProvider = ({
   const pendingAllowTripShrinkRef = useRef(false);
   const allowTripShrinkReasonNextPersistRef = useRef('');
   const pendingAllowTripShrinkReasonRef = useRef('');
+  const userUiPreferencesSnapshotRef = useRef(JSON.stringify(normalizeNemtUiPreferences(null)));
+  const userUiPreferencesPersistPromiseRef = useRef(null);
+  const userUiPreferencesPersistSnapshotRef = useRef('');
 
   const sendRoutePushMessage = async ({
     driverId,
@@ -498,7 +502,7 @@ export const NemtProvider = ({
 
   const syncDriversFromServer = async () => {
     try {
-      const response = await fetch('/api/nemt/admin', {
+      const response = await fetch('/api/nemt/admin/drivers', {
         cache: 'no-store'
       });
       if (!response.ok) return;
@@ -661,12 +665,16 @@ export const NemtProvider = ({
         if (!response.ok) throw new Error(payload?.error || 'Unable to load user preferences');
         const nextPreferences = normalizeUserPreferences(payload?.preferences);
         if (active) {
-          setUserUiPreferences(normalizeNemtUiPreferences(nextPreferences.nemtUiPreferences));
+          const normalizedUiPreferences = normalizeNemtUiPreferences(nextPreferences.nemtUiPreferences);
+          userUiPreferencesSnapshotRef.current = JSON.stringify(normalizedUiPreferences);
+          setUserUiPreferences(normalizedUiPreferences);
           setHasLoadedUserUiPreferences(true);
         }
       } catch {
         if (active) {
-          setUserUiPreferences(normalizeNemtUiPreferences(state?.uiPreferences));
+          const fallbackPreferences = normalizeNemtUiPreferences(state?.uiPreferences);
+          userUiPreferencesSnapshotRef.current = JSON.stringify(fallbackPreferences);
+          setUserUiPreferences(fallbackPreferences);
           setHasLoadedUserUiPreferences(true);
         }
       }
@@ -679,24 +687,53 @@ export const NemtProvider = ({
     };
   }, [session?.user?.id]);
 
-  const persistUserUiPreferences = async nextPreferences => {
+  const persistUserUiPreferences = useCallback(async nextPreferences => {
     if (!session?.user?.id) return;
-    try {
-      await fetch('/api/user-preferences', {
+    const normalizedPreferences = normalizeNemtUiPreferences(nextPreferences);
+    const nextSnapshot = JSON.stringify(normalizedPreferences);
+
+    if (nextSnapshot === userUiPreferencesSnapshotRef.current) {
+      return normalizedPreferences;
+    }
+
+    if (userUiPreferencesPersistPromiseRef.current && userUiPreferencesPersistSnapshotRef.current === nextSnapshot) {
+      return userUiPreferencesPersistPromiseRef.current;
+    }
+
+    const persistPromise = fetch('/api/user-preferences', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           preferences: {
-            nemtUiPreferences: nextPreferences
+            nemtUiPreferences: normalizedPreferences
           }
         })
+      }).then(async response => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Unable to save user preferences');
+        }
+        userUiPreferencesSnapshotRef.current = nextSnapshot;
+        return normalizedPreferences;
       });
+
+    userUiPreferencesPersistPromiseRef.current = persistPromise;
+    userUiPreferencesPersistSnapshotRef.current = nextSnapshot;
+
+    try {
+      return await persistPromise;
     } catch {
       // Keep local in-memory preferences if the user preference API is temporarily unavailable.
+      return normalizedPreferences;
+    } finally {
+      if (userUiPreferencesPersistPromiseRef.current === persistPromise) {
+        userUiPreferencesPersistPromiseRef.current = null;
+        userUiPreferencesPersistSnapshotRef.current = '';
+      }
     }
-  };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     if (!syncEnabled) return undefined;
@@ -786,24 +823,26 @@ export const NemtProvider = ({
     let active = true;
     let intervalId = null;
 
-    const isDispatchViewActive = () => {
-      if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+    const getActiveDriverSyncPollMs = () => {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return null;
       const path = String(window.location?.pathname || '').toLowerCase();
-      const inDispatchRoute = path.includes('/dispatch') || path.includes('/trip-dashboard');
-      return inDispatchRoute && document.visibilityState === 'visible';
+      if (document.visibilityState !== 'visible') return null;
+      if (path.includes('/dispatch')) return DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS;
+      if (path.includes('/trip-dashboard')) return TRIP_DASHBOARD_DRIVERS_SYNC_ACTIVE_POLL_MS;
+      return null;
     };
 
     const syncLiveDrivers = async () => {
       if (!active) return;
-      if (!isDispatchViewActive()) return;
+      if (getActiveDriverSyncPollMs() == null) return;
       await syncDriversFromServer();
     };
 
-    const startPolling = () => {
+    const startPolling = pollMs => {
       if (intervalId != null) return;
       intervalId = window.setInterval(() => {
         void syncLiveDrivers();
-      }, DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS);
+      }, pollMs);
     };
 
     const stopPolling = () => {
@@ -814,8 +853,10 @@ export const NemtProvider = ({
 
     const syncPollingState = () => {
       if (!active) return;
-      if (isDispatchViewActive()) {
-        startPolling();
+      const pollMs = getActiveDriverSyncPollMs();
+      if (pollMs != null) {
+        stopPolling();
+        startPolling(pollMs);
         void syncLiveDrivers();
         return;
       }
@@ -1674,25 +1715,31 @@ export const NemtProvider = ({
     });
   };
 
-  const setDispatcherVisibleTripColumns = columnKeys => {
+  const setDispatcherVisibleTripColumns = useCallback(columnKeys => {
     const nextPreferences = normalizeNemtUiPreferences({
       ...userUiPreferences,
       dispatcherVisibleTripColumns: normalizeDispatcherVisibleTripColumns(columnKeys)
     });
+    const nextSnapshot = JSON.stringify(nextPreferences);
+    if (nextSnapshot === userUiPreferencesSnapshotRef.current) return;
+    userUiPreferencesSnapshotRef.current = nextSnapshot;
     setUserUiPreferences(nextPreferences);
     void persistUserUiPreferences(nextPreferences);
-  };
+  }, [persistUserUiPreferences, userUiPreferences]);
 
-  const setMapProvider = provider => {
+  const setMapProvider = useCallback(provider => {
     const nextPreferences = normalizeNemtUiPreferences({
       ...userUiPreferences,
       mapProvider: normalizeMapProviderPreference(provider)
     });
+    const nextSnapshot = JSON.stringify(nextPreferences);
+    if (nextSnapshot === userUiPreferencesSnapshotRef.current) return;
+    userUiPreferencesSnapshotRef.current = nextSnapshot;
     setUserUiPreferences(nextPreferences);
     void persistUserUiPreferences(nextPreferences);
-  };
+  }, [persistUserUiPreferences, userUiPreferences]);
 
-  const setPrintSetup = updates => {
+  const setPrintSetup = useCallback(updates => {
     const nextPreferences = normalizeNemtUiPreferences({
       ...userUiPreferences,
       printSetup: normalizePrintSetup({
@@ -1700,9 +1747,12 @@ export const NemtProvider = ({
         ...(updates || {})
       })
     });
+    const nextSnapshot = JSON.stringify(nextPreferences);
+    if (nextSnapshot === userUiPreferencesSnapshotRef.current) return;
+    userUiPreferencesSnapshotRef.current = nextSnapshot;
     setUserUiPreferences(nextPreferences);
     void persistUserUiPreferences(nextPreferences);
-  };
+  }, [persistUserUiPreferences, userUiPreferences]);
 
   const resetNemtState = () => {
     startTransition(() => {

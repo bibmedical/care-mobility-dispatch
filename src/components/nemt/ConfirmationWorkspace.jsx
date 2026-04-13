@@ -825,7 +825,7 @@ const ConfirmationWorkspace = () => {
           ...userPreferences?.confirmation,
           outputColumns
         }
-      });
+      }).catch(() => {});
     }
   }, [outputColumns, saveUserPreferences, userPreferences, userPreferencesLoading]);
 

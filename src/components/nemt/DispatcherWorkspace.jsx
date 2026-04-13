@@ -878,6 +878,23 @@ const DispatcherWorkspace = () => {
     key: 'pickup',
     direction: 'asc'
   });
+  const columnPickerRef = useRef(null);
+
+  useEffect(() => {
+    if (!showColumnPicker) return undefined;
+
+    const handlePointerDownOutside = event => {
+      if (!columnPickerRef.current?.contains(event.target)) {
+        setShowColumnPicker(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDownOutside);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownOutside);
+    };
+  }, [showColumnPicker]);
 
   useEffect(() => {
     setSelectedDriverId(null);
@@ -1013,7 +1030,7 @@ const DispatcherWorkspace = () => {
     void saveUserPreferences({
       ...userPreferences,
       dispatcherLayout: normalizedLayout
-    });
+    }).catch(() => {});
     return normalizedLayout;
   };
 
@@ -1084,7 +1101,7 @@ const DispatcherWorkspace = () => {
         row2: normalizedRows.row2,
         row3: normalizedRows.row3
       }
-    });
+    }).catch(() => {});
     setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
     dispatcherTableViewBackupRef.current = null;
     setDispatcherTableViewMode('default');
@@ -1256,7 +1273,7 @@ const DispatcherWorkspace = () => {
         },
         dispatcherLayout: DEFAULT_DISPATCHER_LAYOUT,
         dispatcherVisibleTripColumns: DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS
-      });
+      }).catch(() => {});
       setStatusMessage('Dispatcher layout restaurado a valores de fábrica.');
       applyDispatcherLayoutPreset('full');
       setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
@@ -1285,7 +1302,7 @@ const DispatcherWorkspace = () => {
           row2: defaultRow2Order,
           row3: defaultRow3Order
         }
-      });
+      }).catch(() => {});
       setStatusMessage('Dispatcher toolbar layout reseteado.');
     } catch {
       setStatusMessage('No se pudo resetear el dispatcher toolbar layout.');
@@ -1372,12 +1389,18 @@ const DispatcherWorkspace = () => {
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRestoreLayout} disabled={mapLocked}>Restore Factory</Button>
           </>;
       case 'columns':
-        return <>
+        return <div ref={columnPickerRef} className="position-relative d-inline-flex flex-column align-items-start">
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)} disabled={mapLocked}>
               Columns
             </Button>
-            {showColumnPicker ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 80, width: 240 }}>
-                <CardBody className="p-3 text-dark">
+            {showColumnPicker ? <Card className="shadow position-absolute" style={{
+            zIndex: 80,
+            top: 'calc(100% + 8px)',
+            left: 0,
+            width: 240,
+            maxWidth: 'min(240px, calc(100vw - 32px))'
+          }}>
+                <CardBody className="p-3 text-dark" style={{ maxHeight: 340, overflowY: 'auto' }}>
                   <div className="fw-semibold mb-2">Escoge que quieres ver</div>
                   <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
                   <div className="d-flex flex-column gap-2">
@@ -1385,7 +1408,7 @@ const DispatcherWorkspace = () => {
                   </div>
                 </CardBody>
               </Card> : null}
-          </>;
+          </div>;
       case 'trip-order':
         return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle} disabled={mapLocked}>
             {tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}
@@ -1819,10 +1842,14 @@ const DispatcherWorkspace = () => {
     return etaByDriver;
   }, [drivers, trips]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
-  const nonSelectedDriversWithRealLocation = useMemo(() => driversWithRealLocation.filter(driver => String(driver?.id || '').trim() !== String(selectedDriverId || '').trim()), [driversWithRealLocation, selectedDriverId]);
+  const nonSelectedDriversWithRealLocation = useMemo(() => driversWithRealLocation.filter(driver => String(driver?.id || '').trim() !== String(selectedDriverId || '').trim() && String(driver?.live || '').trim().toLowerCase() === 'online'), [driversWithRealLocation, selectedDriverId]);
+  const mapVisibleDriversWithRealLocation = useMemo(() => {
+    if (!selectedDriver?.hasRealLocation) return nonSelectedDriversWithRealLocation;
+    return [selectedDriver, ...nonSelectedDriversWithRealLocation];
+  }, [nonSelectedDriversWithRealLocation, selectedDriver]);
   const liveVehicleIconByDriverId = useMemo(() => {
     const iconByDriverId = new Map();
-    for (const driver of driversWithRealLocation) {
+    for (const driver of mapVisibleDriversWithRealLocation) {
       iconByDriverId.set(String(driver?.id || '').trim(), createLiveVehicleIcon({
         heading: driver.heading,
         isOnline: driver.live === 'Online',
@@ -1830,7 +1857,7 @@ const DispatcherWorkspace = () => {
       }));
     }
     return iconByDriverId;
-  }, [driversWithRealLocation]);
+  }, [mapVisibleDriversWithRealLocation]);
   const quickReassignDrivers = useMemo(() => {
     return [...drivers].sort((leftDriver, rightDriver) => {
       const leftOnline = String(leftDriver?.live || '').trim().toLowerCase() === 'online' ? 1 : 0;

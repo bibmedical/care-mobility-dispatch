@@ -147,7 +147,7 @@ const TRIP_DASHBOARD_TRIPS_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TRIPS_V
 const TRIP_DASHBOARD_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW1_BLOCKS__';
 const TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS = ['date-controls', 'trip-search', 'driver-assigned', 'action-buttons', 'leg-buttons', 'type-buttons', 'closed-route'];
 const TRIP_DASHBOARD_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW2_BLOCKS__';
-const TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS = ['show-map', 'peek-panel', 'toolbar-edit', 'columns', 'layout', 'panels', 'trip-order'];
+const TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS = ['show-map', 'peek-panel', 'toolbar-edit', 'layout', 'panels', 'trip-order'];
 const TRIP_DASHBOARD_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW3_BLOCKS__';
 const TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS = ['driver-select', 'secondary-driver', 'zip-filter', 'route-filter', 'theme-toggle', 'metric-miles', 'metric-duration'];
 const TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TOOLBAR_VISIBILITY__';
@@ -169,7 +169,6 @@ const TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS = {
   'show-map': 'Show map',
   'peek-panel': 'Panel peek',
   'toolbar-edit': 'Toolbar editor',
-  'columns': 'Columns',
   'layout': 'Layout',
   'panels': 'Panels',
   'trip-order': 'Trip order',
@@ -689,7 +688,7 @@ const TripDashboardWorkspace = () => {
   const [showInfo, setShowInfo] = useState(false);
   const [showRoute, setShowRoute] = useState(true);
   const [showBottomPanels, setShowBottomPanels] = useState(false);
-  const [showInlineMap, setShowInlineMap] = useState(true);
+  const [showInlineMap, setShowInlineMap] = useState(false);
   const [showMapPane, setShowMapPane] = useState(true);
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -734,6 +733,24 @@ const TripDashboardWorkspace = () => {
   const [aiPlannerMode, setAiPlannerMode] = useState('local');
   const [aiPlannerAnchorTripId, setAiPlannerAnchorTripId] = useState('');
   const [aiPlannerStartZip, setAiPlannerStartZip] = useState('');
+  const columnPickerRef = useRef(null);
+
+  useEffect(() => {
+    if (!showColumnPicker) return undefined;
+
+    const handlePointerDownOutside = event => {
+      if (!columnPickerRef.current?.contains(event.target)) {
+        setShowColumnPicker(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDownOutside);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDownOutside);
+    };
+  }, [showColumnPicker]);
+
   const [aiPlannerCutoffTime, setAiPlannerCutoffTime] = useState('');
   const [aiPlannerCityFilter, setAiPlannerCityFilter] = useState('');
   const [aiPlannerRoutePairPickupCity, setAiPlannerRoutePairPickupCity] = useState('');
@@ -762,6 +779,8 @@ const TripDashboardWorkspace = () => {
   const layoutHydratedRef = useRef(false);
   const panelViewHydratedRef = useRef(false);
   const panelOrderHydratedRef = useRef(false);
+  const lastSavedLayoutModeRef = useRef('');
+  const lastSavedToolbarVisibilityRef = useRef('');
   const lastSavedPanelViewRef = useRef('');
   const lastSavedPanelOrderRef = useRef('');
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
@@ -944,7 +963,7 @@ const TripDashboardWorkspace = () => {
 
     try {
       setToolbarRow1Order(userPreferences?.tripDashboard?.row1?.length ? userPreferences.tripDashboard.row1 : loadToolbarOrder(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS));
-      setToolbarRow2Order(userPreferences?.tripDashboard?.row2?.length ? userPreferences.tripDashboard.row2 : loadToolbarOrder(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS));
+      setToolbarRow2Order(userPreferences?.tripDashboard?.row2?.length ? userPreferences.tripDashboard.row2.filter(blockId => TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS.includes(blockId)) : loadToolbarOrder(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS));
       setToolbarRow3Order(userPreferences?.tripDashboard?.row3?.length ? userPreferences.tripDashboard.row3 : loadToolbarOrder(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS));
     } catch {
       // Ignore corrupted local toolbar layout preferences.
@@ -965,7 +984,10 @@ const TripDashboardWorkspace = () => {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY, JSON.stringify(toolbarBlockVisibility));
+      const serializedToolbarVisibility = JSON.stringify(toolbarBlockVisibility);
+      window.localStorage.setItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY, serializedToolbarVisibility);
+      if (lastSavedToolbarVisibilityRef.current === serializedToolbarVisibility) return;
+      lastSavedToolbarVisibilityRef.current = serializedToolbarVisibility;
       if (!userPreferencesLoading) {
         void saveUserPreferences({
           ...userPreferences,
@@ -973,7 +995,7 @@ const TripDashboardWorkspace = () => {
             ...userPreferences?.tripDashboard,
             toolbarVisibility: toolbarBlockVisibility
           }
-        });
+        }).catch(() => {});
       }
     } catch {
       // Ignore localStorage write errors.
@@ -1080,7 +1102,7 @@ const TripDashboardWorkspace = () => {
           row2: toolbarRow2Order,
           row3: toolbarRow3Order
         }
-      });
+      }).catch(() => {});
       setStatusMessage('Toolbar layout saved.');
     } catch {
       setStatusMessage('Could not save toolbar layout.');
@@ -1116,7 +1138,7 @@ const TripDashboardWorkspace = () => {
           row3: defaultRow3Order,
           toolbarVisibility: defaultVisibility
         }
-      });
+      }).catch(() => {});
       setStatusMessage('Toolbar layout reset.');
     } catch {
       setStatusMessage('Could not reset toolbar layout.');
@@ -1185,21 +1207,7 @@ const TripDashboardWorkspace = () => {
       case 'toolbar-edit':
         return null;
       case 'columns':
-        return <>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => {
-            setShowColumnPicker(current => !current);
-            setShowToolbarTools(false);
-          }}>Columns</Button>
-            {showColumnPicker ? <Card className="shadow position-absolute start-0 mt-5" style={{ zIndex: 80, width: 240 }}>
-                <CardBody className="p-3 text-dark">
-                  <div className="fw-semibold mb-2">Choose what to show</div>
-                  <div className="small text-muted mb-3">These changes are saved for next time.</div>
-                  <div className="d-flex flex-column gap-2">
-                    {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dashboard-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
-                  </div>
-                </CardBody>
-              </Card> : null}
-          </>;
+        return null;
       case 'layout':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <span className="fw-semibold small">Layout</span>
@@ -1737,9 +1745,13 @@ const TripDashboardWorkspace = () => {
 
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
+  const mapVisibleDriversWithRealLocation = useMemo(() => {
+    if (!showInlineMap || !showMapPane) return [];
+    return driversWithRealLocation.filter(driver => String(driver?.live || '').trim().toLowerCase() === 'online' || String(driver?.id || '').trim() === String(selectedDriverId || '').trim());
+  }, [driversWithRealLocation, selectedDriverId, showInlineMap, showMapPane]);
   const liveVehicleIconByDriverId = useMemo(() => {
     const iconByDriverId = new Map();
-    for (const driver of driversWithRealLocation) {
+    for (const driver of mapVisibleDriversWithRealLocation) {
       iconByDriverId.set(String(driver?.id || '').trim(), createLiveVehicleIcon({
         heading: driver.heading,
         isOnline: driver.live === 'Online',
@@ -1747,7 +1759,7 @@ const TripDashboardWorkspace = () => {
       }));
     }
     return iconByDriverId;
-  }, [driversWithRealLocation]);
+  }, [mapVisibleDriversWithRealLocation]);
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
@@ -2141,7 +2153,6 @@ const TripDashboardWorkspace = () => {
       return;
     }
     assignTripsToDriver(selectedDriverId, [tripId]);
-    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setSelectedTripIds([tripId]);
     setStatusMessage(`Trip ${tripId} assigned.`);
   };
@@ -2569,7 +2580,6 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToDriver(driverId, targetTripIds);
-    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage('Trips assigned to selected driver.');
   };
 
@@ -2581,7 +2591,6 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToSecondaryDriver(driverId, targetTripIds);
-    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage('Trips updated with secondary driver.');
   };
 
@@ -2593,7 +2602,6 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToDriver(selectedDriverId, targetTripIds);
-    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage(`Reassigned ${targetTripIds.length} trip(s) to selected driver.`);
   };
 
@@ -2605,7 +2613,6 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToSecondaryDriver(selectedSecondaryDriverId, targetTripIds);
-    if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
     setStatusMessage(`Added secondary driver to ${targetTripIds.length} trip(s).`);
   };
 
@@ -2712,7 +2719,7 @@ const TripDashboardWorkspace = () => {
   };
 
   useEffect(() => {
-    if (!showRoute || routeStops.length < 2) {
+    if (!showInlineMap || !showMapPane || !showRoute || routeStops.length < 2) {
       setRouteGeometry([]);
       setRouteMetrics(null);
       return;
@@ -2747,7 +2754,7 @@ const TripDashboardWorkspace = () => {
     return () => {
       abortController.abort();
     };
-  }, [routeStops, showRoute]);
+  }, [routeStops, showInlineMap, showMapPane, showRoute]);
 
   useEffect(() => {
     if (!dragMode) return;
@@ -2834,6 +2841,8 @@ const TripDashboardWorkspace = () => {
 
   useEffect(() => {
     window.localStorage.setItem(TRIP_DASHBOARD_LAYOUT_KEY, layoutMode);
+    if (lastSavedLayoutModeRef.current === layoutMode) return;
+    lastSavedLayoutModeRef.current = layoutMode;
     if (!userPreferencesLoading) {
       void saveUserPreferences({
         ...userPreferences,
@@ -2841,7 +2850,7 @@ const TripDashboardWorkspace = () => {
           ...userPreferences?.tripDashboard,
           layoutMode
         }
-      });
+      }).catch(() => {});
     }
   }, [layoutMode, saveUserPreferences, userPreferences, userPreferencesLoading]);
 
@@ -2856,7 +2865,7 @@ const TripDashboardWorkspace = () => {
           ...userPreferences?.tripDashboard,
           panelView
         }
-      });
+      }).catch(() => {});
     }
   }, [panelView, saveUserPreferences, userPreferences, userPreferencesLoading]);
 
@@ -2871,7 +2880,7 @@ const TripDashboardWorkspace = () => {
           ...userPreferences?.tripDashboard,
           panelOrder
         }
-      });
+      }).catch(() => {});
     }
   }, [panelOrder, saveUserPreferences, userPreferences, userPreferencesLoading]);
 
@@ -2923,8 +2932,7 @@ const TripDashboardWorkspace = () => {
     return () => window.removeEventListener('nemt-assistant-action', handleAssistantAction);
   }, [refreshDispatchState]);
 
-  const workspaceHeight = expanded ? 1120 : 1000;
-  const dividerSize = 10;
+  const workspaceHeight = 'calc(100vh - 12px)';
   const isFocusRightLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && showBottomPanels;
   const isStackedLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked && showBottomPanels;
   const isStandardLayout = !isFocusRightLayout && !isStackedLayout;
@@ -2932,16 +2940,26 @@ const TripDashboardWorkspace = () => {
   const hasVisibleDockPanels = showDriversPanel || showRoutesPanel;
   const focusRightColumnSplit = clamp(columnSplit, 28, 40);
   const collapsedPanelWidth = TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH;
+  const columnDividerSize = showTripsPanel && ((isFocusRightLayout && hasVisibleDockPanels) || (showMapPane && !isPeekPanelMode)) ? 12 : 0;
+  const rowDividerSize = 0;
   const workspaceGridStyle = {
     display: 'grid',
-    gridTemplateColumns: isFocusRightLayout ? hasVisibleDockPanels ? `${focusRightColumnSplit}% ${dividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : '0px 0px minmax(0, 1fr)' : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${dividerSize}px - ${collapsedPanelWidth}px)) ${dividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
-    gridTemplateRows: isFocusRightLayout ? '1fr' : isStackedLayout ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : showBottomPanels ? `${rowSplit}% ${dividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
+    gridTemplateColumns: isFocusRightLayout ? hasVisibleDockPanels ? `${focusRightColumnSplit}% ${columnDividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : '0px 0px minmax(0, 1fr)' : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${columnDividerSize}px - ${collapsedPanelWidth}px)) ${columnDividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${columnDividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
+    gridTemplateRows: isFocusRightLayout ? '1fr' : isStackedLayout ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : showBottomPanels ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
     height: workspaceHeight,
     minHeight: workspaceHeight,
     position: 'relative'
   };
+  const toolbarRowStyle = {
+    minWidth: 0,
+    maxWidth: '100%',
+    overflowX: 'hidden',
+    overflowY: 'visible',
+    flexWrap: 'nowrap',
+    paddingBottom: 0
+  };
   const dividerBaseStyle = {
-    backgroundColor: '#2d3448',
+    backgroundColor: 'transparent',
     borderRadius: 999,
     position: 'relative',
     zIndex: 30,
@@ -3335,7 +3353,7 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
-  const renderTripMapPanel = () => <Card className="h-100">
+  const renderTripMapPanel = () => <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
       <CardBody className="p-0 d-flex flex-column h-100 position-relative">
         {showInlineMap ? <div className="position-relative h-100">
             <Button variant="warning" type="button" onClick={() => {
@@ -3391,7 +3409,7 @@ const TripDashboardWorkspace = () => {
               <ZoomControl position="bottomleft" />
               {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
               {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
-              {driversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
+              {mapVisibleDriversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
             vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
@@ -3432,10 +3450,10 @@ const TripDashboardWorkspace = () => {
                 </Marker>)}
             </MapContainer>
           </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
-            <div className="fw-semibold fs-5">Map hidden</div>
-            <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Show the map here again when you need route, trip, and driver management.</div>
+            <div className="fw-semibold fs-5">Map paused to save memory</div>
+            <div className="small mt-2" style={{ color: '#cbd5e1', maxWidth: 360 }}>Trip Dashboard now opens without mounting the map. Load it only when you need route, trip, and driver management.</div>
             <div className="d-flex align-items-center gap-2 flex-wrap justify-content-center mt-4">
-              <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Show Map Here</Button>
+              <Button variant="light" size="sm" onClick={() => setShowInlineMap(true)}>Load Map Here</Button>
             </div>
           </div>}
       </CardBody>
@@ -3492,9 +3510,9 @@ const TripDashboardWorkspace = () => {
         cursor: showMapPane && isPeekPanelMode ? 'default' : 'col-resize',
         gridColumn: 2,
         gridRow: isFocusRightLayout ? 1 : '1 / span 3',
-        display: showTripsPanel && (showMapPane || isFocusRightLayout && hasVisibleDockPanels) ? 'block' : 'none'
+        display: columnDividerSize > 0 ? 'block' : 'none'
       }}>
-          <div className="position-absolute start-50 translate-middle-x rounded-pill" style={{ top: 10, bottom: 10, width: 6, backgroundColor: '#6b7280' }} />
+          <div className="position-absolute start-50 translate-middle-x rounded-pill" style={{ top: 10, bottom: 10, width: 4, backgroundColor: 'rgba(148, 163, 184, 0.9)', boxShadow: '0 0 0 1px rgba(15, 23, 42, 0.28)' }} />
         </div>
 
         <div style={{
@@ -3521,7 +3539,7 @@ const TripDashboardWorkspace = () => {
                   Open Panel
                 </Button>
               </CardBody>
-            </Card> : <Card className="h-100">
+            </Card> : <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
             <CardBody className="p-0 d-flex flex-column h-100">
               {(toolbarCollapsed && false) ? <div className="d-flex align-items-center justify-content-between p-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                   <button type="button" onClick={() => setToolbarCollapsed(false)} style={{
@@ -3555,8 +3573,11 @@ const TripDashboardWorkspace = () => {
                         </CardBody>
                       </Card> : null}
                   </div> : null}
-                {/* Row 1: Date selection and trip filters */}
-                <div className={`d-flex align-items-center gap-2 ${isToolbarEditMode ? 'flex-nowrap' : 'flex-wrap'}`} style={{ minWidth: isToolbarEditMode ? 'max-content' : 0, overflowX: isToolbarEditMode ? 'auto' : 'visible', overflowY: 'hidden' }} onDragOver={event => {
+                {/* Top toolbar line */}
+                <div className="d-flex align-items-center gap-2 small position-relative" style={{
+                ...toolbarRowStyle,
+                minWidth: isToolbarEditMode ? 'max-content' : 0
+              }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
                 event.preventDefault();
               }} onDrop={() => {
@@ -3565,6 +3586,45 @@ const TripDashboardWorkspace = () => {
                 moveToolbarBlockAcrossRows(draggedBlockId, 'row1');
                 clearDraggingToolbarBlockIds();
               }}>
+                  {topButtonsRowCollapsed ? null : toolbarRow2Order.map(blockId => {
+                  const renderedBlock = renderToolbarRow2Block(blockId);
+                  const shouldRenderBlock = isToolbarEditMode || isToolbarBlockEnabled(blockId);
+                  return <div
+                    key={blockId}
+                    draggable={isToolbarEditMode}
+                    onDragStart={() => {
+                    setDraggingToolbarBlockId(null);
+                    setDraggingToolbarRow2BlockId(blockId);
+                    setDraggingToolbarRow3BlockId(null);
+                  }}
+                    onDragOver={event => {
+                    if (!isToolbarEditMode) return;
+                    event.preventDefault();
+                  }}
+                    onDrop={() => {
+                    if (!isToolbarEditMode) return;
+                    const draggedBlockId = getActiveDraggedToolbarBlockId();
+                    moveToolbarBlockAcrossRows(draggedBlockId, 'row2', blockId);
+                  }}
+                    onDragEnd={clearDraggingToolbarBlockIds}
+                    style={isToolbarEditMode ? {
+                    border: '1px dashed rgba(8, 19, 26, 0.55)',
+                    borderRadius: 8,
+                    padding: '2px 4px',
+                    cursor: 'move',
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  } : {
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                  >
+                      {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
+                    </div>;
+                })}
                   {toolbarRow1Order.map(blockId => {
                   const renderedBlock = renderToolbarRow1Block(blockId);
                   const shouldRenderBlock = isToolbarEditMode || isToolbarBlockEnabled(blockId);
@@ -3591,60 +3651,26 @@ const TripDashboardWorkspace = () => {
                     borderRadius: 8,
                     padding: '2px 4px',
                     cursor: 'move',
-                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
-                  } : undefined}
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  } : {
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
                   >
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
                 })}
                 </div>
                 
-                {/* Row 2: Statistics and main action buttons */}
-                {topButtonsRowCollapsed ? null : <div className={`d-flex gap-2 small position-relative ${isToolbarEditMode ? 'flex-nowrap' : 'flex-wrap'}`} style={{ minWidth: isToolbarEditMode ? 'max-content' : 0, overflowX: isToolbarEditMode ? 'auto' : 'visible', overflowY: 'hidden' }} onDragOver={event => {
-                if (!isToolbarEditMode) return;
-                event.preventDefault();
-              }} onDrop={() => {
-                if (!isToolbarEditMode) return;
-                const draggedBlockId = getActiveDraggedToolbarBlockId();
-                moveToolbarBlockAcrossRows(draggedBlockId, 'row2');
-                clearDraggingToolbarBlockIds();
-              }}>
-                  {toolbarRow2Order.map(blockId => {
-                  const renderedBlock = renderToolbarRow2Block(blockId);
-                  const shouldRenderBlock = isToolbarEditMode || isToolbarBlockEnabled(blockId);
-                  return <div
-                    key={blockId}
-                    draggable={isToolbarEditMode}
-                    onDragStart={() => {
-                    setDraggingToolbarBlockId(null);
-                    setDraggingToolbarRow2BlockId(blockId);
-                    setDraggingToolbarRow3BlockId(null);
-                  }}
-                    onDragOver={event => {
-                    if (!isToolbarEditMode) return;
-                    event.preventDefault();
-                  }}
-                    onDrop={() => {
-                    if (!isToolbarEditMode) return;
-                    const draggedBlockId = getActiveDraggedToolbarBlockId();
-                    moveToolbarBlockAcrossRows(draggedBlockId, 'row2', blockId);
-                  }}
-                    onDragEnd={clearDraggingToolbarBlockIds}
-                    style={isToolbarEditMode ? {
-                    border: '1px dashed rgba(8, 19, 26, 0.55)',
-                    borderRadius: 8,
-                    padding: '2px 4px',
-                    cursor: 'move',
-                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
-                  } : undefined}
-                  >
-                      {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
-                    </div>;
-                })}
-                </div>}
-                
-                {/* Row 3: Leg/Type filters and misc buttons */}
-                <div className={`d-flex gap-2 small position-relative ${isToolbarEditMode ? 'flex-nowrap' : 'flex-wrap'}`} style={{ minWidth: isToolbarEditMode ? 'max-content' : 0, overflowX: isToolbarEditMode ? 'auto' : 'visible', overflowY: 'hidden' }} onDragOver={event => {
+                {/* Bottom toolbar line */}
+                <div className="d-flex align-items-center gap-2 small position-relative" style={{
+                ...toolbarRowStyle,
+                minWidth: isToolbarEditMode ? 'max-content' : 0
+              }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
                 event.preventDefault();
               }} onDrop={() => {
@@ -3679,15 +3705,22 @@ const TripDashboardWorkspace = () => {
                     borderRadius: 8,
                     padding: '2px 4px',
                     cursor: 'move',
-                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)'
-                  } : undefined}
+                    backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)',
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  } : {
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
                   >
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
                 })}
                 </div>
               </div>}
-              {aiPlannerCollapsed ? <div className="mx-3 mt-2 mb-2 d-flex align-items-center justify-content-start gap-2 flex-wrap">
+              {aiPlannerCollapsed ? <div className="mx-3 mt-2 mb-2 d-flex align-items-center justify-content-start gap-2 flex-nowrap" style={{ overflowX: 'hidden', overflowY: 'hidden', minWidth: 0, whiteSpace: 'nowrap', backgroundColor: '#151b2b' }}>
                   <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={{
                 borderRadius: 10,
                 border: '1px solid rgba(15, 23, 42, 0.18)',
@@ -3908,10 +3941,8 @@ const TripDashboardWorkspace = () => {
                         </div> : null}
                     </div>}
                 </div>}
-                  {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} onScroll={() => syncTripTableScroll('top')} style={{ overflowX: 'scroll', overflowY: 'hidden', height: 20, marginBottom: 6, scrollbarGutter: 'stable', scrollbarWidth: 'thin', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
-                    <div style={{ width: tripTableScrollWidth > 0 ? tripTableScrollWidth + 40 : 'calc(100% + 40px)', height: 18 }} />
-                </div> : null}
-              <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1 trip-dashboard-sheet-wrap" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
+                  {filteredTrips.length > 0 ? null : null}
+              <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1 trip-dashboard-sheet-wrap" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none', paddingBottom: 0 }}>
                 <Table ref={tripTableElementRef} hover className="align-middle mb-0 trip-dashboard-sheet-table" data-bs-theme={themeMode} style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
                   <thead className={themeMode === 'dark' ? 'table-dark' : 'table-light'} style={{ position: 'sticky', top: 0 }}>
                     <tr>
@@ -4005,7 +4036,7 @@ const TripDashboardWorkspace = () => {
         cursor: 'row-resize',
         gridColumn: isStackedLayout ? 1 : '1 / span 3',
         gridRow: 2,
-        display: showBottomPanels && !isFocusRightLayout ? 'block' : 'none'
+        display: 'none'
       }}>
           <div className="position-absolute top-50 start-50 translate-middle rounded-pill" style={{ width: 56, height: 6, backgroundColor: '#6b7280' }} />
         </div>
@@ -4017,13 +4048,13 @@ const TripDashboardWorkspace = () => {
         backgroundColor: '#58607a',
         border: '3px solid #0f1320',
         position: 'absolute',
-        left: `calc(${columnSplit}% - ${dividerSize / 2}px)`,
-        top: `calc(${rowSplit}% - ${dividerSize / 2}px)`,
+        left: `calc(${columnSplit}% - ${columnDividerSize / 2}px)`,
+        top: `calc(${rowSplit}% - ${rowDividerSize / 2}px)`,
         transform: 'translate(-50%, -50%)',
         cursor: 'move',
         zIndex: 50,
         boxShadow: '0 0 0 2px rgba(88, 96, 122, 0.25)',
-        display: showBottomPanels && isStandardLayout ? 'block' : 'none'
+        display: 'none'
       }} />
 
         {isStandardLayout ? <div style={{
@@ -4032,14 +4063,13 @@ const TripDashboardWorkspace = () => {
         minHeight: 0,
         gridColumn: '1 / span 3',
         gridRow: 3,
-        gridTemplateColumns: dockPanelsVisible.length === 1 ? 'minmax(0, 1fr)' : showMapPane ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : '1fr 1fr'
+        gridTemplateColumns: dockPanelsVisible.length === 1 ? 'minmax(0, 1fr)' : showMapPane ? `${columnSplit}% minmax(0, ${100 - columnSplit}%)` : '1fr 1fr'
       }}>
             {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridColumn: 1 }}>
                 {dockPanelsVisible[0].node}
               </div> : null}
             {dockPanelsVisible.length > 1 ? <>
-                {showMapPane ? <div style={{ gridColumn: 2, backgroundColor: '#2d3448', borderRadius: 999 }} /> : null}
-                <div style={{ minWidth: 0, minHeight: 0, gridColumn: showMapPane ? 3 : 2 }}>
+                <div style={{ minWidth: 0, minHeight: 0, gridColumn: 2 }}>
                   {dockPanelsVisible[1].node}
                 </div>
               </> : null}
@@ -4051,13 +4081,13 @@ const TripDashboardWorkspace = () => {
         minHeight: 0,
         gridColumn: 1,
         gridRow: 1,
-        gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 8px minmax(0, 1fr)' : 'minmax(0, 1fr)'
+        gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr)'
       }}>
             {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridRow: 1 }}>
                 {dockPanelsVisible[0].node}
               </div> : null}
             {dockPanelsVisible.length > 1 ? <>
-                <div style={{ gridRow: 2, backgroundColor: '#2d3448', borderRadius: 999 }} />
+                <div style={{ gridRow: 2, display: 'none' }} />
                 <div style={{ minWidth: 0, minHeight: 0, gridRow: 3 }}>
                   {dockPanelsVisible[1].node}
                 </div>
@@ -4070,13 +4100,13 @@ const TripDashboardWorkspace = () => {
         minHeight: 0,
         gridColumn: 1,
         gridRow: 3,
-        gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 8px minmax(0, 1fr)' : 'minmax(0, 1fr)'
+        gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr)'
       }}>
             {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridRow: 1 }}>
                 {dockPanelsVisible[0].node}
               </div> : null}
             {dockPanelsVisible.length > 1 ? <>
-                <div style={{ gridRow: 2, backgroundColor: '#2d3448', borderRadius: 999 }} />
+                <div style={{ gridRow: 2, display: 'none' }} />
                 <div style={{ minWidth: 0, minHeight: 0, gridRow: 3 }}>
                   {dockPanelsVisible[1].node}
                 </div>
@@ -4178,6 +4208,14 @@ const TripDashboardWorkspace = () => {
         <style jsx global>{`
           .trip-dashboard-sheet-wrap {
             background: #f8fbf8;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .trip-dashboard-sheet-wrap::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
           }
 
           .trip-dashboard-sheet-table thead th {

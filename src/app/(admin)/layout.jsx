@@ -1,4 +1,5 @@
 import LeftSideBar from '@/components/layouts/LeftSideBar';
+import PageMemoryProbeClient from '@/components/PageMemoryProbeClient';
 import LeftSideBarToggle from '@/components/layouts/TopBar/components/LeftSideBarToggle';
 import React from 'react';
 import { Container } from 'react-bootstrap';
@@ -13,6 +14,7 @@ const layout = ({
       {/* Overlay is now rendered conditionally by LayoutProvider only when sidebar is open */}
       <div className="page-wrapper">
         <div className="page-content">
+          <PageMemoryProbeClient />
           <Container fluid>
             {children}
           </Container>

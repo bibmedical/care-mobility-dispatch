@@ -2,9 +2,11 @@ import { query } from '@/server/db';
 
 const MAX_FAILURES_KEPT = 1000;
 const FAILURE_LOG_RETENTION_DAYS = 30;
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
 let ensureTablePromise = null;
 
 const ensureTable = async () => {
+  if (!hasDatabaseUrl()) return;
   if (ensureTablePromise) return ensureTablePromise;
 
   ensureTablePromise = (async () => {
@@ -33,6 +35,7 @@ const ensureTable = async () => {
  * Log a failed login attempt
  */
 export const logLoginFailure = async ({ identifier, reason, clientType = 'web', ip = 'unknown' }) => {
+  if (!hasDatabaseUrl()) return;
   try {
     await ensureTable();
     await query(
@@ -58,6 +61,7 @@ export const logLoginFailure = async ({ identifier, reason, clientType = 'web', 
  * Get recent failures for a specific identifier
  */
 export const getRecentFailures = async (identifier, withinMinutes = 30) => {
+  if (!hasDatabaseUrl()) return [];
   try {
     await ensureTable();
     const lookbackMs = withinMinutes * 60 * 1000;
@@ -77,6 +81,7 @@ export const getRecentFailures = async (identifier, withinMinutes = 30) => {
  * Get all failure logs (for admin viewing)
  */
 export const getAllFailureLogs = async (limit = 100) => {
+  if (!hasDatabaseUrl()) return [];
   try {
     await ensureTable();
     const result = await query(
@@ -102,6 +107,7 @@ export const isRateLimited = async (identifier, maxFailures = 5, withinMinutes =
  * Clear all failure records for a specific identifier (unlock a locked account)
  */
 export const clearLoginFailures = async identifier => {
+  if (!hasDatabaseUrl()) return 0;
   try {
     await ensureTable();
     const normalizedIdentifier = String(identifier ?? '').trim().toLowerCase();

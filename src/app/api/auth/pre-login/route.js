@@ -6,7 +6,10 @@ import { randomBytes } from 'crypto';
 const MAX_LOGIN_FAILURES = parseInt(process.env.LOGIN_MAX_FAILURES || '5', 10);
 const LOGIN_LOCK_WINDOW_MINUTES = parseInt(process.env.LOGIN_LOCK_WINDOW_MINUTES || '15', 10);
 const isLocalPasswordlessWebEnabled = () => process.env.NODE_ENV !== 'production';
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
 const isWebDuplicateSessionGuardEnabled = () => String(process.env.ENABLE_WEB_SESSION_GUARD || '').trim().toLowerCase() === 'true';
+const shouldUseSqlBackedWebAuth = () => hasDatabaseUrl();
+const shouldRequireWebLoginCode = () => shouldUseSqlBackedWebAuth();
 
 const normalizeIp = value => {
   const raw = String(value ?? '').split(',')[0].trim();
@@ -134,7 +137,7 @@ export async function POST(req) {
       });
     }
 
-    const hasActiveSession = isWebDuplicateSessionGuardEnabled()
+    const hasActiveSession = shouldUseSqlBackedWebAuth() && isWebDuplicateSessionGuardEnabled()
       ? await hasActiveWebSession(user.id, { requestIp })
       : false;
     if (hasActiveSession) {
@@ -152,6 +155,16 @@ export async function POST(req) {
         headers: { 'Content-Type': 'application/json' }
       });
       }
+    }
+
+    if (!shouldRequireWebLoginCode()) {
+      return new Response(JSON.stringify({
+        requires2FA: false,
+        localMode: true
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
     const storedWebCode = String(user?.webLoginCode || '').replace(/\D/g, '').slice(0, 6);

@@ -355,7 +355,7 @@ const DispatcherMessagingPanel = ({
     void saveUserPreferences({
       ...latestUserPreferencesRef.current,
       dispatcherMessaging: nextDispatcherMessaging
-    });
+    }).catch(() => {});
   }, [chatTheme, customNotificationSoundDataUrl, customNotificationSoundName, hiddenDriverIds, notificationTone, saveUserPreferences, userPreferencesLoading]);
   const normalizedSearch = driverSearch.trim().toLowerCase();
   const filteredThreads = useMemo(() => visibleThreads.filter(thread => {
@@ -1223,15 +1223,24 @@ const DispatcherMessagingPanel = ({
                                 {driver?.name ?? 'Driver'}
                                 {driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
                               </div>
-                              <button
-                                type="button"
+                              <span
+                                role={hasGps ? 'button' : undefined}
+                                tabIndex={hasGps ? 0 : undefined}
                                 onClick={event => {
                                   event.stopPropagation();
+                                  if (!hasGps) return;
                                   handleSelectDriver(thread.driverId);
-                                  if (hasGps) onLocateDriver?.(thread.driverId);
+                                  onLocateDriver?.(thread.driverId);
                                 }}
-                                disabled={!hasGps}
-                                className="border-0 p-0 mt-1 bg-transparent text-start small"
+                                onKeyDown={event => {
+                                  if (!hasGps) return;
+                                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleSelectDriver(thread.driverId);
+                                  onLocateDriver?.(thread.driverId);
+                                }}
+                                className="d-inline-block mt-1 text-start small"
                                 style={{
                                   maxWidth: 220,
                                   color: hasGps ? (thread.driverId === activeDriverId ? '#dbeafe' : driverColor) : (thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText),
@@ -1241,7 +1250,7 @@ const DispatcherMessagingPanel = ({
                                 title={hasGps ? 'Center this driver on the map and follow live ETA' : 'This driver has no live GPS yet'}
                               >
                                 {getDriverLocationLabel(driver)}
-                              </button>
+                              </span>
                               <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                             </div>
                           </div>

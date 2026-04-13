@@ -1,6 +1,9 @@
+import { readFile } from 'fs/promises';
 import { query, queryOne } from '@/server/db';
 import { DEFAULT_BRANDING_SETTINGS, normalizeBrandingSettings } from '@/helpers/branding';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
+import { getStorageFilePath } from '@/server/storage-paths';
 
 const DEFAULT_STATE = {
   version: 1,
@@ -94,6 +97,10 @@ const DEFAULT_STATE = {
     }
   }
 };
+
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+
+const getIntegrationsStorageFile = () => getStorageFilePath('integrations-state.json');
 
 const normalizeUberState = value => ({
   organizationName: String(value?.organizationName ?? ''),
@@ -221,9 +228,28 @@ const normalizeState = value => ({
   sms: normalizeSmsState(value?.sms)
 });
 
+const readLocalIntegrationsState = async () => {
+  try {
+    const raw = await readFile(getIntegrationsStorageFile(), 'utf8');
+    return normalizeState(JSON.parse(raw));
+  } catch {
+    return normalizeState(DEFAULT_STATE);
+  }
+};
+
+const writeLocalIntegrationsState = async state => {
+  await writeJsonFileWithSnapshots({
+    filePath: getIntegrationsStorageFile(),
+    nextValue: state,
+    backupName: 'integrations-state-local'
+  });
+  return state;
+};
+
 let ensureTablePromise = null;
 
 const ensureTable = async () => {
+  if (!hasDatabaseUrl()) return;
   if (ensureTablePromise) return ensureTablePromise;
 
   ensureTablePromise = (async () => {
@@ -246,13 +272,16 @@ const ensureTable = async () => {
 };
 
 export const readIntegrationsState = async () => {
+  if (!hasDatabaseUrl()) {
+    return readLocalIntegrationsState();
+  }
+
   await ensureTable();
   const row = await queryOne(`SELECT data FROM integrations_state WHERE id = 'singleton'`);
   return normalizeState(row?.data || DEFAULT_STATE);
 };
 
 export const writeIntegrationsState = async (nextState, options = {}) => {
-  await ensureTable();
   const currentState = await readIntegrationsState();
   const normalized = normalizeState(nextState);
   const allowPatientDataShrink = options?.allowPatientDataShrink === true;
@@ -293,6 +322,13 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
       optOutList: protectedOptOutList
     }
   };
+
+  if (!hasDatabaseUrl()) {
+    await writeLocalIntegrationsState(protectedState);
+    return protectedState;
+  }
+
+  await ensureTable();
 
   await query(
     `UPDATE integrations_state SET data=$1 WHERE id='singleton'`,

@@ -5,9 +5,12 @@ import { runMigrations } from '@/server/db-schema';
 import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+
 let ensureAdminSchemaPromise = null;
 
 const ensureAdminSchema = async () => {
+  if (!hasDatabaseUrl()) return;
   if (ensureAdminSchemaPromise) return ensureAdminSchemaPromise;
   ensureAdminSchemaPromise = runMigrations().catch(error => {
     ensureAdminSchemaPromise = null;
@@ -114,6 +117,10 @@ const writeLocalNemtAdminState = async state => {
 // ─── READ ─────────────────────────────────────────────────────────────────────
 
 export const readNemtAdminState = async () => {
+  if (!hasDatabaseUrl()) {
+    return await readLocalNemtAdminState();
+  }
+
   try {
     await ensureAdminSchema();
     const [driversRes, vehiclesRes, attendantsRes, groupingsRes] = await Promise.all([
@@ -159,6 +166,11 @@ export const writeNemtAdminState = async nextState => {
   const mergedState = mergePreservedDriverData(currentState, nextState);
   const normalized = normalizeState(mergedState);
 
+  if (!hasDatabaseUrl()) {
+    await writeLocalNemtAdminState(normalized);
+    return normalized;
+  }
+
   try {
     await ensureAdminSchema();
     await withTransaction(async client => {
@@ -184,6 +196,13 @@ export const readNemtAdminPayload = async () => {
   };
 };
 
+export const readNemtAdminDriversPayload = async () => {
+  const state = await readNemtAdminState();
+  return {
+    dispatchDrivers: mapAdminDataToDispatchDrivers(state)
+  };
+};
+
 // ─── GPS UPDATE (O(1) — single row update) ────────────────────────────────────
 
 export const updateDriverLocation = async ({
@@ -197,6 +216,36 @@ export const updateDriverLocation = async ({
   checkpoint,
   trackingLastSeen
 }) => {
+  if (!hasDatabaseUrl()) {
+    const currentState = await readLocalNemtAdminState();
+    const normalizedDriverId = String(driverId || '').trim();
+    if (!normalizedDriverId) return null;
+
+    const nextState = normalizeState({
+      ...currentState,
+      drivers: (Array.isArray(currentState?.drivers) ? currentState.drivers : []).map(driver => String(driver?.id || '').trim() !== normalizedDriverId ? driver : {
+        ...driver,
+        tracking: normalizeDriverTracking({
+          ...driver,
+          tracking: {
+            ...(driver?.tracking || {}),
+            latitude,
+            longitude,
+            heading: heading ?? null,
+            speed: speed ?? null,
+            accuracy: accuracy ?? null,
+            city: city || '',
+            checkpoint: checkpoint || '',
+            lastSeen: trackingLastSeen
+          }
+        }).tracking
+      })
+    });
+
+    await writeLocalNemtAdminState(nextState);
+    return nextState.drivers.find(driver => String(driver?.id || '').trim() === normalizedDriverId) || null;
+  }
+
   await ensureAdminSchema();
   const tracking = {
     latitude,

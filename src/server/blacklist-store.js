@@ -1,4 +1,9 @@
+import { readFile } from 'fs/promises';
 import { query } from '@/server/db';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
+import { getStorageFilePath } from '@/server/storage-paths';
+
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
 
 const normalizeBlacklistEntry = value => ({
   id: String(value?.id ?? `bl-${Date.now()}`),
@@ -18,9 +23,30 @@ const normalizeBlacklistState = value => ({
   entries: Array.isArray(value?.entries) ? value.entries.map(normalizeBlacklistEntry).filter(entry => entry.name || entry.phone) : []
 });
 
+const getBlacklistStorageFile = () => getStorageFilePath('blacklist-entries.json');
+
+const readLocalBlacklistState = async () => {
+  try {
+    const raw = await readFile(getBlacklistStorageFile(), 'utf8');
+    return normalizeBlacklistState(JSON.parse(raw));
+  } catch {
+    return normalizeBlacklistState({ entries: [] });
+  }
+};
+
+const writeLocalBlacklistState = async state => {
+  await writeJsonFileWithSnapshots({
+    filePath: getBlacklistStorageFile(),
+    nextValue: state,
+    backupName: 'blacklist-local'
+  });
+  return state;
+};
+
 let tableReady = false;
 
 const ensureTable = async () => {
+  if (!hasDatabaseUrl()) return;
   if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS blacklist_entries (
@@ -56,6 +82,10 @@ const ensureTable = async () => {
 };
 
 export const readBlacklistState = async () => {
+  if (!hasDatabaseUrl()) {
+    return readLocalBlacklistState();
+  }
+
   await ensureTable();
   const result = await query(`SELECT * FROM blacklist_entries ORDER BY created_at DESC`);
   const entries = result.rows.map(r => ({
@@ -74,10 +104,36 @@ export const readBlacklistState = async () => {
 };
 
 export const writeBlacklistState = async (nextState, options = {}) => {
-  await ensureTable();
   const allowDelete = options?.allowDelete === true;
   const currentState = await readBlacklistState();
   const normalized = normalizeBlacklistState(nextState);
+
+  if (!hasDatabaseUrl()) {
+    if (allowDelete) {
+      await writeLocalBlacklistState(normalized);
+      return normalized;
+    }
+
+    const mergedEntriesMap = new Map();
+
+    currentState.entries.forEach(entry => {
+      mergedEntriesMap.set(String(entry.id || ''), entry);
+    });
+
+    normalized.entries.forEach(entry => {
+      mergedEntriesMap.set(String(entry.id || ''), {
+        ...mergedEntriesMap.get(String(entry.id || '')),
+        ...entry
+      });
+    });
+
+    const mergedEntries = Array.from(mergedEntriesMap.values()).filter(entry => entry.name || entry.phone);
+    const nextLocalState = normalizeBlacklistState({ entries: mergedEntries });
+    await writeLocalBlacklistState(nextLocalState);
+    return nextLocalState;
+  }
+
+  await ensureTable();
 
   if (allowDelete) {
     await query(`DELETE FROM blacklist_entries`);

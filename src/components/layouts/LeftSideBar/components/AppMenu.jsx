@@ -4,32 +4,41 @@ import clsx from 'clsx';
 import Link from 'next/link';
 import { signOut, useSession } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Collapse } from 'react-bootstrap';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { findAllParent, findMenuItem, getMenuItemFromURL } from '@/helpers/menu';
+
+const mergeUniqueKeys = keys => Array.from(new Set((keys || []).filter(Boolean)));
+
+const areKeyListsEqual = (left, right) => {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+  return left.every((key, index) => key === right[index]);
+};
+
 const MenuItemWithChildren = ({
   item,
   className,
   linkClassName,
   subMenuClassName,
+  expandedMenuItems,
   activeMenuItems,
   toggleMenu
 }) => {
-  const [open, setOpen] = useState(activeMenuItems.includes(item.key));
-  useEffect(() => {
-    setOpen(activeMenuItems.includes(item.key));
-  }, [activeMenuItems, item]);
+  const open = expandedMenuItems.includes(item.key);
+
   const toggleMenuItem = e => {
     e.preventDefault();
-    const status = !open;
-    setOpen(status);
-    if (toggleMenu) toggleMenu(item, status);
+    if (toggleMenu) toggleMenu(item, !open);
     return false;
   };
+
   const getActiveClass = item => {
     return activeMenuItems?.includes(item.key) ? 'active' : '';
   };
+
   return <li className={className}>
       <div onClick={toggleMenuItem} aria-expanded={open} data-bs-toggle="collapse" className={linkClassName} role="button">
         {item.icon && <i className="menu-icon">
@@ -44,7 +53,7 @@ const MenuItemWithChildren = ({
           <ul className={subMenuClassName}>
             {(item.children || []).map((child, idx) => {
             return <Fragment key={child.key + idx}>
-                  {child.children ? <MenuItemWithChildren item={child} linkClassName={clsx('nav-link', getActiveClass(child))} activeMenuItems={activeMenuItems} className="nav-item" subMenuClassName="nav flex-column" toggleMenu={toggleMenu} /> : <MenuItem item={child} className="nav-item" linkClassName={clsx('nav-link', getActiveClass(child))} />}
+                  {child.children ? <MenuItemWithChildren item={child} linkClassName={clsx('nav-link', getActiveClass(child))} expandedMenuItems={expandedMenuItems} activeMenuItems={activeMenuItems} className="nav-item" subMenuClassName="nav flex-column" toggleMenu={toggleMenu} /> : <MenuItem item={child} className="nav-item" linkClassName={clsx('nav-link', getActiveClass(child))} />}
                 </Fragment>;
           })}
           </ul>
@@ -120,6 +129,7 @@ const AppMenu = ({
   const { data: session } = useSession();
   const pathname = usePathname();
   const [activeMenuItems, setActiveMenuItems] = useState([]);
+  const [expandedMenuItems, setExpandedMenuItems] = useState([]);
   const currentUserId = String(session?.user?.id || '').trim();
   const visibleMenuItems = useMemo(() => {
     const isAllowed = item => {
@@ -159,58 +169,58 @@ const AppMenu = ({
 
     return filterItems(menuItems || []);
   }, [menuItems, currentUserId]);
+
   const toggleMenu = (menuItem, show) => {
-    if (show) setActiveMenuItems([menuItem.key, ...findAllParent(visibleMenuItems, menuItem)]);
+    const nextKeys = [menuItem.key, ...findAllParent(visibleMenuItems, menuItem)];
+    setExpandedMenuItems(current => {
+      if (show) {
+        const mergedKeys = mergeUniqueKeys([...current, ...nextKeys]);
+        return areKeyListsEqual(current, mergedKeys) ? current : mergedKeys;
+      }
+
+      const filteredKeys = current.filter(key => key !== menuItem.key);
+      return areKeyListsEqual(current, filteredKeys) ? current : filteredKeys;
+    });
   };
+
   const getActiveClass = item => {
     return activeMenuItems?.includes(item.key) ? 'active' : '';
   };
-  const activeMenu = useCallback(() => {
-    const trimmedURL = pathname?.replaceAll('', '');
-    const matchingMenuItem = getMenuItemFromURL(visibleMenuItems, trimmedURL);
-    if (matchingMenuItem) {
-      const activeMt = findMenuItem(visibleMenuItems, matchingMenuItem.key);
-      if (activeMt) {
-        setActiveMenuItems([activeMt.key, ...findAllParent(visibleMenuItems, activeMt)]);
-      }
-      setTimeout(() => {
-        const activatedItem = document.querySelector(`#leftside-menu-container .simplebar-content a[href="${trimmedURL}"]`);
-        if (activatedItem) {
-          const simplebarContent = document.querySelector('#leftside-menu-container .simplebar-content-wrapper');
-          if (simplebarContent) {
-            const offset = activatedItem.offsetTop - window.innerHeight * 0.4;
-            scrollTo(simplebarContent, offset, 600);
-          }
-        }
-      }, 400);
 
-      // scrollTo (Left Side Bar Active Menu)
-      const easeInOutQuad = (t, b, c, d) => {
-        t /= d / 2;
-        if (t < 1) return c / 2 * t * t + b;
-        t--;
-        return -c / 2 * (t * (t - 2) - 1) + b;
-      };
-      const scrollTo = (element, to, duration) => {
-        const start = element.scrollTop,
-          change = to - start,
-          increment = 20;
-        let currentTime = 0;
-        const animateScroll = function () {
-          currentTime += increment;
-          const val = easeInOutQuad(currentTime, start, change, duration);
-          element.scrollTop = val;
-          if (currentTime < duration) {
-            setTimeout(animateScroll, increment);
-          }
-        };
-        animateScroll();
-      };
-    }
-  }, [pathname, visibleMenuItems]);
   useEffect(() => {
-    if (visibleMenuItems && visibleMenuItems.length > 0) activeMenu();
-  }, [activeMenu, visibleMenuItems]);
+    if (!visibleMenuItems || visibleMenuItems.length === 0) return;
+
+    const currentPath = pathname || '';
+    const matchingMenuItem = getMenuItemFromURL(visibleMenuItems, currentPath);
+
+    if (!matchingMenuItem) {
+      setActiveMenuItems(current => current.length === 0 ? current : []);
+      return;
+    }
+
+    const activeItem = findMenuItem(visibleMenuItems, matchingMenuItem.key);
+    if (!activeItem) return;
+
+    const nextActiveKeys = mergeUniqueKeys([activeItem.key, ...findAllParent(visibleMenuItems, activeItem)]);
+
+    setActiveMenuItems(current => areKeyListsEqual(current, nextActiveKeys) ? current : nextActiveKeys);
+    setExpandedMenuItems(current => {
+      const nextExpandedKeys = mergeUniqueKeys([...current, ...nextActiveKeys]);
+      return areKeyListsEqual(current, nextExpandedKeys) ? current : nextExpandedKeys;
+    });
+
+    const scrollTimer = window.setTimeout(() => {
+      const activatedItem = document.querySelector(`#startbarCollapse .simplebar-content a[href="${currentPath}"]`);
+      const sidebarContainer = document.querySelector('#startbarCollapse .simplebar-content-wrapper');
+      if (!(activatedItem instanceof HTMLElement) || !(sidebarContainer instanceof HTMLElement)) return;
+
+      const offset = Math.max(0, activatedItem.offsetTop - sidebarContainer.clientHeight * 0.4);
+      sidebarContainer.scrollTop = offset;
+    }, 0);
+
+    return () => window.clearTimeout(scrollTimer);
+  }, [pathname, visibleMenuItems]);
+
   return <ul className="navbar-nav mb-auto w-100">
       {(visibleMenuItems || []).map((item, idx) => {
       return <Fragment key={item.key + idx}>
@@ -223,7 +233,7 @@ const AppMenu = ({
                 </small>
                 <span>{item.label}</span>
               </li> : <>
-                {item.children ? <MenuItemWithChildren item={item} toggleMenu={toggleMenu} className={clsx('nav-item', getActiveClass(item))} linkClassName={clsx('nav-link', getActiveClass(item))} subMenuClassName="nav flex-column" activeMenuItems={activeMenuItems} /> : <MenuItem item={item} linkClassName={clsx('nav-link', getActiveClass(item))} className={clsx('nav-item', getActiveClass(item))} />}
+                {item.children ? <MenuItemWithChildren item={item} toggleMenu={toggleMenu} className={clsx('nav-item', getActiveClass(item))} linkClassName={clsx('nav-link', getActiveClass(item))} subMenuClassName="nav flex-column" expandedMenuItems={expandedMenuItems} activeMenuItems={activeMenuItems} /> : <MenuItem item={item} linkClassName={clsx('nav-link', getActiveClass(item))} className={clsx('nav-item', getActiveClass(item))} />}
               </>}
           </Fragment>;
     })}

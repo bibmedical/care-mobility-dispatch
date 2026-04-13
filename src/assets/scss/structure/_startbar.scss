@@ -31,14 +31,66 @@
     }
 
     .startbar-menu {
-        padding-bottom: var(--#{$prefix}topbar-height);
-        height: 100vh;
+        padding-bottom: 0;
+        height: calc(100vh - var(--#{$prefix}topbar-height));
+        overflow: hidden;
+
+        &,
+        &::-webkit-scrollbar {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        &::-webkit-scrollbar {
+            display: none;
+            width: 0 !important;
+            height: 0 !important;
+        }
 
         .startbar-collapse {
             padding: 0 $spacer $spacer;
-            height: calc(100vh - $topbar-height);
-            overflow-y: auto;
+            height: 100%;
+            overflow: hidden;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
             // min-height: calc(100vh - $topbar-height);
+
+            &::-webkit-scrollbar {
+                display: none;
+                width: 0;
+                height: 0;
+            }
+
+            > div {
+                width: 100%;
+            }
+
+            .simplebar-content-wrapper,
+            .simplebar-offset {
+                margin-right: 0 !important;
+                padding-right: 0 !important;
+                scrollbar-width: none !important;
+                -ms-overflow-style: none !important;
+            }
+
+            .simplebar-content-wrapper::-webkit-scrollbar,
+            .simplebar-offset::-webkit-scrollbar,
+            .simplebar-mask::-webkit-scrollbar,
+            .simplebar-wrapper::-webkit-scrollbar {
+                display: none !important;
+                width: 0 !important;
+                height: 0 !important;
+            }
+
+            .simplebar-track.simplebar-vertical,
+            .simplebar-track.simplebar-horizontal,
+            .simplebar-scrollbar {
+                display: none !important;
+                width: 0 !important;
+                height: 0 !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+            }
         }
 
         .navbar-nav {

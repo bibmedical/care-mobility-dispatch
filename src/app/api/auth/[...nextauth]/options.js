@@ -6,6 +6,9 @@ import { consumeVerifiedTemp2FASession } from '@/server/temp-2fa-session-store';
 import { createWebAuthSession, hasActiveWebSession, revokeOtherWebAuthSessions } from '@/server/web-auth-session-store';
 
 const isLocalPasswordlessWebEnabled = () => process.env.NODE_ENV !== 'production';
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseSqlBackedWebAuth = () => hasDatabaseUrl();
+const shouldRequireWebLoginCode = () => shouldUseSqlBackedWebAuth();
 
 const normalizeIp = value => {
   const raw = String(value ?? '').split(',')[0].trim();
@@ -68,7 +71,7 @@ export const options = {
             clientType
           });
 
-        if (result && clientType === 'web' && isWebDuplicateSessionGuardEnabled()) {
+        if (result && clientType === 'web' && shouldUseSqlBackedWebAuth() && isWebDuplicateSessionGuardEnabled()) {
           const hasActiveSession = await hasActiveWebSession(result.id, { requestIp });
           if (hasActiveSession) {
             if (forceSessionTakeover) {
@@ -79,7 +82,9 @@ export const options = {
               throw new Error('This account is already active on another web session.');
             }
           }
+        }
 
+        if (result && clientType === 'web' && shouldRequireWebLoginCode()) {
           const hasVerifiedWebChallenge = await consumeVerifiedTemp2FASession({
             token: webLoginToken,
             userId: result.id,
@@ -178,7 +183,7 @@ export const options = {
       user,
       account
     }) {
-      if (user?.id && user?.authSessionId && account?.provider) {
+      if (user?.id && user?.authSessionId && account?.provider && shouldUseSqlBackedWebAuth()) {
         try {
           await createWebAuthSession({
             sessionId: user.authSessionId,

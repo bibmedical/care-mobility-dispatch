@@ -6,11 +6,11 @@ import FallbackLoading from '@/components/FallbackLoading';
 import SimplebarReactClient from '@/components/wrappers/SimplebarReactClient';
 const LeftSideBar = () => {
   const menuItems = getMenuItems();
-  return <div className="startbar d-print-none">
+  return <div className="startbar d-print-none" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="brand">
         <LogoBox />
       </div>
-      <div className="startbar-menu">
+      <div className="startbar-menu" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
         <SimplebarReactClient className="startbar-collapse" id="startbarCollapse" data-simplebar>
           <div className="d-flex align-items-start flex-column w-100">
             <Suspense fallback={<FallbackLoading />}>

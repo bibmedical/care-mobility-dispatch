@@ -342,12 +342,14 @@ const PerformanceDashboardWorkspace = () => {
   const donutCompleted = analytics.counts.completed;
   const donutCanceled = analytics.counts.canceled;
   const donutAssigned = analytics.counts.assigned + analytics.counts.inProgress;
+  const hasTripMixData = donutCompleted + donutCanceled + donutAssigned > 0;
+  const hasMonthlyProjectionData = analytics.monthlyProjection.some(item => item.value > 0 || item.secondary > 0);
   const donutTotal = Math.max(1, donutCompleted + donutCanceled + donutAssigned);
   const completedAngle = donutCompleted / donutTotal * 360;
   const canceledAngle = donutCanceled / donutTotal * 360;
   const donutStyle = {
     ...panelStyles.donutTrack,
-    background: `conic-gradient(#7d82ff 0deg ${completedAngle}deg, #21b8ff ${completedAngle}deg ${completedAngle + canceledAngle}deg, #ffb04d ${completedAngle + canceledAngle}deg 360deg)`
+    background: hasTripMixData ? `conic-gradient(#7d82ff 0deg ${completedAngle}deg, #21b8ff ${completedAngle}deg ${completedAngle + canceledAngle}deg, #ffb04d ${completedAngle + canceledAngle}deg 360deg)` : 'transparent'
   };
 
   return <div style={panelStyles.page}>
@@ -396,7 +398,13 @@ const PerformanceDashboardWorkspace = () => {
                   <div style={panelStyles.chartShell}>
                     {analytics.monthlyProjection.map(item => {
                       const maxValue = Math.max(...analytics.monthlyProjection.map(entry => entry.value), 1);
-                      return <div style={panelStyles.chartBarWrap} key={item.month}><div className="small text-center" style={mutedTextStyle}>{currencyFormatter.format(item.value)}</div><div style={panelStyles.chartTrack}><div className="w-100 d-flex align-items-end gap-2 h-100"><div style={{ ...panelStyles.chartBarSecondary, height: `${item.secondary / maxValue * 100}%`, opacity: 0.8 }} /><div style={{ ...panelStyles.chartBar, height: `${item.value / maxValue * 100}%` }} /></div></div><div className="small text-center" style={mutedTextStyle}>{item.month}</div></div>;
+                      const chartTrackStyle = hasMonthlyProjectionData ? panelStyles.chartTrack : {
+                        ...panelStyles.chartTrack,
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        padding: 0
+                      };
+                      return <div style={panelStyles.chartBarWrap} key={item.month}><div className="small text-center" style={mutedTextStyle}>{currencyFormatter.format(item.value)}</div><div style={chartTrackStyle}><div className="w-100 d-flex align-items-end gap-2 h-100"><div style={{ ...panelStyles.chartBarSecondary, height: `${item.secondary / maxValue * 100}%`, opacity: 0.8 }} /><div style={{ ...panelStyles.chartBar, height: `${item.value / maxValue * 100}%` }} /></div></div><div className="small text-center" style={mutedTextStyle}>{item.month}</div></div>;
                     })}
                   </div>
                   <Row className="g-3 mt-1">
