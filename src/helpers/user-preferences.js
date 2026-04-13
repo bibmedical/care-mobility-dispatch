@@ -54,7 +54,8 @@ const normalizeConfirmationPreferences = value => ({
 const normalizeDispatcherToolbarPreferences = value => ({
   row1: normalizeStringArray(value?.row1),
   row2: normalizeStringArray(value?.row2),
-  row3: normalizeStringArray(value?.row3)
+  row3: normalizeStringArray(value?.row3),
+  toolbarVisibility: normalizeBooleanMap(value?.toolbarVisibility)
 });
 
 const normalizeDispatcherLayoutPreferences = value => ({
@@ -122,7 +123,11 @@ export const mergeUserPreferences = (currentValue, patchValue) => {
     } : current.assistantAvatar,
     dispatcherToolbar: patch.dispatcherToolbar ? {
       ...current.dispatcherToolbar,
-      ...patch.dispatcherToolbar
+      ...patch.dispatcherToolbar,
+      toolbarVisibility: patch.dispatcherToolbar.toolbarVisibility ? {
+        ...current.dispatcherToolbar.toolbarVisibility,
+        ...patch.dispatcherToolbar.toolbarVisibility
+      } : current.dispatcherToolbar.toolbarVisibility
     } : current.dispatcherToolbar,
     dispatcherLayout: patch.dispatcherLayout ? {
       ...current.dispatcherLayout,
