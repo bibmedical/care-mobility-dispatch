@@ -783,6 +783,24 @@ export const buildGroupingRows = state => state.groupings.map((grouping, index) 
   };
 });
 
+export const getDriverAssignedVehicles = (driver, state) => {
+  const vehicles = Array.isArray(state?.vehicles) ? state.vehicles : [];
+  const groupings = Array.isArray(state?.groupings) ? state.groupings : [];
+  const directVehicleId = String(driver?.vehicleId || '').trim();
+  const directVehicle = directVehicleId ? vehicles.find(vehicle => String(vehicle?.id || '').trim() === directVehicleId) || null : null;
+  if (directVehicle) return [directVehicle];
+
+  const groupingId = String(driver?.groupingId || '').trim();
+  const grouping = groupingId ? groupings.find(item => String(item?.id || '').trim() === groupingId) || null : null;
+  const assignedVehicleIds = Array.isArray(grouping?.assignedVehicleIds) ? grouping.assignedVehicleIds.filter(Boolean).map(id => String(id).trim()) : [];
+  return vehicles.filter(vehicle => assignedVehicleIds.includes(String(vehicle?.id || '').trim()));
+};
+
+export const getDriverAssignedVehicleLabel = (driver, state) => {
+  const assignedVehicles = getDriverAssignedVehicles(driver, state);
+  return assignedVehicles.map(vehicle => vehicle?.label || vehicle?.unitNumber || vehicle?.id || '').filter(Boolean).join(', ') || 'Pending vehicle';
+};
+
 export const mapAdminDataToDispatchDrivers = state => {
   const sourceDrivers = state.drivers.filter(driver => isDriverRole(driver.role));
   const rosterDrivers = sourceDrivers.filter(driver => isDriverOnActiveRoster(driver));
@@ -790,7 +808,8 @@ export const mapAdminDataToDispatchDrivers = state => {
 
   return visibleDrivers.map((driver, index) => {
   const normalizedDriver = normalizeDriverTracking(driver);
-  const vehicle = state.vehicles.find(item => item.id === normalizedDriver.vehicleId);
+  const assignedVehicles = getDriverAssignedVehicles(normalizedDriver, state);
+  const vehicle = assignedVehicles[0] || null;
   const attendant = state.attendants.find(item => item.id === normalizedDriver.attendantId);
   const grouping = state.groupings.find(item => item.id === normalizedDriver.groupingId);
   const alerts = getDocumentAlerts(normalizedDriver);
@@ -803,7 +822,7 @@ export const mapAdminDataToDispatchDrivers = state => {
   return {
     id: normalizedDriver.id,
     code: vehicle?.unitNumber || `DRV-${String(index + 1).padStart(3, '0')}`,
-    vehicle: vehicle?.label || 'Pending vehicle',
+    vehicle: getDriverAssignedVehicleLabel(normalizedDriver, state),
     name: getFullName(normalizedDriver),
     nickname: normalizedDriver.username || normalizedDriver.firstName,
     phone: normalizedDriver.phone || '',

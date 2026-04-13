@@ -101,7 +101,7 @@ const useNemtAdminApi = () => {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.error || 'Unable to save admin data');
-      setData(current => ({ ...current, ...nextData, dispatchDrivers: current?.dispatchDrivers || [] }));
+      setData(payload);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('nemt-admin-updated'));
       }
@@ -117,6 +117,19 @@ const useNemtAdminApi = () => {
 
   useEffect(() => {
     refresh();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleAdminUpdated = () => {
+      refresh();
+    };
+
+    window.addEventListener('nemt-admin-updated', handleAdminUpdated);
+    return () => {
+      window.removeEventListener('nemt-admin-updated', handleAdminUpdated);
+    };
   }, []);
 
   return {
