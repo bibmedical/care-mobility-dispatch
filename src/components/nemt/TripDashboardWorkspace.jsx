@@ -1569,6 +1569,20 @@ const TripDashboardWorkspace = () => {
       <Button variant="outline-dark" size="sm" style={toolbarButtonStyle} onClick={() => handleShiftTripDate(1)} title="Next day">→</Button>
     </div>;
 
+  const renderColumnsButton = () => <Button
+      variant={showColumnPicker ? 'dark' : 'outline-dark'}
+      size="sm"
+      style={{ ...toolbarButtonStyle, minWidth: 86, fontWeight: 600 }}
+      onClick={() => {
+        setShowColumnPicker(current => !current);
+        setShowToolbarTools(false);
+      }}
+      title="Choose trip columns"
+      aria-label="Choose trip columns"
+    >
+      Columns
+    </Button>;
+
   const renderToolbarRow1Block = blockId => {
     switch (blockId) {
       case 'date-controls':
@@ -1667,19 +1681,6 @@ const TripDashboardWorkspace = () => {
               aria-label={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}
             >
               <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
-            </Button>
-            <Button
-              variant={showColumnPicker ? 'dark' : 'outline-dark'}
-              size="sm"
-              style={{ ...toolbarButtonStyle, minWidth: 86, fontWeight: 600 }}
-              onClick={() => {
-                setShowColumnPicker(current => !current);
-                setShowToolbarTools(false);
-              }}
-              title="Choose trip columns"
-              aria-label="Choose trip columns"
-            >
-              Columns
             </Button>
           </div>;
       case 'metric-miles':
@@ -4702,6 +4703,7 @@ const TripDashboardWorkspace = () => {
                     <option value="cancelled">Cancelled</option>
                     <option value="block">Blocked</option>
                   </Form.Select>
+                  {renderColumnsButton()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                     <div>
