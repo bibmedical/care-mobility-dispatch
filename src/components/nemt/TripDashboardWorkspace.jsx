@@ -188,6 +188,12 @@ const lightToolbarButtonStyle = {
   backgroundColor: 'rgba(255, 255, 255, 0.9)'
 };
 
+const redToolbarButtonStyle = {
+  color: '#ffffff',
+  borderColor: '#b91c1c',
+  backgroundColor: '#dc2626'
+};
+
 const TRIP_COLUMN_MIN_WIDTHS = {
   act: 52,
   notes: 240,
@@ -4069,7 +4075,7 @@ const TripDashboardWorkspace = () => {
           }}>
               <IconifyIcon icon="iconoir:settings" />
             </Button>
-            <Button variant="outline-danger" size="sm" onClick={() => setShowDriversPanel(false)} title="Hide drivers panel">✕</Button>
+            <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={() => setShowDriversPanel(false)} title="Hide drivers panel">✕</Button>
           </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
@@ -4144,8 +4150,8 @@ const TripDashboardWorkspace = () => {
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
             </Form.Select>
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRoutePanelAssignSecondary}>Assign 2nd</Button>
-            <Button variant="outline-danger" size="sm" onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
-            {isFocusRightLayout && showRoutesPanel ? <Button variant="outline-danger" size="sm" onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
+            <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
+            {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
           </div>
           <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
             <Badge bg="dark">{selectedRoutePanelTripIds.length} selected</Badge>
