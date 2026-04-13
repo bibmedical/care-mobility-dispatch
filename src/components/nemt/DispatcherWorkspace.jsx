@@ -5,10 +5,12 @@ import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel
 import { useNemtContext } from '@/context/useNemtContext';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { getDriverColor } from '@/helpers/nemt-driver-colors';
+import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
+import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
@@ -641,13 +643,6 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
   }
 };
 
-const getTripTypeLabel = trip => {
-  const source = `${trip?.vehicleType || ''} ${trip?.assistanceNeeds || ''} ${trip?.tripType || ''}`.toLowerCase();
-  if (source.includes('stretcher') || source.includes('str')) return 'STR';
-  if (source.includes('wheelchair') || source.includes('wheel') || source.includes('wc') || source.includes('w/c')) return 'W';
-  return 'A';
-};
-
 const getTripLegFilterKey = trip => {
   const explicitLeg = String(trip?.leg || trip?.tripLeg || trip?.legCode || '').trim().toUpperCase();
   if (['A', 'AL', '1', 'L1'].includes(explicitLeg)) return 'AL';
@@ -660,6 +655,8 @@ const getTripLegFilterKey = trip => {
   if (legLabel.includes('3') || legLabel.includes('third') || legLabel.includes('connector') || legLabel.includes('cross')) return 'CL';
   return 'CL';
 };
+
+const getTripTypeLabel = getTripMobilityLabel;
 
 const getEffectivePickupTimeText = trip => {
   const scheduledPickup = String(trip?.scheduledPickup || '').trim();
@@ -798,6 +795,7 @@ const DispatcherWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const isDarkMode = themeMode === 'dark';
   const dispatcherSurfaceStyles = useMemo(() => buildDispatcherSurfaceStyles(isDarkMode), [isDarkMode]);
+  const { data: adminData } = useNemtAdminApi();
   const { data: smsData } = useSmsIntegrationApi();
   const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
   const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
@@ -858,6 +856,8 @@ const DispatcherWorkspace = () => {
   const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('Dispatcher listo.');
+  const adminDriversById = useMemo(() => new Map((Array.isArray(adminData?.drivers) ? adminData.drivers : []).map(driver => [String(driver?.id || '').trim(), driver])), [adminData?.drivers]);
+  const adminVehiclesById = useMemo(() => new Map((Array.isArray(adminData?.vehicles) ? adminData.vehicles : []).map(vehicle => [String(vehicle?.id || '').trim(), vehicle])), [adminData?.vehicles]);
   const [columnSplit, setColumnSplit] = useState(50);
   const [rowSplit, setRowSplit] = useState(50);
   const [dragMode, setDragMode] = useState(null);
@@ -1566,7 +1566,7 @@ const DispatcherWorkspace = () => {
     return getTripLegFilterKey(trip) === tripLegFilter;
   }).filter(trip => {
     if (tripTypeFilter === 'all') return true;
-    return getTripTypeLabel(trip) === tripTypeFilter;
+    return getTripMobilityLabel(trip) === tripTypeFilter;
   }).filter(trip => {
     if (!serviceAnimalOnly) return true;
     return Boolean(trip?.hasServiceAnimal);
@@ -2207,9 +2207,15 @@ const DispatcherWorkspace = () => {
       return;
     }
 
-    const driver = drivers.find(item => item.id === driverId);
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(driverId || '').trim());
     if (!driver) {
       setStatusMessage('El chofer seleccionado ya no esta disponible. Recarga la lista.');
+      return;
+    }
+
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: targetTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
       return;
     }
 
@@ -2225,9 +2231,15 @@ const DispatcherWorkspace = () => {
       return;
     }
 
-    const driver = drivers.find(item => item.id === driverId);
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(driverId || '').trim());
     if (!driver) {
       setStatusMessage('El segundo chofer ya no esta disponible.');
+      return;
+    }
+
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: targetTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
       return;
     }
 
@@ -2242,9 +2254,15 @@ const DispatcherWorkspace = () => {
       return;
     }
 
-    const driver = drivers.find(item => item.id === selectedDriverId);
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(selectedDriverId || '').trim());
     if (!driver) {
       setStatusMessage('El chofer seleccionado no esta disponible.');
+      return;
+    }
+
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: [tripId], trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
       return;
     }
 
@@ -2260,9 +2278,15 @@ const DispatcherWorkspace = () => {
       return;
     }
 
-    const driver = drivers.find(item => item.id === quickReassignDriverId);
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(quickReassignDriverId || '').trim());
     if (!driver) {
       setStatusMessage('Ese chofer ya no esta disponible.');
+      return;
+    }
+
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: selectedTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
       return;
     }
 

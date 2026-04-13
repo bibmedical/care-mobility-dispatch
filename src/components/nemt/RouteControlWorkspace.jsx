@@ -2,6 +2,8 @@
 
 import { useNemtContext } from '@/context/useNemtContext';
 import { getTripLateMinutes, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver } from '@/helpers/nemt-dispatch-state';
+import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
+import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getMapTileConfig } from '@/utils/map-tiles';
 import { MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
@@ -135,6 +137,7 @@ const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
 };
 
 const RouteControlWorkspace = () => {
+  const { data: adminData } = useNemtAdminApi();
   const {
     drivers,
     trips,
@@ -162,6 +165,8 @@ const RouteControlWorkspace = () => {
   const [statusMessage, setStatusMessage] = useState('Select a work day to load Route Control.');
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
   const closedRouteSnapshotRef = useRef('');
+  const adminDriversById = useMemo(() => new Map((Array.isArray(adminData?.drivers) ? adminData.drivers : []).map(driver => [String(driver?.id || '').trim(), driver])), [adminData?.drivers]);
+  const adminVehiclesById = useMemo(() => new Map((Array.isArray(adminData?.vehicles) ? adminData.vehicles : []).map(vehicle => [String(vehicle?.id || '').trim(), vehicle])), [adminData?.vehicles]);
 
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const hasSelectedDate = Boolean(dateFilter);
@@ -396,6 +401,12 @@ const RouteControlWorkspace = () => {
 
   const handleApplyPrimary = () => {
     if (!primaryDriverId || selectedTripIds.length === 0) return;
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(primaryDriverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: selectedTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      return;
+    }
     if (isPersistedRoute) {
       assignRoutePrimaryDriver(resolvedRoute.id, primaryDriverId);
     } else {
@@ -413,6 +424,12 @@ const RouteControlWorkspace = () => {
 
   const handleApplySecondary = () => {
     if (selectedTripIds.length === 0) return;
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(secondaryDriverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: selectedTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      return;
+    }
     if (isPersistedRoute) {
       assignRouteSecondaryDriver(resolvedRoute.id, secondaryDriverId);
     } else {
@@ -446,6 +463,12 @@ const RouteControlWorkspace = () => {
     const nextDriverId = primaryDriverId || selectedDriverId;
     if (!nextDriverId) {
       setStatusMessage('Select a primary driver before saving the route.');
+      return;
+    }
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(nextDriverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: selectedTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
       return;
     }
 
@@ -490,6 +513,12 @@ const RouteControlWorkspace = () => {
       setStatusMessage('No auto-assign recommendation available.');
       return;
     }
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(routeSuggestion?.recommendedDriver?.id || '').trim()) || routeSuggestion.recommendedDriver;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: selectedTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      return;
+    }
     if (isPersistedRoute) {
       assignRoutePrimaryDriver(resolvedRoute.id, routeSuggestion.recommendedDriver.id);
     } else {
@@ -508,6 +537,12 @@ const RouteControlWorkspace = () => {
 
   const handleTripReassign = (tripId, driverId) => {
     if (!tripId || !driverId) return;
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(driverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: [tripId], trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      return;
+    }
     assignTripsToDriver(driverId, [tripId]);
     setStatusMessage('Trip reassigned without breaking the route.');
     void logSystemActivity('Reassigned trip from route control', `Trip ${tripId}`, {

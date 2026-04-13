@@ -3,8 +3,10 @@
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
+import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
+import { parseTripImportFile } from '@/helpers/nemt-trip-import';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
@@ -20,7 +22,7 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
-import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
+import { Alert, Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 import { signOut, useSession } from 'next-auth/react';
 
 const greenToolbarButtonStyle = {
@@ -374,17 +376,12 @@ const sortTripsByPickupTime = items => [...items].sort((leftTrip, rightTrip) => 
   return String(leftTrip.id).localeCompare(String(rightTrip.id));
 });
 
-const getTripTypeLabel = trip => {
-  const source = `${trip?.vehicleType || ''} ${trip?.assistanceNeeds || ''} ${trip?.tripType || ''}`.toLowerCase();
-  if (source.includes('stretcher') || source.includes('str')) return 'STR';
-  if (source.includes('wheelchair') || source.includes('wheel') || source.includes('wc') || source.includes('w/c')) return 'W';
-  return 'A';
-};
-
 const extractCityFromAddress = address => {
   const parts = String(address || '').split(',');
   return parts.length >= 2 ? parts[1].trim() : '';
 };
+
+const getTripTypeLabel = getTripMobilityLabel;
 
 const getPickupCity = trip => extractCityFromAddress(trip?.address);
 const getDropoffCity = trip => extractCityFromAddress(trip?.destination);
@@ -708,6 +705,7 @@ const TripDashboardWorkspace = () => {
     assignTripsToDriver,
     assignTripsToSecondaryDriver,
     unassignTrips,
+    upsertImportedTrips,
     cancelTrips,
     reinstateTrips,
     createRoute,
@@ -752,6 +750,7 @@ const TripDashboardWorkspace = () => {
   const [driverGrouping, setDriverGrouping] = useState('VDR Grouping');
   const [routeSearch, setRouteSearch] = useState('');
   const [showBlacklistModal, setShowBlacklistModal] = useState(false);
+  const [showTripImportModal, setShowTripImportModal] = useState(false);
   const [blacklistSearch, setBlacklistSearch] = useState('');
   const [blacklistDraft, setBlacklistDraft] = useState(createEmptyBlacklistEntryDraft());
   const [showInfo, setShowInfo] = useState(false);
@@ -792,6 +791,10 @@ const TripDashboardWorkspace = () => {
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [routeMetrics, setRouteMetrics] = useState(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [importPendingTrips, setImportPendingTrips] = useState([]);
+  const [importedServiceDateKeys, setImportedServiceDateKeys] = useState([]);
+  const [selectedImportFileName, setSelectedImportFileName] = useState('');
+  const [isImportParsing, setIsImportParsing] = useState(false);
   const [cancelTripIds, setCancelTripIds] = useState([]);
   const [cancelReasonDraft, setCancelReasonDraft] = useState('');
   const [noteModalTripId, setNoteModalTripId] = useState(null);
@@ -803,6 +806,7 @@ const TripDashboardWorkspace = () => {
   const [aiPlannerAnchorTripId, setAiPlannerAnchorTripId] = useState('');
   const [aiPlannerStartZip, setAiPlannerStartZip] = useState('');
   const columnPickerRef = useRef(null);
+  const importFileInputRef = useRef(null);
 
   useEffect(() => {
     if (!showColumnPicker) return undefined;
@@ -829,7 +833,7 @@ const TripDashboardWorkspace = () => {
     const assignedDriver = drivers.find(driver => String(driver?.id || '').trim() === String(trip?.driverId || '').trim()) || null;
     const adminDriver = adminDriversById.get(String(trip?.driverId || '').trim()) || null;
     const adminVehicle = adminDriver?.vehicleId ? adminVehiclesById.get(String(adminDriver.vehicleId || '').trim()) || null : null;
-    const capabilityTokens = buildVehicleCapabilityTokens(adminVehicle);
+    const capabilityTokens = getVehicleCapabilityTokens(adminVehicle);
 
     return {
       requestedVehicle: String(trip?.vehicleType || '').trim(),
@@ -858,6 +862,50 @@ const TripDashboardWorkspace = () => {
   const [aiPlannerPreview, setAiPlannerPreview] = useState(null);
   const [aiPlannerLoading, setAiPlannerLoading] = useState(false);
   const [aiPlannerCollapsed, setAiPlannerCollapsed] = useState(true);
+
+  const handleTripImportFileChange = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImportParsing(true);
+    setSelectedImportFileName(file.name);
+
+    try {
+      const parsedImport = await parseTripImportFile(file);
+      setImportPendingTrips(parsedImport.trips);
+      setImportedServiceDateKeys(parsedImport.serviceDateKeys);
+      if (parsedImport.trips.length === 0) {
+        setStatusMessage('The selected file does not contain trips to import.');
+        showNotification({ message: 'The selected file does not contain trips to import.', variant: 'warning' });
+        return;
+      }
+      setStatusMessage(`${parsedImport.trips.length} trip(s) ready to import from ${file.name}.`);
+    } catch {
+      setImportPendingTrips([]);
+      setImportedServiceDateKeys([]);
+      setStatusMessage('Could not read the file. Use .xlsx, .xls, or .csv with SafeRide headers.');
+      showNotification({ message: 'Could not read the file. Use .xlsx, .xls, or .csv with SafeRide headers.', variant: 'danger' });
+    } finally {
+      setIsImportParsing(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleImportTripsIntoDashboard = () => {
+    if (importPendingTrips.length === 0) {
+      setStatusMessage('Select a valid Excel or CSV file first.');
+      return;
+    }
+
+    upsertImportedTrips(importPendingTrips);
+    setShowTripImportModal(false);
+    setStatusMessage(`${importPendingTrips.length} trip(s) imported into Trip Dashboard.`);
+    showNotification({ message: `${importPendingTrips.length} trip(s) imported into Trip Dashboard.`, variant: 'success' });
+    setImportPendingTrips([]);
+    setImportedServiceDateKeys([]);
+    setSelectedImportFileName('');
+  };
+
   const [showDriversPanel, setShowDriversPanel] = useState(true);
   const [showRoutesPanel, setShowRoutesPanel] = useState(true);
   const [showTripsPanel, setShowTripsPanel] = useState(true);
@@ -2360,6 +2408,13 @@ const TripDashboardWorkspace = () => {
       setStatusMessage('Select a driver first to assign this trip.');
       return;
     }
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(selectedDriverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: [tripId], trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      showNotification({ message: compatibilityIssue.message, variant: 'danger' });
+      return;
+    }
     assignTripsToDriver(selectedDriverId, [tripId]);
     setSelectedTripIds([tripId]);
     setStatusMessage(`Trip ${tripId} assigned.`);
@@ -2800,6 +2855,14 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(driverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: targetTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      showNotification({ message: compatibilityIssue.message, variant: 'danger' });
+      return;
+    }
+
     assignTripsToDriver(driverId, targetTripIds);
     setStatusMessage('Trips assigned to selected driver.');
   };
@@ -2808,6 +2871,14 @@ const TripDashboardWorkspace = () => {
     const targetTripIds = [...selectedTripIds];
     if (!driverId || targetTripIds.length === 0) {
       setStatusMessage('Select a secondary driver and at least one trip.');
+      return;
+    }
+
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(driverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: targetTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      showNotification({ message: compatibilityIssue.message, variant: 'danger' });
       return;
     }
 
@@ -2822,6 +2893,14 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(selectedDriverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: targetTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      showNotification({ message: compatibilityIssue.message, variant: 'danger' });
+      return;
+    }
+
     assignTripsToDriver(selectedDriverId, targetTripIds);
     setStatusMessage(`Reassigned ${targetTripIds.length} trip(s) to selected driver.`);
   };
@@ -2830,6 +2909,14 @@ const TripDashboardWorkspace = () => {
     const targetTripIds = [...selectedRoutePanelTripIds];
     if (!selectedSecondaryDriverId || targetTripIds.length === 0) {
       setStatusMessage('Select a secondary driver and at least one trip from the route table.');
+      return;
+    }
+
+    const driver = drivers.find(item => String(item?.id || '').trim() === String(selectedSecondaryDriverId || '').trim()) || null;
+    const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: targetTripIds, trips, adminDriversById, adminVehiclesById });
+    if (compatibilityIssue) {
+      setStatusMessage(compatibilityIssue.message);
+      showNotification({ message: compatibilityIssue.message, variant: 'danger' });
       return;
     }
 
@@ -3522,8 +3609,8 @@ const TripDashboardWorkspace = () => {
               <Badge bg="danger" className="ms-2">{activeBlacklistEntries.length}</Badge>
             </Button>
             <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-            setStatusMessage('Opening Excel Loader.');
-            router.push('/forms-safe-ride-import');
+            setShowTripImportModal(true);
+            setStatusMessage('Trip import ready in this dashboard.');
           }}>
               Excel Loader
             </Button>
@@ -4428,6 +4515,35 @@ const TripDashboardWorkspace = () => {
                 </div>
               </> : null}
           </div> : null}
+
+        <Modal show={showTripImportModal} onHide={() => setShowTripImportModal(false)} size="lg" centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Import Trips Here</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <p className="text-muted mb-3">Load the SafeRide Excel or CSV directly in Trip Dashboard without opening the separate Excel Loader page.</p>
+            <div className="d-flex flex-wrap gap-2 mb-3">
+              <Button variant="success" onClick={() => importFileInputRef.current?.click()} disabled={isImportParsing}>
+                {isImportParsing ? 'Reading file...' : 'Select Excel or CSV'}
+              </Button>
+              <Button variant="outline-secondary" onClick={() => router.push('/forms-safe-ride-import')}>
+                Open Full Excel Loader
+              </Button>
+            </div>
+            <input ref={importFileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleTripImportFileChange} style={{ display: 'none' }} />
+            <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
+            <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
+            <div className="small text-muted mb-3">{importPendingTrips.length > 0 ? `${importPendingTrips.length} trip(s) ready to import.` : 'Choose a SafeRide file to load trips here.'}</div>
+            {importPendingTrips.length > 0 ? <Alert variant="success" className="mb-0">
+                <div className="fw-semibold mb-1">Import ready</div>
+                <div>{importPendingTrips.length} trip(s) will be merged into the current local dispatch state.</div>
+              </Alert> : null}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="outline-secondary" onClick={() => setShowTripImportModal(false)}>Close</Button>
+            <Button variant="success" onClick={handleImportTripsIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing}>Import Trips</Button>
+          </Modal.Footer>
+        </Modal>
 
         <Modal show={showBlacklistModal} onHide={() => setShowBlacklistModal(false)} size="xl" centered scrollable>
           <Modal.Header closeButton>

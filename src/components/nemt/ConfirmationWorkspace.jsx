@@ -3,7 +3,7 @@
 import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
-import { getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
+import { getTripMobilityLabel, getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
@@ -313,12 +313,7 @@ const getTripNotesPreview = (value, maxLength = 120) => {
   return `${text.slice(0, maxLength).trimEnd()}...`;
 };
 
-const getTripTypeLabel = trip => {
-  const source = `${trip?.vehicleType || ''} ${trip?.assistanceNeeds || ''} ${trip?.tripType || ''}`.toLowerCase();
-  if (source.includes('stretcher') || source.includes('str')) return 'STR';
-  if (source.includes('wheelchair') || source.includes('wheel') || source.includes('wc') || source.includes('w/c')) return 'W';
-  return 'A';
-};
+const getTripTypeLabel = getTripMobilityLabel;
 const getTripLegFilterKey = trip => {
   const legLabel = String(trip?.legLabel || '').trim().toLowerCase();
   if (!legLabel) return 'AL';

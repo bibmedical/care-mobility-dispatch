@@ -5,6 +5,7 @@ const DEFAULT_ASSISTANT_AVATAR_IMAGE = '/fmg-login-logo.png';
 export const DEFAULT_DISPATCH_TIME_ZONE = 'America/New_York';
 
 const normalizeTextValue = value => String(value ?? '').trim();
+const TRIP_MOBILITY_SOURCE_FIELDS = ['mobilityType', 'mobility', 'vehicleType', 'assistanceNeeds', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
 
 const padDatePart = value => String(value).padStart(2, '0');
 
@@ -113,6 +114,30 @@ export const getTripServiceDateKey = trip => {
   if (explicitDate) return explicitDate;
 
   return normalizeTimestampToDateKey(trip?.pickupSortValue) || normalizeTimestampToDateKey(trip?.dropoffSortValue) || normalizeTimestampToDateKey(trip?.confirmation?.sentAt) || '';
+};
+
+const getTripMobilitySource = trip => TRIP_MOBILITY_SOURCE_FIELDS.map(field => String(trip?.[field] || '').trim()).filter(Boolean).join(' ').toLowerCase();
+
+export const getTripMobilityLabel = trip => {
+  const source = getTripMobilitySource(trip);
+  if (!source) return 'A';
+  if (source.includes('stretcher') || source.includes('gurney') || source.includes('str')) return 'STR';
+  if (source.includes('wheelchair') || source.includes('wheel chair') || source.includes('wheel') || source.includes('wc') || source.includes('w/c') || source.includes('wxl') || source.includes('electric wheelchair') || source.includes('power wheelchair') || source.includes('ew')) return 'W';
+  return 'A';
+};
+
+export const getTripRequiredCapabilityPrefixes = trip => {
+  const tripMobilityLabel = getTripMobilityLabel(trip);
+  if (tripMobilityLabel === 'STR') return ['STR'];
+  if (tripMobilityLabel === 'W') return ['W', 'WXL', 'EW'];
+  return [];
+};
+
+export const getTripMobilityMessageLabel = trip => {
+  const tripMobilityLabel = getTripMobilityLabel(trip);
+  if (tripMobilityLabel === 'STR') return 'stretcher';
+  if (tripMobilityLabel === 'W') return 'wheelchair';
+  return 'ambulatory';
 };
 
 export const getRouteServiceDateKey = (routePlan, trips = []) => {
