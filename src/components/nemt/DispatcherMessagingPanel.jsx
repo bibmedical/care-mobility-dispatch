@@ -240,7 +240,8 @@ const DispatcherMessagingPanel = ({
   setSelectedDriverId,
   onLocateDriver,
   onOpenLayout,
-  openFullChat
+  openFullChat,
+  hideThreadList = false
 }) => {
   const { themeMode } = useLayoutContext();
   const isDarkMode = themeMode === 'dark';
@@ -1071,25 +1072,27 @@ const DispatcherMessagingPanel = ({
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => onOpenLayout?.()}>Layout</Button>
         </div>
-        <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 140, maxWidth: 250 }}>
-          <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." style={messagingSurfaceStyles.input} spellCheck={false} autoComplete="off" />
-          <button
-            type="button"
-            onClick={() => setShowPanelSettings(true)}
-            className="border-0 rounded-circle d-inline-flex align-items-center justify-content-center"
-            style={{ width: 18, height: 18, backgroundColor: selectedChatTheme.accent, boxShadow: `0 0 0 2px ${selectedChatTheme.accent}33` }}
-            title="Messaging colors and notification sound"
-          >
-            <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block' }} />
-          </button>
-        </div>
-        <div className="d-flex gap-2 flex-wrap justify-content-end">
-          <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
-          <Button variant="dark" size="sm" onClick={() => setShowAddOfficialDriver(current => !current)}>{showAddOfficialDriver ? 'Cancelar oficial' : 'Official Driver'}</Button>
-        </div>
+        {!hideThreadList ? <>
+            <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 140, maxWidth: 250 }}>
+              <Form.Control value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver, message, vehicle..." style={messagingSurfaceStyles.input} spellCheck={false} autoComplete="off" />
+              <button
+                type="button"
+                onClick={() => setShowPanelSettings(true)}
+                className="border-0 rounded-circle d-inline-flex align-items-center justify-content-center"
+                style={{ width: 18, height: 18, backgroundColor: selectedChatTheme.accent, boxShadow: `0 0 0 2px ${selectedChatTheme.accent}33` }}
+                title="Messaging colors and notification sound"
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ffffff', display: 'inline-block' }} />
+              </button>
+            </div>
+            <div className="d-flex gap-2 flex-wrap justify-content-end">
+              <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancelar' : 'Add Driver'}</Button>
+              <Button variant="dark" size="sm" onClick={() => setShowAddOfficialDriver(current => !current)}>{showAddOfficialDriver ? 'Cancelar oficial' : 'Official Driver'}</Button>
+            </div>
+          </> : null}
       </div>
       <div className="d-flex flex-grow-1" style={{ minHeight: 0, overflow: 'hidden' }}>
-        <div className="border-end d-flex flex-column" style={{ width: '40%', minWidth: 220, minHeight: 0, ...messagingSurfaceStyles.sidebar }}>
+        {!hideThreadList ? <div className="border-end d-flex flex-column" style={{ width: '40%', minWidth: 220, minHeight: 0, ...messagingSurfaceStyles.sidebar }}>
           <div className="p-3 border-bottom" style={messagingSurfaceStyles.sidebarHeader}>
             {showAddDriver ? (
               <div className="mt-3 border rounded p-2" style={{ backgroundColor: messagingSurfaceStyles.input.backgroundColor, borderColor: messagingSurfaceStyles.sidebar.borderColor }}>
@@ -1275,7 +1278,7 @@ const DispatcherMessagingPanel = ({
               );
             }) : <div className="text-center py-4 small" style={{ color: messagingSurfaceStyles.secondaryText }}>{driverSearch.trim() ? 'No drivers match this search.' : 'No driver threads available.'}</div>}
           </div>
-        </div>
+        </div> : null}
         <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0, ...messagingSurfaceStyles.mainPane }}>
           <div className="flex-grow-1 p-3 d-flex flex-column" style={{ overflowY: 'auto', minHeight: 0, background: messagingSurfaceStyles.mainPaneGradient }}>
             <div className="mb-3" style={messagingStatusRowStyle}>

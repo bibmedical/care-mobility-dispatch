@@ -3,36 +3,6 @@ export const MENU_ITEMS = [{
   label: 'Operations',
   isTitle: true
 }, {
-  key: 'dispatcher-menu',
-  icon: 'iconoir:report-columns',
-  label: 'Dispatcher',
-  children: [{
-    key: 'trip-dashboard-blacklist',
-    label: 'Black List',
-    url: '/blacklist'
-  }, {
-    key: 'dispatcher-live',
-    label: 'Live Board',
-    url: '/dispatcher'
-  }]
-}, {
-  key: 'trip-dashboard',
-  label: 'Trip Dashboard',
-  icon: 'iconoir:view-grid',
-  children: [{
-    key: 'trip-dashboard-confirmation',
-    label: 'Confirmation',
-    url: '/confirmation'
-  }, {
-    key: 'excel-loader-inner',
-    label: 'Excel Loader',
-    url: '/forms-safe-ride-import'
-  }, {
-    key: 'trip-dashboard-main',
-    label: 'Trip Dashboard',
-    url: '/trip-dashboard'
-  }]
-}, {
   key: 'transportation-title',
   label: 'Transportation',
   isTitle: true
@@ -46,10 +16,6 @@ export const MENU_ITEMS = [{
   label: 'Transportation',
   icon: 'iconoir:bus',
   children: [{
-    key: 'drivers-menu-inner',
-    label: 'Drivers',
-    url: '/drivers'
-  }, {
     key: 'vehicles-inner',
     label: 'Vehicles',
     url: '/drivers/vehicles'
@@ -79,15 +45,6 @@ export const MENU_ITEMS = [{
     key: 'billing-main',
     label: 'Billing',
     url: '/billing'
-  }, {
-    key: 'billing-genius',
-    label: 'Genius',
-    url: '/billing/genius',
-    allowedUserIds: ['user-16', 'user-20']
-  }, {
-    key: 'billing-rates',
-    label: 'Rates',
-    url: '/rates'
   }]
 }, {
   key: 'configuraciones-menu',
@@ -110,24 +67,6 @@ export const MENU_ITEMS = [{
     label: 'Office',
     url: '/settings/office'
   }]
-}, {
-  key: 'integrations-menu',
-  label: 'Integrations',
-  icon: 'iconoir:plug-type-a',
-  children: [{
-    key: 'integrations-sms',
-    label: 'SMS',
-    url: '/integrations/sms'
-  }]
-}, {
-  key: 'reports',
-  label: 'Reports',
-  isTitle: true
-}, {
-  key: 'help',
-  label: 'Help',
-  icon: 'iconoir:help-circle',
-  url: '/help'
 }, {
   key: 'logoff',
   label: 'LogOff',

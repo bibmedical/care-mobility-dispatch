@@ -805,6 +805,8 @@ const DispatcherWorkspace = () => {
     drivers,
     trips,
     routePlans,
+    selectedDriverId,
+    setSelectedDriverId,
     uiPreferences,
     assignTripsToDriver,
     assignTripsToSecondaryDriver,
@@ -827,7 +829,6 @@ const DispatcherWorkspace = () => {
   const [serviceAnimalOnly, setServiceAnimalOnly] = useState(false);
   const [tripDateFilter, setTripDateFilter] = useState(() => getLocalDateKey());
   const [selectedTripIds, setSelectedTripIds] = useState([]);
-  const [selectedDriverId, setSelectedDriverId] = useState(null);
   const [isManualDriverScope, setIsManualDriverScope] = useState(false);
   const [followSelectedDriver, setFollowSelectedDriver] = useState(false);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
@@ -2939,27 +2940,13 @@ const DispatcherWorkspace = () => {
   const renderDispatchMapPanel = () => <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
       <CardBody className="p-0">
         {showInlineMap ? <div className="position-relative h-100">
-          <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'scroll', overflowY: 'hidden', scrollbarGutter: 'stable both-edges', whiteSpace: 'nowrap' }}>
-            <>
-                <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])} disabled={mapInteractionLocked}>Clear</Button>
-                <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
-                  <option value="">City</option>
-                  {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
-                </Form.Select>
-                <Form.Select size="sm" value={mapZipQuickFilter} onChange={event => setMapZipQuickFilter(event.target.value)} disabled={mapInteractionLocked} style={{ width: 130, ...dispatcherSurfaceStyles.select }}>
-                  <option value="">ZIP Code</option>
-                  {mapQuickZipOptions.map(zip => <option key={zip} value={zip}>{zip}</option>)}
-                </Form.Select>
-                <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} disabled={mapInteractionLocked} style={{ width: 150, ...dispatcherSurfaceStyles.select }}>
-                  <option value="auto">Map: Auto</option>
-                  <option value="openstreetmap">Map: OSM</option>
-                  <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
-                </Form.Select>
-                <Button variant={selectedDriverId ? 'dark' : 'secondary'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapInteractionLocked}>All drivers</Button>
-                <Button variant={followSelectedDriver ? 'warning' : 'outline-light'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapInteractionLocked || !selectedDriver?.hasRealLocation}>{followSelectedDriver ? 'Follow: ON' : 'Follow: OFF'}</Button>
-                <Button variant="dark" size="sm" onClick={handleSmsPanelsToggle} disabled={mapInteractionLocked}>{dispatcherLayout.messagingVisible || dispatcherLayout.actionsVisible ? 'Hide SMS' : 'Show SMS'}</Button>
-                <Button variant="dark" size="sm" onClick={handleInlineMapToggle} disabled={mapInteractionLocked}>{showInlineMap ? 'Hide Map' : 'Show Map'}</Button>
-              </>
+          <div className="position-absolute top-0 start-0 p-2" style={{ zIndex: 650 }}>
+            <Button variant="dark" size="sm" onClick={() => {
+            setStatusMessage('Returning to Route Planner.');
+            router.push('/trip-dashboard');
+          }}>
+              Route Planner
+            </Button>
           </div>
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%', cursor: mapInteractionLocked ? 'not-allowed' : 'grab' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-inline`} />
@@ -3392,7 +3379,7 @@ const DispatcherWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: dispatcherLayout.messagingVisible ? 'block' : 'none', gridColumn: 1, gridRow: messagingPanelGridRow }}>
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 h-100">
-              <DispatcherMessagingPanel drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
+              <DispatcherMessagingPanel hideThreadList drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
               setIsManualDriverScope(false);
               setSelectedDriverId(nextDriverId || null);
             }} onLocateDriver={driverId => {

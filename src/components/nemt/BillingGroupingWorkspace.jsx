@@ -313,7 +313,9 @@ const BillingGroupingWorkspace = ({ title = 'Driver Grouping' }) => {
               <div className="border overflow-hidden rounded-3" style={shellStyles.tableShell}>
                 <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom" style={{ borderColor: themeMode === 'light' ? '#d5deea' : '#2a3144', backgroundColor: themeMode === 'light' ? '#f8f9fb' : '#101521' }}>
                   <div className="small text-uppercase text-secondary">Active route roster</div>
-                  <Form.Control value={search} onChange={event => setSearch(event.target.value)} placeholder="Search" style={{ ...shellStyles.input, maxWidth: 220 }} className="rounded-pill" />
+                  <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                    <Form.Control value={search} onChange={event => setSearch(event.target.value)} placeholder="Search" style={{ ...shellStyles.input, maxWidth: 220 }} className="rounded-pill" />
+                  </div>
                 </div>
                 <div className="table-responsive" style={{ maxHeight: 640 }}>
                   <Table className="align-middle mb-0" style={{ color: shellStyles.rowTextColor }}>

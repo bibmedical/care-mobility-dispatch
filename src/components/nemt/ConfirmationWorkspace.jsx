@@ -2395,6 +2395,12 @@ const ConfirmationWorkspace = () => {
   return <>
       <PageTitle title="Confirmation" subName="Operations" />
 
+      <div className="d-flex justify-content-end mb-3">
+        <Button style={surfaceStyles.button} onClick={() => router.push('/integrations/sms')}>
+          SMS
+        </Button>
+      </div>
+
       <Row className="g-3 mb-3">
         <Col md={6} xl={2}>
           <Card style={{ ...surfaceStyles.card, cursor: 'pointer' }} className="h-100 border" onClick={() => handleSummaryCardClick('all')} title="Show all trips in results"><CardBody><div className="text-secondary small mb-1">Day</div><h4 className="mb-0">{summary.total}</h4><div className="small text-secondary mt-1">{summaryDayLabel}</div></CardBody></Card>

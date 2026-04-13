@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { buildInitialAdminData, buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking } from '@/helpers/nemt-admin-model';
+import { buildInitialAdminData, buildStableDriverId, mapAdminDataToDispatchDrivers, normalizeDriverTracking, normalizeGroupingRecord } from '@/helpers/nemt-admin-model';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
 import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
@@ -85,13 +85,22 @@ const normalizeDrivers = drivers => {
   });
 };
 
-const normalizeState = value => ({
-  version: 2,
-  drivers: normalizeDrivers(value?.drivers),
-  attendants: Array.isArray(value?.attendants) ? value.attendants : [],
-  vehicles: Array.isArray(value?.vehicles) ? value.vehicles : [],
-  groupings: Array.isArray(value?.groupings) ? value.groupings : []
-});
+const normalizeGroupings = (groupings, state) => (Array.isArray(groupings) ? groupings : []).map(grouping => normalizeGroupingRecord(grouping, state));
+
+const normalizeState = value => {
+  const drivers = normalizeDrivers(value?.drivers);
+  const attendants = Array.isArray(value?.attendants) ? value.attendants : [];
+  const vehicles = Array.isArray(value?.vehicles) ? value.vehicles : [];
+  const groupings = normalizeGroupings(value?.groupings, { drivers, vehicles });
+
+  return {
+    version: 3,
+    drivers,
+    attendants,
+    vehicles,
+    groupings
+  };
+};
 
 const getNemtAdminStorageFile = () => getStorageFilePath('nemt-admin.json');
 

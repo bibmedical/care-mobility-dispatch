@@ -1,6 +1,7 @@
 'use client';
 
 import PageTitle from '@/components/PageTitle';
+import VdrTabsBar from '@/components/nemt/VdrTabsBar';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { DEFAULT_ASSISTANT_AVATAR } from '@/helpers/nemt-dispatch-state';
 import useAvatarSettingsApi from '@/hooks/useAvatarSettingsApi';
@@ -96,6 +97,9 @@ const AvatarSettingsWorkspace = ({
 
     return <>
       {embedded ? null : <PageTitle title={pageTitle} subName={pageSubName} />}
+      <div className="mb-3">
+        <VdrTabsBar />
+      </div>
       <Row className="g-3 mb-3">
         <Col md={6} xl={3}>
           <Card style={surfaceStyles.card} className="h-100 border">

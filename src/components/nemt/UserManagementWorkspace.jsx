@@ -3,6 +3,7 @@
 import { buildPasswordForUser, getUserManagementRows, normalizePhoneDigits } from '@/helpers/system-users';
 import useSystemUsersApi from '@/hooks/useSystemUsersApi';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import VdrTabsBar from '@/components/nemt/VdrTabsBar';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
@@ -246,10 +247,11 @@ const UserManagementWorkspace = () => {
       <CardBody className="p-2" style={userShellStyles.body}>
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-2">
           <div className="d-flex flex-wrap align-items-center gap-2">
+            <VdrTabsBar />
+            <div className="vr text-secondary" />
             <Button className="rounded-pill" style={userShellStyles.button} onClick={refresh} disabled={loading || saving}>
               <IconifyIcon icon="iconoir:refresh-double" />
             </Button>
-            <div className="vr text-secondary" />
             <Button className="rounded-pill" style={userShellStyles.button} onClick={() => openEditor(null)}>
               <IconifyIcon icon="iconoir:plus" className="me-2" />Add
             </Button>

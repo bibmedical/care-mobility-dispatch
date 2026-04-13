@@ -302,10 +302,13 @@ export const NemtProvider = ({
   syncEnabled = true
 }) => {
   const { data: session } = useSession();
-  const [state, setState] = useLocalStorage('__CARE_MOBILITY_NEMT__', createInitialState());
+  const [persistedState, setPersistedState] = useLocalStorage('__CARE_MOBILITY_NEMT__', createInitialState());
+  const [selectedDriverIdState, setSelectedDriverIdState] = useState(() => persistedState?.selectedDriverId || null);
   const [userUiPreferences, setUserUiPreferences] = useState(normalizeNemtUiPreferences(null));
   const [hasLoadedUserUiPreferences, setHasLoadedUserUiPreferences] = useState(false);
   const [isDispatchLoaded, setIsDispatchLoaded] = useState(false);
+  const persistedStateRef = useRef(persistedState ?? createInitialState());
+  const selectedDriverIdRef = useRef(selectedDriverIdState);
   const lastPersistedSnapshotRef = useRef('');
   const hasLocalDispatchChangesRef = useRef(false);
   const persistInFlightRef = useRef(false);
@@ -318,6 +321,38 @@ export const NemtProvider = ({
   const userUiPreferencesSnapshotRef = useRef(JSON.stringify(normalizeNemtUiPreferences(null)));
   const userUiPreferencesPersistPromiseRef = useRef(null);
   const userUiPreferencesPersistSnapshotRef = useRef('');
+
+  useEffect(() => {
+    persistedStateRef.current = persistedState ?? createInitialState();
+  }, [persistedState]);
+
+  useEffect(() => {
+    selectedDriverIdRef.current = selectedDriverIdState;
+  }, [selectedDriverIdState]);
+
+  const state = useMemo(() => ({
+    ...buildClientState(persistedState ?? createInitialState()),
+    selectedDriverId: selectedDriverIdState
+  }), [persistedState, selectedDriverIdState]);
+
+  const setState = useCallback(value => {
+    const currentCompositeState = {
+      ...buildClientState(persistedStateRef.current ?? createInitialState()),
+      selectedDriverId: selectedDriverIdRef.current
+    };
+    const resolvedState = value instanceof Function ? value(currentCompositeState) : value;
+    const normalizedState = buildClientState(resolvedState ?? createInitialState());
+    const nextSelectedDriverId = normalizedState.selectedDriverId || null;
+    const nextPersistedState = {
+      ...normalizedState,
+      selectedDriverId: null
+    };
+
+    persistedStateRef.current = nextPersistedState;
+    selectedDriverIdRef.current = nextSelectedDriverId;
+    setSelectedDriverIdState(nextSelectedDriverId);
+    setPersistedState(nextPersistedState);
+  }, [setPersistedState]);
 
   const sendRoutePushMessage = async ({
     driverId,

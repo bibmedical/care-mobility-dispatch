@@ -1,14 +1,15 @@
 'use client';
 
-import { buildAttendantsRows, buildDriversRows, buildGroupingRows, buildVehiclesRows, createBlankAttendant, createBlankDriver, createBlankGrouping, createBlankVehicle, getDocumentAlerts, getFullName, validateAttendant, validateDriver, validateGrouping, validateVehicle } from '@/helpers/nemt-admin-model';
+import { GROUPING_SERVICE_TYPE_OPTIONS, buildAttendantsRows, buildDriversRows, buildGroupingRows, buildVehiclesRows, createBlankAttendant, createBlankDriver, createBlankGrouping, createBlankVehicle, getDocumentAlerts, getFullName, getGroupingVehicleType, getVehicleCapabilityTokens, vehicleSupportsServiceType, validateAttendant, validateDriver, validateGrouping, validateVehicle } from '@/helpers/nemt-admin-model';
 import { formatMinutesAsHours } from '@/helpers/nemt-billing';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import VdrTabsBar from '@/components/nemt/VdrTabsBar';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Badge, Button, Card, CardBody, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
+import { Alert, Badge, Button, Card, CardBody, Col, Dropdown, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 
 const OPERATIONAL_ALERT_TYPES = new Set(['no-departure', 'late-start', 'late-pickup', 'late-dropoff']);
 
@@ -30,20 +31,21 @@ const clampDisciplineScore = value => Math.max(0, Math.min(100, Math.round(value
 const computeDisciplineScore = ({ documentAlerts = 0, activeFaults = 0, faultsToday = 0, faultsMonth = 0 }) => clampDisciplineScore(100 - documentAlerts * 5 - activeFaults * 25 - faultsToday * 10 - faultsMonth * 3);
 
 const buildShellStyles = isLight => ({
-  windowHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a' },
+  windowHeader: { backgroundColor: '#343a40' },
   body: { backgroundColor: isLight ? '#ffffff' : '#171b27' },
-  toolbarButton: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
-  activeTab: { backgroundColor: '#8dc63f', borderColor: '#8dc63f', color: '#08131a' },
-  inactiveTab: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#d7deef' },
-  search: { width: 230, paddingLeft: 38, backgroundColor: isLight ? '#f8fbff' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
-  dangerButton: { backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff' },
+  toolbarButton: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 },
+  toolbarDropdownMenu: { borderColor: isLight ? '#c8d4e6' : '#2a3144', borderRadius: 4, minWidth: 210 },
+  activeTab: { backgroundColor: isLight ? '#dbe7f5' : '#24324a', borderColor: isLight ? '#9fb3cc' : '#3a4f74', color: isLight ? '#10212b' : '#f8fbff', borderRadius: 4 },
+  inactiveTab: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#d7deef', borderRadius: 4 },
+  search: { width: 230, paddingLeft: 38, backgroundColor: isLight ? '#f8fbff' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 },
+  dangerButton: { backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff', borderRadius: 4 },
   tableShell: { borderColor: isLight ? '#d5deea' : '#2a3144', backgroundColor: isLight ? '#ffffff' : '#171b27' },
-  tableHead: { position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#8dc63f', color: '#08131a' },
-  tableHeadCell: { backgroundColor: '#8dc63f', color: '#08131a', borderColor: 'rgba(8,19,26,0.14)' },
-  pageBadge: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
+  tableHead: { position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#343a40', color: '#ffffff' },
+  tableHeadCell: { backgroundColor: '#343a40', color: '#ffffff', borderColor: 'rgba(255,255,255,0.14)' },
+  pageBadge: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 },
   modalContent: { backgroundColor: isLight ? '#ffffff' : '#171b27', color: isLight ? '#0f172a' : '#e6ecff', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
-  modalHeader: { backgroundColor: isLight ? '#2b3f60' : '#23324a', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
-  modalSection: { backgroundColor: isLight ? '#f8fbff' : '#101521', border: `1px solid ${isLight ? '#c8d4e6' : '#2a3144'}`, borderRadius: 12, padding: 16 },
+  modalHeader: { backgroundColor: '#343a40', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
+  modalSection: { backgroundColor: isLight ? '#f8fbff' : '#101521', border: `1px solid ${isLight ? '#c8d4e6' : '#2a3144'}`, borderRadius: 4, padding: 16 },
   modalInput: { backgroundColor: isLight ? '#f8fbff' : '#0c111b', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
   rowBackground: {
     selected: isLight ? '#e8f2ff' : '#202c42',
@@ -52,7 +54,6 @@ const buildShellStyles = isLight => ({
   rowTextColor: isLight ? '#0f172a' : '#e6ecff'
 });
 
-const TABS = [{ key: 'drivers', label: 'Drivers', href: '/drivers' }, { key: 'attendants', label: 'Attendants', href: '/drivers/attendants' }, { key: 'vehicles', label: 'Vehicles', href: '/drivers/vehicles' }, { key: 'grouping', label: 'Grouping', href: '/drivers/grouping' }];
 const DRIVER_EDITOR_TABS = [{ key: 'profile', label: 'Profile' }, { key: 'credentials', label: 'Credentials' }, { key: 'license', label: 'License' }, { key: 'compliance', label: 'Compliance' }, { key: 'documents', label: 'Documents' }, { key: 'extensions', label: 'Extensions' }];
 const formLabelClassName = 'text-uppercase small fw-semibold text-secondary mb-2';
 
@@ -133,6 +134,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const { themeMode } = useLayoutContext();
   const shellStyles = useMemo(() => buildShellStyles(themeMode === 'light'), [themeMode]);
   const pathname = usePathname();
+  const router = useRouter();
   const { data, loading, saving, error, refresh, saveData } = useNemtAdminApi();
   const [search, setSearch] = useState('');
   const [selectedRowId, setSelectedRowId] = useState(null);
@@ -340,12 +342,16 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const profilePhotoAsset = resolveDocumentAsset(draftEntity?.documents?.profilePhoto);
   const licenseFrontAsset = resolveDocumentAsset(draftEntity?.documents?.licenseFront);
   const primaryPhotoAsset = profilePhotoAsset || licenseFrontAsset;
+  const getVehicleById = vehicleId => state.vehicles.find(vehicle => vehicle.id === vehicleId) || null;
+  const draftVehicle = activeTab === 'drivers' ? getVehicleById(draftEntity?.vehicleId) : null;
+  const draftVehicleType = activeTab === 'drivers' ? getVehicleCapabilityTokens(draftVehicle).join(', ') : '';
+  const availableGroupings = activeTab === 'drivers' && draftVehicle ? state.groupings.filter(grouping => {
+    const groupingType = getGroupingVehicleType(grouping, state);
+    return !groupingType || vehicleSupportsServiceType(draftVehicle, groupingType);
+  }) : state.groupings;
 
   const openEditor = entity => {
     const nextDraft = entity ? JSON.parse(JSON.stringify(entity)) : activeTab === 'drivers' ? createBlankDriver() : activeTab === 'attendants' ? createBlankAttendant() : activeTab === 'vehicles' ? createBlankVehicle() : createBlankGrouping();
-    if (activeTab === 'vehicles') {
-      nextDraft.assignedDriverIds = state.drivers.filter(driver => driver.vehicleId === nextDraft.id).map(driver => driver.id);
-    }
     setDraftEntity(nextDraft);
     setEditorTab('profile');
     setValidationErrors([]);
@@ -353,7 +359,22 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   };
 
   const updateDraftField = (field, value) => {
-    setDraftEntity(current => ({ ...current, [field]: value }));
+    setDraftEntity(current => {
+      if (!current) return current;
+
+      if (activeTab === 'drivers' && field === 'vehicleId') {
+        const nextVehicle = getVehicleById(value);
+        const currentGrouping = state.groupings.find(grouping => grouping.id === current.groupingId);
+        const currentGroupingType = currentGrouping ? getGroupingVehicleType(currentGrouping, state) : '';
+        return {
+          ...current,
+          vehicleId: value,
+          groupingId: nextVehicle && currentGroupingType && !vehicleSupportsServiceType(nextVehicle, currentGroupingType) ? '' : current.groupingId
+        };
+      }
+
+      return { ...current, [field]: value };
+    });
   };
 
   const updateDraftDocument = async (field, file) => {
@@ -392,8 +413,8 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const getValidationErrors = entity => {
     if (activeTab === 'drivers') return validateDriver(entity, state);
     if (activeTab === 'attendants') return validateAttendant(entity);
-    if (activeTab === 'vehicles') return validateVehicle(entity);
-    return validateGrouping(entity);
+    if (activeTab === 'vehicles') return validateVehicle(entity, state);
+    return validateGrouping(entity, state);
   };
 
   const handleSave = async () => {
@@ -409,31 +430,11 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
     const nextCollection = state[collectionKey].some(entity => entity.id === normalizedEntity.id) ? state[collectionKey].map(entity => entity.id === normalizedEntity.id ? normalizedEntity : entity) : [normalizedEntity, ...state[collectionKey]];
     const nextState = { ...state, [collectionKey]: nextCollection };
 
-    if (activeTab === 'vehicles') {
-      const assignedDriverIds = new Set((Array.isArray(draftEntity?.assignedDriverIds) ? draftEntity.assignedDriverIds : []).filter(Boolean).map(id => String(id)));
-      const vehicleId = String(normalizedEntity.id || '');
-      nextState.drivers = state.drivers.map(driver => {
-        const driverId = String(driver.id || '');
-        const currentlyAssignedHere = String(driver.vehicleId || '') === vehicleId;
-        const shouldAssignHere = assignedDriverIds.has(driverId);
-
-        if (shouldAssignHere) {
-          return {
-            ...driver,
-            vehicleId,
-            checkpoint: driver.checkpoint || 'Vehicle ready'
-          };
-        }
-
-        if (currentlyAssignedHere) {
-          return {
-            ...driver,
-            vehicleId: '',
-            checkpoint: 'Needs assignment'
-          };
-        }
-
-        return driver;
+    if (activeTab === 'grouping') {
+      const selectedVehicleIds = new Set((Array.isArray(normalizedEntity?.assignedVehicleIds) ? normalizedEntity.assignedVehicleIds : []).filter(Boolean).map(id => String(id)));
+      nextState.groupings = nextState.groupings.map(grouping => grouping.id === normalizedEntity.id ? normalizedEntity : {
+        ...grouping,
+        assignedVehicleIds: Array.isArray(grouping.assignedVehicleIds) ? grouping.assignedVehicleIds.filter(vehicleId => !selectedVehicleIds.has(String(vehicleId || ''))) : []
       });
     }
 
@@ -509,13 +510,13 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
       return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => {
             event.stopPropagation();
             openEditor(row.raw);
-          }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="info"><div>{row.info.split('\n')[0]}</div><div className="small text-secondary">{row.info.split('\n')[1]}</div></td>, <td key="capacity"><div>Type: {row.capacity.type}</div><div className="d-flex gap-3 small mt-1"><span>{row.capacity.supportsAmbulatory ? '✓' : '○'} Amb {row.capacity.ambulatory}</span><span>{row.capacity.supportsWheelchair ? '✓' : '○'} WC {row.capacity.wheelchair}</span><span>{row.capacity.supportsStretcher ? '✓' : '○'} STR {row.capacity.stretcher}</span></div></td>, <td key="assignment">{row.assignment}</td>, <td key="driverNames" style={{ maxWidth: 260, whiteSpace: 'normal' }}>{row.driverNames}</td>, <td key="notes">{row.notes}</td>];
+          }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="info"><div>{row.info.split('\n')[0]}</div><div className="small text-secondary">{row.info.split('\n')[1]}</div></td>, <td key="capacity"><div>Type: {row.capacity.type}</div><div className="d-flex flex-wrap gap-2 small mt-1">{getVehicleCapabilityTokens(row.raw).map(token => <span key={`${row.id}-${token}`}>{token}</span>)}</div></td>, <td key="assignment">{row.assignment}</td>, <td key="driverNames" style={{ maxWidth: 260, whiteSpace: 'normal' }}>{row.driverNames}</td>, <td key="notes">{row.notes}</td>];
     }
 
     return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => {
           event.stopPropagation();
           openEditor(row.raw);
-        }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="group">{row.group}</td>, <td key="drivers">{row.drivers}</td>, <td key="vehicles">{row.vehicles}</td>, <td key="notes">{row.notes}</td>];
+      }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="group">{row.group}</td>, <td key="drivers">{row.drivers}</td>, <td key="vehicles" style={{ maxWidth: 280, whiteSpace: 'normal' }}><div>{row.vehicles}</div>{Array.isArray(row.vehicleLabels) && row.vehicleLabels.length ? <div className="small text-secondary mt-1">{row.vehicleLabels.join(', ')}</div> : <div className="small text-secondary mt-1">No vehicles assigned</div>}</td>, <td key="notes">{row.notes}</td>];
   };
 
   const renderDriverEditor = () => {
@@ -560,7 +561,14 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
                 <Col md={6}><Form.Label className={formLabelClassName}>Email</Form.Label><Form.Control value={draftEntity.email} style={shellStyles.modalInput} onChange={event => updateDraftField('email', event.target.value)} /></Col>
                 <Col md={6}><Form.Label className={formLabelClassName}>Vehicle</Form.Label><Form.Select value={draftEntity.vehicleId} style={shellStyles.modalInput} onChange={event => updateDraftField('vehicleId', event.target.value)}><option value="">Select vehicle</option>{state.vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.label}</option>)}</Form.Select></Col>
                 <Col md={6}><Form.Label className={formLabelClassName}>Attendant</Form.Label><Form.Select value={draftEntity.attendantId} style={shellStyles.modalInput} onChange={event => updateDraftField('attendantId', event.target.value)}><option value="">No attendant</option>{state.attendants.map(attendant => <option key={attendant.id} value={attendant.id}>{attendant.name}</option>)}</Form.Select></Col>
-                <Col md={3}><Form.Label className={formLabelClassName}>Grouping</Form.Label><Form.Select value={draftEntity.groupingId} style={shellStyles.modalInput} onChange={event => updateDraftField('groupingId', event.target.value)}><option value="">No group</option>{state.groupings.map(grouping => <option key={grouping.id} value={grouping.id}>{grouping.name}</option>)}</Form.Select></Col>
+                <Col md={3}>
+                  <Form.Label className={formLabelClassName}>Grouping</Form.Label>
+                  <Form.Select value={draftEntity.groupingId} style={shellStyles.modalInput} onChange={event => updateDraftField('groupingId', event.target.value)}>
+                    <option value="">No group</option>
+                    {availableGroupings.map(grouping => <option key={grouping.id} value={grouping.id}>{grouping.name}{getGroupingVehicleType(grouping, state) ? ` (${getGroupingVehicleType(grouping, state)})` : ''}</option>)}
+                  </Form.Select>
+                  <div className="small text-secondary mt-2">Vehicle type: {draftVehicleType || 'Select a vehicle first'}</div>
+                </Col>
                 <Col md={3}><Form.Label className={formLabelClassName}>Checkpoint</Form.Label><Form.Control value={draftEntity.checkpoint} style={shellStyles.modalInput} onChange={event => updateDraftField('checkpoint', event.target.value)} /></Col>
                 <Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col>
               </Row>
@@ -619,17 +627,16 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
     }
 
     if (activeTab === 'vehicles') {
-      const assignedDriverIds = Array.isArray(draftEntity.assignedDriverIds) ? draftEntity.assignedDriverIds.map(id => String(id)) : [];
       const supportsAmbulatory = Number(draftEntity.ambulatoryCapacity || 0) > 0;
       const supportsWheelchair = Number(draftEntity.wheelchairCapacity || 0) > 0;
+      const supportsWheelchairXl = Number(draftEntity.wheelchairXlCapacity || 0) > 0;
+      const supportsWheelchairElectric = Number(draftEntity.wheelchairElectricCapacity || 0) > 0;
+      const supportsWalker = Number(draftEntity.walkerCapacity || 0) > 0;
       const supportsStretcher = Number(draftEntity.stretcherCapacity || 0) > 0;
-      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Vehicle Label</Form.Label><Form.Control value={draftEntity.label} style={shellStyles.modalInput} onChange={event => updateDraftField('label', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>VIN</Form.Label><Form.Control value={draftEntity.vin} style={shellStyles.modalInput} onChange={event => updateDraftField('vin', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Plate</Form.Label><Form.Control value={draftEntity.plate} style={shellStyles.modalInput} onChange={event => updateDraftField('plate', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Unit Number</Form.Label><Form.Control value={draftEntity.unitNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('unitNumber', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Type</Form.Label><Form.Select value={draftEntity.type} style={shellStyles.modalInput} onChange={event => updateDraftField('type', event.target.value)}><option>Van</option><option>Ambulance</option><option>Sedan</option></Form.Select></Col><Col md={12}><Form.Label className={formLabelClassName}>Capabilities</Form.Label><div className="d-flex flex-wrap gap-3"><Form.Check type="checkbox" label="Ambulatory" checked={supportsAmbulatory} onChange={event => updateDraftField('ambulatoryCapacity', event.target.checked ? Math.max(1, Number(draftEntity.ambulatoryCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="Wheelchair" checked={supportsWheelchair} onChange={event => updateDraftField('wheelchairCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="Stretcher" checked={supportsStretcher} onChange={event => updateDraftField('stretcherCapacity', event.target.checked ? Math.max(1, Number(draftEntity.stretcherCapacity || 0)) : 0)} /></div><div className="small text-secondary mt-2">Marca todo lo que este carro puede hacer.</div></Col><Col md={2}><Form.Label className={formLabelClassName}>Amb</Form.Label><Form.Control type="number" min="0" value={draftEntity.ambulatoryCapacity} disabled={!supportsAmbulatory} style={shellStyles.modalInput} onChange={event => updateDraftField('ambulatoryCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>WC</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairCapacity} disabled={!supportsWheelchair} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>Str</Form.Label><Form.Control type="number" min="0" value={draftEntity.stretcherCapacity} disabled={!supportsStretcher} style={shellStyles.modalInput} onChange={event => updateDraftField('stretcherCapacity', Number(event.target.value))} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Assigned Drivers</Form.Label><Form.Select multiple value={assignedDriverIds} style={{ ...shellStyles.modalInput, minHeight: 164 }} onChange={event => {
-        const values = Array.from(event.target.selectedOptions || []).map(option => option.value).filter(Boolean);
-        updateDraftField('assignedDriverIds', values);
-      }}>{state.drivers.map(driver => <option key={driver.id} value={driver.id}>{getFullName(driver) || driver.username || driver.id}</option>)}</Form.Select><div className="small text-secondary mt-2">Selecciona choferes para este carro. Si no seleccionas ninguno, el carro queda abierto.</div></Col><Col md={12}><Form.Label className={formLabelClassName}>Vehicle Image URL</Form.Label><Form.Control value={draftEntity.imageUrl || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('imageUrl', event.target.value)} placeholder="https://..." /></Col>{String(draftEntity.imageUrl || '').trim() ? <Col md={12}><div className="border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 190, backgroundColor: '#0c111b' }}><img src={String(draftEntity.imageUrl || '').trim()} alt={draftEntity.label || 'Vehicle'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div></Col> : null}<Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
+      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Vehicle Label</Form.Label><Form.Control value={draftEntity.label} style={shellStyles.modalInput} onChange={event => updateDraftField('label', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>VIN</Form.Label><Form.Control value={draftEntity.vin} style={shellStyles.modalInput} onChange={event => updateDraftField('vin', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Plate</Form.Label><Form.Control value={draftEntity.plate} style={shellStyles.modalInput} onChange={event => updateDraftField('plate', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Unit Number</Form.Label><Form.Control value={draftEntity.unitNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('unitNumber', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Capabilities</Form.Label><div className="d-flex flex-wrap gap-3"><Form.Check type="checkbox" label="A" checked={supportsAmbulatory} onChange={event => updateDraftField('ambulatoryCapacity', event.target.checked ? Math.max(1, Number(draftEntity.ambulatoryCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="W" checked={supportsWheelchair} onChange={event => updateDraftField('wheelchairCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="WXL" checked={supportsWheelchairXl} onChange={event => updateDraftField('wheelchairXlCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairXlCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="EW" checked={supportsWheelchairElectric} onChange={event => updateDraftField('wheelchairElectricCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairElectricCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="Walker" checked={supportsWalker} onChange={event => updateDraftField('walkerCapacity', event.target.checked ? Math.max(1, Number(draftEntity.walkerCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="STR" checked={supportsStretcher} onChange={event => updateDraftField('stretcherCapacity', event.target.checked ? Math.max(1, Number(draftEntity.stretcherCapacity || 0)) : 0)} /></div><div className="small text-secondary mt-2">Marca todo lo que este carro puede hacer.</div></Col><Col md={2}><Form.Label className={formLabelClassName}>A</Form.Label><Form.Control type="number" min="0" value={draftEntity.ambulatoryCapacity} disabled={!supportsAmbulatory} style={shellStyles.modalInput} onChange={event => updateDraftField('ambulatoryCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>W</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairCapacity} disabled={!supportsWheelchair} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>WXL</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairXlCapacity || 0} disabled={!supportsWheelchairXl} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairXlCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>EW</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairElectricCapacity || 0} disabled={!supportsWheelchairElectric} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairElectricCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>Walker</Form.Label><Form.Control type="number" min="0" value={draftEntity.walkerCapacity || 0} disabled={!supportsWalker} style={shellStyles.modalInput} onChange={event => updateDraftField('walkerCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>STR</Form.Label><Form.Control type="number" min="0" value={draftEntity.stretcherCapacity} disabled={!supportsStretcher} style={shellStyles.modalInput} onChange={event => updateDraftField('stretcherCapacity', Number(event.target.value))} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Vehicle Image URL</Form.Label><Form.Control value={draftEntity.imageUrl || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('imageUrl', event.target.value)} placeholder="https://..." /></Col>{String(draftEntity.imageUrl || '').trim() ? <Col md={12}><div className="border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 190, backgroundColor: '#0c111b' }}><img src={String(draftEntity.imageUrl || '').trim()} alt={draftEntity.label || 'Vehicle'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div></Col> : null}<Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
     }
 
-    return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={6}><Form.Label className={formLabelClassName}>Grouping Name</Form.Label><Form.Control value={draftEntity.name} style={shellStyles.modalInput} onChange={event => updateDraftField('name', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Dispatch Tag</Form.Label><Form.Control value={draftEntity.dispatchTag} style={shellStyles.modalInput} onChange={event => updateDraftField('dispatchTag', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Status</Form.Label><Form.Select value={draftEntity.status} style={shellStyles.modalInput} onChange={event => updateDraftField('status', event.target.value)}><option>Active</option><option>Attention</option><option>Pending</option></Form.Select></Col><Col md={12}><Form.Label className={formLabelClassName}>Description</Form.Label><Form.Control as="textarea" rows={2} value={draftEntity.description} style={shellStyles.modalInput} onChange={event => updateDraftField('description', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
+    return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={6}><Form.Label className={formLabelClassName}>Grouping Name</Form.Label><Form.Control value={draftEntity.name} style={shellStyles.modalInput} onChange={event => updateDraftField('name', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Grouping Type</Form.Label><Form.Select value={draftEntity.vehicleType || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('vehicleType', event.target.value)}><option value="">Select type</option>{GROUPING_SERVICE_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</Form.Select></Col><Col md={3}><Form.Label className={formLabelClassName}>Status</Form.Label><Form.Select value={draftEntity.status} style={shellStyles.modalInput} onChange={event => updateDraftField('status', event.target.value)}><option>Active</option><option>Attention</option><option>Pending</option></Form.Select></Col><Col md={4}><Form.Label className={formLabelClassName}>Dispatch Tag</Form.Label><Form.Control value={draftEntity.dispatchTag} style={shellStyles.modalInput} onChange={event => updateDraftField('dispatchTag', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>ATD</Form.Label><Form.Control value={draftEntity.atd || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('atd', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Billing Code</Form.Label><Form.Control value={draftEntity.billingCode || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('billingCode', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Assigned Vehicles</Form.Label><Form.Select multiple value={Array.isArray(draftEntity.assignedVehicleIds) ? draftEntity.assignedVehicleIds.map(id => String(id)) : []} style={{ ...shellStyles.modalInput, minHeight: 150 }} onChange={event => updateDraftField('assignedVehicleIds', Array.from(event.target.selectedOptions || []).map(option => option.value).filter(Boolean))}>{state.vehicles.filter(vehicle => !draftEntity.vehicleType || vehicleSupportsServiceType(vehicle, draftEntity.vehicleType)).map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.label} | {getVehicleCapabilityTokens(vehicle).join(', ') || 'No capabilities'}</option>)}</Form.Select><div className="small text-secondary mt-2">Aqui es donde asignas los carros a este grouping.</div></Col><Col md={12}><Form.Label className={formLabelClassName}>Description</Form.Label><Form.Control as="textarea" rows={2} value={draftEntity.description} style={shellStyles.modalInput} onChange={event => updateDraftField('description', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Work Hours</Form.Label><Form.Control value={draftEntity.workHours || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('workHours', event.target.value)} /></Col><Col md={6}><div className="small text-secondary pt-4">Assigned grouping type: {getGroupingVehicleType(draftEntity, state) || 'No type selected yet'}</div></Col><Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
   };
 
   return <>
@@ -641,34 +648,48 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
         <CardBody className="p-2" style={shellStyles.body}>
           <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-2">
             <div className="d-flex flex-wrap align-items-center gap-2">
-              <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={handleRefresh} disabled={loading || saving || operationalAlertsLoading || driverTripMetricsLoading}><IconifyIcon icon="iconoir:refresh-double" /></Button>
+              <Button style={shellStyles.toolbarButton} onClick={handleRefresh} disabled={loading || saving || operationalAlertsLoading || driverTripMetricsLoading}><IconifyIcon icon="iconoir:refresh-double" /></Button>
               <div className="vr text-secondary" />
-              {TABS.map(tab => <Link key={tab.key} href={tab.href} className="btn rounded-pill" onClick={() => {
+              <VdrTabsBar onNavigate={() => {
                 setSearch('');
                 setPageIndex(0);
-              }} style={pathname === tab.href ? shellStyles.activeTab : shellStyles.inactiveTab}>{tab.label}</Link>)}
+              }} />
               <div className="vr text-secondary" />
-              <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={() => openEditor(null)}><IconifyIcon icon="iconoir:plus" className="me-2" />Add</Button>
-              <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={() => selectedEntity ? openEditor(selectedEntity) : setMessage('Selecciona un registro para editar.') }><IconifyIcon icon="iconoir:edit-pencil" className="me-2" />Edit</Button>
-              <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={() => setMessage('Import real listo para conectar cuando me des el archivo o endpoint.') }><IconifyIcon icon="iconoir:import" className="me-2" />Import</Button>
-              <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={() => setMessage('ATMS sync quedo preparado para conectar a tu endpoint real.')}>Get from ATMS</Button>
+              <Button style={shellStyles.toolbarButton} onClick={() => openEditor(null)}><IconifyIcon icon="iconoir:plus" className="me-2" />Add</Button>
+              <Button style={shellStyles.toolbarButton} onClick={() => selectedEntity ? openEditor(selectedEntity) : setMessage('Selecciona un registro para editar.') }><IconifyIcon icon="iconoir:edit-pencil" className="me-2" />Edit</Button>
             </div>
             <div className="d-flex align-items-center gap-2 ms-auto">
+              <Dropdown align="end">
+                <Dropdown.Toggle as={Button} style={shellStyles.toolbarButton}>
+                  <IconifyIcon icon="iconoir:settings" className="me-2" />
+                  Settings
+                  <IconifyIcon icon="iconoir:nav-arrow-down" className="ms-2" />
+                </Dropdown.Toggle>
+                <Dropdown.Menu style={shellStyles.toolbarDropdownMenu}>
+                  <Dropdown.Item onClick={() => router.push('/settings/email-templates')}>Email Templates</Dropdown.Item>
+                  <Dropdown.Item onClick={() => router.push('/settings/page-memory')}>Page Memory</Dropdown.Item>
+                  <Dropdown.Item onClick={() => router.push('/settings/gps')}>GPS</Dropdown.Item>
+                  <Dropdown.Item onClick={() => router.push('/settings/office')}>Office</Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown>
+              <Button style={shellStyles.toolbarButton} onClick={() => router.push('/settings/gps')}>GPS</Button>
+              <Button style={shellStyles.toolbarButton} onClick={() => router.push('/billing/genius')}>Genius</Button>
+              <Button style={shellStyles.toolbarButton} onClick={() => router.push('/rates')}>Rates</Button>
               <div className="position-relative">
                 <IconifyIcon icon="iconoir:search" className="position-absolute top-50 start-0 translate-middle-y ms-3 text-success" />
                 <Form.Control value={search} onChange={event => {
                   setSearch(event.target.value);
                   setPageIndex(0);
-                }} placeholder="Search" style={shellStyles.search} className="rounded-pill" />
+                }} placeholder="Search" style={shellStyles.search} />
               </div>
-              <Button className="rounded-pill" style={shellStyles.dangerButton} onClick={handleDelete} disabled={saving}><IconifyIcon icon="iconoir:trash" className="me-2" />Delete</Button>
+              <Button style={shellStyles.dangerButton} onClick={handleDelete} disabled={saving}><IconifyIcon icon="iconoir:trash" className="me-2" />Delete</Button>
             </div>
           </div>
 
           <div className="small text-secondary mb-3 d-flex align-items-center gap-2 flex-wrap">{saving ? <><Spinner animation="border" size="sm" /> Saving...</> : operationalAlertsLoading || driverTripMetricsLoading ? <><Spinner animation="border" size="sm" /> Refreshing driver metrics...</> : message}</div>
           {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
 
-          <div className="border overflow-hidden rounded-2" style={shellStyles.tableShell}>
+          <div className="border overflow-hidden" style={shellStyles.tableShell}>
             <div className="table-responsive" style={{ maxHeight: 680 }}>
               <Table className="align-middle mb-0 text-white">
                 <thead style={shellStyles.tableHead}>
@@ -685,9 +706,9 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
           </div>
 
           <div className="d-flex align-items-center gap-2 mt-3">
-            <Button className="rounded-pill" style={shellStyles.toolbarButton} disabled={safePageIndex === 0} onClick={() => setPageIndex(current => Math.max(0, current - 1))}><IconifyIcon icon="iconoir:nav-arrow-left" /></Button>
-            <div className="px-3 py-2 rounded-pill border" style={shellStyles.pageBadge}>{safePageIndex + 1} of {totalPages}</div>
-            <Button className="rounded-pill" style={shellStyles.toolbarButton} disabled={safePageIndex >= totalPages - 1} onClick={() => setPageIndex(current => Math.min(totalPages - 1, current + 1))}><IconifyIcon icon="iconoir:nav-arrow-right" /></Button>
+            <Button style={shellStyles.toolbarButton} disabled={safePageIndex === 0} onClick={() => setPageIndex(current => Math.max(0, current - 1))}><IconifyIcon icon="iconoir:nav-arrow-left" /></Button>
+            <div className="px-3 py-2 border" style={shellStyles.pageBadge}>{safePageIndex + 1} of {totalPages}</div>
+            <Button style={shellStyles.toolbarButton} disabled={safePageIndex >= totalPages - 1} onClick={() => setPageIndex(current => Math.min(totalPages - 1, current + 1))}><IconifyIcon icon="iconoir:nav-arrow-right" /></Button>
           </div>
         </CardBody>
       </Card>
@@ -701,15 +722,15 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
           {activeTab === 'drivers' ? <>
               {driverAlerts.length > 0 ? <Alert variant="warning">{driverAlerts.map(alert => <div key={alert.text}>{alert.text}</div>)}</Alert> : null}
               {operationalAlertsLoading ? <Alert variant="secondary" className="py-2">Loading driver fault history...</Alert> : null}
-              <div className="d-flex flex-wrap gap-2 mb-3">{DRIVER_EDITOR_TABS.map(tab => <Button key={tab.key} className="rounded-pill" style={editorTab === tab.key ? shellStyles.activeTab : shellStyles.toolbarButton} onClick={() => setEditorTab(tab.key)}>{tab.label}</Button>)}</div>
+              <div className="d-flex flex-wrap gap-2 mb-3">{DRIVER_EDITOR_TABS.map(tab => <Button key={tab.key} style={editorTab === tab.key ? shellStyles.activeTab : shellStyles.toolbarButton} onClick={() => setEditorTab(tab.key)}>{tab.label}</Button>)}</div>
               {renderDriverEditor()}
             </> : renderGenericEditor()}
         </Modal.Body>
         <Modal.Footer style={{ ...shellStyles.modalHeader, justifyContent: 'space-between' }}>
           <div className="small text-secondary">Los cambios se guardan en la API local del proyecto y alimentan Dispatcher.</div>
           <div className="d-flex gap-2">
-            <Button className="rounded-pill" style={shellStyles.toolbarButton} onClick={() => setShowEditor(false)}>Cancel</Button>
-            <Button className="rounded-pill" style={shellStyles.activeTab} onClick={handleSave} disabled={saving}>Save</Button>
+            <Button style={shellStyles.toolbarButton} onClick={() => setShowEditor(false)}>Cancel</Button>
+            <Button style={shellStyles.activeTab} onClick={handleSave} disabled={saving}>Save</Button>
           </div>
         </Modal.Footer>
       </Modal>

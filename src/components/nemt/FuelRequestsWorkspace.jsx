@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import VdrTabsBar from '@/components/nemt/VdrTabsBar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const API_TIMEOUT_MS = 15000;
@@ -175,6 +176,9 @@ export default function FuelRequestsWorkspace() {
 
   return (
     <div style={styles.page}>
+      <div className="mb-3">
+        <VdrTabsBar />
+      </div>
       <div style={styles.header}>
         <div>
           <h1 style={styles.pageTitle}>⛽ Fuel Requests</h1>

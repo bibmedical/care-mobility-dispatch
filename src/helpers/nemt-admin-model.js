@@ -15,6 +15,27 @@ const DRIVER_GPS_DEFAULTS = {
   vehicleIconSvgPath: ''
 };
 
+export const VEHICLE_TYPE_OPTIONS = ['Ambulance', 'Van', 'Sedan'];
+export const GROUPING_SERVICE_TYPE_OPTIONS = ['A', 'W', 'WXL', 'EW', 'Walker', 'STR'];
+const CAPABILITY_BADGE_ORDER = ['A', 'W', 'WXL', 'EW', 'Walker', 'STR'];
+
+export const normalizeVehicleType = value => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return VEHICLE_TYPE_OPTIONS.find(option => option.toLowerCase() === normalized) || '';
+};
+
+export const normalizeGroupingServiceType = value => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'a' || normalized === 'ambulatory') return 'A';
+  if (normalized === 'w' || normalized === 'manual wheelchair' || normalized === 'wheelchair') return 'W';
+  if (normalized === 'wxl' || normalized === 'folding wheelchair' || normalized.includes('xl')) return 'WXL';
+  if (normalized === 'ew' || normalized === 'we' || normalized === 'power wheelchair' || normalized.includes('electric')) return 'EW';
+  if (normalized === 'walker') return 'Walker';
+  if (normalized === 'str' || normalized.includes('stretcher') || normalized.includes('gurney')) return 'STR';
+  return '';
+};
+
 const clampNumeric = (value, min, max, fallback) => {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return fallback;
@@ -381,15 +402,45 @@ export const createBlankVehicle = () => ({
   type: 'Ambulance',
   ambulatoryCapacity: 0,
   wheelchairCapacity: 0,
+  wheelchairXlCapacity: 0,
+  wheelchairElectricCapacity: 0,
+  walkerCapacity: 0,
   stretcherCapacity: 0,
   imageUrl: '',
   notes: '',
   brokerId: ''
 });
 
+export const getVehicleCapabilityTokens = vehicle => {
+  if (!vehicle || typeof vehicle !== 'object') return [];
+
+  const ambulatory = Math.max(0, Number(vehicle.ambulatoryCapacity || 0));
+  const wheelchair = Math.max(0, Number(vehicle.wheelchairCapacity || 0));
+  const wheelchairXl = Math.max(0, Number(vehicle.wheelchairXlCapacity || 0));
+  const wheelchairElectric = Math.max(0, Number(vehicle.wheelchairElectricCapacity || 0));
+  const walker = Math.max(0, Number(vehicle.walkerCapacity || 0));
+  const stretcher = Math.max(0, Number(vehicle.stretcherCapacity || 0));
+  const tokens = [];
+
+  if (ambulatory > 0) tokens.push(`A${ambulatory}`);
+  if (wheelchair > 0) tokens.push(`W${wheelchair}`);
+  if (wheelchairXl > 0) tokens.push(`WXL${wheelchairXl}`);
+  if (wheelchairElectric > 0) tokens.push(`EW${wheelchairElectric}`);
+  if (walker > 0) tokens.push(`Walker${walker}`);
+  if (stretcher > 0) tokens.push(`STR${stretcher}`);
+
+  return tokens.sort((leftToken, rightToken) => {
+    const leftPrefix = leftToken.replace(/\d+$/, '');
+    const rightPrefix = rightToken.replace(/\d+$/, '');
+    return CAPABILITY_BADGE_ORDER.indexOf(leftPrefix) - CAPABILITY_BADGE_ORDER.indexOf(rightPrefix);
+  });
+};
+
 export const createBlankGrouping = () => ({
   id: createGeneratedId('grp'),
   name: '',
+  vehicleType: '',
+  assignedVehicleIds: [],
   description: '',
   dispatchTag: '',
   atd: '',
@@ -487,11 +538,38 @@ const buildDriverSeed = () => {
 };
 
 export const buildInitialAdminData = () => ({
-  version: 2,
+  version: 3,
   drivers: buildDriverSeed(),
   attendants: [],
   vehicles: VEHICLE_SEED.map(vehicle => ({ ...vehicle })),
   groupings: GROUPING_SEED.map(grouping => ({ ...grouping }))
+});
+
+const getAssignedVehicleTypesForGrouping = (groupingId, state) => {
+  const groupings = Array.isArray(state?.groupings) ? state.groupings : [];
+  const vehicles = Array.isArray(state?.vehicles) ? state.vehicles : [];
+  const grouping = groupings.find(item => String(item?.id || '') === String(groupingId || ''));
+  const assignedVehicleIds = Array.isArray(grouping?.assignedVehicleIds) ? grouping.assignedVehicleIds.map(id => String(id)) : [];
+  return vehicles.filter(vehicle => assignedVehicleIds.includes(String(vehicle?.id || ''))).map(getVehicleCapabilityTokens).flat();
+};
+
+export const vehicleSupportsServiceType = (vehicle, serviceType) => {
+  const normalizedServiceType = normalizeGroupingServiceType(serviceType);
+  if (!normalizedServiceType) return true;
+  const tokens = new Set(getVehicleCapabilityTokens(vehicle).map(token => token.replace(/\d+$/, '')));
+  return tokens.has(normalizedServiceType);
+};
+
+export const getGroupingVehicleType = (grouping, state) => {
+  const explicitType = normalizeGroupingServiceType(grouping?.vehicleType);
+  if (explicitType) return explicitType;
+  return '';
+};
+
+export const normalizeGroupingRecord = (grouping, state) => ({
+  ...grouping,
+  vehicleType: normalizeGroupingServiceType(grouping?.vehicleType),
+  assignedVehicleIds: Array.isArray(grouping?.assignedVehicleIds) ? grouping.assignedVehicleIds.filter(Boolean).map(id => String(id)) : []
 });
 
 export const getDocumentAlerts = driver => {
@@ -572,6 +650,8 @@ export const getUpcomingDocumentExpirations = (drivers, windowDays = 7) => {
 
 export const validateDriver = (driver, state) => {
   const errors = [];
+  const assignedVehicle = state.vehicles.find(vehicle => vehicle.id === driver.vehicleId);
+  const assignedGrouping = state.groupings.find(grouping => grouping.id === driver.groupingId);
   if (!driver.firstName.trim()) errors.push('First Name is required.');
   if (!driver.lastName.trim()) errors.push('Last Name is required.');
   if (normalizePhoneDigits(driver.phone).length < 10) errors.push('Phone must include at least 10 digits.');
@@ -582,15 +662,21 @@ export const validateDriver = (driver, state) => {
   if (driver.vehicleId && !state.vehicles.some(vehicle => vehicle.id === driver.vehicleId)) errors.push('Assigned vehicle does not exist.');
   if (driver.attendantId && !state.attendants.some(attendant => attendant.id === driver.attendantId)) errors.push('Assigned attendant does not exist.');
   if (driver.groupingId && !state.groupings.some(grouping => grouping.id === driver.groupingId)) errors.push('Grouping does not exist.');
+  if (assignedGrouping && assignedVehicle) {
+    const groupingVehicleType = getGroupingVehicleType(assignedGrouping, state);
+    if (groupingVehicleType && !vehicleSupportsServiceType(assignedVehicle, groupingVehicleType)) {
+      errors.push(`Vehicle ${assignedVehicle.label || assignedVehicle.id} does not support grouping type ${groupingVehicleType}.`);
+    }
+  }
   return errors;
 };
 
-export const validateVehicle = vehicle => {
+export const validateVehicle = (vehicle, state) => {
   const errors = [];
   if (!vehicle.label.trim()) errors.push('Vehicle label is required.');
   if (!vehicle.vin.trim()) errors.push('VIN is required.');
-  if (vehicle.ambulatoryCapacity < 0 || vehicle.wheelchairCapacity < 0 || vehicle.stretcherCapacity < 0) errors.push('Vehicle capacities cannot be negative.');
-  if (Number(vehicle.ambulatoryCapacity || 0) <= 0 && Number(vehicle.wheelchairCapacity || 0) <= 0 && Number(vehicle.stretcherCapacity || 0) <= 0) errors.push('Select at least one vehicle capability: Ambulatory, Wheelchair, or Stretcher.');
+  if (vehicle.ambulatoryCapacity < 0 || vehicle.wheelchairCapacity < 0 || vehicle.wheelchairXlCapacity < 0 || vehicle.wheelchairElectricCapacity < 0 || vehicle.walkerCapacity < 0 || vehicle.stretcherCapacity < 0) errors.push('Vehicle capacities cannot be negative.');
+  if (Number(vehicle.ambulatoryCapacity || 0) <= 0 && Number(vehicle.wheelchairCapacity || 0) <= 0 && Number(vehicle.wheelchairXlCapacity || 0) <= 0 && Number(vehicle.wheelchairElectricCapacity || 0) <= 0 && Number(vehicle.walkerCapacity || 0) <= 0 && Number(vehicle.stretcherCapacity || 0) <= 0) errors.push('Select at least one vehicle capability: A, W, WXL, EW, Walker, or STR.');
   return errors;
 };
 
@@ -601,9 +687,19 @@ export const validateAttendant = attendant => {
   return errors;
 };
 
-export const validateGrouping = grouping => {
+export const validateGrouping = (grouping, state) => {
   const errors = [];
   if (!grouping.name.trim()) errors.push('Grouping name is required.');
+  if (!normalizeGroupingServiceType(grouping.vehicleType)) errors.push('Grouping type is required.');
+  if (state) {
+    const groupingVehicleType = normalizeGroupingServiceType(grouping.vehicleType);
+    const assignedVehicleIds = Array.isArray(grouping.assignedVehicleIds) ? grouping.assignedVehicleIds.map(id => String(id)) : [];
+    state.vehicles.filter(vehicle => assignedVehicleIds.includes(String(vehicle.id || ''))).forEach(vehicle => {
+      if (groupingVehicleType && !vehicleSupportsServiceType(vehicle, groupingVehicleType)) {
+        errors.push(`Vehicle ${vehicle.label || vehicle.id} does not support ${groupingVehicleType}.`);
+      }
+    });
+  }
   return errors;
 };
 
@@ -645,9 +741,15 @@ export const buildVehiclesRows = state => state.vehicles.map((vehicle, index) =>
       type: vehicle.type,
       ambulatory: vehicle.ambulatoryCapacity,
       wheelchair: vehicle.wheelchairCapacity,
+      wheelchairXl: vehicle.wheelchairXlCapacity,
+      wheelchairElectric: vehicle.wheelchairElectricCapacity,
+      walker: vehicle.walkerCapacity,
       stretcher: vehicle.stretcherCapacity,
       supportsAmbulatory: Number(vehicle.ambulatoryCapacity || 0) > 0,
       supportsWheelchair: Number(vehicle.wheelchairCapacity || 0) > 0,
+      supportsWheelchairXl: Number(vehicle.wheelchairXlCapacity || 0) > 0,
+      supportsWheelchairElectric: Number(vehicle.wheelchairElectricCapacity || 0) > 0,
+      supportsWalker: Number(vehicle.walkerCapacity || 0) > 0,
       supportsStretcher: Number(vehicle.stretcherCapacity || 0) > 0
     },
     assignment: assignedDrivers.length > 0 ? `${assignedDrivers.length} driver(s)` : 'Open vehicle',
@@ -659,14 +761,18 @@ export const buildVehiclesRows = state => state.vehicles.map((vehicle, index) =>
 
 export const buildGroupingRows = state => state.groupings.map((grouping, index) => {
   const groupedDrivers = state.drivers.filter(driver => driver.groupingId === grouping.id);
-  const vehicleCount = new Set(groupedDrivers.map(driver => driver.vehicleId).filter(Boolean)).size;
+  const assignedVehicleIds = Array.isArray(grouping?.assignedVehicleIds) ? grouping.assignedVehicleIds.filter(Boolean).map(id => String(id)) : [];
+  const assignedVehicles = state.vehicles.filter(vehicle => assignedVehicleIds.includes(String(vehicle?.id || '')));
+  const vehicleCount = Array.isArray(grouping?.assignedVehicleIds) ? new Set(grouping.assignedVehicleIds.filter(Boolean)).size : new Set(groupedDrivers.map(driver => driver.vehicleId).filter(Boolean)).size;
+  const groupingVehicleType = getGroupingVehicleType(grouping, state);
   return {
     id: grouping.id,
     order: index + 1,
     group: grouping.name,
     drivers: groupedDrivers.length,
     vehicles: vehicleCount,
-    notes: grouping.notes || grouping.description || 'No notes',
+    vehicleLabels: assignedVehicles.map(vehicle => vehicle.label || vehicle.unitNumber || vehicle.id).filter(Boolean),
+    notes: [`Type: ${groupingVehicleType || 'Unspecified'}`, grouping.notes || grouping.description || 'No notes'].filter(Boolean).join(' | '),
     raw: grouping
   };
 });
