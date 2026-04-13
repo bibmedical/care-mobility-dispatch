@@ -808,24 +808,7 @@ const TripDashboardWorkspace = () => {
   const [aiPlannerMode, setAiPlannerMode] = useState('local');
   const [aiPlannerAnchorTripId, setAiPlannerAnchorTripId] = useState('');
   const [aiPlannerStartZip, setAiPlannerStartZip] = useState('');
-  const columnPickerRef = useRef(null);
   const importFileInputRef = useRef(null);
-
-  useEffect(() => {
-    if (!showColumnPicker) return undefined;
-
-    const handlePointerDownOutside = event => {
-      if (!columnPickerRef.current?.contains(event.target)) {
-        setShowColumnPicker(false);
-      }
-    };
-
-    document.addEventListener('pointerdown', handlePointerDownOutside);
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDownOutside);
-    };
-  }, [showColumnPicker]);
 
   const [aiPlannerCutoffTime, setAiPlannerCutoffTime] = useState('');
   const [aiPlannerCityFilter, setAiPlannerCityFilter] = useState('');
@@ -1527,7 +1510,7 @@ const TripDashboardWorkspace = () => {
             {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} title="Clear city/ZIP filters" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
           </div>;
       case 'theme-toggle':
-        return <div className="d-flex align-items-center gap-2 position-relative" ref={columnPickerRef}>
+        return <div className="d-flex align-items-center gap-2">
             <Button
               variant="outline-dark"
               size="sm"
@@ -1551,22 +1534,6 @@ const TripDashboardWorkspace = () => {
             >
               Columns
             </Button>
-            {showColumnPicker ? <Card className="shadow position-absolute end-0" style={{ zIndex: 120, width: 280, top: 'calc(100% + 8px)' }}>
-                <CardBody className="p-3" style={{ color: isDarkTheme ? '#e5e7eb' : '#111827', backgroundColor: isDarkTheme ? '#0f172a' : '#ffffff' }}>
-                  <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
-                    <div className="fw-semibold">Columns</div>
-                    <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
-                  </div>
-                  <div className="small mb-3" style={mutedThemeTextStyle}>Mark the trip columns you want to show.</div>
-                  <div className="d-flex gap-2 mb-3">
-                    <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
-                    <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default</Button>
-                  </div>
-                  <div className="d-flex flex-column gap-2" style={{ maxHeight: 340, overflowY: 'auto' }}>
-                    {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
-                  </div>
-                </CardBody>
-              </Card> : null}
           </div>;
       case 'metric-miles':
         return routeMetrics?.distanceMiles != null ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
@@ -4589,6 +4556,31 @@ const TripDashboardWorkspace = () => {
           <Modal.Footer>
             <Button variant="outline-secondary" onClick={() => setShowTripImportModal(false)}>Close</Button>
             <Button variant="success" onClick={handleImportTripsIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing}>Import Trips</Button>
+          </Modal.Footer>
+        </Modal>
+
+        <Modal show={showColumnPicker} onHide={() => setShowColumnPicker(false)} size="lg" centered scrollable>
+          <Modal.Header closeButton>
+            <Modal.Title>Trip Columns</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+              <div>
+                <div className="fw-semibold">Choose what you want to see in the trips table.</div>
+                <div className="small text-muted">Visible now: {orderedVisibleTripColumns.length} of {allTripColumnKeys.length} columns.</div>
+              </div>
+              <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
+            </div>
+            <div className="d-flex gap-2 mb-3 flex-wrap">
+              <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
+              <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default</Button>
+            </div>
+            <div className="d-flex flex-column gap-2">
+              {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="outline-secondary" onClick={() => setShowColumnPicker(false)}>Close</Button>
           </Modal.Footer>
         </Modal>
 
