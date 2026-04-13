@@ -913,6 +913,7 @@ const DispatcherWorkspace = () => {
   const hasHydratedDefaultLayoutRef = useRef(false);
   const toolbarVisibilityHydratedRef = useRef(false);
   const lastSavedToolbarVisibilityRef = useRef('');
+  const skipNextToolbarVisibilitySaveRef = useRef(false);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const [tripTableScrollLeft, setTripTableScrollLeft] = useState(0);
   const [tripTableMaxScrollLeft, setTripTableMaxScrollLeft] = useState(0);
@@ -1026,6 +1027,7 @@ const DispatcherWorkspace = () => {
       const normalized = Object.fromEntries(ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => [blockId, parsedVisibility[blockId] !== false]));
       lastSavedToolbarVisibilityRef.current = JSON.stringify(normalized);
       toolbarVisibilityHydratedRef.current = true;
+      skipNextToolbarVisibilitySaveRef.current = true;
       setToolbarBlockVisibility(normalized);
     } catch {
       // Ignore corrupted toolbar visibility preferences.
@@ -1035,10 +1037,14 @@ const DispatcherWorkspace = () => {
   useEffect(() => {
     try {
       const serializedToolbarVisibility = JSON.stringify(toolbarBlockVisibility);
-      window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, serializedToolbarVisibility);
       if (!toolbarVisibilityHydratedRef.current) return;
+      if (skipNextToolbarVisibilitySaveRef.current) {
+        skipNextToolbarVisibilitySaveRef.current = false;
+        return;
+      }
       if (lastSavedToolbarVisibilityRef.current === serializedToolbarVisibility) return;
       lastSavedToolbarVisibilityRef.current = serializedToolbarVisibility;
+      window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, serializedToolbarVisibility);
       if (!userPreferencesLoading) {
         void saveUserPreferences({
           ...userPreferences,
