@@ -210,6 +210,9 @@ const TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH = 56;
 const TRIP_DASHBOARD_RIGHT_PANEL_EXPANDED_SPLIT = 50;
 const TRIP_DASHBOARD_FOCUS_RIGHT_MIN_SPLIT = 16;
 const TRIP_DASHBOARD_FOCUS_RIGHT_MAX_SPLIT = 84;
+const TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT = 58;
+const TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT = 33;
+const TRIP_DASHBOARD_DEFAULT_ROW_SPLIT = 68;
 
 const TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS = [...TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS, ...TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS, ...TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS];
 
@@ -785,8 +788,8 @@ const TripDashboardWorkspace = () => {
   const [columnWidths, setColumnWidths] = useState({});
   const [statusMessage, setStatusMessage] = useState('Trip dashboard ready with map-only view and panel tab.');
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
-  const [columnSplit, setColumnSplit] = useState(58);
-  const [rowSplit, setRowSplit] = useState(68);
+  const [columnSplit, setColumnSplit] = useState(() => getInitialTripDashboardLayoutMode() === TRIP_DASHBOARD_LAYOUTS.focusRight ? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT : TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT);
+  const [rowSplit, setRowSplit] = useState(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
   const [dragMode, setDragMode] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [routeMetrics, setRouteMetrics] = useState(null);
@@ -3122,8 +3125,8 @@ const TripDashboardWorkspace = () => {
       setShowRoutesPanel(true);
       setShowTripsPanel(true);
       setRightPanelCollapsed(false);
-      setColumnSplit(current => clamp(current, TRIP_DASHBOARD_FOCUS_RIGHT_MIN_SPLIT, TRIP_DASHBOARD_FOCUS_RIGHT_MAX_SPLIT));
-      setRowSplit(68);
+      setColumnSplit(TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT);
+      setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
       layoutHydratedRef.current = true;
       return;
     }
