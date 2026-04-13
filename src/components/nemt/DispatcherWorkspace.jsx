@@ -1014,9 +1014,12 @@ const DispatcherWorkspace = () => {
   useEffect(() => {
     if (userPreferencesLoading) return;
     try {
-      const parsed = userPreferences?.dispatcherToolbar?.toolbarVisibility && Object.keys(userPreferences.dispatcherToolbar.toolbarVisibility).length > 0
-        ? userPreferences.dispatcherToolbar.toolbarVisibility
-        : JSON.parse(window.localStorage.getItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY) || '{}');
+      const storedToolbarVisibility = JSON.parse(window.localStorage.getItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY) || '{}');
+      const parsed = storedToolbarVisibility && typeof storedToolbarVisibility === 'object' && !Array.isArray(storedToolbarVisibility) && Object.keys(storedToolbarVisibility).length > 0
+        ? storedToolbarVisibility
+        : userPreferences?.dispatcherToolbar?.toolbarVisibility && Object.keys(userPreferences.dispatcherToolbar.toolbarVisibility).length > 0
+          ? userPreferences.dispatcherToolbar.toolbarVisibility
+          : {};
       const parsedVisibility = !parsed || typeof parsed !== 'object' || Array.isArray(parsed)
         ? {}
         : Object.fromEntries(Object.entries(parsed).map(([key, value]) => [canonicalizeToolbarBlockId(key), value]));
@@ -1218,10 +1221,18 @@ const DispatcherWorkspace = () => {
 
   const handleToggleToolbarBlockVisibility = (blockId, enabled) => {
     const normalizedBlockId = canonicalizeToolbarBlockId(blockId);
-    setToolbarBlockVisibility(current => ({
-      ...current,
-      [normalizedBlockId]: enabled
-    }));
+    setToolbarBlockVisibility(current => {
+      const nextVisibility = {
+        ...current,
+        [normalizedBlockId]: enabled
+      };
+      try {
+        window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, JSON.stringify(nextVisibility));
+      } catch {
+        // Ignore localStorage write errors.
+      }
+      return nextVisibility;
+    });
   };
 
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
