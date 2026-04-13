@@ -4359,7 +4359,7 @@ const TripDashboardWorkspace = () => {
                     </div>}
                 </div>}
                   {filteredTrips.length > 0 ? null : null}
-              <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1 trip-dashboard-sheet-wrap" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none', paddingBottom: 0 }}>
+              <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1 trip-dashboard-sheet-wrap" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'auto', scrollbarWidth: 'thin', msOverflowStyle: 'auto', paddingBottom: 0 }}>
                 <Table ref={tripTableElementRef} hover className="align-middle mb-0 trip-dashboard-sheet-table" data-bs-theme={themeMode} style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
                   <thead className={themeMode === 'dark' ? 'table-dark' : ''} style={{ position: 'sticky', top: 0, backgroundColor: tripTableHeaderStyle.backgroundColor, color: tripTableHeaderStyle.color }}>
                     <tr>
@@ -4779,14 +4779,26 @@ const TripDashboardWorkspace = () => {
         <style jsx global>{`
           .trip-dashboard-sheet-wrap {
             background: #f8fbf8;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
+            scrollbar-width: thin;
+            scrollbar-color: #dc2626 transparent;
           }
 
           .trip-dashboard-sheet-wrap::-webkit-scrollbar {
-            width: 0;
-            height: 0;
-            display: none;
+            width: 4px;
+            height: 4px;
+          }
+
+          .trip-dashboard-sheet-wrap::-webkit-scrollbar-track {
+            background: transparent;
+          }
+
+          .trip-dashboard-sheet-wrap::-webkit-scrollbar-thumb {
+            background: #dc2626;
+            border-radius: 999px;
+          }
+
+          .trip-dashboard-sheet-wrap::-webkit-scrollbar-corner {
+            background: transparent;
           }
 
           .trip-dashboard-sheet-table thead th {
@@ -4854,6 +4866,11 @@ const TripDashboardWorkspace = () => {
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-wrap {
             background: #111827;
+            scrollbar-color: #ef4444 transparent;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-wrap::-webkit-scrollbar-thumb {
+            background: #ef4444;
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table thead th {
