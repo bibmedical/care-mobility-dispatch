@@ -879,28 +879,49 @@ const TripDashboardWorkspace = () => {
   const [aiPlannerCityFilter, setAiPlannerCityFilter] = useState('');
   const adminDriversById = useMemo(() => new Map((Array.isArray(adminData?.drivers) ? adminData.drivers : []).map(driver => [String(driver?.id || '').trim(), driver])), [adminData?.drivers]);
   const adminVehiclesById = useMemo(() => new Map((Array.isArray(adminData?.vehicles) ? adminData.vehicles : []).map(vehicle => [String(vehicle?.id || '').trim(), vehicle])), [adminData?.vehicles]);
+  const adminGroupingsById = useMemo(() => new Map((Array.isArray(adminData?.groupings) ? adminData.groupings : []).map(grouping => [String(grouping?.id || '').trim(), grouping])), [adminData?.groupings]);
+
+  const getAdminDriverVehicles = adminDriver => {
+    if (!adminDriver) return [];
+
+    const directVehicleId = String(adminDriver?.vehicleId || '').trim();
+    const directVehicle = directVehicleId ? adminVehiclesById.get(directVehicleId) || null : null;
+    if (directVehicle) return [directVehicle];
+
+    const groupingId = String(adminDriver?.groupingId || '').trim();
+    const grouping = groupingId ? adminGroupingsById.get(groupingId) || null : null;
+    const assignedVehicleIds = Array.isArray(grouping?.assignedVehicleIds) ? grouping.assignedVehicleIds.map(id => String(id || '').trim()).filter(Boolean) : [];
+    return assignedVehicleIds.map(vehicleId => adminVehiclesById.get(vehicleId) || null).filter(Boolean);
+  };
+
+  const buildResolvedVehicleMeta = (adminDriver, fallbackVehicleLabel = '') => {
+    const vehicles = getAdminDriverVehicles(adminDriver);
+    const capabilityTokens = Array.from(new Set(vehicles.flatMap(vehicle => getVehicleCapabilityTokens(vehicle)).filter(Boolean)));
+    const vehicleLabels = vehicles.map(vehicle => String(vehicle?.label || vehicle?.unitNumber || vehicle?.id || '').trim()).filter(Boolean);
+
+    return {
+      vehicles,
+      vehicleLabels,
+      vehicleLabel: vehicleLabels.join(', ') || String(fallbackVehicleLabel || '').trim(),
+      capabilityTokens
+    };
+  };
 
   const getTripVehicleMeta = trip => {
     const assignedDriver = drivers.find(driver => String(driver?.id || '').trim() === String(trip?.driverId || '').trim()) || null;
     const adminDriver = adminDriversById.get(String(trip?.driverId || '').trim()) || null;
-    const adminVehicle = adminDriver?.vehicleId ? adminVehiclesById.get(String(adminDriver.vehicleId || '').trim()) || null : null;
-    const capabilityTokens = getVehicleCapabilityTokens(adminVehicle);
+    const resolvedVehicleMeta = buildResolvedVehicleMeta(adminDriver, assignedDriver?.vehicle || '');
 
     return {
       requestedVehicle: String(trip?.vehicleType || '').trim(),
-      actualVehicleLabel: String(adminVehicle?.label || assignedDriver?.vehicle || '').trim(),
+      actualVehicleLabel: resolvedVehicleMeta.vehicleLabel,
       actualDriverName: String(assignedDriver?.name || getDriverName(trip?.driverId) || '').trim(),
-      capabilityTokens
+      capabilityTokens: resolvedVehicleMeta.capabilityTokens
     };
   };
   const getDriverVehicleMeta = driver => {
     const adminDriver = adminDriversById.get(String(driver?.id || '').trim()) || null;
-    const adminVehicle = adminDriver?.vehicleId ? adminVehiclesById.get(String(adminDriver.vehicleId || '').trim()) || null : null;
-
-    return {
-      vehicleLabel: String(adminVehicle?.label || driver?.vehicle || '').trim(),
-      capabilityTokens: getVehicleCapabilityTokens(adminVehicle)
-    };
+    return buildResolvedVehicleMeta(adminDriver, driver?.vehicle || '');
   };
   const [aiPlannerRoutePairPickupCity, setAiPlannerRoutePairPickupCity] = useState('');
   const [aiPlannerRoutePairDropoffCity, setAiPlannerRoutePairDropoffCity] = useState('');
@@ -1803,8 +1824,7 @@ const TripDashboardWorkspace = () => {
     const capabilityFilters = Array.isArray(driverVehicleCapabilityFilters) ? driverVehicleCapabilityFilters : [];
     const filteredByCapability = capabilityFilters.length === 0 ? drivers : drivers.filter(driver => {
       const adminDriver = adminDriversById.get(String(driver?.id || '').trim()) || null;
-      const adminVehicle = adminDriver?.vehicleId ? adminVehiclesById.get(String(adminDriver.vehicleId || '').trim()) || null : null;
-      const capabilityPrefixes = new Set(getVehicleCapabilityTokens(adminVehicle).map(stripVehicleCapabilityCount).filter(Boolean));
+      const capabilityPrefixes = new Set(buildResolvedVehicleMeta(adminDriver, driver?.vehicle || '').capabilityTokens.map(stripVehicleCapabilityCount).filter(Boolean));
       return capabilityFilters.every(filterKey => capabilityPrefixes.has(filterKey));
     });
     const filtered = !term ? filteredByCapability : filteredByCapability.filter(driver => [driver?.name, driver?.code, driver?.vehicle, driver?.attendant, driver?.live].some(value => String(value || '').toLowerCase().includes(term)));
@@ -1812,7 +1832,7 @@ const TripDashboardWorkspace = () => {
     const getDriverSortValue = driver => {
       switch (driverSort.key) {
         case 'vehicle':
-          return driver?.vehicle;
+          return getDriverVehicleMeta(driver).vehicleLabel || driver?.vehicle;
         case 'attendant':
           return driver?.attendant;
         case 'info':
@@ -1836,7 +1856,7 @@ const TripDashboardWorkspace = () => {
       const result = leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' });
       return driverSort.direction === 'asc' ? result : -result;
     });
-  }, [adminDriversById, adminVehiclesById, driverSearch, driverSort.direction, driverSort.key, driverVehicleCapabilityFilters, drivers]);
+  }, [adminDriversById, adminGroupingsById, adminVehiclesById, driverSearch, driverSort.direction, driverSort.key, driverVehicleCapabilityFilters, drivers]);
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
   const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIdSet]);
   const selectedDriverWorkingTrips = useMemo(() => {
