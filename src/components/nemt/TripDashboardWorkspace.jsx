@@ -2,7 +2,7 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
-import { GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens, getVehiclePrimaryServiceType } from '@/helpers/nemt-admin-model';
+import { GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
 import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
@@ -100,6 +100,8 @@ const splitRiderName = value => {
     lastName: parts.slice(1).join(' ')
   };
 };
+
+const stripVehicleCapabilityCount = token => String(token || '').trim().replace(/\d+$/, '');
 
 const getTripPairKey = trip => {
   const grouped = String(trip?.groupedTripKey || '').trim();
@@ -1802,8 +1804,8 @@ const TripDashboardWorkspace = () => {
     const filteredByCapability = capabilityFilters.length === 0 ? drivers : drivers.filter(driver => {
       const adminDriver = adminDriversById.get(String(driver?.id || '').trim()) || null;
       const adminVehicle = adminDriver?.vehicleId ? adminVehiclesById.get(String(adminDriver.vehicleId || '').trim()) || null : null;
-      const primaryServiceType = getVehiclePrimaryServiceType(adminVehicle);
-      return capabilityFilters.includes(primaryServiceType);
+      const capabilityPrefixes = new Set(getVehicleCapabilityTokens(adminVehicle).map(stripVehicleCapabilityCount).filter(Boolean));
+      return capabilityFilters.every(filterKey => capabilityPrefixes.has(filterKey));
     });
     const filtered = !term ? filteredByCapability : filteredByCapability.filter(driver => [driver?.name, driver?.code, driver?.vehicle, driver?.attendant, driver?.live].some(value => String(value || '').toLowerCase().includes(term)));
 
