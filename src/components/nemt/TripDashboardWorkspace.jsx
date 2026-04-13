@@ -3982,8 +3982,13 @@ const TripDashboardWorkspace = () => {
           },
           placeholder: '(407) 555-0000'
         });
-      case 'mobility':
-        return <td key={`${trip.id}-mobility`} style={{ whiteSpace: 'nowrap' }}>{trip.mobilityType || '-'}</td>;
+      case 'mobility': {
+        const tripTypeLabel = getTripTypeLabel(trip);
+        const badgeVariant = tripTypeLabel === 'STR' ? 'danger' : tripTypeLabel === 'W' ? 'warning' : 'success';
+        return <td key={`${trip.id}-mobility`} style={{ whiteSpace: 'nowrap' }}>
+            <Badge bg={badgeVariant} text={tripTypeLabel === 'W' ? 'dark' : undefined}>{tripTypeLabel}</Badge>
+          </td>;
+      }
       case 'assistLevel':
         return <td key={`${trip.id}-assist`} style={{ whiteSpace: 'nowrap' }}>
             <div className="d-flex align-items-center gap-1">

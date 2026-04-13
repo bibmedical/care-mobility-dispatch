@@ -311,7 +311,7 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   label: 'Vehicle'
 }, {
   key: 'mobility',
-  label: 'Mobility'
+  label: 'Type'
 }, {
   key: 'assistLevel',
   label: 'Assist'
