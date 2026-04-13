@@ -1813,6 +1813,25 @@ const TripDashboardWorkspace = () => {
   }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
   const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
+  const selectedTripMapPoints = useMemo(() => {
+    if (selectedTrips.length === 0 || showRoute) return [];
+    const scopedSelectedTrips = activeDateTripIdSet ? selectedTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : selectedTrips;
+    return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => [{
+      key: `${trip.id}-pickup-selected-map`,
+      tripId: trip.id,
+      position: trip.position,
+      color: '#0284c7',
+      label: `PU ${trip.pickup}`,
+      detail: trip.address || 'No pickup address available'
+    }, {
+      key: `${trip.id}-dropoff-selected-map`,
+      tripId: trip.id,
+      position: trip.destinationPosition ?? trip.position,
+      color: '#16a34a',
+      label: `DO ${trip.dropoff}`,
+      detail: trip.destination || 'No dropoff address available'
+    }]);
+  }, [activeDateTripIdSet, selectedTrips, showRoute]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
     const selectedVisibleTrips = sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))));
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
@@ -4379,6 +4398,13 @@ const TripDashboardWorkspace = () => {
           }}>
                   <Popup>{point.label}</Popup>
                 </CircleMarker>) : null}
+              {selectedTripMapPoints.map(point => <CircleMarker key={point.key} center={point.position} radius={7} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.92, weight: 2 }}>
+                  <Popup>
+                    <div className="fw-semibold">{point.label}</div>
+                    <div className="small text-muted">Trip {point.tripId}</div>
+                    <div>{point.detail}</div>
+                  </Popup>
+                </CircleMarker>)}
               {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
                   <Popup>
                     <div className="fw-semibold">{stop.title}</div>
