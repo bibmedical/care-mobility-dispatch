@@ -3,7 +3,7 @@
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens, getVehiclePrimaryServiceType } from '@/helpers/nemt-admin-model';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import { parseTripImportFile } from '@/helpers/nemt-trip-import';
@@ -1144,6 +1144,7 @@ const TripDashboardWorkspace = () => {
     }
     : undefined;
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
+  const allTripColumnKeys = useMemo(() => DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key), []);
   const tripColumnMeta = useMemo(() => Object.fromEntries(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => [option.key, {
     label: option.label,
     width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' ? 150 : option.key === 'rider' ? 180 : undefined,
@@ -2387,6 +2388,16 @@ const TripDashboardWorkspace = () => {
     }
     setDispatcherVisibleTripColumns(nextColumns);
     setStatusMessage('Column view updated.');
+  };
+
+  const handleShowAllTripColumns = () => {
+    setDispatcherVisibleTripColumns(allTripColumnKeys);
+    setStatusMessage('All trip columns are now visible.');
+  };
+
+  const handleResetTripColumns = () => {
+    setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
+    setStatusMessage('Trip columns reset to default view.');
   };
 
   const handleTripColumnDrop = targetColumnKey => {
@@ -4064,6 +4075,30 @@ const TripDashboardWorkspace = () => {
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
                 })}
+                  <div className="ms-auto position-relative" ref={columnPickerRef}>
+                    <Button variant={showColumnPicker ? 'dark' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+                  setShowColumnPicker(current => !current);
+                  setShowToolbarTools(false);
+                }}>
+                      Columns
+                    </Button>
+                    {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-2" style={{ zIndex: 90, width: 260 }}>
+                        <CardBody className="p-3" style={{ color: isDarkTheme ? '#e5e7eb' : '#111827', backgroundColor: isDarkTheme ? '#0f172a' : '#ffffff' }}>
+                          <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                            <div className="fw-semibold">Columns</div>
+                            <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
+                          </div>
+                          <div className="small mb-3" style={mutedThemeTextStyle}>Mark the trip columns you want to show.</div>
+                          <div className="d-flex gap-2 mb-3">
+                            <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
+                            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default</Button>
+                          </div>
+                          <div className="d-flex flex-column gap-2" style={{ maxHeight: 340, overflowY: 'auto' }}>
+                            {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+                          </div>
+                        </CardBody>
+                      </Card> : null}
+                  </div>
                 </div>
                 
                 {/* Bottom toolbar line */}
