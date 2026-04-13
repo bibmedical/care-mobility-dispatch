@@ -5022,20 +5022,19 @@ const TripDashboardWorkspace = () => {
 
         <Modal show={showBlacklistModal} onHide={handleCloseBlacklistModal} size="xl" centered scrollable>
           <Modal.Header closeButton>
-            <Modal.Title>Black List</Modal.Title>
+            <Modal.Title>{blacklistDraftTrip ? 'Add To Black List' : 'Black List'}</Modal.Title>
           </Modal.Header>
           <Modal.Body>
             <div className="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3">
               <div>
-                <div className="fw-semibold">Manage blocked passengers without leaving Trip Dashboard.</div>
-                <div className="small text-muted">Active entries: {activeBlacklistEntries.length} of {blacklistEntries.length} total.</div>
-                {blacklistDraftTrip ? <div className="small text-muted mt-2">Trip: {blacklistDraftTrip.id} | Rider: {blacklistDraftTrip.rider || '-'}</div> : null}
+                <div className="fw-semibold">{blacklistDraftTrip ? 'Add this passenger to Black List without leaving Trip Dashboard.' : 'Manage blocked passengers without leaving Trip Dashboard.'}</div>
+                <div className="small text-muted">{blacklistDraftTrip ? `Trip: ${blacklistDraftTrip.id} | Rider: ${blacklistDraftTrip.rider || '-'}` : `Active entries: ${activeBlacklistEntries.length} of ${blacklistEntries.length} total.`}</div>
                 {blacklistError ? <div className="small text-danger mt-2">{blacklistError}</div> : null}
               </div>
-              <div className="d-flex gap-2 flex-wrap">
+              {!blacklistDraftTrip ? <div className="d-flex gap-2 flex-wrap">
                 <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={() => void refreshBlacklist()} disabled={blacklistLoading || blacklistSaving}>Refresh</Button>
                 <Form.Control size="sm" value={blacklistSearch} onChange={event => setBlacklistSearch(event.target.value)} placeholder="Search name, phone, notes..." style={{ width: 240, maxWidth: '100%' }} />
-              </div>
+              </div> : null}
             </div>
 
             <Row className="g-3 mb-3">
@@ -5079,10 +5078,10 @@ const TripDashboardWorkspace = () => {
             </Row>
 
             <div className="d-flex justify-content-end mb-3">
-              <Button variant="danger" onClick={() => void handleAddBlacklistEntry()} disabled={blacklistSaving}>Add To Black List</Button>
+              <Button variant="danger" onClick={() => void handleAddBlacklistEntry()} disabled={blacklistSaving}>{blacklistDraftTrip ? 'Save To Black List' : 'Add To Black List'}</Button>
             </div>
 
-            <div className="table-responsive">
+            {!blacklistDraftTrip ? <div className="table-responsive">
               <Table hover className="align-middle mb-0" data-bs-theme={themeMode}>
                 <thead className={themeMode === 'dark' ? 'table-dark' : 'table-light'}>
                   <tr>
@@ -5114,7 +5113,7 @@ const TripDashboardWorkspace = () => {
                     </tr>}
                 </tbody>
               </Table>
-            </div>
+            </div> : null}
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={handleCloseBlacklistModal}>Close</Button>
