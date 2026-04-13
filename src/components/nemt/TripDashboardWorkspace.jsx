@@ -2276,6 +2276,16 @@ const TripDashboardWorkspace = () => {
     return 'Manual';
   };
 
+  const getTripConfirmationDisplayLabel = (trip, blockingState) => {
+    const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
+    const confirmationCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
+    if (confirmationCode === 'U') return 'Unconfirmed';
+    if (confirmationCode === 'DC') return 'Disconnected';
+    if (['CL', 'SL'].includes(confirmationCode)) return 'Needs Call';
+    if (['C', 'S', 'W'].includes(confirmationCode) && (confirmationStatus === 'Not Sent' || confirmationStatus === 'Pending')) return 'Confirmed';
+    return confirmationStatus;
+  };
+
   const applyTripConfirmationState = (trip, { status, provider = '', methodCode = '', message = '', eventType = 'manual', noteLine = '' }) => {
     const nowIso = new Date().toISOString();
     const nextNotes = noteLine ? [String(trip?.notes || '').trim(), noteLine].filter(Boolean).join('\n') : undefined;
@@ -2317,21 +2327,6 @@ const TripDashboardWorkspace = () => {
   };
 
   const handleManualConfirm = trip => {
-    const confirmationStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
-    if (confirmationStatus === 'Confirmed') {
-      const shouldUnconfirm = window.confirm(`Trip ${trip.id} is already confirmed. Mark it as Not Sent?`);
-      if (!shouldUnconfirm) return;
-      applyTripConfirmationState(trip, {
-        status: 'Not Sent',
-        provider: '',
-        methodCode: 'U',
-        message: 'Unconfirmed by dispatcher',
-        eventType: 'unconfirm',
-        noteLine: `[UNCONFIRM] ${new Date().toLocaleString()}: Dispatcher changed status to Not Sent.`
-      });
-      setStatusMessage(`Trip ${trip.id} changed to Not Sent.`);
-      return;
-    }
     handleOpenConfirmationMethod([trip], trip);
   };
 
@@ -4092,9 +4087,7 @@ const TripDashboardWorkspace = () => {
         return <td key={`${trip.id}-late`} style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(trip)}</td>;
       case 'confirmation': {
         const blockingState = tripBlockingMap.get(trip.id);
-        const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
-        const confirmationCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
-        const confirmationLabel = confirmationCode === 'U' ? 'Unconfirmed' : ['C', 'S', 'W'].includes(confirmationCode) && (confirmationStatus === 'Not Sent' || confirmationStatus === 'Pending') ? 'Confirmed' : confirmationStatus;
+        const confirmationLabel = getTripConfirmationDisplayLabel(trip, blockingState);
         const badgeVariant = confirmationLabel === 'Confirmed'
           ? 'success'
           : confirmationLabel === 'Cancelled'
@@ -4931,8 +4924,8 @@ const TripDashboardWorkspace = () => {
                         </td>
                         {showConfirmationTools ? <td style={{ width: columnWidths.notes ?? 240, minWidth: columnWidths.notes ?? 240, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1 flex-nowrap" style={{ minWidth: 220, whiteSpace: 'nowrap' }}>
-                            <Button variant={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'success' : getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'warning' : 'outline-success'} size="sm" onClick={() => handleManualConfirm(row.trip)} style={{ minWidth: 104, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                              {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'Undo' : getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'Call Again' : 'Confirm'}
+                            <Button variant={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'success' : getTripConfirmationDisplayLabel(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'warning' : 'outline-success'} size="sm" onClick={() => handleManualConfirm(row.trip)} style={{ minWidth: 104, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              {getTripConfirmationDisplayLabel(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'Call Again' : 'Confirm'}
                             </Button>
                             <Button variant="outline-danger" size="sm" onClick={() => handleCancelWithNote(row.trip)} style={{ width: 72, whiteSpace: 'nowrap' }}>
                               Cancel
