@@ -51,7 +51,7 @@ const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
-const DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS = 2000;
+const DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS = 5000;
 const TRIP_DASHBOARD_DRIVERS_SYNC_ACTIVE_POLL_MS = 15000;
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
@@ -313,6 +313,7 @@ export const NemtProvider = ({
   const hasLocalDispatchChangesRef = useRef(false);
   const persistInFlightRef = useRef(false);
   const liveSyncInFlightRef = useRef(false);
+  const driverSyncInFlightRef = useRef(false);
   const pendingPersistSnapshotRef = useRef('');
   const allowTripShrinkNextPersistRef = useRef(false);
   const pendingAllowTripShrinkRef = useRef(false);
@@ -536,24 +537,37 @@ export const NemtProvider = ({
   };
 
   const syncDriversFromServer = async () => {
+    if (driverSyncInFlightRef.current) return false;
+    driverSyncInFlightRef.current = true;
     try {
       const response = await fetch('/api/nemt/admin/drivers', {
         cache: 'no-store'
       });
-      if (!response.ok) return;
+      if (!response.ok) return false;
       const payload = await response.json();
       const nextDrivers = Array.isArray(payload?.dispatchDrivers) ? payload.dispatchDrivers : [];
       startTransition(() => {
         setState(currentState => {
           const baseState = currentState ?? createInitialState();
+          const currentDriversJson = JSON.stringify(Array.isArray(baseState?.drivers) ? baseState.drivers : []);
+          const nextDriversJson = JSON.stringify(nextDrivers);
+
+          if (currentDriversJson === nextDriversJson) {
+            return baseState;
+          }
+
           return {
             ...baseState,
             drivers: nextDrivers
           };
         });
       });
+      return true;
     } catch {
       // Keep the last known dispatch state if the admin API is temporarily unavailable.
+      return false;
+    } finally {
+      driverSyncInFlightRef.current = false;
     }
   };
 
