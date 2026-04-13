@@ -372,6 +372,25 @@ const formatMinutesToTimeInput = minutes => {
   return `${hours}:${mins}`;
 };
 
+const formatMinutesAsClock = minutes => {
+  if (!Number.isFinite(minutes)) return '';
+  const normalized = ((Math.round(minutes) % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hours24 = Math.floor(normalized / 60);
+  const mins = normalized % 60;
+  const suffix = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 % 12 || 12;
+  return `${String(hours12).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${suffix}`;
+};
+
+const parseSpreadsheetTimeMinutes = value => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const fractionalDay = numeric - Math.floor(numeric);
+  const totalMinutes = Math.round(fractionalDay * 24 * 60);
+  if (!Number.isFinite(totalMinutes)) return null;
+  return ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+};
+
 const looksLikeExcelSerialTime = value => /^\d{4,6}(?:\.\d+)?$/.test(String(value || '').trim());
 
 const getEffectiveTimeText = (scheduledValue, fallbackValue) => {
@@ -379,6 +398,19 @@ const getEffectiveTimeText = (scheduledValue, fallbackValue) => {
   const fallbackText = String(fallbackValue || '').trim();
   if (looksLikeExcelSerialTime(scheduledText) && fallbackText) return fallbackText;
   return scheduledText || fallbackText;
+};
+
+const normalizeTripTimeDisplay = value => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+
+  const asClockMinutes = parseTripClockMinutes(text);
+  if (asClockMinutes != null) return formatMinutesAsClock(asClockMinutes);
+
+  const spreadsheetMinutes = parseSpreadsheetTimeMinutes(text);
+  if (spreadsheetMinutes != null) return formatMinutesAsClock(spreadsheetMinutes);
+
+  return text;
 };
 
 const getSuggestedPlannerCutoffTime = trip => {
@@ -1683,7 +1715,10 @@ const TripDashboardWorkspace = () => {
       const confirmCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
       return confirmationStatus === 'Confirmed' || (['C', 'S', 'W'].includes(confirmCode) && (confirmationStatus === 'Not Sent' || confirmationStatus === 'Pending'));
     }
-    if (tripStatusFilter === 'unconfirm') return confirmationStatus === 'Not Sent' || String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase() === 'U';
+    if (tripStatusFilter === 'unconfirm') {
+      const confirmCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
+      return ['Not Sent', 'Pending', 'Needs Call', 'Disconnected'].includes(confirmationStatus) || confirmCode === 'U';
+    }
     return normalizedStatus === tripStatusFilter;
   }).filter(trip => {
     if (tripDateFilter === 'all') return true;
@@ -2305,8 +2340,8 @@ const TripDashboardWorkspace = () => {
     setTripUpdateModal(trip);
     setTripUpdateLegScope('single');
     setTripUpdateConfirmMethod('call');
-    setTripUpdatePickupTime(String(trip?.scheduledPickup || trip?.pickup || '').trim());
-    setTripUpdateDropoffTime(String(trip?.scheduledDropoff || trip?.dropoff || '').trim());
+    setTripUpdatePickupTime(normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || ''));
+    setTripUpdateDropoffTime(normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || ''));
     setTripUpdatePickupAddress(String(trip?.address || '').trim());
     setTripUpdateDropoffAddress(String(trip?.destination || '').trim());
     setTripUpdateNote('');
@@ -2315,8 +2350,10 @@ const TripDashboardWorkspace = () => {
   const handleSaveTripUpdate = async () => {
     if (!tripUpdateModal) return;
     const now = new Date().toISOString();
-    const nextPickup = String(tripUpdatePickupTime || '').trim();
-    const nextDropoff = String(tripUpdateDropoffTime || '').trim();
+    const oldPickup = normalizeTripTimeDisplay(tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '');
+    const oldDropoff = normalizeTripTimeDisplay(tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '');
+    const nextPickup = normalizeTripTimeDisplay(tripUpdatePickupTime || '');
+    const nextDropoff = normalizeTripTimeDisplay(tripUpdateDropoffTime || '');
     const nextPickupAddress = String(tripUpdatePickupAddress || '').trim();
     const nextDropoffAddress = String(tripUpdateDropoffAddress || '').trim();
     const noteText = String(tripUpdateNote || '').trim();
@@ -2327,15 +2364,20 @@ const TripDashboardWorkspace = () => {
     const isDisconnected = tripUpdateConfirmMethod === 'disconnected';
     const nextConfirmationStatus = isCancelled ? 'Cancelled' : isDisconnected ? 'Disconnected' : isSmsLeftUnconfirmed || isCallLeftMessage ? 'Needs Call' : 'Confirmed';
     const detailLines = [`[TRIP UPDATE] ${new Date().toLocaleString()}: ${isCancelled ? 'Cancelled by patient' : isDisconnected ? 'Phone disconnected' : isSmsLeftUnconfirmed ? 'Could not confirm, SMS left (English).' : isCallLeftMessage ? 'Called and left message.' : `Confirmed via ${methodLabel}`}.`];
+    if (nextPickup && nextPickup !== oldPickup || nextDropoff && nextDropoff !== oldDropoff) {
+      detailLines.push(`[SCHEDULE CHANGE] ${oldPickup || '-'} -> ${nextPickup || oldPickup || '-'} | ${oldDropoff || '-'} -> ${nextDropoff || oldDropoff || '-'}`);
+    }
     if (noteText) detailLines.push(`[DISPATCH NOTE] ${noteText}`);
     const targetTrips = tripUpdateLegScope === 'both' ? [tripUpdateModal, ...tripUpdateSiblingTrips] : [tripUpdateModal];
 
     targetTrips.forEach(targetTrip => {
       const isPrimaryTrip = String(targetTrip?.id || '') === String(tripUpdateModal?.id || '');
-      const targetPickup = isPrimaryTrip ? nextPickup || tripUpdateModal.pickup || '' : targetTrip.pickup || '';
-      const targetScheduledPickup = isPrimaryTrip ? nextPickup || tripUpdateModal.scheduledPickup || tripUpdateModal.pickup || '' : targetTrip.scheduledPickup || targetTrip.pickup || '';
-      const targetDropoff = isPrimaryTrip ? nextDropoff || tripUpdateModal.dropoff || '' : targetTrip.dropoff || '';
-      const targetScheduledDropoff = isPrimaryTrip ? nextDropoff || tripUpdateModal.scheduledDropoff || tripUpdateModal.dropoff || '' : targetTrip.scheduledDropoff || targetTrip.dropoff || '';
+      const targetCurrentPickup = normalizeTripTimeDisplay(targetTrip.scheduledPickup || targetTrip.pickup || '');
+      const targetCurrentDropoff = normalizeTripTimeDisplay(targetTrip.scheduledDropoff || targetTrip.dropoff || '');
+      const targetPickup = isPrimaryTrip ? nextPickup || oldPickup || '' : targetCurrentPickup;
+      const targetScheduledPickup = targetPickup;
+      const targetDropoff = isPrimaryTrip ? nextDropoff || oldDropoff || '' : targetCurrentDropoff;
+      const targetScheduledDropoff = targetDropoff;
       updateTripRecord(targetTrip.id, {
         pickup: targetPickup,
         scheduledPickup: targetScheduledPickup,
@@ -4053,9 +4095,17 @@ const TripDashboardWorkspace = () => {
         const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
         const confirmationCode = String(trip?.confirmation?.lastResponseCode || '').trim().toUpperCase();
         const confirmationLabel = confirmationCode === 'U' ? 'Unconfirmed' : ['C', 'S', 'W'].includes(confirmationCode) && (confirmationStatus === 'Not Sent' || confirmationStatus === 'Pending') ? 'Confirmed' : confirmationStatus;
-        const badgeVariant = confirmationLabel === 'Confirmed' ? 'success' : confirmationLabel === 'Opted Out' ? 'danger' : 'secondary';
+        const badgeVariant = confirmationLabel === 'Confirmed'
+          ? 'success'
+          : confirmationLabel === 'Cancelled'
+            ? 'danger'
+            : confirmationLabel === 'Needs Call'
+              ? 'warning'
+              : confirmationLabel === 'Opted Out'
+                ? 'danger'
+                : 'secondary';
         return <td key={`${trip.id}-confirm`} style={{ whiteSpace: 'nowrap' }}>
-            <Badge bg={badgeVariant}>{confirmationLabel}</Badge>
+            <Badge bg={badgeVariant} text={badgeVariant === 'warning' ? 'dark' : undefined}>{confirmationLabel}</Badge>
           </td>;
       }
       default:
