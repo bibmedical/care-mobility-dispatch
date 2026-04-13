@@ -3512,34 +3512,40 @@ const DispatcherWorkspace = () => {
           </Card>
         </div>
 
-        <Modal show={showColumnPicker} onHide={() => setShowColumnPicker(false)} size="lg" centered scrollable>
+        <Modal show={showColumnPicker} onHide={() => setShowColumnPicker(false)} size="xl" centered scrollable>
           <Modal.Header closeButton>
             <Modal.Title>Trip Columns</Modal.Title>
           </Modal.Header>
-          <Modal.Body>
-            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
-              <div>
-                <div className="fw-semibold">Choose what you want to see in Dispatcher.</div>
-                <div className="small text-muted">Visible now: {orderedVisibleTripColumns.length} of {allTripColumnKeys.length} columns.</div>
+          <Modal.Body style={{ minHeight: '72vh' }}>
+            <div className="row g-4">
+              <div className="col-12 col-xl-6">
+                <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+                  <div>
+                    <div className="fw-semibold">Choose what you want to see in Dispatcher.</div>
+                    <div className="small text-muted">Visible now: {orderedVisibleTripColumns.length} of {allTripColumnKeys.length} columns.</div>
+                  </div>
+                  <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
+                </div>
+                <div className="d-flex gap-2 mb-3 flex-wrap">
+                  <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
+                  <Button variant="outline-dark" size="sm" onClick={handleResetTripColumns}>Default</Button>
+                </div>
+                <div className="d-flex flex-column gap-2" style={{ maxHeight: '54vh', overflowY: 'auto', paddingRight: 4 }}>
+                  {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`dispatcher-column-modal-${option.key}`} type="switch" id={`dispatcher-column-modal-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
+                </div>
               </div>
-              <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
-            </div>
-            <div className="d-flex gap-2 mb-3 flex-wrap">
-              <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
-              <Button variant="outline-dark" size="sm" onClick={handleResetTripColumns}>Default</Button>
-            </div>
-            <div className="d-flex flex-column gap-2 mb-4">
-              {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`dispatcher-column-modal-${option.key}`} type="switch" id={`dispatcher-column-modal-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
-            </div>
-            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap pt-2 border-top">
-              <div>
-                <div className="fw-semibold">Toolbar buttons</div>
-                <div className="small text-muted">Hide or show each Dispatcher toolbar block. Hidden blocks stay hidden after refresh until you enable them again.</div>
+              <div className="col-12 col-xl-6">
+                <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+                  <div>
+                    <div className="fw-semibold">Toolbar buttons</div>
+                    <div className="small text-muted">Hide or show each Dispatcher toolbar block. Hidden blocks stay hidden after refresh until you enable them again.</div>
+                  </div>
+                  <Badge bg={hasAnyVisibleToolbarBlock ? 'secondary' : 'danger'}>{ALL_DISPATCHER_TOOLBAR_BLOCKS.filter(blockId => isToolbarBlockEnabled(blockId)).length}/{ALL_DISPATCHER_TOOLBAR_BLOCKS.length}</Badge>
+                </div>
+                <div className="d-flex flex-column gap-2" style={{ maxHeight: '54vh', overflowY: 'auto', paddingRight: 4 }}>
+                  {ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`dispatcher-toolbar-visibility-${blockId}`} type="switch" id={`dispatcher-toolbar-visibility-${blockId}`} label={DISPATCHER_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
+                </div>
               </div>
-              <Badge bg={hasAnyVisibleToolbarBlock ? 'secondary' : 'danger'}>{ALL_DISPATCHER_TOOLBAR_BLOCKS.filter(blockId => isToolbarBlockEnabled(blockId)).length}/{ALL_DISPATCHER_TOOLBAR_BLOCKS.length}</Badge>
-            </div>
-            <div className="d-flex flex-column gap-2">
-              {ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`dispatcher-toolbar-visibility-${blockId}`} type="switch" id={`dispatcher-toolbar-visibility-${blockId}`} label={DISPATCHER_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
             </div>
           </Modal.Body>
           <Modal.Footer>

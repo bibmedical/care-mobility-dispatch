@@ -5031,24 +5031,40 @@ const TripDashboardWorkspace = () => {
           </Modal.Footer>
         </Modal>
 
-        <Modal show={showColumnPicker} onHide={() => setShowColumnPicker(false)} size="lg" centered scrollable>
+        <Modal show={showColumnPicker} onHide={() => setShowColumnPicker(false)} size="xl" centered scrollable>
           <Modal.Header closeButton>
             <Modal.Title>Trip Columns</Modal.Title>
           </Modal.Header>
-          <Modal.Body>
-            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
-              <div>
-                <div className="fw-semibold">Choose what you want to see in the trips table.</div>
-                <div className="small text-muted">Visible now: {orderedVisibleTripColumns.length} of {allTripColumnKeys.length} columns.</div>
+          <Modal.Body style={{ minHeight: '70vh' }}>
+            <div className="row g-4">
+              <div className="col-12 col-xl-6">
+                <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+                  <div>
+                    <div className="fw-semibold">Choose what you want to see in the trips table.</div>
+                    <div className="small text-muted">Visible now: {orderedVisibleTripColumns.length} of {allTripColumnKeys.length} columns.</div>
+                  </div>
+                  <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
+                </div>
+                <div className="d-flex gap-2 mb-3 flex-wrap">
+                  <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
+                  <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default</Button>
+                </div>
+                <div className="d-flex flex-column gap-2" style={{ maxHeight: '52vh', overflowY: 'auto', paddingRight: 4 }}>
+                  {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+                </div>
               </div>
-              <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
-            </div>
-            <div className="d-flex gap-2 mb-3 flex-wrap">
-              <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
-              <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default</Button>
-            </div>
-            <div className="d-flex flex-column gap-2">
-              {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+              <div className="col-12 col-xl-6">
+                <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+                  <div>
+                    <div className="fw-semibold">Toolbar buttons</div>
+                    <div className="small text-muted">Hide or show each Trip Dashboard toolbar block. Hidden buttons stay off after refresh until you enable them again.</div>
+                  </div>
+                  <Badge bg={hasAnyVisibleToolbarBlock ? 'secondary' : 'danger'}>{TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.filter(blockId => isToolbarBlockEnabled(blockId)).length}/{TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.length}</Badge>
+                </div>
+                <div className="d-flex flex-column gap-2" style={{ maxHeight: '52vh', overflowY: 'auto', paddingRight: 4 }}>
+                  {TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`trip-toolbar-visibility-${blockId}`} type="switch" id={`trip-toolbar-visibility-${blockId}`} label={TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
+                </div>
+              </div>
             </div>
           </Modal.Body>
           <Modal.Footer>
