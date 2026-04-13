@@ -3157,7 +3157,7 @@ const TripDashboardWorkspace = () => {
     return () => window.removeEventListener('nemt-assistant-action', handleAssistantAction);
   }, [refreshDispatchState]);
 
-  const workspaceHeight = 'calc(100vh - 12px)';
+  const workspaceHeight = 'calc(100dvh - 12px)';
   const handleTripDashboardLogoff = async () => {
     try {
       if (session?.user?.id) {
@@ -3193,6 +3193,8 @@ const TripDashboardWorkspace = () => {
     display: 'grid',
     gridTemplateColumns: isFocusRightLayout ? hasVisibleDockPanels ? `${focusRightColumnSplit}% ${columnDividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : '0px 0px minmax(0, 1fr)' : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${columnDividerSize}px - ${collapsedPanelWidth}px)) ${columnDividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${columnDividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
     gridTemplateRows: isFocusRightLayout ? '1fr' : isStackedLayout ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : showBottomPanels ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
+    width: '100%',
+    minWidth: 0,
     height: workspaceHeight,
     minHeight: workspaceHeight,
     position: 'relative'

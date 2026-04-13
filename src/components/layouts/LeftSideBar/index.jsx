@@ -95,7 +95,7 @@ const LeftSideBar = () => {
     flexDirection: 'column',
     width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH,
     minWidth: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH,
-    height: '100vh',
+    height: '100%',
     background: '#f8fafc',
     borderRight: '1px solid #e5e7eb',
     position: 'relative',
