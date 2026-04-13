@@ -797,6 +797,7 @@ const TripDashboardWorkspace = () => {
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showToolbarTools, setShowToolbarTools] = useState(false);
+  const [showConfirmationTools, setShowConfirmationTools] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [topButtonsRowCollapsed, setTopButtonsRowCollapsed] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
@@ -2782,7 +2783,16 @@ const TripDashboardWorkspace = () => {
     return Array.from(driverCounts.entries()).sort((left, right) => right[1] - left[1]);
   }, [filteredTrips, getDriverName]);
 
-  const tripTableColumnCount = orderedVisibleTripColumns.length + 3;
+  const tripTableColumnCount = orderedVisibleTripColumns.length + 2 + (showConfirmationTools ? 1 : 0);
+
+  const handleToggleConfirmationTools = () => {
+    setShowConfirmationTools(current => {
+      const nextValue = !current;
+      if (!nextValue) handleCloseConfirmationMethod();
+      setStatusMessage(nextValue ? 'Confirmation mode enabled.' : 'Confirmation mode hidden.');
+      return nextValue;
+    });
+  };
 
   useEffect(() => {
     if (!hasLoadedUserUiPreferences) return;
@@ -4037,12 +4047,15 @@ const TripDashboardWorkspace = () => {
           }}>
               Excel Loader
             </Button>
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            <Button variant={showConfirmationTools ? 'warning' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleToggleConfirmationTools}>
+              Confirmation
+            </Button>
+            {showConfirmationTools ? <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
             const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
             handleOpenConfirmationMethod(selectedTripsForConfirmation);
           }}>
-              Confirm Selected
-            </Button>
+                Send Selected
+              </Button> : null}
             {!isFocusRightLayout ? <Form.Control size="sm" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" style={{ width: 180 }} /> : null}
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} title="Manage Drivers" aria-label="Manage Drivers" onClick={() => {
             refreshDrivers();
@@ -4786,7 +4799,7 @@ const TripDashboardWorkspace = () => {
                         </div>
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
-                      {renderTripHeader('notes', 'Confirm', 240, false)}
+                      {showConfirmationTools ? renderTripHeader('notes', 'Confirm', 240, false) : null}
                       {orderedVisibleTripColumns.map(columnKey => {
                         const metadata = tripColumnMeta[columnKey];
                         if (!metadata) return null;
@@ -4822,7 +4835,7 @@ const TripDashboardWorkspace = () => {
                         }}>ACT</Button>
                           </div>
                         </td>
-                        <td style={{ width: columnWidths.notes ?? 240, minWidth: columnWidths.notes ?? 240, whiteSpace: 'nowrap' }}>
+                        {showConfirmationTools ? <td style={{ width: columnWidths.notes ?? 240, minWidth: columnWidths.notes ?? 240, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1 flex-wrap" style={{ minWidth: 220 }}>
                             <Button variant={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'success' : 'outline-success'} size="sm" onClick={() => handleManualConfirm(row.trip)} style={{ minWidth: 74 }}>
                               {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'Undo' : 'Confirm'}
@@ -4848,7 +4861,7 @@ const TripDashboardWorkspace = () => {
                               {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Allow' : 'Block'}
                             </Button>
                           </div>
-                        </td>
+                        </td> : null}
                         {orderedVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
                       </tr>) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No activity found for that day. If a route was saved, check the same day in Trip Route to view related trips and drivers.</td>

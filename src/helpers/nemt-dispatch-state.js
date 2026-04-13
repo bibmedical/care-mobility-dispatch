@@ -332,7 +332,8 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   label: 'Late Min'
 }];
 
-export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['notes', 'miles', 'status', 'rider', 'address', 'destination'];
+const LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['notes', 'miles', 'status', 'rider', 'address', 'destination'];
+export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['rider', 'pickup', 'dropoff', 'address', 'puZip', 'destination', 'doZip', 'phone', 'miles', 'status', 'notes'];
 
 export const normalizeMapProviderPreference = value => {
   const normalized = String(value ?? 'auto').trim().toLowerCase();
@@ -343,6 +344,9 @@ export const normalizeDispatcherVisibleTripColumns = value => {
   const allowedKeys = new Set(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key));
   const cleanedColumns = Array.isArray(value) ? value.filter(columnKey => allowedKeys.has(columnKey)) : [];
   const uniqueColumns = Array.from(new Set(cleanedColumns));
+  if (uniqueColumns.length === LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS.length && uniqueColumns.every((columnKey, index) => columnKey === LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS[index])) {
+    return [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
+  }
   return uniqueColumns.length > 0 ? uniqueColumns : [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
 };
 
