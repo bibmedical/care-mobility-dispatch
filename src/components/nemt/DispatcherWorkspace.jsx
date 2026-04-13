@@ -39,8 +39,22 @@ const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'columns'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
 const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['table-view-mode', 'metric-miles', 'metric-duration'];
+const DISPATCHER_TOOLBAR_VISIBILITY_KEY = '__CARE_MOBILITY_DISPATCHER_TOOLBAR_VISIBILITY__';
 const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
 const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
+
+const DISPATCHER_TOOLBAR_BLOCK_LABELS = {
+  'status-filter': 'Status filter',
+  'date-controls': 'Date controls',
+  'trip-search': 'Search',
+  'day-summary': 'Day summary',
+  'stats': 'Stats',
+  'actions': 'Actions',
+  'columns': 'Columns',
+  'table-view-mode': 'Table view mode',
+  'metric-miles': 'Miles metric',
+  'metric-duration': 'Duration metric'
+};
 
 const DISPATCHER_TABLE_VIEW_MODES = [{
   value: 'default',
@@ -850,6 +864,7 @@ const DispatcherWorkspace = () => {
   const [toolbarRow1Order, setToolbarRow1Order] = useState(DISPATCHER_ROW1_DEFAULT_BLOCKS);
   const [toolbarRow2Order, setToolbarRow2Order] = useState(DISPATCHER_ROW2_DEFAULT_BLOCKS);
   const [toolbarRow3Order, setToolbarRow3Order] = useState(DISPATCHER_ROW3_DEFAULT_BLOCKS);
+  const [toolbarBlockVisibility, setToolbarBlockVisibility] = useState(() => Object.fromEntries(ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => [blockId, true])));
   const [dispatcherLayout, setDispatcherLayout] = useState(DEFAULT_DISPATCHER_LAYOUT);
   const [dispatcherTableViewMode, setDispatcherTableViewMode] = useState('default');
   const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
@@ -879,23 +894,6 @@ const DispatcherWorkspace = () => {
     key: 'pickup',
     direction: 'asc'
   });
-  const columnPickerRef = useRef(null);
-
-  useEffect(() => {
-    if (!showColumnPicker) return undefined;
-
-    const handlePointerDownOutside = event => {
-      if (!columnPickerRef.current?.contains(event.target)) {
-        setShowColumnPicker(false);
-      }
-    };
-
-    document.addEventListener('pointerdown', handlePointerDownOutside);
-
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDownOutside);
-    };
-  }, [showColumnPicker]);
 
   useEffect(() => {
     setSelectedDriverId(null);
@@ -1010,6 +1008,40 @@ const DispatcherWorkspace = () => {
       // Ignore corrupted local toolbar layout preferences.
     }
   }, [userPreferences?.dispatcherToolbar?.row1, userPreferences?.dispatcherToolbar?.row2, userPreferences?.dispatcherToolbar?.row3, userPreferencesLoading]);
+
+  useEffect(() => {
+    if (userPreferencesLoading) return;
+    try {
+      const parsed = userPreferences?.dispatcherToolbar?.toolbarVisibility && Object.keys(userPreferences.dispatcherToolbar.toolbarVisibility).length > 0
+        ? userPreferences.dispatcherToolbar.toolbarVisibility
+        : JSON.parse(window.localStorage.getItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY) || '{}');
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+      const normalized = Object.fromEntries(ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => [blockId, parsed[blockId] !== false]));
+      setToolbarBlockVisibility(normalized);
+    } catch {
+      // Ignore corrupted toolbar visibility preferences.
+    }
+  }, [userPreferences?.dispatcherToolbar?.toolbarVisibility, userPreferencesLoading]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, JSON.stringify(toolbarBlockVisibility));
+      if (!userPreferencesLoading) {
+        void saveUserPreferences({
+          ...userPreferences,
+          dispatcherToolbar: {
+            ...userPreferences?.dispatcherToolbar,
+            row1: toolbarRow1Order,
+            row2: toolbarRow2Order,
+            row3: toolbarRow3Order,
+            toolbarVisibility: toolbarBlockVisibility
+          }
+        }).catch(() => {});
+      }
+    } catch {
+      // Ignore localStorage write errors.
+    }
+  }, [saveUserPreferences, toolbarBlockVisibility, toolbarRow1Order, toolbarRow2Order, toolbarRow3Order, userPreferences, userPreferencesLoading]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
@@ -1170,6 +1202,17 @@ const DispatcherWorkspace = () => {
   }].filter(item => !dispatcherLayout[item.key]);
 
   const hasHiddenDispatcherPanels = hiddenDispatcherPanels.length > 0 && Object.values(dispatcherLayout).slice(1).some(Boolean);
+  const isToolbarBlockEnabled = blockId => toolbarBlockVisibility[canonicalizeToolbarBlockId(blockId)] !== false;
+  const hasAnyVisibleToolbarBlock = ALL_DISPATCHER_TOOLBAR_BLOCKS.some(blockId => isToolbarBlockEnabled(blockId));
+  const shouldShowToolbarRecovery = !isToolbarBlockEnabled('columns') || !hasAnyVisibleToolbarBlock;
+
+  const handleToggleToolbarBlockVisibility = (blockId, enabled) => {
+    const normalizedBlockId = canonicalizeToolbarBlockId(blockId);
+    setToolbarBlockVisibility(current => ({
+      ...current,
+      [normalizedBlockId]: enabled
+    }));
+  };
 
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
     const normalizedFromBlockId = canonicalizeToolbarBlockId(fromBlockId);
@@ -1270,7 +1313,8 @@ const DispatcherWorkspace = () => {
         dispatcherToolbar: {
           row1: normalizedRows.row1,
           row2: normalizedRows.row2,
-          row3: normalizedRows.row3
+          row3: normalizedRows.row3,
+          toolbarVisibility: toolbarBlockVisibility
         },
         dispatcherLayout: DEFAULT_DISPATCHER_LAYOUT,
         dispatcherVisibleTripColumns: DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS
@@ -1290,9 +1334,11 @@ const DispatcherWorkspace = () => {
     const defaultRow1Order = [...DISPATCHER_ROW1_DEFAULT_BLOCKS];
     const defaultRow2Order = [...DISPATCHER_ROW2_DEFAULT_BLOCKS];
     const defaultRow3Order = [...DISPATCHER_ROW3_DEFAULT_BLOCKS];
+    const defaultVisibility = Object.fromEntries(ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => [blockId, true]));
     setToolbarRow1Order(defaultRow1Order);
     setToolbarRow2Order(defaultRow2Order);
     setToolbarRow3Order(defaultRow3Order);
+    setToolbarBlockVisibility(defaultVisibility);
     setIsToolbarEditMode(false);
     clearDraggingToolbarBlockIds();
     try {
@@ -1301,9 +1347,11 @@ const DispatcherWorkspace = () => {
         dispatcherToolbar: {
           row1: defaultRow1Order,
           row2: defaultRow2Order,
-          row3: defaultRow3Order
+          row3: defaultRow3Order,
+          toolbarVisibility: defaultVisibility
         }
       }).catch(() => {});
+      window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, JSON.stringify(defaultVisibility));
       setStatusMessage('Dispatcher toolbar layout reseteado.');
     } catch {
       setStatusMessage('No se pudo resetear el dispatcher toolbar layout.');
@@ -1387,25 +1435,10 @@ const DispatcherWorkspace = () => {
       case 'toolbar-edit':
         return null;
       case 'columns':
-        return <div ref={columnPickerRef} className="position-relative d-inline-flex flex-column align-items-start">
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)} disabled={mapLocked}>
+        return <div className="d-inline-flex flex-column align-items-start">
+            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(true)} disabled={mapLocked}>
               Columns
             </Button>
-            {showColumnPicker ? <Card className="shadow position-absolute" style={{
-            zIndex: 80,
-            top: 'calc(100% + 8px)',
-            left: 0,
-            width: 240,
-            maxWidth: 'min(240px, calc(100vw - 32px))'
-          }}>
-                <CardBody className="p-3 text-dark" style={{ maxHeight: 340, overflowY: 'auto' }}>
-                  <div className="fw-semibold mb-2">Escoge que quieres ver</div>
-                  <div className="small text-muted mb-3">Estos cambios se guardan para la proxima vez.</div>
-                  <div className="d-flex flex-column gap-2">
-                    {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={option.key} type="switch" id={`dispatcher-column-${option.key}`} label={option.label} checked={visibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
-                  </div>
-                </CardBody>
-              </Card> : null}
           </div>;
       case 'trip-order':
         return null;
@@ -1989,6 +2022,18 @@ const DispatcherWorkspace = () => {
     }
     setDispatcherVisibleTripColumns(nextColumns);
     setStatusMessage('Vista de columnas actualizada.');
+  };
+
+  const allTripColumnKeys = DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key);
+
+  const handleShowAllTripColumns = () => {
+    setDispatcherVisibleTripColumns(allTripColumnKeys);
+    setStatusMessage('Todas las columnas visibles.');
+  };
+
+  const handleResetTripColumns = () => {
+    setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
+    setStatusMessage('Columnas restauradas a default.');
   };
 
   const handleTripColumnDrop = targetColumnKey => {
@@ -3080,6 +3125,11 @@ const DispatcherWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.tripsVisible ? 'block' : 'none', gridColumn: 3, gridRow: tripsPanelGridRow }}>
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 d-flex flex-column h-100">
+              {shouldShowToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 px-2 pt-2 flex-wrap">
+                  {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
+                  <Button variant="dark" size="sm" onClick={handleRestoreDispatcherLayout}>Restore toolbar</Button>
+                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(true)}>Show menu</Button>
+                </div> : null}
               <div className="d-flex flex-column align-items-stretch px-2 py-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                 {/* Row 1: Trip filters and selection */}
                 <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
@@ -3091,7 +3141,7 @@ const DispatcherWorkspace = () => {
                 moveToolbarBlockAcrossRows(draggedBlockId, 'row1');
                 clearDraggingToolbarBlockIds();
               }}>
-                  {toolbarRow1Order.map(blockId => <div
+                  {toolbarRow1Order.filter(blockId => isToolbarEditMode || isToolbarBlockEnabled(blockId)).map(blockId => <div
                     key={blockId}
                     draggable={isToolbarEditMode}
                     onDragStart={() => {
@@ -3131,7 +3181,7 @@ const DispatcherWorkspace = () => {
                 moveToolbarBlockAcrossRows(draggedBlockId, 'row2');
                 clearDraggingToolbarBlockIds();
               }}>
-                  {toolbarRow2Order.map(blockId => <div
+                  {toolbarRow2Order.filter(blockId => isToolbarEditMode || isToolbarBlockEnabled(blockId)).map(blockId => <div
                     key={blockId}
                     draggable={isToolbarEditMode}
                     onDragStart={() => {
@@ -3171,7 +3221,7 @@ const DispatcherWorkspace = () => {
                 moveToolbarBlockAcrossRows(draggedBlockId, 'row3');
                 clearDraggingToolbarBlockIds();
               }}>
-                  {toolbarRow3Order.map(blockId => <div
+                  {toolbarRow3Order.filter(blockId => isToolbarEditMode || isToolbarBlockEnabled(blockId)).map(blockId => <div
                     key={blockId}
                     draggable={isToolbarEditMode}
                     onDragStart={() => {
@@ -3461,6 +3511,41 @@ const DispatcherWorkspace = () => {
             </CardBody>
           </Card>
         </div>
+
+        <Modal show={showColumnPicker} onHide={() => setShowColumnPicker(false)} size="lg" centered scrollable>
+          <Modal.Header closeButton>
+            <Modal.Title>Trip Columns</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+              <div>
+                <div className="fw-semibold">Choose what you want to see in Dispatcher.</div>
+                <div className="small text-muted">Visible now: {orderedVisibleTripColumns.length} of {allTripColumnKeys.length} columns.</div>
+              </div>
+              <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
+            </div>
+            <div className="d-flex gap-2 mb-3 flex-wrap">
+              <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
+              <Button variant="outline-dark" size="sm" onClick={handleResetTripColumns}>Default</Button>
+            </div>
+            <div className="d-flex flex-column gap-2 mb-4">
+              {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`dispatcher-column-modal-${option.key}`} type="switch" id={`dispatcher-column-modal-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
+            </div>
+            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap pt-2 border-top">
+              <div>
+                <div className="fw-semibold">Toolbar buttons</div>
+                <div className="small text-muted">Hide or show each Dispatcher toolbar block. Hidden blocks stay hidden after refresh until you enable them again.</div>
+              </div>
+              <Badge bg={hasAnyVisibleToolbarBlock ? 'secondary' : 'danger'}>{ALL_DISPATCHER_TOOLBAR_BLOCKS.filter(blockId => isToolbarBlockEnabled(blockId)).length}/{ALL_DISPATCHER_TOOLBAR_BLOCKS.length}</Badge>
+            </div>
+            <div className="d-flex flex-column gap-2">
+              {ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => <Form.Check key={`dispatcher-toolbar-visibility-${blockId}`} type="switch" id={`dispatcher-toolbar-visibility-${blockId}`} label={DISPATCHER_TOOLBAR_BLOCK_LABELS[blockId] || blockId} checked={isToolbarBlockEnabled(blockId)} onChange={event => handleToggleToolbarBlockVisibility(blockId, event.target.checked)} />)}
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="outline-secondary" onClick={() => setShowColumnPicker(false)}>Close</Button>
+          </Modal.Footer>
+        </Modal>
 
         <Modal show={showLayoutModal} onHide={() => setShowLayoutModal(false)} centered>
           <Modal.Header closeButton>
