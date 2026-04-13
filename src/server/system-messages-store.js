@@ -54,6 +54,7 @@ export const readSystemMessages = async () => {
     await ensureTable();
     const result = await query(`SELECT * FROM system_messages ORDER BY created_at DESC LIMIT 500`);
     messages = result.rows.map(row => ({
+      ...row.data,
       id: row.id,
       driverId: row.driver_id,
       type: row.type,
@@ -62,8 +63,7 @@ export const readSystemMessages = async () => {
       body: row.body,
       priority: row.priority,
       resolvedAt: row.resolved_at,
-      createdAt: row.created_at,
-      ...row.data
+      createdAt: row.created_at
     }));
   } catch {
     messages = await readLocalSystemMessages();
@@ -148,7 +148,18 @@ export const resolveSystemMessageById = async id => {
     const result = await query(`SELECT * FROM system_messages WHERE id = $1`, [id]);
     const row = result.rows[0];
     if (!row) return null;
-    return { ...row.data, id: row.id, status: 'resolved', resolvedAt };
+    return {
+      ...row.data,
+      id: row.id,
+      driverId: row.driver_id,
+      type: row.type,
+      subject: row.subject,
+      body: row.body,
+      priority: row.priority,
+      status: 'resolved',
+      resolvedAt,
+      createdAt: row.created_at
+    };
   } catch {
     const messages = await readLocalSystemMessages();
     const resolvedAt = new Date().toISOString();
@@ -170,6 +181,7 @@ export const clearSystemMessageMediaById = async id => {
   if (!row) return null;
 
   const current = {
+    ...row.data,
     id: row.id,
     driverId: row.driver_id,
     type: row.type,
@@ -178,8 +190,7 @@ export const clearSystemMessageMediaById = async id => {
     body: row.body,
     priority: row.priority,
     resolvedAt: row.resolved_at,
-    createdAt: row.created_at,
-    ...row.data
+    createdAt: row.created_at
   };
 
   const next = {
@@ -237,7 +248,18 @@ export const getActiveMessageForDriver = async (driverId, type) => {
     );
     const row = result.rows[0];
     if (!row) return null;
-    return { ...row.data, id: row.id, driverId: row.driver_id, type: row.type, status: row.status };
+    return {
+      ...row.data,
+      id: row.id,
+      driverId: row.driver_id,
+      type: row.type,
+      status: row.status,
+      subject: row.subject,
+      body: row.body,
+      priority: row.priority,
+      resolvedAt: row.resolved_at,
+      createdAt: row.created_at
+    };
   } catch {
     return (await readLocalSystemMessages()).find(message => String(message?.driverId || '').trim() === String(driverId || '').trim() && String(message?.type || '').trim() === String(type || '').trim() && String(message?.status || '').trim() === 'active') || null;
   }

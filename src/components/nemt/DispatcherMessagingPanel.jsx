@@ -1071,6 +1071,7 @@ const DispatcherMessagingPanel = ({
           <Badge bg="warning" text="dark">{unreadCount} unread</Badge>
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => onOpenLayout?.()}>Layout</Button>
+          <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowPanelSettings(true)}>Sound</Button>
         </div>
         {!hideThreadList ? <>
             <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 140, maxWidth: 250 }}>
