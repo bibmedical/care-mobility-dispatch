@@ -269,10 +269,6 @@ const UserManagementWorkspace = () => {
           }}>
               <IconifyIcon icon="iconoir:edit-pencil" className="me-2" />Edit
             </Button>
-            <Button className="rounded-pill" style={userShellStyles.button} onClick={() => router.push('/blacklist')}>
-              Black List
-              <span className="badge bg-danger ms-2">{activeBlacklistCount}</span>
-            </Button>
           </div>
           <div className="d-flex align-items-center gap-2 ms-auto">
             <div className="position-relative">
@@ -304,6 +300,13 @@ const UserManagementWorkspace = () => {
             </Form.Select>
             <Button className="rounded-pill" style={userShellStyles.deleteButton} onClick={handleDelete} disabled={saving}>
               <IconifyIcon icon="iconoir:trash" className="me-2" />Delete
+            </Button>
+            <Button className="rounded-pill" style={userShellStyles.button} onClick={() => router.push('/confirmation')}>
+              <IconifyIcon icon="iconoir:check-circle" className="me-2" />Confirmation
+            </Button>
+            <Button className="rounded-pill" style={userShellStyles.button} onClick={() => router.push('/blacklist')}>
+              <IconifyIcon icon="iconoir:warning-circle" className="me-2" />Black List
+              <span className="badge bg-danger ms-2">{activeBlacklistCount}</span>
             </Button>
           </div>
         </div>
