@@ -1,6 +1,7 @@
 'use client';
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import ConfirmationWorkspace from '@/components/nemt/ConfirmationWorkspace';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens, getVehiclePrimaryServiceType } from '@/helpers/nemt-admin-model';
 import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
@@ -213,6 +214,10 @@ const TRIP_DASHBOARD_FOCUS_RIGHT_MAX_SPLIT = 84;
 const TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT = 58;
 const TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT = 33;
 const TRIP_DASHBOARD_DEFAULT_ROW_SPLIT = 68;
+const TRIP_DASHBOARD_CENTER_PANEL_MODES = {
+  trips: 'trips',
+  confirmation: 'confirmation'
+};
 
 const TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS = [...TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS, ...TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS, ...TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS];
 
@@ -765,6 +770,7 @@ const TripDashboardWorkspace = () => {
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showToolbarTools, setShowToolbarTools] = useState(false);
+  const [centerPanelMode, setCenterPanelMode] = useState(TRIP_DASHBOARD_CENTER_PANEL_MODES.trips);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [topButtonsRowCollapsed, setTopButtonsRowCollapsed] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
@@ -3629,16 +3635,15 @@ const TripDashboardWorkspace = () => {
               Excel Loader
             </Button>
             <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-            if (typeof window !== 'undefined') {
-              const confirmationWindow = window.open('/confirmation', '_blank', 'noopener,noreferrer');
-              if (confirmationWindow) {
-                setStatusMessage('Opening Confirmation in a new tab.');
-                return;
-              }
-            }
-            setStatusMessage('Popup blocked. Staying in Trip Dashboard.');
+            setShowColumnPicker(false);
+            setShowToolbarTools(false);
+            setCenterPanelMode(current => {
+              const nextMode = current === TRIP_DASHBOARD_CENTER_PANEL_MODES.confirmation ? TRIP_DASHBOARD_CENTER_PANEL_MODES.trips : TRIP_DASHBOARD_CENTER_PANEL_MODES.confirmation;
+              setStatusMessage(nextMode === TRIP_DASHBOARD_CENTER_PANEL_MODES.confirmation ? 'Confirmation opened inside Trip Dashboard.' : 'Trips table restored in Trip Dashboard.');
+              return nextMode;
+            });
           }}>
-              Confirmation
+              {centerPanelMode === TRIP_DASHBOARD_CENTER_PANEL_MODES.confirmation ? 'Trips' : 'Confirmation'}
             </Button>
             {!isFocusRightLayout ? <Form.Control size="sm" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" style={{ width: 180 }} /> : null}
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} title="Manage Drivers" aria-label="Manage Drivers" onClick={() => {
@@ -3953,7 +3958,26 @@ const TripDashboardWorkspace = () => {
               </CardBody>
             </Card> : <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
             <CardBody className="p-0 d-flex flex-column h-100">
-              {(toolbarCollapsed && false) ? <div className="d-flex align-items-center justify-content-between p-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+              {centerPanelMode === TRIP_DASHBOARD_CENTER_PANEL_MODES.confirmation ? <div className="d-flex flex-column h-100 overflow-hidden">
+                  <div className="d-flex align-items-center justify-content-between gap-2 p-3 border-bottom flex-shrink-0" style={tripDashboardToolbarShellStyle}>
+                    <div>
+                      <div className="fw-semibold">Confirmation</div>
+                      <div className="small" style={mutedThemeTextStyle}>Manage confirmation status, send messages, and update trips without leaving Trip Dashboard.</div>
+                    </div>
+                    <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+                  setCenterPanelMode(TRIP_DASHBOARD_CENTER_PANEL_MODES.trips);
+                  setStatusMessage('Trips table restored in Trip Dashboard.');
+                }}>
+                      Back to Trips
+                    </Button>
+                  </div>
+                  <div className="flex-grow-1 overflow-auto p-3" style={{ minHeight: 0 }}>
+                    <ConfirmationWorkspace embedded onRequestClose={() => {
+                  setCenterPanelMode(TRIP_DASHBOARD_CENTER_PANEL_MODES.trips);
+                  setStatusMessage('Trips table restored in Trip Dashboard.');
+                }} />
+                  </div>
+                </div> : (toolbarCollapsed && false) ? <div className="d-flex align-items-center justify-content-between p-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
                   <button type="button" onClick={() => setToolbarCollapsed(false)} style={{
                 borderRadius: 10,
                 border: '1px solid rgba(15, 23, 42, 0.25)',
@@ -4780,7 +4804,7 @@ const TripDashboardWorkspace = () => {
           .trip-dashboard-sheet-wrap {
             background: #f8fbf8;
             scrollbar-width: thin;
-            scrollbar-color: #dc2626 transparent;
+            scrollbar-color: #16a34a transparent;
           }
 
           .trip-dashboard-sheet-wrap::-webkit-scrollbar {
@@ -4793,7 +4817,7 @@ const TripDashboardWorkspace = () => {
           }
 
           .trip-dashboard-sheet-wrap::-webkit-scrollbar-thumb {
-            background: #dc2626;
+            background: #16a34a;
             border-radius: 999px;
           }
 
@@ -4866,11 +4890,11 @@ const TripDashboardWorkspace = () => {
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-wrap {
             background: #111827;
-            scrollbar-color: #ef4444 transparent;
+            scrollbar-color: #22c55e transparent;
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-wrap::-webkit-scrollbar-thumb {
-            background: #ef4444;
+            background: #22c55e;
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table thead th {

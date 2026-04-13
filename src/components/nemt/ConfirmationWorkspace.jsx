@@ -491,7 +491,7 @@ const isPatientExclusionActiveForDate = (exclusion, dateKey, fallbackDateKey) =>
   return false;
 };
 
-const ConfirmationWorkspace = () => {
+const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
   const { themeMode } = useLayoutContext();
   const surfaceStyles = useMemo(() => buildSurfaceStyles(themeMode === 'light'), [themeMode]);
   const router = useRouter();
@@ -670,9 +670,11 @@ const ConfirmationWorkspace = () => {
   const handleSummaryCardClick = nextStatusFilter => {
     setResultViewMode('trips');
     setStatusFilter(nextStatusFilter);
-    window.setTimeout(() => {
-      resultsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 40);
+    if (!embedded) {
+      window.setTimeout(() => {
+        resultsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 40);
+    }
   };
 
   const patientHistoryRows = useMemo(() => {
@@ -2388,13 +2390,15 @@ const ConfirmationWorkspace = () => {
   };
 
   return <>
-      <PageTitle title="Confirmation" subName="Operations" />
+      {!embedded ? <>
+          <PageTitle title="Confirmation" subName="Operations" />
 
-      <div className="d-flex justify-content-end mb-3">
-        <Button style={surfaceStyles.button} onClick={() => router.push('/integrations/sms')}>
-          SMS
-        </Button>
-      </div>
+          <div className="d-flex justify-content-end mb-3">
+            <Button style={surfaceStyles.button} onClick={() => router.push('/integrations/sms')}>
+              SMS
+            </Button>
+          </div>
+        </> : null}
 
       <Row className="g-3 mb-3">
         <Col md={6} xl={2}>
@@ -2587,8 +2591,9 @@ const ConfirmationWorkspace = () => {
               <div className="text-secondary small">Aqui puedes ver que viajes ya recibieron SMS, cuales fueron confirmados, cuales pidieron llamada y cuales se cancelaron por respuesta del paciente.</div>
             </div>
             <div className="d-flex flex-wrap gap-2">
-              <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => router.push('/dispatcher')}>Open Dispatcher</Button>
-              <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => router.push('/integrations/sms')}>Open SMS Integration</Button>
+              {embedded && typeof onRequestClose === 'function' ? <Button style={surfaceStyles.button} className="rounded-pill" onClick={onRequestClose}>Back to Trips</Button> : null}
+              {!embedded ? <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => router.push('/dispatcher')}>Open Dispatcher</Button> : null}
+              {!embedded ? <Button style={surfaceStyles.button} className="rounded-pill" onClick={() => router.push('/integrations/sms')}>Open SMS Integration</Button> : null}
             </div>
           </div>
         </CardBody>
