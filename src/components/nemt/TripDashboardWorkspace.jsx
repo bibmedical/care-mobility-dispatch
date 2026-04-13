@@ -2297,15 +2297,7 @@ const TripDashboardWorkspace = () => {
       setStatusMessage(`Trip ${trip.id} changed to Not Sent.`);
       return;
     }
-    applyTripConfirmationState(trip, {
-      status: 'Confirmed',
-      provider: 'call',
-      methodCode: 'C',
-      message: 'Confirmed manually in Trip Dashboard',
-      eventType: 'confirm-manual',
-      noteLine: `[CONFIRM] ${new Date().toLocaleString()}: Confirmed manually in Trip Dashboard.`
-    });
-    setStatusMessage(`Trip ${trip.id} confirmed manually.`);
+    handleOpenConfirmationMethod([trip], trip);
   };
 
   const handleOpenTripUpdateModal = trip => {
