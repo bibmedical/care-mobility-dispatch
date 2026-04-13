@@ -14,6 +14,16 @@ const offlineDriverBadgeStyle = {
   color: '#475569'
 };
 
+const listButtonBaseStyle = {
+  width: '100%',
+  borderTop: 'none',
+  borderRight: 'none',
+  borderBottom: '1px solid #e2e8f0',
+  borderLeft: 'none',
+  textAlign: 'left',
+  cursor: 'pointer'
+};
+
 const mergeThreads = (threads, drivers) => {
   const existingThreads = Array.isArray(threads) ? threads : [];
   const byDriverId = new Map(existingThreads.map(thread => [thread.driverId, thread]));
@@ -25,7 +35,7 @@ const mergeThreads = (threads, drivers) => {
 
 const LeftSideBar = () => {
   const pathname = usePathname();
-  const isDispatcherPage = pathname === '/dispatcher';
+  const isDispatcherPage = String(pathname || '').toLowerCase().startsWith('/dispatcher');
   const {
     drivers,
     trips,
@@ -90,7 +100,7 @@ const LeftSideBar = () => {
     return [...filtered].sort((leftDriver, rightDriver) => String(leftDriver?.name || '').localeCompare(String(rightDriver?.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
   }, [drivers, driverSearch]);
 
-  return <div className="startbar d-print-none" style={{
+  return <div className="nemt-left-sidebar d-print-none" style={{
     display: 'flex',
     flexDirection: 'column',
     width: collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH,
@@ -151,17 +161,13 @@ const LeftSideBar = () => {
                   markDispatchThreadRead?.(thread.driverId);
                 }}
                   style={{
-                  width: '100%',
-                  border: 'none',
-                  borderBottom: '1px solid #e2e8f0',
+                  ...listButtonBaseStyle,
                   borderLeft: `4px solid ${driverColor}`,
                   background: isSelected ? withDriverAlpha(driverColor, 0.18) : '#f8fafc',
-                  textAlign: 'left',
                   padding: '0.6rem 0.75rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 4,
-                  cursor: 'pointer'
+                  gap: 4
                 }}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -205,16 +211,12 @@ const LeftSideBar = () => {
                   type="button"
                   onClick={() => setSelectedDriverId(driver.id)}
                   style={{
-                  width: '100%',
-                  border: 'none',
-                  borderBottom: '1px solid #e2e8f0',
+                  ...listButtonBaseStyle,
                   background: isSelected ? '#dbeafe' : '#f8fafc',
-                  textAlign: 'left',
                   padding: '0.7rem 0.75rem',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 6,
-                  cursor: 'pointer'
+                  gap: 6
                 }}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>

@@ -3,12 +3,15 @@
 import LeftSideBar from '@/components/layouts/LeftSideBar';
 import { usePathname } from 'next/navigation';
 
-const SIDEBAR_ENABLED_PATHS = new Set(['/trip-dashboard', '/dispatcher']);
+const isSidebarEnabledPath = pathname => {
+  const normalizedPath = String(pathname || '').toLowerCase();
+  return normalizedPath === '/trip-dashboard' || normalizedPath.startsWith('/trip-dashboard/') || normalizedPath === '/dispatcher' || normalizedPath.startsWith('/dispatcher/');
+};
 
 const AdminSidebarGate = () => {
   const pathname = usePathname();
 
-  if (!SIDEBAR_ENABLED_PATHS.has(pathname)) {
+  if (!isSidebarEnabledPath(pathname)) {
     return null;
   }
 
