@@ -1527,16 +1527,47 @@ const TripDashboardWorkspace = () => {
             {(puCityFilter || doCityFilter || pickupZipFilter || dropoffZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setDoCityFilter(''); setPickupZipFilter(''); setDropoffZipFilter(''); setZipFilter(''); }} title="Clear city/ZIP filters" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
           </div>;
       case 'theme-toggle':
-        return <Button
-          variant="outline-dark"
-          size="sm"
-          style={toolbarButtonStyle}
-          onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')}
-          title={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}
-          aria-label={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}
-        >
-            <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
-          </Button>;
+        return <div className="d-flex align-items-center gap-2 position-relative" ref={columnPickerRef}>
+            <Button
+              variant="outline-dark"
+              size="sm"
+              style={toolbarButtonStyle}
+              onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')}
+              title={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              aria-label={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}
+            >
+              <i className={themeMode === 'dark' ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
+            </Button>
+            <Button
+              variant={showColumnPicker ? 'dark' : 'outline-dark'}
+              size="sm"
+              style={{ ...toolbarButtonStyle, minWidth: 86, fontWeight: 600 }}
+              onClick={() => {
+                setShowColumnPicker(current => !current);
+                setShowToolbarTools(false);
+              }}
+              title="Choose trip columns"
+              aria-label="Choose trip columns"
+            >
+              Columns
+            </Button>
+            {showColumnPicker ? <Card className="shadow position-absolute end-0" style={{ zIndex: 120, width: 280, top: 'calc(100% + 8px)' }}>
+                <CardBody className="p-3" style={{ color: isDarkTheme ? '#e5e7eb' : '#111827', backgroundColor: isDarkTheme ? '#0f172a' : '#ffffff' }}>
+                  <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                    <div className="fw-semibold">Columns</div>
+                    <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
+                  </div>
+                  <div className="small mb-3" style={mutedThemeTextStyle}>Mark the trip columns you want to show.</div>
+                  <div className="d-flex gap-2 mb-3">
+                    <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
+                    <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default</Button>
+                  </div>
+                  <div className="d-flex flex-column gap-2" style={{ maxHeight: 340, overflowY: 'auto' }}>
+                    {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+                  </div>
+                </CardBody>
+              </Card> : null}
+          </div>;
       case 'metric-miles':
         return routeMetrics?.distanceMiles != null ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
       case 'metric-duration':
@@ -4078,30 +4109,6 @@ const TripDashboardWorkspace = () => {
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
                 })}
-                  <div className="ms-auto position-relative" ref={columnPickerRef}>
-                    <Button variant={showColumnPicker ? 'dark' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-                  setShowColumnPicker(current => !current);
-                  setShowToolbarTools(false);
-                }}>
-                      Columns
-                    </Button>
-                    {showColumnPicker ? <Card className="shadow position-absolute end-0 mt-2" style={{ zIndex: 90, width: 260 }}>
-                        <CardBody className="p-3" style={{ color: isDarkTheme ? '#e5e7eb' : '#111827', backgroundColor: isDarkTheme ? '#0f172a' : '#ffffff' }}>
-                          <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
-                            <div className="fw-semibold">Columns</div>
-                            <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
-                          </div>
-                          <div className="small mb-3" style={mutedThemeTextStyle}>Mark the trip columns you want to show.</div>
-                          <div className="d-flex gap-2 mb-3">
-                            <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
-                            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default</Button>
-                          </div>
-                          <div className="d-flex flex-column gap-2" style={{ maxHeight: 340, overflowY: 'auto' }}>
-                            {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
-                          </div>
-                        </CardBody>
-                      </Card> : null}
-                  </div>
                 </div>
                 
                 {/* Bottom toolbar line */}
