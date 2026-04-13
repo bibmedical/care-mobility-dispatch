@@ -2286,6 +2286,22 @@ const TripDashboardWorkspace = () => {
     return confirmationStatus;
   };
 
+  const getTripConfirmationActionLabel = (trip, blockingState) => {
+    const confirmationLabel = getTripConfirmationDisplayLabel(trip, blockingState);
+    if (confirmationLabel === 'Needs Call') return 'Call Again';
+    if (confirmationLabel === 'Disconnected') return 'Disconnected';
+    return 'Confirm';
+  };
+
+  const getTripConfirmationActionVariant = (trip, blockingState) => {
+    const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
+    const confirmationLabel = getTripConfirmationDisplayLabel(trip, blockingState);
+    if (confirmationStatus === 'Confirmed') return 'success';
+    if (confirmationLabel === 'Needs Call') return 'warning';
+    if (confirmationLabel === 'Disconnected') return 'secondary';
+    return 'outline-success';
+  };
+
   const applyTripConfirmationState = (trip, { status, provider = '', methodCode = '', message = '', eventType = 'manual', noteLine = '' }) => {
     const nowIso = new Date().toISOString();
     const nextNotes = noteLine ? [String(trip?.notes || '').trim(), noteLine].filter(Boolean).join('\n') : undefined;
@@ -4924,8 +4940,8 @@ const TripDashboardWorkspace = () => {
                         </td>
                         {showConfirmationTools ? <td style={{ width: columnWidths.notes ?? 240, minWidth: columnWidths.notes ?? 240, whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1 flex-nowrap" style={{ minWidth: 220, whiteSpace: 'nowrap' }}>
-                            <Button variant={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Confirmed' ? 'success' : getTripConfirmationDisplayLabel(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'warning' : 'outline-success'} size="sm" onClick={() => handleManualConfirm(row.trip)} style={{ minWidth: 104, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                              {getTripConfirmationDisplayLabel(row.trip, tripBlockingMap.get(row.trip.id)) === 'Needs Call' ? 'Call Again' : 'Confirm'}
+                            <Button variant={getTripConfirmationActionVariant(row.trip, tripBlockingMap.get(row.trip.id))} size="sm" onClick={() => handleManualConfirm(row.trip)} style={{ minWidth: 104, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              {getTripConfirmationActionLabel(row.trip, tripBlockingMap.get(row.trip.id))}
                             </Button>
                             <Button variant="outline-danger" size="sm" onClick={() => handleCancelWithNote(row.trip)} style={{ width: 72, whiteSpace: 'nowrap' }}>
                               Cancel
