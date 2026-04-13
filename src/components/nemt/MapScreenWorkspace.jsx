@@ -121,6 +121,29 @@ const searchAddress = async query => {
   };
 };
 
+const loadRouteGeometry = async coordinatesList => {
+  const coordinates = (Array.isArray(coordinatesList) ? coordinatesList : []).filter(item => Array.isArray(item) && item.length === 2);
+  if (coordinates.length < 2) return null;
+
+  const coordinateQuery = coordinates.map(([latitude, longitude]) => `${latitude},${longitude}`).join(';');
+  const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinateQuery)}`, {
+    cache: 'no-store'
+  });
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Unable to load route.');
+  }
+
+  return {
+    geometry: Array.isArray(payload?.geometry) ? payload.geometry : coordinates,
+    provider: String(payload?.provider || 'route'),
+    distanceMiles: Number.isFinite(payload?.distanceMiles) ? payload.distanceMiles : null,
+    durationMinutes: Number.isFinite(payload?.durationMinutes) ? payload.durationMinutes : null,
+    isFallback: payload?.isFallback === true
+  };
+};
+
 const MapScreenWorkspace = () => {
   const [originQuery, setOriginQuery] = useState('');
   const [destinationQuery, setDestinationQuery] = useState('');
@@ -128,10 +151,11 @@ const MapScreenWorkspace = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [originResult, setOriginResult] = useState(null);
   const [destinationResult, setDestinationResult] = useState(null);
+  const [routeResult, setRouteResult] = useState(null);
   const [mapProviderPreference, setMapProviderPreference] = useState('auto');
 
   const mapTileConfig = useMemo(() => getMapTileConfig(mapProviderPreference), [mapProviderPreference]);
-  const mapPoints = useMemo(() => [originResult?.coordinates, destinationResult?.coordinates].filter(Boolean), [destinationResult?.coordinates, originResult?.coordinates]);
+  const mapPoints = useMemo(() => routeResult?.geometry?.length > 1 ? routeResult.geometry : [originResult?.coordinates, destinationResult?.coordinates].filter(Boolean), [destinationResult?.coordinates, originResult?.coordinates, routeResult?.geometry]);
 
   const handleSearch = async event => {
     event.preventDefault();
@@ -142,6 +166,7 @@ const MapScreenWorkspace = () => {
       setErrorMessage('Enter at least one address in origin or destination.');
       setOriginResult(null);
       setDestinationResult(null);
+      setRouteResult(null);
       return;
     }
 
@@ -154,11 +179,17 @@ const MapScreenWorkspace = () => {
         trimmedDestinationQuery ? searchAddress(trimmedDestinationQuery) : Promise.resolve(null)
       ]);
 
+      const nextRouteResult = nextOriginResult?.coordinates && nextDestinationResult?.coordinates
+        ? await loadRouteGeometry([nextOriginResult.coordinates, nextDestinationResult.coordinates])
+        : null;
+
       setOriginResult(nextOriginResult);
       setDestinationResult(nextDestinationResult);
+      setRouteResult(nextRouteResult);
     } catch (error) {
       setOriginResult(null);
       setDestinationResult(null);
+      setRouteResult(null);
       setErrorMessage(error instanceof Error ? error.message : 'Address not found.');
     } finally {
       setLoading(false);
@@ -170,6 +201,7 @@ const MapScreenWorkspace = () => {
     setDestinationQuery('');
     setOriginResult(null);
     setDestinationResult(null);
+    setRouteResult(null);
     setErrorMessage('');
   };
 
@@ -205,6 +237,7 @@ const MapScreenWorkspace = () => {
               </Form.Select>
               {originResult ? <Badge bg="success">Origin: {originResult.provider}</Badge> : null}
               {destinationResult ? <Badge bg="primary">Destination: {destinationResult.provider}</Badge> : null}
+              {routeResult ? <Badge bg={routeResult.isFallback ? 'warning' : 'dark'} text={routeResult.isFallback ? 'dark' : 'light'}>Route: {routeResult.provider}</Badge> : null}
             </div>
 
             {errorMessage ? <div className="small text-danger fw-semibold">{errorMessage}</div> : null}
@@ -226,6 +259,11 @@ const MapScreenWorkspace = () => {
                     <div className="d-flex gap-2 flex-wrap">
                       <Button as="a" href={buildExternalMapUrl(destinationResult.coordinates)} target="_blank" rel="noreferrer" variant="outline-primary" size="sm">Open Destination</Button>
                     </div>
+                  </div> : null}
+
+                {routeResult ? <div className="d-flex gap-2 flex-wrap small text-muted">
+                    <span>{routeResult.distanceMiles != null ? `${routeResult.distanceMiles.toFixed(1)} miles` : 'Miles unavailable'}</span>
+                    <span>{routeResult.durationMinutes != null ? `${Math.round(routeResult.durationMinutes)} min` : 'ETA unavailable'}</span>
                   </div> : null}
               </div> : null}
           </Form>
@@ -255,7 +293,7 @@ const MapScreenWorkspace = () => {
                   <div className="small text-muted">{destinationResult.coordinates[0].toFixed(6)}, {destinationResult.coordinates[1].toFixed(6)}</div>
                 </Popup>
               </CircleMarker> : null}
-            {originResult && destinationResult ? <Polyline positions={[originResult.coordinates, destinationResult.coordinates]} pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.7, dashArray: '8 8' }} /> : null}
+            {routeResult?.geometry?.length > 1 ? <Polyline positions={routeResult.geometry} pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.78, dashArray: routeResult.isFallback ? '8 8' : undefined }} /> : originResult && destinationResult ? <Polyline positions={[originResult.coordinates, destinationResult.coordinates]} pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.7, dashArray: '8 8' }} /> : null}
           </MapContainer>
         </div>
       </div>
