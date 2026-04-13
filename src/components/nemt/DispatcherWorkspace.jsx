@@ -911,6 +911,8 @@ const DispatcherWorkspace = () => {
   const tripTableElementRef = useRef(null);
   const tripTableScrollSyncRef = useRef(false);
   const hasHydratedDefaultLayoutRef = useRef(false);
+  const toolbarVisibilityHydratedRef = useRef(false);
+  const lastSavedToolbarVisibilityRef = useRef('');
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
   const [tripTableScrollLeft, setTripTableScrollLeft] = useState(0);
   const [tripTableMaxScrollLeft, setTripTableMaxScrollLeft] = useState(0);
@@ -1015,8 +1017,12 @@ const DispatcherWorkspace = () => {
       const parsed = userPreferences?.dispatcherToolbar?.toolbarVisibility && Object.keys(userPreferences.dispatcherToolbar.toolbarVisibility).length > 0
         ? userPreferences.dispatcherToolbar.toolbarVisibility
         : JSON.parse(window.localStorage.getItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY) || '{}');
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
-      const normalized = Object.fromEntries(ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => [blockId, parsed[blockId] !== false]));
+      const parsedVisibility = !parsed || typeof parsed !== 'object' || Array.isArray(parsed)
+        ? {}
+        : Object.fromEntries(Object.entries(parsed).map(([key, value]) => [canonicalizeToolbarBlockId(key), value]));
+      const normalized = Object.fromEntries(ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => [blockId, parsedVisibility[blockId] !== false]));
+      lastSavedToolbarVisibilityRef.current = JSON.stringify(normalized);
+      toolbarVisibilityHydratedRef.current = true;
       setToolbarBlockVisibility(normalized);
     } catch {
       // Ignore corrupted toolbar visibility preferences.
@@ -1025,7 +1031,11 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, JSON.stringify(toolbarBlockVisibility));
+      const serializedToolbarVisibility = JSON.stringify(toolbarBlockVisibility);
+      window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, serializedToolbarVisibility);
+      if (!toolbarVisibilityHydratedRef.current) return;
+      if (lastSavedToolbarVisibilityRef.current === serializedToolbarVisibility) return;
+      lastSavedToolbarVisibilityRef.current = serializedToolbarVisibility;
       if (!userPreferencesLoading) {
         void saveUserPreferences({
           ...userPreferences,

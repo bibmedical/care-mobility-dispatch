@@ -4535,48 +4535,6 @@ const TripDashboardWorkspace = () => {
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
                 })}
-                  {toolbarRow3Order.includes('theme-toggle') ? (() => {
-                  const blockId = 'theme-toggle';
-                  const renderedBlock = renderToolbarRow3Block(blockId);
-                  const shouldRenderBlock = isToolbarEditMode || isToolbarBlockEnabled(blockId);
-                  return <div className="ms-auto d-flex align-items-center">
-                        <div
-                          key={blockId}
-                          draggable={isToolbarEditMode}
-                          onDragStart={() => {
-                          setDraggingToolbarBlockId(null);
-                          setDraggingToolbarRow2BlockId(null);
-                          setDraggingToolbarRow3BlockId(blockId);
-                        }}
-                          onDragOver={event => {
-                          if (!isToolbarEditMode) return;
-                          event.preventDefault();
-                        }}
-                          onDrop={() => {
-                          if (!isToolbarEditMode) return;
-                          const draggedBlockId = getActiveDraggedToolbarBlockId();
-                          moveToolbarBlockAcrossRows(draggedBlockId, 'row3', blockId);
-                        }}
-                          onDragEnd={clearDraggingToolbarBlockIds}
-                          style={isToolbarEditMode ? {
-                          border: '1px dashed rgba(8, 19, 26, 0.55)',
-                          borderRadius: 8,
-                          padding: '2px 4px',
-                          cursor: 'move',
-                          backgroundColor: getActiveDraggedToolbarBlockId() === blockId ? 'rgba(8, 19, 26, 0.12)' : 'rgba(255, 255, 255, 0.25)',
-                          flexShrink: 0,
-                          display: 'flex',
-                          alignItems: 'center'
-                        } : {
-                          flexShrink: 0,
-                          display: 'flex',
-                          alignItems: 'center'
-                        }}
-                        >
-                          {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
-                        </div>
-                      </div>;
-                })() : null}
                 </div>
                 
                 {/* Bottom toolbar line */}
@@ -4593,12 +4551,9 @@ const TripDashboardWorkspace = () => {
                 clearDraggingToolbarBlockIds();
               }}>
                   {toolbarRow3Order.map(blockId => {
-                  if (blockId === 'theme-toggle') {
-                    return null;
-                  }
                   const renderedBlock = renderToolbarRow3Block(blockId);
                   const shouldRenderBlock = isToolbarEditMode || isToolbarBlockEnabled(blockId);
-                  return <div
+                  const blockNode = <div
                     key={blockId}
                     draggable={isToolbarEditMode}
                     onDragStart={() => {
@@ -4633,6 +4588,7 @@ const TripDashboardWorkspace = () => {
                   >
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
+                  return blockId === 'theme-toggle' ? <div key={`${blockId}-right`} className="ms-auto d-flex align-items-center">{blockNode}</div> : blockNode;
                 })}
                 </div>
               </div>}
