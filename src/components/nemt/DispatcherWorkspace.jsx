@@ -34,11 +34,11 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 };
 
 const DISPATCHER_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW1_BLOCKS__';
-const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'selected-count', 'day-summary'];
+const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'day-summary'];
 const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
-const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'toolbar-edit', 'columns', 'trip-order'];
+const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'columns'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
-const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['zip-filter', 'route-filter', 'table-view-mode', 'metric-miles', 'metric-duration'];
+const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['table-view-mode', 'metric-miles', 'metric-duration'];
 const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
 const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
 
@@ -1356,7 +1356,7 @@ const DispatcherWorkspace = () => {
       case 'driver-assigned':
         return selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null;
       case 'selected-count':
-        return <Badge bg={selectedTripIds.length > 0 ? 'dark' : 'light'} text={selectedTripIds.length > 0 ? 'light' : 'dark'}>{selectedTripIds.length} selected trips</Badge>;
+        return null;
       case 'day-summary':
         return <div className="d-flex align-items-center" style={{ border: '1px solid rgba(8,19,26,0.25)', borderRadius: 6, overflow: 'hidden' }} title={`Day summary for ${daySummaryMetrics.dateKey}`}>
             <div className="px-2 py-1" style={{ backgroundColor: '#e2e8f0', minWidth: 74 }}>
@@ -1385,10 +1385,7 @@ const DispatcherWorkspace = () => {
             <Badge bg="secondary">{liveDrivers} live</Badge>
           </>;
       case 'toolbar-edit':
-        return <>
-            {isToolbarEditMode ? <Button variant="dark" size="sm" onClick={handleSaveToolbarLayout}>Save Toolbar</Button> : <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setIsToolbarEditMode(true)} disabled={mapLocked}>Edit Toolbar</Button>}
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRestoreLayout} disabled={mapLocked}>Restore Factory</Button>
-          </>;
+        return null;
       case 'columns':
         return <div ref={columnPickerRef} className="position-relative d-inline-flex flex-column align-items-start">
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(current => !current)} disabled={mapLocked}>
@@ -1411,9 +1408,7 @@ const DispatcherWorkspace = () => {
               </Card> : null}
           </div>;
       case 'trip-order':
-        return <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleTripOrderModeToggle} disabled={mapLocked}>
-            {tripOrderMode === 'time' ? 'Como Vienen' : 'Por Hora'}
-          </Button>;
+        return null;
       case 'actions':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <Button
@@ -1474,23 +1469,9 @@ const DispatcherWorkspace = () => {
   const renderToolbarRow3Block = blockId => {
     switch (canonicalizeToolbarBlockId(blockId)) {
       case 'zip-filter':
-        return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <span className="fw-semibold small">ZIP</span>
-            <Form.Select size="sm" value={pickupZipFilter} onChange={e => setPickupZipFilter(e.target.value)} disabled={mapLocked} style={{ width: 110 }} title="ZIP de origen">
-              <option value="">PU ZIP</option>
-              {availablePickupZips.map(zip => <option key={`pu-zip-${zip}`} value={zip}>{zip}</option>)}
-            </Form.Select>
-            <Form.Control size="sm" value={zipFilter} onChange={e => setZipFilter(e.target.value)} placeholder="Extra ZIP" disabled={mapLocked} style={{ width: 92 }} title="Filtro extra por cualquier ZIP" />
-          </div>;
+        return null;
       case 'route-filter':
-        return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <span className="fw-semibold small">Ruta</span>
-            <Form.Select size="sm" value={puCityFilter} onChange={e => setPuCityFilter(e.target.value)} disabled={mapLocked} style={{ width: 140 }} title="Ciudad de recogida">
-              <option value="">Origen</option>
-              {availablePickupCities.map(city => <option key={`pu-${city}`} value={city}>{city}</option>)}
-            </Form.Select>
-            {(puCityFilter || pickupZipFilter || zipFilter) ? <Button variant="outline-secondary" size="sm" onClick={() => { setPuCityFilter(''); setPickupZipFilter(''); setZipFilter(''); }} disabled={mapLocked} title="Limpiar filtros de ciudad/zip" style={{ padding: '1px 6px', lineHeight: 1 }}>×</Button> : null}
-          </div>;
+        return null;
       case 'table-view-mode':
         return <Form.Select size="sm" value={dispatcherTableViewMode} onChange={event => handleDispatcherTableViewModeChange(event.target.value)} disabled={mapLocked} style={{ width: 138 }} title="Modo rapido de tabla">
             {DISPATCHER_TABLE_VIEW_MODES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -3061,7 +3042,7 @@ const DispatcherWorkspace = () => {
     </Card>;
 
   return <>
-      <div style={{
+      {hasHiddenDispatcherPanels ? <div style={{
       position: 'fixed',
       top: 54,
       right: 16,
@@ -3075,12 +3056,9 @@ const DispatcherWorkspace = () => {
       borderRadius: 8,
       backdropFilter: 'blur(10px)'
     }}>
-        <Button variant="outline-info" size="sm" onClick={handleRestoreLayout} style={compactControlButtonStyle}>Restore Factory</Button>
-        {hasHiddenDispatcherPanels ? <>
-            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>PANELS:</span>
-            {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)} style={compactControlButtonStyle}>{panel.label}</Button>)}
-          </> : null}
-      </div>
+          <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>PANELS:</span>
+          {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)} style={compactControlButtonStyle}>{panel.label}</Button>)}
+        </div> : null}
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', ...mapPanelPositionStyle }}>
           {renderDispatchMapPanel()}
