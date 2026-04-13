@@ -2,7 +2,7 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
-import { GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
+import { GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens, getVehiclePrimaryServiceType } from '@/helpers/nemt-admin-model';
 import { DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
@@ -1707,8 +1707,10 @@ const TripDashboardWorkspace = () => {
     const term = driverSearch.trim().toLowerCase();
     const capabilityFilters = Array.isArray(driverVehicleCapabilityFilters) ? driverVehicleCapabilityFilters : [];
     const filteredByCapability = capabilityFilters.length === 0 ? drivers : drivers.filter(driver => {
-      const capabilityPrefixes = new Set(getDriverVehicleMeta(driver).capabilityTokens.map(token => token.replace(/\d+$/, '')));
-      return capabilityFilters.some(filterKey => capabilityPrefixes.has(filterKey));
+      const adminDriver = adminDriversById.get(String(driver?.id || '').trim()) || null;
+      const adminVehicle = adminDriver?.vehicleId ? adminVehiclesById.get(String(adminDriver.vehicleId || '').trim()) || null : null;
+      const primaryServiceType = getVehiclePrimaryServiceType(adminVehicle);
+      return capabilityFilters.includes(primaryServiceType);
     });
     const filtered = !term ? filteredByCapability : filteredByCapability.filter(driver => [driver?.name, driver?.code, driver?.vehicle, driver?.attendant, driver?.live].some(value => String(value || '').toLowerCase().includes(term)));
 
@@ -1739,7 +1741,7 @@ const TripDashboardWorkspace = () => {
       const result = leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' });
       return driverSort.direction === 'asc' ? result : -result;
     });
-  }, [driverSearch, driverSort.direction, driverSort.key, driverVehicleCapabilityFilters, drivers]);
+  }, [adminDriversById, adminVehiclesById, driverSearch, driverSort.direction, driverSort.key, driverVehicleCapabilityFilters, drivers]);
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
   const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIdSet]);
   const selectedDriverWorkingTrips = useMemo(() => {

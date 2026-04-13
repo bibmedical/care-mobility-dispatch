@@ -18,6 +18,7 @@ const DRIVER_GPS_DEFAULTS = {
 export const VEHICLE_TYPE_OPTIONS = ['Ambulance', 'Van', 'Sedan'];
 export const GROUPING_SERVICE_TYPE_OPTIONS = ['A', 'W', 'WXL', 'EW', 'Walker', 'STR'];
 const CAPABILITY_BADGE_ORDER = ['A', 'W', 'WXL', 'EW', 'Walker', 'STR'];
+const VEHICLE_FILTER_PRIORITY = ['STR', 'EW', 'WXL', 'W', 'Walker', 'A'];
 
 export const normalizeVehicleType = value => {
   const normalized = String(value || '').trim().toLowerCase();
@@ -434,6 +435,11 @@ export const getVehicleCapabilityTokens = vehicle => {
     const rightPrefix = rightToken.replace(/\d+$/, '');
     return CAPABILITY_BADGE_ORDER.indexOf(leftPrefix) - CAPABILITY_BADGE_ORDER.indexOf(rightPrefix);
   });
+};
+
+export const getVehiclePrimaryServiceType = vehicle => {
+  const capabilityPrefixes = new Set(getVehicleCapabilityTokens(vehicle).map(token => token.replace(/\d+$/, '')).filter(Boolean));
+  return VEHICLE_FILTER_PRIORITY.find(filterKey => capabilityPrefixes.has(filterKey)) || '';
 };
 
 export const createBlankGrouping = () => ({
