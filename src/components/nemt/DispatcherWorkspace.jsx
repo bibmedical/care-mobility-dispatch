@@ -1824,7 +1824,10 @@ const DispatcherWorkspace = () => {
     return etaByDriver;
   }, [drivers, trips]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
-  const nonSelectedDriversWithRealLocation = useMemo(() => driversWithRealLocation.filter(driver => String(driver?.id || '').trim() !== String(selectedDriverId || '').trim() && String(driver?.live || '').trim().toLowerCase() === 'online'), [driversWithRealLocation, selectedDriverId]);
+  const nonSelectedDriversWithRealLocation = useMemo(() => {
+    if (selectedDriverId) return [];
+    return driversWithRealLocation.filter(driver => String(driver?.id || '').trim() !== String(selectedDriverId || '').trim() && String(driver?.live || '').trim().toLowerCase() === 'online');
+  }, [driversWithRealLocation, selectedDriverId]);
   const mapVisibleDriversWithRealLocation = useMemo(() => {
     if (!selectedDriver?.hasRealLocation) return nonSelectedDriversWithRealLocation;
     return [selectedDriver, ...nonSelectedDriversWithRealLocation];
