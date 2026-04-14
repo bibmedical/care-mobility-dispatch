@@ -1,13 +1,18 @@
 services:
   - type: web
-    name: care-mobility-dispatch
+    name: care-mobility-dispatch-web
     runtime: node
     rootDir: .
-    plan: starter
+    plan: pro
+    scaling:
+      minInstances: 1
+      maxInstances: 3
+      targetMemoryPercent: 60
+      targetCPUPercent: 60
     buildCommand: npm install ; npm run build
     startCommand: npm run start
     healthCheckPath: /api/health
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: NODE_VERSION
         value: 20.19.0
@@ -19,8 +24,6 @@ services:
         sync: false
       - key: NEXTAUTH_SECRET
         generateValue: true
-      - key: STORAGE_ROOT
-        value: /var/data/care-mobility/storage
       - key: NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN
         sync: false
       - key: NEXT_PUBLIC_MAPBOX_STYLE_ID
@@ -39,10 +42,6 @@ services:
         sync: false
       - key: LICENSE_WARNING_DAYS
         value: "30"
-    disk:
-      name: care-mobility-storage
-      mountPath: /var/data/care-mobility
-      sizeGB: 50
 
   - type: cron
     name: care-mobility-license-check
@@ -57,6 +56,8 @@ services:
           .catch(e => { console.error(e.message); process.exit(1); })
       "
     envVars:
+      - key: NEXTAUTH_URL
+        sync: false
       - key: CRON_SECRET
         sync: false
       - key: SMTP_HOST

@@ -22,6 +22,8 @@ const MIME_BY_EXT = {
 
 const normalizeRelativePath = rawPath => String(rawPath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
 const getMimeTypeByFileName = fileName => MIME_BY_EXT[path.extname(String(fileName || '').trim()).toLowerCase()] || 'application/octet-stream';
+let legacyMigrationPromise = null;
+
 const tryGetStorageRoot = () => {
   try {
     return getStorageRoot();
@@ -63,6 +65,84 @@ const resolveKnowledgeLegacyAbsolutePath = relativePath => {
 
 export const getKnowledgeRelativePath = fileName => path.join('storage', 'assistant-knowledge', 'files', fileName).replace(/\\/g, '/');
 
+const extractBrandingPageKey = fileName => {
+  const normalizedFileName = String(fileName || '').trim().toLowerCase();
+  return BRANDING_PAGE_KEYS.find(pageKey => normalizedFileName.startsWith(`${pageKey.toLowerCase()}-`) || normalizedFileName.startsWith(`${pageKey.toLowerCase()}.`)) || '';
+};
+
+export const migrateLegacyBinaryAssetsToDatabase = async () => {
+  await runMigrations();
+
+  const storageRoot = tryGetStorageRoot();
+  if (!storageRoot) {
+    return { migratedBrandingAssets: 0, migratedKnowledgeFiles: 0, skipped: true };
+  }
+
+  let migratedBrandingAssets = 0;
+  let migratedKnowledgeFiles = 0;
+
+  const brandingDirectory = getBrandingLegacyDirectory();
+  const brandingFiles = await readdir(brandingDirectory).catch(() => []);
+  for (const fileName of brandingFiles) {
+    const pageKey = extractBrandingPageKey(fileName);
+    if (!pageKey) continue;
+
+    const existingAsset = await queryOne(`SELECT page_key FROM branding_assets WHERE page_key = $1 LIMIT 1`, [pageKey]);
+    if (existingAsset) continue;
+
+    const absolutePath = path.join(brandingDirectory, fileName);
+    const buffer = await readFile(absolutePath).catch(() => null);
+    if (!buffer) continue;
+
+    await upsertBrandingAsset({
+      pageKey,
+      fileName,
+      mimeType: getMimeTypeByFileName(fileName),
+      buffer,
+      size: buffer.length
+    });
+    migratedBrandingAssets += 1;
+  }
+
+  const stateRow = await queryOne(`SELECT documents FROM assistant_knowledge WHERE id = 'singleton'`);
+  const documents = Array.isArray(stateRow?.documents) ? stateRow.documents : [];
+  for (const document of documents) {
+    const documentId = String(document?.id || '').trim();
+    const relativePath = normalizeRelativePath(document?.relativePath);
+    if (!documentId || !relativePath) continue;
+
+    const existingAsset = await queryOne(`SELECT document_id FROM assistant_knowledge_files WHERE document_id = $1 LIMIT 1`, [documentId]);
+    if (existingAsset) continue;
+
+    const absolutePath = resolveKnowledgeLegacyAbsolutePath(relativePath);
+    if (!absolutePath) continue;
+
+    const buffer = await readFile(absolutePath).catch(() => null);
+    if (!buffer) continue;
+
+    await upsertAssistantKnowledgeFile({
+      documentId,
+      fileName: document.fileName,
+      mimeType: document.mimeType,
+      relativePath,
+      buffer,
+      size: Number(document.size) || buffer.length
+    });
+    migratedKnowledgeFiles += 1;
+  }
+
+  return { migratedBrandingAssets, migratedKnowledgeFiles, skipped: false };
+};
+
+const ensureLegacyBinaryAssetsMigrated = async () => {
+  if (legacyMigrationPromise) return legacyMigrationPromise;
+  legacyMigrationPromise = migrateLegacyBinaryAssetsToDatabase().catch(error => {
+    legacyMigrationPromise = null;
+    throw error;
+  });
+  return legacyMigrationPromise;
+};
+
 export const upsertBrandingAsset = async ({ pageKey, fileName, mimeType, buffer, size }) => {
   await runMigrations();
   const normalizedPageKey = String(pageKey || '').trim();
@@ -90,31 +170,9 @@ export const upsertBrandingAsset = async ({ pageKey, fileName, mimeType, buffer,
   return await readBrandingAssetByPageKey(normalizedPageKey);
 };
 
-const migrateLegacyBrandingAsset = async pageKey => {
-  const legacyDirectory = getBrandingLegacyDirectory();
-  if (!legacyDirectory) return null;
-
-  const files = await readdir(legacyDirectory).catch(() => []);
-  const matchedFile = files.find(entry => entry.startsWith(`${pageKey}-`) || entry.startsWith(`${pageKey}.`));
-  if (!matchedFile) return null;
-
-  const absolutePath = path.join(legacyDirectory, matchedFile);
-  const buffer = await readFile(absolutePath).catch(() => null);
-  if (!buffer) return null;
-
-  await upsertBrandingAsset({
-    pageKey,
-    fileName: matchedFile,
-    mimeType: getMimeTypeByFileName(matchedFile),
-    buffer,
-    size: buffer.length
-  });
-
-  return await readBrandingAssetByPageKey(pageKey, { allowLegacyMigration: false });
-};
-
-export const readBrandingAssetByPageKey = async (pageKey, options = {}) => {
+export const readBrandingAssetByPageKey = async pageKey => {
   await runMigrations();
+  await ensureLegacyBinaryAssetsMigrated();
   const normalizedPageKey = String(pageKey || '').trim();
   if (!normalizedPageKey) return null;
 
@@ -125,14 +183,12 @@ export const readBrandingAssetByPageKey = async (pageKey, options = {}) => {
      LIMIT 1`,
     [normalizedPageKey]
   );
-  const asset = mapBrandingRow(row);
-  if (asset) return asset;
-  if (options.allowLegacyMigration === false) return null;
-  return await migrateLegacyBrandingAsset(normalizedPageKey);
+  return mapBrandingRow(row);
 };
 
 export const readBrandingAssetByFileName = async fileName => {
   await runMigrations();
+  await ensureLegacyBinaryAssetsMigrated();
   const normalizedFileName = String(fileName || '').trim();
   if (!normalizedFileName) return null;
 
@@ -146,11 +202,7 @@ export const readBrandingAssetByFileName = async fileName => {
   const asset = mapBrandingRow(row);
   if (asset) return asset;
 
-  const matchedPageKey = BRANDING_PAGE_KEYS.find(pageKey => {
-    const loweredFileName = normalizedFileName.toLowerCase();
-    const loweredPageKey = pageKey.toLowerCase();
-    return loweredFileName.startsWith(`${loweredPageKey}-`) || loweredFileName.startsWith(`${loweredPageKey}.`);
-  });
+  const matchedPageKey = extractBrandingPageKey(normalizedFileName);
 
   return matchedPageKey ? await readBrandingAssetByPageKey(matchedPageKey) : null;
 };
@@ -184,37 +236,12 @@ export const upsertAssistantKnowledgeFile = async ({ documentId, fileName, mimeT
     ]
   );
 
-  return await readAssistantKnowledgeFileByRelativePath(normalizedRelativePath, { allowLegacyMigration: false });
+  return await readAssistantKnowledgeFileByRelativePath(normalizedRelativePath);
 };
 
-const migrateLegacyKnowledgeFile = async relativePath => {
-  const normalizedRelativePath = normalizeRelativePath(relativePath);
-  if (!normalizedRelativePath) return null;
-
-  const stateRow = await queryOne(`SELECT documents FROM assistant_knowledge WHERE id = 'singleton'`);
-  const document = (Array.isArray(stateRow?.documents) ? stateRow.documents : []).find(item => normalizeRelativePath(item?.relativePath) === normalizedRelativePath);
-  if (!document) return null;
-
-  const absolutePath = resolveKnowledgeLegacyAbsolutePath(normalizedRelativePath);
-  if (!absolutePath) return null;
-
-  const buffer = await readFile(absolutePath).catch(() => null);
-  if (!buffer) return null;
-
-  await upsertAssistantKnowledgeFile({
-    documentId: document.id,
-    fileName: document.fileName,
-    mimeType: document.mimeType,
-    relativePath: normalizedRelativePath,
-    buffer,
-    size: Number(document.size) || buffer.length
-  });
-
-  return await readAssistantKnowledgeFileByRelativePath(normalizedRelativePath, { allowLegacyMigration: false });
-};
-
-export const readAssistantKnowledgeFileByRelativePath = async (relativePath, options = {}) => {
+export const readAssistantKnowledgeFileByRelativePath = async relativePath => {
   await runMigrations();
+  await ensureLegacyBinaryAssetsMigrated();
   const normalizedRelativePath = normalizeRelativePath(relativePath);
   if (!normalizedRelativePath) return null;
 
@@ -225,10 +252,7 @@ export const readAssistantKnowledgeFileByRelativePath = async (relativePath, opt
      LIMIT 1`,
     [normalizedRelativePath]
   );
-  const asset = mapKnowledgeFileRow(row);
-  if (asset) return asset;
-  if (options.allowLegacyMigration === false) return null;
-  return await migrateLegacyKnowledgeFile(normalizedRelativePath);
+  return mapKnowledgeFileRow(row);
 };
 
 export const deleteAssistantKnowledgeFileBlob = async ({ documentId, relativePath }) => {

@@ -41,6 +41,10 @@ export const writeJsonFileWithSnapshots = async ({
   backupName,
   retentionCount = DEFAULT_RETENTION_COUNT
 }) => {
+  if (process.env.NODE_ENV === 'production') {
+    return nextValue;
+  }
+
   const serializedValue = typeof nextValue === 'string' ? nextValue : JSON.stringify(nextValue, null, 2);
   const previousContents = await readPreviousContents(filePath);
   const backupDirectory = await ensureBackupDirectory(backupName);

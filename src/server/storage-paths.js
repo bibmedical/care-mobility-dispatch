@@ -42,15 +42,12 @@ export const getStorageRoot = () => {
     isRender ? renderDiskStorageRoot : null,
     isRender ? renderDiskRoot : null,
   ].filter(Boolean);
-  const fallbackRoots = isProduction && !buildProcess ? [] : [fallbackStorageRoot];
+  const fallbackRoots = [fallbackStorageRoot];
   const preferredRoots = [...persistentRoots, ...fallbackRoots];
 
   const root = preferredRoots.find(canUseStorageRoot);
 
   if (!root || !canUseStorageRoot(root)) {
-    if (isProduction && !buildProcess) {
-      throw new Error('Persistent storage is required in production. Configure STORAGE_ROOT or attach the Render disk.');
-    }
     throw new Error(`Unable to initialize storage directory: ${root}`);
   }
 
@@ -70,7 +67,7 @@ export const getStorageRoot = () => {
     if (!usingPersistent && isProduction && buildProcess) {
       console.warn(`[Storage] Build-time fallback detected. Runtime may still use the persistent disk when the service starts.`);
     } else if (!usingPersistent && isProduction) {
-      console.warn(`[Storage] WARNING: Using ephemeral storage in production! Data will be lost on redeploy.`);
+      console.warn(`[Storage] Production is running without persistent disk. This is expected only after all stateful filesystem usage has been migrated off-disk.`);
     }
   }
   
