@@ -274,8 +274,7 @@ const mapRowToTrip = (row, index) => {
   };
 };
 
-export const parseTripImportFile = async file => {
-  const arrayBuffer = await file.arrayBuffer();
+export const parseTripImportBuffer = arrayBuffer => {
   const workbook = XLSX.read(arrayBuffer, { type: 'array' });
   const firstSheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[firstSheetName];
@@ -288,4 +287,9 @@ export const parseTripImportFile = async file => {
     trips,
     serviceDateKeys: Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).sort()
   };
+};
+
+export const parseTripImportFile = async file => {
+  const arrayBuffer = await file.arrayBuffer();
+  return parseTripImportBuffer(arrayBuffer);
 };

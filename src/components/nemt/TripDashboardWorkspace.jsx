@@ -906,6 +906,7 @@ const TripDashboardWorkspace = () => {
   const [importedServiceDateKeys, setImportedServiceDateKeys] = useState([]);
   const [selectedImportFileName, setSelectedImportFileName] = useState('');
   const [isImportParsing, setIsImportParsing] = useState(false);
+  const [localImportPath, setLocalImportPath] = useState('');
   const [isRouteImporting, setIsRouteImporting] = useState(false);
   const [pendingRouteImportPlan, setPendingRouteImportPlan] = useState(null);
   const [cancelTripIds, setCancelTripIds] = useState([]);
@@ -1028,6 +1029,51 @@ const TripDashboardWorkspace = () => {
     if (importFileInputRef.current) {
       importFileInputRef.current.value = '';
       importFileInputRef.current.click();
+    }
+  };
+
+  const handleTripImportPathLoad = async () => {
+    const trimmedPath = String(localImportPath || '').trim();
+    if (!trimmedPath) {
+      setStatusMessage('Paste the local CSV or Excel path first.');
+      return;
+    }
+
+    setIsImportParsing(true);
+    setSelectedImportFileName(trimmedPath.split(/[/\\]/).pop() || trimmedPath);
+
+    try {
+      const response = await fetch('/api/nemt/dispatch/import-local-file', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ path: trimmedPath })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Could not read the local file path.');
+      }
+
+      setImportPendingTrips(Array.isArray(payload?.trips) ? payload.trips : []);
+      setImportedServiceDateKeys(Array.isArray(payload?.serviceDateKeys) ? payload.serviceDateKeys : []);
+
+      if (!Array.isArray(payload?.trips) || payload.trips.length === 0) {
+        const message = 'The selected local file does not contain trips to import.';
+        setStatusMessage(message);
+        showNotification({ message, variant: 'warning' });
+        return;
+      }
+
+      setStatusMessage(`${payload.trips.length} trip(s) ready to import from ${trimmedPath}.`);
+    } catch (error) {
+      setImportPendingTrips([]);
+      setImportedServiceDateKeys([]);
+      const message = error?.message || 'Could not read the local file path.';
+      setStatusMessage(message);
+      showNotification({ message, variant: 'danger' });
+    } finally {
+      setIsImportParsing(false);
     }
   };
 
@@ -5310,6 +5356,21 @@ const TripDashboardWorkspace = () => {
                 disabled={isImportParsing}
               />
               <div className="small text-muted mt-2">Pick the SafeRide `.xlsx`, `.xls`, or `.csv` file from your computer here.</div>
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Or paste local path</Form.Label>
+              <div className="d-flex flex-wrap gap-2">
+                <Form.Control
+                  value={localImportPath}
+                  onChange={event => setLocalImportPath(event.target.value)}
+                  placeholder="C:\\Users\\cored\\Downloads\\rides_138493_1776166947.csv"
+                  disabled={isImportParsing}
+                />
+                <Button variant="outline-primary" onClick={() => void handleTripImportPathLoad()} disabled={isImportParsing || !String(localImportPath || '').trim()}>
+                  {isImportParsing ? 'Reading path...' : 'Load From Path'}
+                </Button>
+              </div>
+              <div className="small text-muted mt-2">Use a full Windows path from Downloads, Desktop, Documents, or this project folder.</div>
             </Form.Group>
             <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
             <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
