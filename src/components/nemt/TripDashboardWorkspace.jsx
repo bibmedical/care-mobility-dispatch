@@ -366,6 +366,7 @@ const TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TO
 const CLOSED_ROUTE_STATE_KEY = '__CARE_MOBILITY_CLOSED_ROUTE_STATE__';
 const TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH = 56;
 const TRIP_DASHBOARD_RIGHT_PANEL_EXPANDED_SPLIT = 50;
+const TRIP_DASHBOARD_DEFAULT_NORMAL_MAP_SPLIT = 47;
 const TRIP_DASHBOARD_FOCUS_RIGHT_MIN_SPLIT = 16;
 const TRIP_DASHBOARD_FOCUS_RIGHT_MAX_SPLIT = 84;
 const TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT = 58;
@@ -4493,8 +4494,8 @@ const TripDashboardWorkspace = () => {
     if (nextLayoutMode === TRIP_DASHBOARD_LAYOUTS.normal) {
       setShowMapPane(true);
       setShowBottomPanels(false);
-      setRightPanelCollapsed(true);
-      setColumnSplit(94);
+      setRightPanelCollapsed(false);
+      setColumnSplit(TRIP_DASHBOARD_DEFAULT_NORMAL_MAP_SPLIT);
       setRowSplit(68);
       setStatusMessage('Normal layout restored with inline map view.');
       return;
