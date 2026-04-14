@@ -18,6 +18,7 @@ const isBuildProcess = () => {
 };
 
 const canUseStorageRoot = rootPath => {
+  if (!rootPath) return false;
   try {
     if (!fs.existsSync(rootPath)) {
       fs.mkdirSync(rootPath, { recursive: true });
@@ -33,25 +34,30 @@ export const getStorageRoot = () => {
 
   const configuredRoot = process.env.STORAGE_ROOT?.trim();
   const isRender = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
-  const preferredRoots = [
-    configuredRoot ? path.resolve(configuredRoot) : null,
+  const isProduction = process.env.NODE_ENV === 'production';
+  const buildProcess = isBuildProcess();
+  const configuredRootPath = configuredRoot ? path.resolve(configuredRoot) : null;
+  const persistentRoots = [
+    configuredRootPath,
     isRender ? renderDiskStorageRoot : null,
     isRender ? renderDiskRoot : null,
-    fallbackStorageRoot,
   ].filter(Boolean);
+  const fallbackRoots = isProduction && !buildProcess ? [] : [fallbackStorageRoot];
+  const preferredRoots = [...persistentRoots, ...fallbackRoots];
 
   const root = preferredRoots.find(canUseStorageRoot);
 
-  if (!canUseStorageRoot(root)) {
+  if (!root || !canUseStorageRoot(root)) {
+    if (isProduction && !buildProcess) {
+      throw new Error('Persistent storage is required in production. Configure STORAGE_ROOT or attach the Render disk.');
+    }
     throw new Error(`Unable to initialize storage directory: ${root}`);
   }
 
   // Information log (only once per process)
   if (!cachedRoot) {
-    const isProduction = process.env.NODE_ENV === 'production';
-    const buildProcess = isBuildProcess();
-    const usingPersistent = root.startsWith(renderDiskRoot);
-    const storageSource = configuredRoot && root === path.resolve(configuredRoot)
+    const usingPersistent = root.startsWith(renderDiskRoot) || Boolean(configuredRootPath && root === configuredRootPath);
+    const storageSource = configuredRoot && root === configuredRootPath
       ? 'STORAGE_ROOT'
       : root === renderDiskStorageRoot
         ? 'Render disk default (/var/data/care-mobility/storage)'

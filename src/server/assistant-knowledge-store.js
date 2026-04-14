@@ -6,6 +6,11 @@ import { runMigrations } from '@/server/db-schema';
 import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
 
 const getKnowledgeFilesDir = () => path.join(getStorageRoot(), 'assistant-knowledge', 'files');
+const getKnowledgeRelativePath = fileName => path.join('storage', 'assistant-knowledge', 'files', fileName).replace(/\\/g, '/');
+const resolveKnowledgeAbsolutePath = relativePath => {
+  const normalizedRelativePath = String(relativePath || '').replace(/\\/g, '/').replace(/^storage\//i, '').trim();
+  return path.join(getStorageRoot(), normalizedRelativePath);
+};
 
 const normalizeText = value => String(value ?? '').replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 
@@ -158,8 +163,8 @@ export const createAssistantKnowledgeDocument = async ({ fileName, mimeType, buf
   const documentId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const extension = getSafeExtension(fileName, mimeType);
   const storedFileName = buildStoredFileName(documentId, extension);
-  const storedFilePath = path.join(KNOWLEDGE_FILES_DIR, storedFileName);
-  const relativePath = path.join('storage', 'assistant-knowledge', 'files', storedFileName).replace(/\\/g, '/');
+  const storedFilePath = path.join(getKnowledgeFilesDir(), storedFileName);
+  const relativePath = getKnowledgeRelativePath(storedFileName);
   const chunks = buildChunks(documentId, text);
   const document = normalizeDocument({
     id: documentId,
@@ -199,7 +204,7 @@ export const deleteAssistantKnowledgeDocument = async documentId => {
   }
 
   if (document.relativePath) {
-    const absolutePath = path.join(process.cwd(), document.relativePath);
+    const absolutePath = resolveKnowledgeAbsolutePath(document.relativePath);
     await rm(absolutePath, { force: true });
   }
 
