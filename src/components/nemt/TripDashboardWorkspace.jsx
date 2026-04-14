@@ -390,20 +390,9 @@ const createEmptyBlacklistEntryDraft = () => ({
   notes: ''
 });
 
-const TRIP_DASHBOARD_LAYOUT_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_LAYOUT__';
-const TRIP_DASHBOARD_PANEL_VIEW_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_VIEW__';
-const TRIP_DASHBOARD_PANEL_ORDER_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_PANEL_ORDER__';
-const TRIP_DASHBOARD_DRIVERS_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_DRIVERS_VISIBLE__';
-const TRIP_DASHBOARD_ROUTES_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROUTES_VISIBLE__';
-const TRIP_DASHBOARD_TRIPS_VISIBLE_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TRIPS_VISIBLE__';
-const TRIP_DASHBOARD_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW1_BLOCKS__';
 const TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS = ['date-controls', 'trip-search', 'driver-assigned', 'action-buttons', 'leg-buttons', 'type-buttons', 'closed-route'];
-const TRIP_DASHBOARD_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW2_BLOCKS__';
 const TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS = ['show-map', 'peek-panel', 'toolbar-edit', 'layout', 'panels', 'trip-order'];
-const TRIP_DASHBOARD_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_ROW3_BLOCKS__';
 const TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS = ['driver-select', 'secondary-driver', 'zip-filter', 'route-filter', 'theme-toggle', 'metric-miles', 'metric-duration'];
-const TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_TOOLBAR_VISIBILITY__';
-const CLOSED_ROUTE_STATE_KEY = '__CARE_MOBILITY_CLOSED_ROUTE_STATE__';
 const TRIP_DASHBOARD_RIGHT_PANEL_COLLAPSED_WIDTH = 56;
 const TRIP_DASHBOARD_RIGHT_PANEL_EXPANDED_SPLIT = 50;
 const TRIP_DASHBOARD_DEFAULT_NORMAL_MAP_SPLIT = 47;
@@ -1512,10 +1501,7 @@ const TripDashboardWorkspace = () => {
   const panelViewHydratedRef = useRef(false);
   const panelOrderHydratedRef = useRef(false);
   const detailedDashboardHydratedRef = useRef(false);
-  const lastSavedLayoutModeRef = useRef('');
   const lastSavedToolbarVisibilityRef = useRef('');
-  const lastSavedPanelViewRef = useRef('');
-  const lastSavedPanelOrderRef = useRef('');
   const lastSavedDetailedDashboardRef = useRef('');
   const detailedDashboardSaveTimeoutRef = useRef(null);
   const [tripTableScrollWidth, setTripTableScrollWidth] = useState(0);
@@ -1841,30 +1827,19 @@ const TripDashboardWorkspace = () => {
 
   useEffect(() => {
     if (userPreferencesLoading) return;
-    const loadToolbarOrder = (storageKey, defaultOrder) => {
-      const storedValue = window.localStorage.getItem(storageKey);
-      if (!storedValue) return defaultOrder;
-      const parsed = JSON.parse(storedValue);
-      if (!Array.isArray(parsed)) return defaultOrder;
-      const normalized = parsed.filter(blockId => defaultOrder.includes(blockId));
-      const missing = defaultOrder.filter(blockId => !normalized.includes(blockId));
-      const nextOrder = [...normalized, ...missing];
-      return nextOrder.length > 0 ? nextOrder : defaultOrder;
-    };
-
     try {
-      setToolbarRow1Order(userPreferences?.tripDashboard?.row1?.length ? userPreferences.tripDashboard.row1 : loadToolbarOrder(TRIP_DASHBOARD_ROW1_BLOCKS_KEY, TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS));
-      setToolbarRow2Order(userPreferences?.tripDashboard?.row2?.length ? userPreferences.tripDashboard.row2.filter(blockId => TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS.includes(blockId)) : loadToolbarOrder(TRIP_DASHBOARD_ROW2_BLOCKS_KEY, TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS));
-      setToolbarRow3Order(userPreferences?.tripDashboard?.row3?.length ? userPreferences.tripDashboard.row3 : loadToolbarOrder(TRIP_DASHBOARD_ROW3_BLOCKS_KEY, TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS));
+      setToolbarRow1Order(userPreferences?.tripDashboard?.row1?.length ? userPreferences.tripDashboard.row1 : TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS);
+      setToolbarRow2Order(userPreferences?.tripDashboard?.row2?.length ? userPreferences.tripDashboard.row2.filter(blockId => TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS.includes(blockId)) : TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS);
+      setToolbarRow3Order(userPreferences?.tripDashboard?.row3?.length ? userPreferences.tripDashboard.row3 : TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS);
     } catch {
-      // Ignore corrupted local toolbar layout preferences.
+      // Ignore corrupted toolbar layout preferences.
     }
   }, [userPreferences?.tripDashboard?.row1, userPreferences?.tripDashboard?.row2, userPreferences?.tripDashboard?.row3, userPreferencesLoading]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
     try {
-      const parsed = userPreferences?.tripDashboard?.toolbarVisibility && Object.keys(userPreferences.tripDashboard.toolbarVisibility).length > 0 ? userPreferences.tripDashboard.toolbarVisibility : JSON.parse(window.localStorage.getItem(TRIP_DASHBOARD_TOOLBAR_VISIBILITY_KEY) || '{}');
+      const parsed = userPreferences?.tripDashboard?.toolbarVisibility && Object.keys(userPreferences.tripDashboard.toolbarVisibility).length > 0 ? userPreferences.tripDashboard.toolbarVisibility : {};
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
       const normalized = Object.fromEntries(TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS.map(blockId => [blockId, parsed[blockId] !== false]));
       setToolbarBlockVisibility(normalized);
@@ -4225,33 +4200,15 @@ const TripDashboardWorkspace = () => {
     if (userPreferencesLoading || detailedDashboardHydratedRef.current) return;
 
     const dashboardPreferences = userPreferences?.tripDashboard || {};
-    const shouldMigrateLegacyLayout = Number(dashboardPreferences.storageVersion || 0) < 1;
-    const legacyLayoutMode = shouldMigrateLegacyLayout ? window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY) : '';
-    const legacyPanelView = shouldMigrateLegacyLayout ? window.localStorage.getItem(TRIP_DASHBOARD_PANEL_VIEW_KEY) : '';
-    const legacyPanelOrder = shouldMigrateLegacyLayout ? window.localStorage.getItem(TRIP_DASHBOARD_PANEL_ORDER_KEY) : '';
-
-    let legacyClosedRouteStateByKey = {};
-    if (shouldMigrateLegacyLayout) {
-      try {
-        const rawValue = window.localStorage.getItem(CLOSED_ROUTE_STATE_KEY);
-        const parsed = rawValue ? JSON.parse(rawValue) : null;
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          legacyClosedRouteStateByKey = parsed;
-        }
-      } catch {
-        legacyClosedRouteStateByKey = {};
-      }
-    }
-
-    const resolvedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(legacyLayoutMode) ? legacyLayoutMode : dashboardPreferences.layoutMode;
-    const resolvedPanelView = Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(legacyPanelView) ? legacyPanelView : dashboardPreferences.panelView;
-    const resolvedPanelOrder = Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(legacyPanelOrder) ? legacyPanelOrder : dashboardPreferences.panelOrder;
+    const resolvedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(dashboardPreferences.layoutMode) ? dashboardPreferences.layoutMode : TRIP_DASHBOARD_LAYOUTS.focusRight;
+    const resolvedPanelView = Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(dashboardPreferences.panelView) ? dashboardPreferences.panelView : TRIP_DASHBOARD_PANEL_VIEWS.both;
+    const resolvedPanelOrder = Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(dashboardPreferences.panelOrder) ? dashboardPreferences.panelOrder : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst;
 
     setLayoutMode(resolvedLayoutMode);
     setPanelView(resolvedPanelView);
     setPanelOrder(resolvedPanelOrder);
 
-    if (Number(dashboardPreferences.storageVersion || 0) >= 1) {
+    if (resolvedLayoutMode !== TRIP_DASHBOARD_LAYOUTS.normal) {
       setShowBottomPanels(dashboardPreferences.showBottomPanels !== false);
       setShowMapPane(dashboardPreferences.showMapPane === true);
       setShowDriversPanel(dashboardPreferences.showDriversPanel !== false);
@@ -4264,7 +4221,7 @@ const TripDashboardWorkspace = () => {
       setRowSplit(dashboardPreferences.rowSplit ?? TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
       setColumnWidths(dashboardPreferences.columnWidths || {});
       setClosedRouteStateByKey(dashboardPreferences.closedRouteStateByKey || {});
-    } else if (resolvedLayoutMode === TRIP_DASHBOARD_LAYOUTS.normal) {
+    } else {
       setShowMapPane(true);
       setShowBottomPanels(false);
       setShowDriversPanel(true);
@@ -4276,20 +4233,7 @@ const TripDashboardWorkspace = () => {
       setColumnSplit(94);
       setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
       setColumnWidths({});
-      setClosedRouteStateByKey(legacyClosedRouteStateByKey);
-    } else {
-      setShowMapPane(false);
-      setShowBottomPanels(true);
-      setShowDriversPanel(true);
-      setShowRoutesPanel(true);
-      setShowTripsPanel(true);
-      setRightPanelCollapsed(false);
-      setShowConfirmationTools(false);
-      setTripOrderMode('original');
-      setColumnSplit(resolvedLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT : TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT);
-      setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
-      setColumnWidths({});
-      setClosedRouteStateByKey(legacyClosedRouteStateByKey);
+      setClosedRouteStateByKey(dashboardPreferences.closedRouteStateByKey || {});
     }
 
     layoutHydratedRef.current = true;

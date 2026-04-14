@@ -182,7 +182,6 @@ const BLOCK_REASON_OPTIONS = [
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
 
-const CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY = '__CARE_CONFIRMATION_OUTPUT_COLUMNS__';
 const CONFIRMATION_OUTPUT_COLUMN_OPTIONS = [
   { key: 'tripId', label: 'Trip ID' },
   { key: 'rider', label: 'Rider' },
@@ -799,7 +798,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     if (userPreferencesLoading) return;
     if (outputColumnsHydratedRef.current) return;
     try {
-      const parsed = userPreferences?.confirmation?.outputColumns?.length ? userPreferences.confirmation.outputColumns : JSON.parse(window.localStorage.getItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY) || 'null');
+      const parsed = userPreferences?.confirmation?.outputColumns?.length ? userPreferences.confirmation.outputColumns : null;
       if (!parsed) {
         outputColumnsHydratedRef.current = true;
         return;
@@ -814,7 +813,6 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(CONFIRMATION_OUTPUT_COLUMNS_STORAGE_KEY, JSON.stringify(outputColumns));
     if (!userPreferencesLoading) {
       void saveUserPreferences({
         ...userPreferences,

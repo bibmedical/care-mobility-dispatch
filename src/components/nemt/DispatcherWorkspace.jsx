@@ -33,13 +33,9 @@ const TRIP_COLUMN_MIN_WIDTHS = {
   lateMinutes: 68
 };
 
-const DISPATCHER_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW1_BLOCKS__';
 const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'day-summary', 'route-actions'];
-const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'columns'];
-const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
 const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['table-view-mode', 'metric-miles', 'metric-duration'];
-const DISPATCHER_TOOLBAR_VISIBILITY_KEY = '__CARE_MOBILITY_DISPATCHER_TOOLBAR_VISIBILITY__';
 const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
 const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
 
@@ -1023,12 +1019,9 @@ const DispatcherWorkspace = () => {
   useEffect(() => {
     if (userPreferencesLoading) return;
     try {
-      const storedToolbarVisibility = JSON.parse(window.localStorage.getItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY) || '{}');
-      const parsed = storedToolbarVisibility && typeof storedToolbarVisibility === 'object' && !Array.isArray(storedToolbarVisibility) && Object.keys(storedToolbarVisibility).length > 0
-        ? storedToolbarVisibility
-        : userPreferences?.dispatcherToolbar?.toolbarVisibility && Object.keys(userPreferences.dispatcherToolbar.toolbarVisibility).length > 0
-          ? userPreferences.dispatcherToolbar.toolbarVisibility
-          : {};
+      const parsed = userPreferences?.dispatcherToolbar?.toolbarVisibility && Object.keys(userPreferences.dispatcherToolbar.toolbarVisibility).length > 0
+        ? userPreferences.dispatcherToolbar.toolbarVisibility
+        : {};
       const parsedVisibility = !parsed || typeof parsed !== 'object' || Array.isArray(parsed)
         ? {}
         : Object.fromEntries(Object.entries(parsed).map(([key, value]) => [canonicalizeToolbarBlockId(key), value]));
@@ -1052,7 +1045,6 @@ const DispatcherWorkspace = () => {
       }
       if (lastSavedToolbarVisibilityRef.current === serializedToolbarVisibility) return;
       lastSavedToolbarVisibilityRef.current = serializedToolbarVisibility;
-      window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, serializedToolbarVisibility);
       if (!userPreferencesLoading) {
         void saveUserPreferences({
           ...userPreferences,
@@ -1235,18 +1227,10 @@ const DispatcherWorkspace = () => {
 
   const handleToggleToolbarBlockVisibility = (blockId, enabled) => {
     const normalizedBlockId = canonicalizeToolbarBlockId(blockId);
-    setToolbarBlockVisibility(current => {
-      const nextVisibility = {
-        ...current,
-        [normalizedBlockId]: enabled
-      };
-      try {
-        window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, JSON.stringify(nextVisibility));
-      } catch {
-        // Ignore localStorage write errors.
-      }
-      return nextVisibility;
-    });
+    setToolbarBlockVisibility(current => ({
+      ...current,
+      [normalizedBlockId]: enabled
+    }));
   };
 
   const moveToolbarRow1Block = (fromBlockId, toBlockId) => {
@@ -1340,9 +1324,6 @@ const DispatcherWorkspace = () => {
     setToolbarRow2Order(normalizedRows.row2);
     setToolbarRow3Order(normalizedRows.row3);
     try {
-      window.localStorage.setItem(DISPATCHER_ROW1_BLOCKS_KEY, JSON.stringify(normalizedRows.row1));
-      window.localStorage.setItem(DISPATCHER_ROW2_BLOCKS_KEY, JSON.stringify(normalizedRows.row2));
-      window.localStorage.setItem(DISPATCHER_ROW3_BLOCKS_KEY, JSON.stringify(normalizedRows.row3));
       void saveUserPreferences({
         ...userPreferences,
         dispatcherToolbar: {
@@ -1386,7 +1367,6 @@ const DispatcherWorkspace = () => {
           toolbarVisibility: defaultVisibility
         }
       }).catch(() => {});
-      window.localStorage.setItem(DISPATCHER_TOOLBAR_VISIBILITY_KEY, JSON.stringify(defaultVisibility));
       setStatusMessage('Dispatcher toolbar layout reseteado.');
     } catch {
       setStatusMessage('No se pudo resetear el dispatcher toolbar layout.');

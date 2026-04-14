@@ -4,6 +4,7 @@ import { useNemtContext } from '@/context/useNemtContext';
 import { getTripLateMinutes, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver } from '@/helpers/nemt-dispatch-state';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
+import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getMapTileConfig } from '@/utils/map-tiles';
 import { MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
@@ -20,7 +21,6 @@ const toMinutes = value => {
 const getNormalizedStatus = trip => String(trip?.status || '').trim().toLowerCase();
 
 const sortRouteTrips = trips => [...trips].sort((a, b) => toMinutes(a?.pickup) - toMinutes(b?.pickup));
-const CLOSED_ROUTE_STATE_KEY = '__CARE_MOBILITY_CLOSED_ROUTE_STATE__';
 const normalizeTripId = tripId => String(tripId || '').trim();
 const normalizeDriverId = driverId => String(driverId || '').trim();
 const getClosedRouteKey = (driverId, dateKey) => {
@@ -138,6 +138,7 @@ const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
 
 const RouteControlWorkspace = () => {
   const { data: adminData } = useNemtAdminApi();
+  const { data: userPreferences, loading: userPreferencesLoading } = useUserPreferencesApi();
   const {
     drivers,
     trips,
@@ -206,41 +207,15 @@ const RouteControlWorkspace = () => {
   }, [refreshDispatchState]);
 
   useEffect(() => {
-    const loadClosedRouteState = () => {
-      try {
-        const rawValue = window.localStorage.getItem(CLOSED_ROUTE_STATE_KEY);
-        if (!rawValue) {
-          if (closedRouteSnapshotRef.current !== '') {
-            closedRouteSnapshotRef.current = '';
-            setClosedRouteStateByKey({});
-          }
-          return;
-        }
-        if (rawValue === closedRouteSnapshotRef.current) return;
-        const parsed = JSON.parse(rawValue);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          if (closedRouteSnapshotRef.current !== '') {
-            closedRouteSnapshotRef.current = '';
-            setClosedRouteStateByKey({});
-          }
-          return;
-        }
-        closedRouteSnapshotRef.current = rawValue;
-        setClosedRouteStateByKey(parsed);
-      } catch {
-        if (closedRouteSnapshotRef.current !== '') {
-          closedRouteSnapshotRef.current = '';
-          setClosedRouteStateByKey({});
-        }
-      }
-    };
-
-    loadClosedRouteState();
-    window.addEventListener('storage', loadClosedRouteState);
-    return () => {
-      window.removeEventListener('storage', loadClosedRouteState);
-    };
-  }, []);
+    if (userPreferencesLoading) return;
+    const nextState = userPreferences?.tripDashboard?.closedRouteStateByKey && typeof userPreferences.tripDashboard.closedRouteStateByKey === 'object' && !Array.isArray(userPreferences.tripDashboard.closedRouteStateByKey)
+      ? userPreferences.tripDashboard.closedRouteStateByKey
+      : {};
+    const snapshot = JSON.stringify(nextState);
+    if (snapshot === closedRouteSnapshotRef.current) return;
+    closedRouteSnapshotRef.current = snapshot;
+    setClosedRouteStateByKey(nextState);
+  }, [userPreferences?.tripDashboard?.closedRouteStateByKey, userPreferencesLoading]);
 
   const filteredRoutes = useMemo(() => {
     if (!hasSelectedDate) return [];
