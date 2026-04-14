@@ -3000,6 +3000,19 @@ const TripDashboardWorkspace = () => {
     if (!cancelNoteModal) return;
     const siblingTrips = getSiblingLegTrips(cancelNoteModal, trips);
     const targetTrips = cancelLegScope === 'both' ? [cancelNoteModal, ...siblingTrips] : [cancelNoteModal];
+    const targetTripIds = targetTrips.map(targetTrip => normalizeTripId(targetTrip?.id)).filter(Boolean);
+    const cancellationReason = String(cancelNoteDraft || '').trim();
+
+    if (targetTripIds.length === 0) {
+      setStatusMessage('No valid trip was found to cancel.');
+      return;
+    }
+
+    cancelTrips(targetTripIds, {
+      source: 'dispatcher-manual',
+      reason: cancellationReason || 'Cancelled by dispatcher'
+    });
+
     targetTrips.forEach(targetTrip => {
       applyTripConfirmationState(targetTrip, {
         status: 'Cancelled',
@@ -3007,7 +3020,7 @@ const TripDashboardWorkspace = () => {
         methodCode: 'X',
         message: 'Cancelled by dispatcher',
         eventType: 'cancel',
-        noteLine: `[CANCELLED] ${new Date().toLocaleString()}: ${cancelNoteDraft.trim() || 'Cancelled in Trip Dashboard.'}`
+        noteLine: `[CANCELLED] ${new Date().toLocaleString()}: ${cancellationReason || 'Cancelled in Trip Dashboard.'}`
       });
     });
     setCancelNoteModal(null);
