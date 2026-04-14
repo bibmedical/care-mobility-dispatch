@@ -6,6 +6,8 @@ export const DEFAULT_DISPATCH_TIME_ZONE = 'America/New_York';
 
 const normalizeTextValue = value => String(value ?? '').trim();
 const TRIP_MOBILITY_SOURCE_FIELDS = ['mobilityType', 'mobility', 'vehicleType', 'assistanceNeeds', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
+const TRIP_MOBILITY_EXPLICIT_SOURCE_FIELDS = ['mobilityType', 'mobility', 'vehicleType', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
+const TRIP_MOBILITY_ASSISTANCE_SOURCE_FIELDS = ['assistanceNeeds'];
 
 const padDatePart = value => String(value).padStart(2, '0');
 
@@ -116,14 +118,26 @@ export const getTripServiceDateKey = trip => {
   return normalizeTimestampToDateKey(trip?.pickupSortValue) || normalizeTimestampToDateKey(trip?.dropoffSortValue) || normalizeTimestampToDateKey(trip?.confirmation?.sentAt) || '';
 };
 
-const getTripMobilitySource = trip => TRIP_MOBILITY_SOURCE_FIELDS.map(field => String(trip?.[field] || '').trim()).filter(Boolean).join(' ').toLowerCase();
+const getTripMobilitySource = (trip, fields = TRIP_MOBILITY_SOURCE_FIELDS) => fields.map(field => String(trip?.[field] || '').trim()).filter(Boolean).join(' ').toLowerCase();
+
+const normalizeMobilitySource = source => source.replace(/provide\s+wheelchair/gi, ' ').replace(/wheelchair\s+provided/gi, ' ').replace(/needs?\s+wheelchair/gi, ' ').replace(/wheelchair\s+needed/gi, ' ').replace(/requires?\s+wheelchair/gi, ' ').replace(/wheelchair\s+required/gi, ' ').replace(/\s+/g, ' ').trim();
+
+const detectTripMobilityLabelFromSource = source => {
+  const normalizedSource = normalizeMobilitySource(String(source || '').toLowerCase());
+  if (!normalizedSource) return '';
+  if (normalizedSource.includes('stretcher') || normalizedSource.includes('gurney') || normalizedSource.includes('str')) return 'STR';
+  if (normalizedSource.includes('wheelchair') || normalizedSource.includes('wheel chair') || normalizedSource.includes('wheel') || normalizedSource.includes('wc') || normalizedSource.includes('w/c') || normalizedSource.includes('wxl') || normalizedSource.includes('electric wheelchair') || normalizedSource.includes('power wheelchair') || normalizedSource.includes('ew')) return 'W';
+  return 'A';
+};
 
 export const getTripMobilityLabel = trip => {
-  const source = getTripMobilitySource(trip);
-  if (!source) return 'A';
-  if (source.includes('stretcher') || source.includes('gurney') || source.includes('str')) return 'STR';
-  if (source.includes('wheelchair') || source.includes('wheel chair') || source.includes('wheel') || source.includes('wc') || source.includes('w/c') || source.includes('wxl') || source.includes('electric wheelchair') || source.includes('power wheelchair') || source.includes('ew')) return 'W';
-  return 'A';
+  const explicitSource = getTripMobilitySource(trip, TRIP_MOBILITY_EXPLICIT_SOURCE_FIELDS);
+  if (explicitSource) {
+    return detectTripMobilityLabelFromSource(explicitSource) || 'A';
+  }
+
+  const assistanceSource = getTripMobilitySource(trip, TRIP_MOBILITY_ASSISTANCE_SOURCE_FIELDS);
+  return detectTripMobilityLabelFromSource(assistanceSource) || 'A';
 };
 
 export const getTripRequiredCapabilityPrefixes = trip => {
