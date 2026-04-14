@@ -4,6 +4,7 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
 
 const normalizeBlacklistEntry = value => ({
   id: String(value?.id ?? `bl-${Date.now()}`),
@@ -46,7 +47,9 @@ const writeLocalBlacklistState = async state => {
 let tableReady = false;
 
 const ensureTable = async () => {
-  if (!hasDatabaseUrl()) return;
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is required for blacklist storage in production');
+  }
   if (tableReady) return;
   await query(`
     CREATE TABLE IF NOT EXISTS blacklist_entries (
@@ -83,6 +86,9 @@ const ensureTable = async () => {
 
 export const readBlacklistState = async () => {
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for blacklist storage in production');
+    }
     return readLocalBlacklistState();
   }
 
@@ -109,6 +115,9 @@ export const writeBlacklistState = async (nextState, options = {}) => {
   const normalized = normalizeBlacklistState(nextState);
 
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for blacklist storage in production');
+    }
     if (allowDelete) {
       await writeLocalBlacklistState(normalized);
       return normalized;

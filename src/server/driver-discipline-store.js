@@ -3,12 +3,18 @@ import { query } from '@/server/db';
 import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+
 let tableReady = false;
 
 const getDriverDisciplineStorageFile = () => getStorageFilePath('driver-discipline-events.json');
 
 const ensureTable = async () => {
   if (tableReady) return;
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is required for driver discipline storage in production');
+  }
   await query(`
     CREATE TABLE IF NOT EXISTS driver_discipline_events (
       event_id TEXT PRIMARY KEY,
@@ -96,7 +102,8 @@ export const upsertDriverDisciplineEvent = async event => {
         event?.resolvedAt ? new Date(event.resolvedAt) : null
       ]
     );
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     const events = await readLocalDriverDisciplineEvents();
     const nextEvents = events.filter(item => String(item?.id || '').trim() !== String(event?.id || '').trim());
     nextEvents.unshift({ ...event, data });
@@ -115,7 +122,8 @@ export const resolveDriverDisciplineEventById = async eventId => {
       `UPDATE driver_discipline_events SET status = 'resolved', resolved_at = NOW() WHERE event_id = $1`,
       [eventId]
     );
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     const events = await readLocalDriverDisciplineEvents();
     const nextEvents = events.map(event => String(event?.id || '').trim() === String(eventId || '').trim()
       ? { ...event, status: 'resolved', resolvedAt: new Date().toISOString() }
@@ -143,7 +151,8 @@ export const readDriverDisciplineEvents = async ({ driverId = '', activeOnly = f
       `SELECT * FROM driver_discipline_events ${whereClause} ORDER BY occurred_at DESC LIMIT $${params.length}`,
       params
     );
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     const normalizedDriverId = String(driverId || '').trim();
     return (await readLocalDriverDisciplineEvents())
       .filter(event => !normalizedDriverId || String(event?.driverId || '').trim() === normalizedDriverId)

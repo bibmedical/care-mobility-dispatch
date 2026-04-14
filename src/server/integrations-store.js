@@ -99,6 +99,7 @@ const DEFAULT_STATE = {
 };
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
 
 const getIntegrationsStorageFile = () => getStorageFilePath('integrations-state.json');
 
@@ -249,7 +250,9 @@ const writeLocalIntegrationsState = async state => {
 let ensureTablePromise = null;
 
 const ensureTable = async () => {
-  if (!hasDatabaseUrl()) return;
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is required for integrations storage in production');
+  }
   if (ensureTablePromise) return ensureTablePromise;
 
   ensureTablePromise = (async () => {
@@ -273,6 +276,9 @@ const ensureTable = async () => {
 
 export const readIntegrationsState = async () => {
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for integrations storage in production');
+    }
     return readLocalIntegrationsState();
   }
 
@@ -324,6 +330,9 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
   };
 
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for integrations storage in production');
+    }
     await writeLocalIntegrationsState(protectedState);
     return protectedState;
   }

@@ -6,6 +6,9 @@ import { query } from '@/server/db';
 import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+
 const normalizeUserRecord = user => ({
   id: user?.id || `user-${Date.now()}`,
   firstName: String(user?.firstName ?? ''),
@@ -240,6 +243,9 @@ const syncUsersToAdminState = async (users, previousUsers = []) => {
 let ensureTablePromise = null;
 
 const ensureTable = async () => {
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is required for system users in production');
+  }
   if (ensureTablePromise) return ensureTablePromise;
 
   ensureTablePromise = (async () => {
@@ -278,7 +284,8 @@ export const readSystemUsersState = async () => {
       protectedUserIds: row?.protected_user_ids,
       users: row?.users
     });
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     effectiveState = await readLocalUsersState();
   }
 
@@ -291,7 +298,8 @@ export const readSystemUsersState = async () => {
         `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
         [6, JSON.stringify(seedProtected), JSON.stringify(seedUsers)]
       );
-    } catch {
+    } catch (error) {
+      if (!shouldUseLocalFallback()) throw error;
       await writeLocalUsersState({
         version: 6,
         protectedUserIds: seedProtected,
@@ -334,7 +342,8 @@ export const readSystemUsersState = async () => {
         `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
         [6, JSON.stringify(recoveredProtected), JSON.stringify(recoveredUsers)]
       );
-    } catch {
+    } catch (error) {
+      if (!shouldUseLocalFallback()) throw error;
       await writeLocalUsersState({
         version: 6,
         protectedUserIds: recoveredProtected,
@@ -431,7 +440,8 @@ export const writeSystemUsersState = async nextState => {
       `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
       [normalized.version, JSON.stringify(normalized.protectedUserIds), JSON.stringify(normalized.users)]
     );
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     await writeLocalUsersState(normalized);
   }
 

@@ -5,6 +5,7 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
 
 const getUserPreferencesStorageFile = () => getStorageFilePath('user-preferences.json');
 
@@ -28,7 +29,9 @@ const writeLocalPreferencesState = async state => {
 };
 
 const ensureTable = async () => {
-  if (!hasDatabaseUrl()) return;
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is required for user preferences in production');
+  }
   await query(`
     CREATE TABLE IF NOT EXISTS user_ui_preferences (
       user_id TEXT PRIMARY KEY,
@@ -43,6 +46,9 @@ export const readUserPreferences = async userId => {
   if (!normalizedUserId) return normalizeUserPreferences(null);
 
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for user preferences in production');
+    }
     const localState = await readLocalPreferencesState();
     return normalizeUserPreferences(localState?.[normalizedUserId] || null);
   }
@@ -58,6 +64,9 @@ export const writeUserPreferences = async (userId, preferences) => {
   const normalizedPreferences = normalizeUserPreferences(preferences);
 
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for user preferences in production');
+    }
     const localState = await readLocalPreferencesState();
     localState[normalizedUserId] = normalizedPreferences;
     await writeLocalPreferencesState(localState);
