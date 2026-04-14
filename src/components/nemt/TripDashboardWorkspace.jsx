@@ -434,9 +434,10 @@ const getStatusBadge = status => {
 };
 
 const getDriverCheckpoint = driver => {
+  if (driver.hasRealLocation) return 'Live location';
   if (driver.checkpoint) return driver.checkpoint;
   if (!driver.position) return 'No GPS';
-  return `${driver.position[0].toFixed(4)}, ${driver.position[1].toFixed(4)}`;
+  return 'No GPS';
 };
 
 const toRadians = value => value * (Math.PI / 180);
