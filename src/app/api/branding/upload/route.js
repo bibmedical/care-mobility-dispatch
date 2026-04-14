@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
-import { mkdir, readdir, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { BRANDING_PAGE_OPTIONS } from '@/helpers/branding';
 import { isAdminRole } from '@/helpers/system-users';
-import { getStorageRoot } from '@/server/storage-paths';
+import { upsertBrandingAsset } from '@/server/binary-asset-store';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml']);
 const ALLOWED_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
-const BRANDING_STORAGE_DIR = path.join(getStorageRoot(), 'branding');
 
 const unauthorized = () => NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 const forbidden = () => NextResponse.json({ error: 'Admin access required' }, { status: 403 });
@@ -60,20 +58,13 @@ export async function POST(request) {
     const safeBaseName = sanitizeFileName(path.basename(fileName, extension)) || 'branding-image';
     const storedFileName = `${pageKey}-${safeBaseName}${extension}`;
 
-    await mkdir(BRANDING_STORAGE_DIR, { recursive: true });
-
-    const existingFiles = await readdir(BRANDING_STORAGE_DIR).catch(() => []);
-    const existingPageFiles = existingFiles.filter(entry => entry === storedFileName || entry.startsWith(`${pageKey}-`) || entry.startsWith(`${pageKey}.`));
-
-    await Promise.all(existingPageFiles.map(async entry => {
-      try {
-        await unlink(path.join(BRANDING_STORAGE_DIR, entry));
-      } catch {
-        // Ignore cleanup failures and continue with the replacement write.
-      }
-    }));
-
-    await writeFile(path.join(BRANDING_STORAGE_DIR, storedFileName), buffer);
+    await upsertBrandingAsset({
+      pageKey,
+      fileName: storedFileName,
+      mimeType,
+      buffer,
+      size: buffer.length
+    });
 
     return NextResponse.json({
       ok: true,

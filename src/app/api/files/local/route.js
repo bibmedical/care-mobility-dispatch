@@ -4,7 +4,7 @@ import path from 'path';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isAdminRole } from '@/helpers/system-users';
-import { getStorageRoot } from '@/server/storage-paths';
+import { readStorageAssetByRelativePath } from '@/server/binary-asset-store';
 
 const MIME_BY_EXT = {
   '.jpg': 'image/jpeg',
@@ -49,13 +49,26 @@ export async function GET(request) {
   }
 
   const workspaceRoot = process.cwd();
-  const storageRoot = getStorageRoot();
   const isStoragePath = requestedPath.toLowerCase().startsWith('storage/');
-  const absolutePath = isStoragePath ? path.resolve(storageRoot, requestedPath.slice('storage/'.length)) : path.resolve(workspaceRoot, requestedPath);
 
-  const allowedRoot = isStoragePath ? storageRoot : workspaceRoot;
+  if (isStoragePath) {
+    const storageAsset = await readStorageAssetByRelativePath(requestedPath);
+    if (!storageAsset?.buffer) {
+      return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    }
+    const contentType = String(storageAsset.mimeType || '').trim() || MIME_BY_EXT[path.extname(String(storageAsset.fileName || '')).toLowerCase()] || 'application/octet-stream';
 
-  if (!absolutePath.startsWith(allowedRoot)) {
+    return new NextResponse(storageAsset.buffer, {
+      headers: {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600'
+      }
+    });
+  }
+
+  const absolutePath = path.resolve(workspaceRoot, requestedPath);
+
+  if (!absolutePath.startsWith(workspaceRoot)) {
     return NextResponse.json({ error: 'Invalid path' }, { status: 403 });
   }
 

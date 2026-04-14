@@ -231,6 +231,25 @@ const _runMigrationsOnce = async () => {
       chunks     JSONB NOT NULL DEFAULT '[]'::jsonb,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS branding_assets (
+      page_key   TEXT PRIMARY KEY,
+      file_name  TEXT NOT NULL DEFAULT '',
+      mime_type  TEXT NOT NULL DEFAULT 'application/octet-stream',
+      file_size  INTEGER NOT NULL DEFAULT 0,
+      file_bytes BYTEA NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_branding_assets_file_name ON branding_assets(file_name);
+    CREATE TABLE IF NOT EXISTS assistant_knowledge_files (
+      document_id  TEXT PRIMARY KEY,
+      file_name    TEXT NOT NULL DEFAULT '',
+      mime_type    TEXT NOT NULL DEFAULT 'application/octet-stream',
+      file_size    INTEGER NOT NULL DEFAULT 0,
+      relative_path TEXT NOT NULL DEFAULT '',
+      file_bytes   BYTEA NOT NULL,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_assistant_knowledge_files_relative_path ON assistant_knowledge_files(relative_path);
     CREATE TABLE IF NOT EXISTS genius_fuel_receipts (
       id                 TEXT PRIMARY KEY,
       driver_id          TEXT NOT NULL,

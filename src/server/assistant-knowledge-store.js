@@ -1,16 +1,8 @@
-import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { PDFParse } from 'pdf-parse';
 import { query, queryOne } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
-import { getStorageFilePath, getStorageRoot } from '@/server/storage-paths';
-
-const getKnowledgeFilesDir = () => path.join(getStorageRoot(), 'assistant-knowledge', 'files');
-const getKnowledgeRelativePath = fileName => path.join('storage', 'assistant-knowledge', 'files', fileName).replace(/\\/g, '/');
-const resolveKnowledgeAbsolutePath = relativePath => {
-  const normalizedRelativePath = String(relativePath || '').replace(/\\/g, '/').replace(/^storage\//i, '').trim();
-  return path.join(getStorageRoot(), normalizedRelativePath);
-};
+import { deleteAssistantKnowledgeFileBlob, getKnowledgeRelativePath, upsertAssistantKnowledgeFile } from '@/server/binary-asset-store';
 
 const normalizeText = value => String(value ?? '').replace(/\r/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 
@@ -56,7 +48,6 @@ const normalizeState = value => ({
 
 const ensureStorage = async () => {
   await runMigrations();
-  await mkdir(getKnowledgeFilesDir(), { recursive: true });
 };
 
 const getSafeExtension = (fileName, mimeType) => {
@@ -163,7 +154,6 @@ export const createAssistantKnowledgeDocument = async ({ fileName, mimeType, buf
   const documentId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const extension = getSafeExtension(fileName, mimeType);
   const storedFileName = buildStoredFileName(documentId, extension);
-  const storedFilePath = path.join(getKnowledgeFilesDir(), storedFileName);
   const relativePath = getKnowledgeRelativePath(storedFileName);
   const chunks = buildChunks(documentId, text);
   const document = normalizeDocument({
@@ -181,7 +171,14 @@ export const createAssistantKnowledgeDocument = async ({ fileName, mimeType, buf
     updatedAt: Date.now()
   });
 
-  await writeFile(storedFilePath, buffer);
+  await upsertAssistantKnowledgeFile({
+    documentId,
+    fileName,
+    mimeType,
+    relativePath,
+    buffer,
+    size
+  });
   await writeAssistantKnowledgeState({
     ...state,
     documents: [...state.documents, document],
@@ -203,10 +200,7 @@ export const deleteAssistantKnowledgeDocument = async documentId => {
     throw new Error('Knowledge document not found.');
   }
 
-  if (document.relativePath) {
-    const absolutePath = resolveKnowledgeAbsolutePath(document.relativePath);
-    await rm(absolutePath, { force: true });
-  }
+  await deleteAssistantKnowledgeFileBlob({ documentId: normalizedDocumentId, relativePath: document.relativePath });
 
   await writeAssistantKnowledgeState({
     ...state,

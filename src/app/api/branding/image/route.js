@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
-import { readdir, readFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import path from 'path';
 import { BRANDING_PAGE_OPTIONS, DEFAULT_BRANDING_PAGES } from '@/helpers/branding';
-import { getStorageRoot } from '@/server/storage-paths';
+import { readBrandingAssetByPageKey } from '@/server/binary-asset-store';
 
-const BRANDING_STORAGE_DIR = path.join(getStorageRoot(), 'branding');
 const ALLOWED_PAGE_KEYS = new Set(BRANDING_PAGE_OPTIONS.map(option => option.key));
 const MIME_BY_EXT = {
   '.jpg': 'image/jpeg',
@@ -59,10 +58,9 @@ export async function GET(request) {
   }
 
   try {
-    const files = await readdir(BRANDING_STORAGE_DIR);
-    const matchedFile = files.find(entry => entry.startsWith(`${pageKey}-`) || entry.startsWith(`${pageKey}.`));
+    const brandingAsset = await readBrandingAssetByPageKey(pageKey);
 
-    if (!matchedFile) {
+    if (!brandingAsset?.buffer) {
       const defaultImage = await readDefaultBrandingImage(pageKey);
       if (defaultImage) {
         return buildImageResponse(defaultImage.fileBuffer, defaultImage.fileName);
@@ -70,9 +68,7 @@ export async function GET(request) {
       return NextResponse.json({ error: 'Branding image not found.' }, { status: 404 });
     }
 
-    const absolutePath = path.join(BRANDING_STORAGE_DIR, matchedFile);
-    const fileBuffer = await readFile(absolutePath);
-    return buildImageResponse(fileBuffer, matchedFile);
+    return buildImageResponse(brandingAsset.buffer, brandingAsset.fileName);
   } catch {
     const defaultImage = await readDefaultBrandingImage(pageKey);
     if (defaultImage) {
