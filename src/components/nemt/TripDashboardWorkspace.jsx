@@ -1024,6 +1024,13 @@ const TripDashboardWorkspace = () => {
     }
   };
 
+  const handleOpenTripImportPicker = () => {
+    if (importFileInputRef.current) {
+      importFileInputRef.current.value = '';
+      importFileInputRef.current.click();
+    }
+  };
+
   const handleImportTripsIntoDashboard = () => {
     if (importPendingTrips.length === 0) {
       setStatusMessage('Select a valid Excel or CSV file first.');
@@ -5286,14 +5293,24 @@ const TripDashboardWorkspace = () => {
           <Modal.Body>
             <p className="text-muted mb-3">Load the SafeRide Excel or CSV directly in Trip Dashboard without opening the separate Excel Loader page.</p>
             <div className="d-flex flex-wrap gap-2 mb-3">
-              <Button variant="success" onClick={() => importFileInputRef.current?.click()} disabled={isImportParsing}>
-                {isImportParsing ? 'Reading file...' : 'Select Excel or CSV'}
+              <Button variant="success" onClick={handleOpenTripImportPicker} disabled={isImportParsing}>
+                {isImportParsing ? 'Reading file...' : 'Browse Excel or CSV'}
               </Button>
               <Button variant="outline-secondary" onClick={() => router.push('/forms-safe-ride-import')}>
                 Open Full Excel Loader
               </Button>
             </div>
-            <input ref={importFileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleTripImportFileChange} style={{ display: 'none' }} />
+            <Form.Group className="mb-3">
+              <Form.Label className="small text-uppercase text-muted fw-semibold mb-1">Choose file</Form.Label>
+              <Form.Control
+                ref={importFileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleTripImportFileChange}
+                disabled={isImportParsing}
+              />
+              <div className="small text-muted mt-2">Pick the SafeRide `.xlsx`, `.xls`, or `.csv` file from your computer here.</div>
+            </Form.Group>
             <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
             <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
             <div className="small text-muted mb-3">{importPendingTrips.length > 0 ? `${importPendingTrips.length} trip(s) ready to import.` : 'Choose a SafeRide file to load trips here.'}</div>
