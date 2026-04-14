@@ -6,11 +6,14 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
 
 let ensureAdminSchemaPromise = null;
 
 const ensureAdminSchema = async () => {
-  if (!hasDatabaseUrl()) return;
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is required for NEMT admin storage in production');
+  }
   if (ensureAdminSchemaPromise) return ensureAdminSchemaPromise;
   ensureAdminSchemaPromise = runMigrations().catch(error => {
     ensureAdminSchemaPromise = null;
@@ -127,6 +130,9 @@ const writeLocalNemtAdminState = async state => {
 
 export const readNemtAdminState = async () => {
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for NEMT admin storage in production');
+    }
     return await readLocalNemtAdminState();
   }
 
@@ -144,7 +150,8 @@ export const readNemtAdminState = async () => {
       attendants: attendantsRes.rows.map(r => r.data),
       groupings: groupingsRes.rows.map(r => r.data)
     });
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     return await readLocalNemtAdminState();
   }
 };
@@ -176,6 +183,9 @@ export const writeNemtAdminState = async nextState => {
   const normalized = normalizeState(mergedState);
 
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for NEMT admin storage in production');
+    }
     await writeLocalNemtAdminState(normalized);
     return normalized;
   }
@@ -188,7 +198,8 @@ export const writeNemtAdminState = async nextState => {
       await upsertEntities(client, 'admin_attendants', normalized.attendants);
       await upsertEntities(client, 'admin_groupings', normalized.groupings);
     });
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     await writeLocalNemtAdminState(normalized);
   }
 
@@ -226,6 +237,9 @@ export const updateDriverLocation = async ({
   trackingLastSeen
 }) => {
   if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for NEMT admin storage in production');
+    }
     const currentState = await readLocalNemtAdminState();
     const normalizedDriverId = String(driverId || '').trim();
     if (!normalizedDriverId) return null;

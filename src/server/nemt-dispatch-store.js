@@ -6,12 +6,18 @@ import { runMigrations } from '@/server/db-schema';
 import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+
 let ensureDispatchSchemaPromise = null;
 let lastKnownDispatchState = null;
 
 const getDispatchStorageFile = () => getStorageFilePath('nemt-dispatch.json');
 
 const ensureDispatchSchema = async () => {
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is required for dispatch store access.');
+  }
   if (ensureDispatchSchemaPromise) return ensureDispatchSchemaPromise;
   ensureDispatchSchemaPromise = runMigrations().catch(error => {
     ensureDispatchSchemaPromise = null;
@@ -88,7 +94,10 @@ export const readNemtDispatchState = async (options = {}) => {
       lastKnownDispatchState = nextState;
     }
     return nextState;
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw error;
+    }
     const localState = await readLocalDispatchState();
     if (hasMeaningfulDispatchData(localState)) {
       lastKnownDispatchState = localState;
@@ -106,7 +115,10 @@ export const readNemtDispatchThreads = async () => {
     await ensureDispatchSchema();
     const res = await query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 500`);
     return res.rows.map(r => r.data).map(normalizeDispatchThreadRecord);
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw error;
+    }
     const state = await readLocalDispatchState();
     return state.dispatchThreads.map(normalizeDispatchThreadRecord);
   }
@@ -121,7 +133,10 @@ export const readNemtDispatchThreadByDriverId = async driverId => {
     const res = await query(`SELECT data FROM dispatch_threads WHERE driver_id = $1 LIMIT 1`, [normalizedDriverId]);
     const thread = res.rows[0]?.data || null;
     return thread ? normalizeDispatchThreadRecord(thread) : null;
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw error;
+    }
     const state = await readLocalDispatchState();
     return state.dispatchThreads.map(normalizeDispatchThreadRecord).find(thread => String(thread?.driverId || '').trim() === normalizedDriverId) || null;
   }
@@ -143,7 +158,10 @@ export const readAssignedTripsForDriverByServiceDates = async ({ driverId, servi
       [normalizedServiceDateKeys, normalizedDriverId]
     );
     return res.rows.map(row => row.data);
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw error;
+    }
     const state = await readLocalDispatchState();
     return (Array.isArray(state?.trips) ? state.trips : []).filter(trip => {
       const serviceDateKey = getLocalDateKey(new Date(trip?.serviceDate || trip?.rawServiceDate || trip?.date || 0));
@@ -164,7 +182,10 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
 
   try {
     await ensureDispatchSchema();
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw error;
+    }
     const localState = await writeLocalDispatchState(normalized);
     if (hasMeaningfulDispatchData(localState)) {
       lastKnownDispatchState = localState;
@@ -317,7 +338,10 @@ export const upsertIncomingDriverThreadMessage = async (driverId, message) => {
   if (!normalizedDriverId) throw new Error('driverId is required');
   try {
     await ensureDispatchSchema();
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw error;
+    }
     const state = await readLocalDispatchState();
     const existing = state.dispatchThreads.find(thread => String(thread?.driverId || '').trim() === normalizedDriverId) || { driverId: normalizedDriverId, messages: [] };
     const existingMessages = Array.isArray(existing.messages) ? existing.messages : [];
@@ -356,7 +380,10 @@ export const upsertIncomingDriverThreadMessage = async (driverId, message) => {
 export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => {
   try {
     await ensureDispatchSchema();
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) {
+      throw error;
+    }
     const state = await readLocalDispatchState();
     const normalizedDriverId = String(driverId || '').trim();
     const normalizedTripId = String(tripId || '').trim();

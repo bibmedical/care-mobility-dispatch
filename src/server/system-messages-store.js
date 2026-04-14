@@ -7,10 +7,16 @@ const MEDIA_RETENTION_DAYS = 60;
 
 let tableReady = false;
 
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+
 const getSystemMessagesStorageFile = () => getStorageFilePath('system-messages.json');
 
 const ensureTable = async () => {
   if (tableReady) return;
+  if (!hasDatabaseUrl()) {
+    throw new Error('DATABASE_URL is required for system messages in production');
+  }
   await query(`
     CREATE TABLE IF NOT EXISTS system_messages (
       id TEXT PRIMARY KEY,
@@ -65,7 +71,8 @@ export const readSystemMessages = async () => {
       resolvedAt: row.resolved_at,
       createdAt: row.created_at
     }));
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     messages = await readLocalSystemMessages();
   }
   const expiredMediaMessages = messages.filter(message => {
@@ -114,7 +121,8 @@ export const readActiveSystemMessagesByDriverIds = async (driverIds = [], limit 
       resolvedAt: row.resolved_at,
       createdAt: row.created_at
     }));
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     const localMessages = await readLocalSystemMessages();
     return localMessages
       .filter(message => String(message?.status || '').trim().toLowerCase() === 'active' && normalizedDriverIds.includes(String(message?.driverId || '').trim()))
@@ -129,7 +137,8 @@ export const writeSystemMessages = async messages => {
       await upsertSystemMessage(msg);
     }
     return messages;
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     await writeLocalSystemMessages(messages);
   }
   return messages;
@@ -161,7 +170,8 @@ export const upsertSystemMessage = async newMsg => {
         newMsg.createdAt ? new Date(newMsg.createdAt) : new Date()
       ]
     );
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     const messages = await readLocalSystemMessages();
     const nextMessages = messages.filter(message => String(message?.id || '').trim() !== String(newMsg?.id || '').trim());
     nextMessages.unshift(newMsg);
@@ -193,7 +203,8 @@ export const resolveSystemMessageById = async id => {
       resolvedAt,
       createdAt: row.created_at
     };
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     const messages = await readLocalSystemMessages();
     const resolvedAt = new Date().toISOString();
     let updated = null;
@@ -208,34 +219,53 @@ export const resolveSystemMessageById = async id => {
 };
 
 export const clearSystemMessageMediaById = async id => {
-  await ensureTable();
-  const result = await query(`SELECT * FROM system_messages WHERE id = $1`, [id]);
-  const row = result.rows[0];
-  if (!row) return null;
+  try {
+    await ensureTable();
+    const result = await query(`SELECT * FROM system_messages WHERE id = $1`, [id]);
+    const row = result.rows[0];
+    if (!row) return null;
 
-  const current = {
-    ...row.data,
-    id: row.id,
-    driverId: row.driver_id,
-    type: row.type,
-    status: row.status,
-    subject: row.subject,
-    body: row.body,
-    priority: row.priority,
-    resolvedAt: row.resolved_at,
-    createdAt: row.created_at
-  };
+    const current = {
+      ...row.data,
+      id: row.id,
+      driverId: row.driver_id,
+      type: row.type,
+      status: row.status,
+      subject: row.subject,
+      body: row.body,
+      priority: row.priority,
+      resolvedAt: row.resolved_at,
+      createdAt: row.created_at
+    };
 
-  const next = {
-    ...current,
-    mediaUrl: null,
-    mediaType: null,
-    mediaDeletedAt: new Date().toISOString(),
-    mediaRetentionDays: MEDIA_RETENTION_DAYS
-  };
+    const next = {
+      ...current,
+      mediaUrl: null,
+      mediaType: null,
+      mediaDeletedAt: new Date().toISOString(),
+      mediaRetentionDays: MEDIA_RETENTION_DAYS
+    };
 
-  await upsertSystemMessage(next);
-  return next;
+    await upsertSystemMessage(next);
+    return next;
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
+    const messages = await readLocalSystemMessages();
+    let updated = null;
+    const nextMessages = messages.map(message => {
+      if (String(message?.id || '').trim() !== String(id || '').trim()) return message;
+      updated = {
+        ...message,
+        mediaUrl: null,
+        mediaType: null,
+        mediaDeletedAt: new Date().toISOString(),
+        mediaRetentionDays: MEDIA_RETENTION_DAYS
+      };
+      return updated;
+    });
+    await writeLocalSystemMessages(nextMessages);
+    return updated;
+  }
 };
 
 export const resolveMessagesByDriverId = async driverId => {
@@ -245,7 +275,8 @@ export const resolveMessagesByDriverId = async driverId => {
       `UPDATE system_messages SET status = 'resolved', resolved_at = NOW() WHERE driver_id = $1 AND status = 'active'`,
       [String(driverId || '').trim()]
     );
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     const normalizedDriverId = String(driverId || '').trim();
     const messages = await readLocalSystemMessages();
     const nextMessages = messages.map(message => String(message?.driverId || '').trim() === normalizedDriverId && String(message?.status || '').trim() === 'active'
@@ -262,7 +293,8 @@ export const reactivateMessagesByDriverId = async driverId => {
       `UPDATE system_messages SET status = 'active', resolved_at = NULL WHERE driver_id = $1 AND status = 'resolved'`,
       [String(driverId || '').trim()]
     );
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     const normalizedDriverId = String(driverId || '').trim();
     const messages = await readLocalSystemMessages();
     const nextMessages = messages.map(message => String(message?.driverId || '').trim() === normalizedDriverId && String(message?.status || '').trim() === 'resolved'
@@ -293,7 +325,8 @@ export const getActiveMessageForDriver = async (driverId, type) => {
       resolvedAt: row.resolved_at,
       createdAt: row.created_at
     };
-  } catch {
+  } catch (error) {
+    if (!shouldUseLocalFallback()) throw error;
     return (await readLocalSystemMessages()).find(message => String(message?.driverId || '').trim() === String(driverId || '').trim() && String(message?.type || '').trim() === String(type || '').trim() && String(message?.status || '').trim() === 'active') || null;
   }
 };
