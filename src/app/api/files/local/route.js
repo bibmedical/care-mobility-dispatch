@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
 import path from 'path';
+import { getServerSession } from 'next-auth';
+import { options } from '@/app/api/auth/[...nextauth]/options';
+import { isAdminRole } from '@/helpers/system-users';
 import { getStorageRoot } from '@/server/storage-paths';
 
 const MIME_BY_EXT = {
@@ -15,12 +18,26 @@ const MIME_BY_EXT = {
 
 const normalizeRequestedPath = rawPath => String(rawPath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
 
+const isAllowedStorageRelativePath = relPath => {
+  const lowered = relPath.toLowerCase();
+  return lowered.startsWith('storage/assistant-knowledge/') || lowered.startsWith('storage/branding/');
+};
+
 const isAllowedRelativePath = relPath => {
   const lowered = relPath.toLowerCase();
-  return lowered.startsWith('licence/') || lowered.startsWith('storage/') || lowered.startsWith('public/');
+  return lowered.startsWith('licence/') || lowered.startsWith('public/') || isAllowedStorageRelativePath(lowered);
 };
 
 export async function GET(request) {
+  const session = await getServerSession(options);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  if (!isAdminRole(session?.user?.role)) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
+
   const requestedPath = normalizeRequestedPath(request.nextUrl.searchParams.get('path'));
 
   if (!requestedPath) {
