@@ -4,12 +4,14 @@
   },
   "build": {
     "preview": {
+      "channel": "main",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "channel": "main",
       "android": {
         "buildType": "app-bundle"
       }
