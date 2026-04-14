@@ -4614,7 +4614,7 @@ const TripDashboardWorkspace = () => {
               <IconifyIcon icon={themeMode === 'dark' ? 'iconoir:sun-light' : 'iconoir:half-moon'} />
             </Button>
             <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-            router.push('/vehicles');
+            router.push('/drivers/vehicles');
             setStatusMessage('Opening Vehicles.');
           }}>
               Vehicle
