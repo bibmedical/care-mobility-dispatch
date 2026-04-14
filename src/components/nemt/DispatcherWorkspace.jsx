@@ -2974,9 +2974,8 @@ const DispatcherWorkspace = () => {
   const hasBottomRow = dispatcherLayout.messagingVisible || actionsPanelVisible;
   const hasColumnSplit = hasLeftColumn && hasRightColumn;
   const hasRowSplit = inlineMapVisible && dispatcherLayout.messagingVisible || dispatcherLayout.tripsVisible && actionsPanelVisible;
-  const rightPanelsStacked = dispatcherLayout.tripsVisible && actionsPanelVisible;
   const rightOnlySplitMode = !inlineMapVisible && dispatcherLayout.tripsVisible && actionsPanelVisible;
-  const effectiveRowSplit = rightPanelsStacked ? clamp(rowSplit, 42, 58) : rowSplit;
+  const effectiveRowSplit = rightOnlySplitMode ? clamp(rowSplit, 42, 58) : rowSplit;
   const gridTemplateColumns = hasColumnSplit ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : hasLeftColumn ? '1fr 0px 0px' : '0px 0px 1fr';
   const gridTemplateRows = hasRowSplit ? `${effectiveRowSplit}% ${dividerSize}px minmax(0, ${100 - effectiveRowSplit}%)` : hasTopRow ? '1fr 0px 0px' : hasBottomRow ? '0px 0px 1fr' : '1fr 0px 0px';
   const workspaceGridStyle = {
