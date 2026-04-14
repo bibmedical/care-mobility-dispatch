@@ -4625,8 +4625,20 @@ const TripDashboardWorkspace = () => {
           </td>;
       case 'serviceAnimal':
         return <td key={`${trip.id}-animal`} style={{ whiteSpace: 'nowrap' }}>{trip.hasServiceAnimal ? <Badge bg="warning" text="dark">🐕 Yes</Badge> : '-'}</td>;
-      case 'notes':
-        return <td key={`${trip.id}-notes`} style={{ minWidth: 220, maxWidth: 320, whiteSpace: 'normal' }}>{getTripNoteText(trip) || '-'}</td>;
+      case 'notes': {
+        const noteText = getTripNoteText(trip);
+        return <td key={`${trip.id}-notes`} style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
+            <Button
+              variant={noteText ? 'outline-info' : 'outline-secondary'}
+              size="sm"
+              onClick={() => handleOpenTripUpdateModal(trip)}
+              title={noteText ? noteText : 'Open note editor'}
+              style={compactTripActionButtonStyle}
+            >
+              N
+            </Button>
+          </td>;
+      }
       case 'leg':
         return <td key={`${trip.id}-leg`} style={{ whiteSpace: 'nowrap' }}>{getLegBadge(trip) ? <Badge bg={getLegBadge(trip).variant}>{getLegBadge(trip).label}</Badge> : '-'}</td>;
       case 'punctuality':
