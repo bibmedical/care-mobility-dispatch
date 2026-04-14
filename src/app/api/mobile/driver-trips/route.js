@@ -13,6 +13,12 @@ const AUTO_NO_DEPARTURE_THRESHOLD_MINUTES = 5;
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
+const isTripAssignedToDriver = (trip, driverId) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) return false;
+  return String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId;
+};
+
 const isCancelledTrip = trip => ['cancelled', 'canceled'].includes(normalizeLookupValue(trip?.status));
 
 const isRehabTrip = trip => {
@@ -247,7 +253,7 @@ export async function GET(request) {
     const nextDayServiceDateKey = shiftTripDateKey(todayServiceDateKey, 1);
     const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => {
       const serviceDateKey = getTripServiceDateKey(trip);
-      return trip?.driverId === driver.id && [todayServiceDateKey, nextDayServiceDateKey].includes(serviceDateKey) && !isCancelledTrip(trip) && !isRehabTrip(trip);
+      return isTripAssignedToDriver(trip, driver.id) && [todayServiceDateKey, nextDayServiceDateKey].includes(serviceDateKey) && !isCancelledTrip(trip) && !isRehabTrip(trip);
     }).sort(sortTripsByPickupTime);
     const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(driverTrips.map(trip => trip?.id));
     const trips = driverTrips.map(trip => {

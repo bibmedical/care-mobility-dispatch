@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
-import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
-import { upsertIncomingDriverThreadMessage } from '@/server/nemt-dispatch-store';
-import { readSystemMessages, upsertSystemMessage } from '@/server/system-messages-store';
+import { readNemtDispatchThreads, upsertIncomingDriverThreadMessage } from '@/server/nemt-dispatch-store';
+import { readActiveSystemMessagesByDriverIds, readSystemMessages, upsertSystemMessage } from '@/server/system-messages-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
@@ -70,6 +69,11 @@ const mapDispatchThreadMessageToMobileMessage = (entry, normalizedDriverId, driv
 
 const safeReadVisibleSystemMessages = async ({ driverIdentitySet, normalizedDriverId }) => {
   try {
+    const directMessages = await readActiveSystemMessagesByDriverIds([normalizedDriverId], MOBILE_MESSAGES_MAX_ITEMS);
+    if (directMessages.length > 0) {
+      return directMessages.slice(0, MOBILE_MESSAGES_MAX_ITEMS);
+    }
+
     const messages = await readSystemMessages();
     const visible = [];
 
@@ -114,14 +118,13 @@ const safeReadVisibleSystemMessages = async ({ driverIdentitySet, normalizedDriv
 
 const safeReadMappedThreadMessages = async ({ driverIdentitySet, normalizedDriverId, driverName }) => {
   try {
-    const dispatchState = await readNemtDispatchState();
-    const dispatchThreads = Array.isArray(dispatchState?.dispatchThreads) ? dispatchState.dispatchThreads : [];
+    const dispatchThreads = await readNemtDispatchThreads();
     const matchedThread = dispatchThreads.find(thread => driverIdentitySet.has(normalizeLookupValue(thread?.driverId)));
     return Array.isArray(matchedThread?.messages)
       ? matchedThread.messages.map(entry => mapDispatchThreadMessageToMobileMessage(entry, normalizedDriverId, driverName)).filter(message => String(message?.id || '').trim())
       : [];
   } catch (error) {
-    console.warn('[mobile/driver-messages] readNemtDispatchState failed, continuing with system messages fallback:', error?.message || error);
+    console.warn('[mobile/driver-messages] readNemtDispatchThreads failed, continuing with system messages fallback:', error?.message || error);
     return [];
   }
 };

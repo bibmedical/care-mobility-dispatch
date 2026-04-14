@@ -11,6 +11,12 @@ import { readGeniusFuelReceipts, readGeniusPayoutRuns } from '@/server/genius-st
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
+const isTripAssignedToDriver = (trip, driverId) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) return false;
+  return String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId;
+};
+
 const isCancelledTrip = trip => ['cancelled', 'canceled'].includes(normalizeLookupValue(trip?.status));
 
 const hasWillCallPickupMarker = trip => {
@@ -97,7 +103,7 @@ export async function GET() {
   const dispatchState = await readNemtDispatchState();
   const messages = await readSystemMessages();
   const trips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : [])
-    .filter(trip => String(trip?.driverId || '').trim() === String(driver.id || '').trim() && !isCancelledTrip(trip))
+    .filter(trip => isTripAssignedToDriver(trip, driver.id) && !isCancelledTrip(trip))
     .sort((leftTrip, rightTrip) => {
       const leftTime = Number.isFinite(leftTrip?.pickupSortValue) ? leftTrip.pickupSortValue : Number.MAX_SAFE_INTEGER;
       const rightTime = Number.isFinite(rightTrip?.pickupSortValue) ? rightTrip.pickupSortValue : Number.MAX_SAFE_INTEGER;

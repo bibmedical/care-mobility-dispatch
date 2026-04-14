@@ -18,6 +18,12 @@ const generateReviewToken = () => `${Date.now().toString(36)}${Math.random().toS
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
+const isTripAssignedToDriver = (trip, driverId) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) return false;
+  return String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId;
+};
+
 const formatClockTime = value => new Date(value).toLocaleTimeString('en-US', {
   hour: 'numeric',
   minute: '2-digit'
@@ -416,7 +422,7 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Trip not found.' }, { status: 404 });
   }
 
-  if (String(currentTrip?.driverId || '').trim() !== driverId) {
+  if (!isTripAssignedToDriver(currentTrip, driverId)) {
     return jsonWithMobileCors(request, { ok: false, error: 'Trip is not assigned to this driver.' }, { status: 403 });
   }
 

@@ -89,6 +89,39 @@ export const readSystemMessages = async () => {
   return messages;
 };
 
+export const readActiveSystemMessagesByDriverIds = async (driverIds = [], limit = 200) => {
+  const normalizedDriverIds = Array.from(new Set((Array.isArray(driverIds) ? driverIds : []).map(driverId => String(driverId || '').trim()).filter(Boolean)));
+  if (normalizedDriverIds.length === 0) return [];
+
+  try {
+    await ensureTable();
+    const result = await query(
+      `SELECT * FROM system_messages
+       WHERE status = 'active' AND driver_id = ANY($1::text[])
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [normalizedDriverIds, Math.max(1, Number(limit) || 200)]
+    );
+    return result.rows.map(row => ({
+      ...row.data,
+      id: row.id,
+      driverId: row.driver_id,
+      type: row.type,
+      status: row.status,
+      subject: row.subject,
+      body: row.body,
+      priority: row.priority,
+      resolvedAt: row.resolved_at,
+      createdAt: row.created_at
+    }));
+  } catch {
+    const localMessages = await readLocalSystemMessages();
+    return localMessages
+      .filter(message => String(message?.status || '').trim().toLowerCase() === 'active' && normalizedDriverIds.includes(String(message?.driverId || '').trim()))
+      .slice(0, Math.max(1, Number(limit) || 200));
+  }
+};
+
 export const writeSystemMessages = async messages => {
   try {
     await ensureTable();
