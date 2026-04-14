@@ -32,7 +32,7 @@ const COLUMN_ALIASES = {
   miles: ['distance'],
   notes: ['additionalnotes', 'otherdetails'],
   tripType: ['triptype'],
-  driverName: ['drivername'],
+  driverName: ['drivername', 'driver', 'assigneddriver', 'assigned driver', 'driver assigned', 'driver full name', 'driver fullname', 'tripdriver', 'trip driver', 'chauffeur', 'chauffeurname', 'route', 'route name', 'routename'],
   onTimeStatus: ['ontimestatus', 'on time status', 'punctuality', 'punctuality status'],
   delay: ['delay', 'delayminutes', 'delay minutes', 'late', 'late minutes', 'lateminutes'],
   avgDelay: ['avgdelay', 'average delay', 'average delay minutes'],

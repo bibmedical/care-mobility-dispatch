@@ -127,6 +127,55 @@ const isImportedDriverUsable = value => {
   return Boolean(normalized) && !['unassigned', 'dispatcher managed', 'care mobility', 'care services mobility'].includes(normalized);
 };
 
+const ROUTE_IMPORT_ADD_PREFIX = '__add__:';
+
+const findImportedDriverExactMatch = (importedName, availableDrivers = []) => {
+  const normalizedImportedName = normalizeImportedDriverLookup(importedName);
+  if (!normalizedImportedName) return null;
+  return (Array.isArray(availableDrivers) ? availableDrivers : []).find(driver => normalizeImportedDriverLookup(driver?.name) === normalizedImportedName) || null;
+};
+
+const getImportedRouteDriverGroups = pendingTrips => {
+  const usableGroupMap = new Map();
+  let cancelledTripCount = 0;
+  let missingNameTripCount = 0;
+
+  (Array.isArray(pendingTrips) ? pendingTrips : []).forEach(trip => {
+    if (String(trip?.status || '').trim().toLowerCase() === 'cancelled') {
+      cancelledTripCount += 1;
+      return;
+    }
+
+    const importedDriverName = String(trip?.importedDriverName || '').trim();
+    if (!isImportedDriverUsable(importedDriverName)) {
+      missingNameTripCount += 1;
+      return;
+    }
+
+    const lookupKey = normalizeImportedDriverLookup(importedDriverName);
+    const currentGroup = usableGroupMap.get(lookupKey) || {
+      key: lookupKey,
+      label: importedDriverName,
+      tripCount: 0,
+      serviceDates: new Set()
+    };
+    currentGroup.tripCount += 1;
+    if (trip?.serviceDate) {
+      currentGroup.serviceDates.add(String(trip.serviceDate).trim());
+    }
+    usableGroupMap.set(lookupKey, currentGroup);
+  });
+
+  return {
+    usableGroups: Array.from(usableGroupMap.values()).map(group => ({
+      ...group,
+      serviceDates: Array.from(group.serviceDates).sort()
+    })).sort((leftGroup, rightGroup) => leftGroup.label.localeCompare(rightGroup.label, undefined, { sensitivity: 'base' })),
+    cancelledTripCount,
+    missingNameTripCount
+  };
+};
+
 const stripVehicleCapabilityCount = token => String(token || '').trim().replace(/\d+$/, '');
 
 const getTripPairKey = trip => {
@@ -909,6 +958,7 @@ const TripDashboardWorkspace = () => {
   const [localImportPath, setLocalImportPath] = useState('');
   const [isRouteImporting, setIsRouteImporting] = useState(false);
   const [pendingRouteImportPlan, setPendingRouteImportPlan] = useState(null);
+  const [routeImportAssignments, setRouteImportAssignments] = useState({});
   const [cancelTripIds, setCancelTripIds] = useState([]);
   const [cancelReasonDraft, setCancelReasonDraft] = useState('');
   const [noteModalTripId, setNoteModalTripId] = useState(null);
@@ -1090,13 +1140,38 @@ const TripDashboardWorkspace = () => {
     setImportPendingTrips([]);
     setImportedServiceDateKeys([]);
     setSelectedImportFileName('');
+    setRouteImportAssignments({});
   };
 
-  const buildRouteImportPlan = (pendingTrips, availableDrivers) => {
+  const importedRouteDriverSummary = useMemo(() => getImportedRouteDriverGroups(importPendingTrips), [importPendingTrips]);
+
+  useEffect(() => {
+    if (importedRouteDriverSummary.usableGroups.length === 0) {
+      setRouteImportAssignments({});
+      return;
+    }
+
+    setRouteImportAssignments(previousAssignments => {
+      const nextAssignments = {};
+      importedRouteDriverSummary.usableGroups.forEach(group => {
+        const previousValue = previousAssignments[group.key];
+        if (previousValue) {
+          nextAssignments[group.key] = previousValue;
+          return;
+        }
+        const exactMatch = findImportedDriverExactMatch(group.label, drivers);
+        nextAssignments[group.key] = exactMatch?.id || '';
+      });
+      return nextAssignments;
+    });
+  }, [drivers, importedRouteDriverSummary.usableGroups]);
+
+  const buildRouteImportPlan = (pendingTrips, availableDrivers, assignments = {}) => {
     const driverByLookup = new Map((Array.isArray(availableDrivers) ? availableDrivers : []).map(driver => {
       const normalizedName = normalizeImportedDriverLookup(driver?.name);
       return normalizedName ? [normalizedName, driver] : null;
     }).filter(Boolean));
+    const driverById = new Map((Array.isArray(availableDrivers) ? availableDrivers : []).map(driver => [String(driver?.id || '').trim(), driver]));
 
     const missingDriverNames = [];
     const missingDriverSet = new Set();
@@ -1116,7 +1191,11 @@ const TripDashboardWorkspace = () => {
         return;
       }
 
-      const matchedDriver = driverByLookup.get(normalizeImportedDriverLookup(importedDriverName));
+      const importedDriverKey = normalizeImportedDriverLookup(importedDriverName);
+      const selectedAssignment = String(assignments?.[importedDriverKey] || '').trim();
+      const matchedDriver = selectedAssignment.startsWith(ROUTE_IMPORT_ADD_PREFIX)
+        ? null
+        : driverById.get(selectedAssignment) || driverByLookup.get(importedDriverKey);
       if (!matchedDriver) {
         if (!missingDriverSet.has(importedDriverName)) {
           missingDriverSet.add(importedDriverName);
@@ -1180,38 +1259,58 @@ const TripDashboardWorkspace = () => {
 
     try {
       let availableDrivers = [...drivers];
-      let routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers);
+      const effectiveAssignments = { ...routeImportAssignments };
+      const unresolvedImportedGroups = importedRouteDriverSummary.usableGroups.filter(group => {
+        const selectedAssignment = String(effectiveAssignments[group.key] || '').trim();
+        return !selectedAssignment && !findImportedDriverExactMatch(group.label, availableDrivers);
+      });
 
-      if (routePlan.missingDriverNames.length > 0) {
-        const shouldAddMissingDrivers = window.confirm(`These drivers are not in your system:\n\n${routePlan.missingDriverNames.join('\n')}\n\nDo you want to add them now and continue loading routes?`);
-
-        if (shouldAddMissingDrivers) {
-          if (!adminData || !Array.isArray(adminData?.drivers)) {
-            throw new Error('Admin driver data is not ready yet. Try again in a moment.');
-          }
-
-          const existingAdminDrivers = Array.isArray(adminData?.drivers) ? adminData.drivers : [];
-          const existingLookup = new Set(existingAdminDrivers.map(driver => normalizeImportedDriverLookup(driver?.displayName || `${driver?.firstName || ''} ${driver?.lastName || ''}`)));
-          const driversToAdd = routePlan.missingDriverNames
-            .filter(driverName => !existingLookup.has(normalizeImportedDriverLookup(driverName)))
-            .map(buildImportedAdminDriver);
-
-          if (driversToAdd.length > 0) {
-            const nextAdminState = {
-              ...adminData,
-              drivers: [...existingAdminDrivers, ...driversToAdd]
-            };
-            await saveAdminData(nextAdminState);
-            await Promise.allSettled([refreshAdminData(), refreshDrivers()]);
-            availableDrivers = [...availableDrivers, ...driversToAdd.map(driver => ({
-              id: driver.id,
-              name: `${driver.firstName} ${driver.lastName}`.trim()
-            }))];
-          }
-
-          routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers);
-        }
+      if (unresolvedImportedGroups.length > 0) {
+        const message = `Match these route names first: ${unresolvedImportedGroups.map(group => group.label).join(', ')}`;
+        setStatusMessage(message);
+        showNotification({ message, variant: 'warning' });
+        return;
       }
+
+      const namesMarkedToAdd = importedRouteDriverSummary.usableGroups
+        .filter(group => String(effectiveAssignments[group.key] || '').startsWith(ROUTE_IMPORT_ADD_PREFIX))
+        .map(group => group.label);
+
+      if (namesMarkedToAdd.length > 0) {
+        if (!adminData || !Array.isArray(adminData?.drivers)) {
+          throw new Error('Admin driver data is not ready yet. Try again in a moment.');
+        }
+
+        const existingAdminDrivers = Array.isArray(adminData?.drivers) ? adminData.drivers : [];
+        const existingLookup = new Set(existingAdminDrivers.map(driver => normalizeImportedDriverLookup(driver?.displayName || `${driver?.firstName || ''} ${driver?.lastName || ''}`)));
+        const driversToAdd = namesMarkedToAdd
+          .filter(driverName => !existingLookup.has(normalizeImportedDriverLookup(driverName)))
+          .map(buildImportedAdminDriver);
+
+        if (driversToAdd.length > 0) {
+          const nextAdminState = {
+            ...adminData,
+            drivers: [...existingAdminDrivers, ...driversToAdd]
+          };
+          await saveAdminData(nextAdminState);
+          await Promise.allSettled([refreshAdminData(), refreshDrivers()]);
+          availableDrivers = [...availableDrivers, ...driversToAdd.map(driver => ({
+            id: driver.id,
+            name: `${driver.firstName} ${driver.lastName}`.trim()
+          }))];
+        }
+
+        namesMarkedToAdd.forEach(driverName => {
+          const importedKey = normalizeImportedDriverLookup(driverName);
+          const matchedDriver = findImportedDriverExactMatch(driverName, availableDrivers);
+          if (matchedDriver?.id) {
+            effectiveAssignments[importedKey] = matchedDriver.id;
+          }
+        });
+        setRouteImportAssignments(effectiveAssignments);
+      }
+
+      const routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers, effectiveAssignments);
 
       upsertImportedTrips(importPendingTrips);
 
@@ -1219,7 +1318,7 @@ const TripDashboardWorkspace = () => {
         setPendingRouteImportPlan(routePlan.routeSpecs);
       } else {
         const message = routePlan.missingDriverNames.length > 0
-          ? 'Trips were imported, but no routes were created because some driver names could not be matched.'
+          ? `Trips were imported, but these route names still need a driver match: ${routePlan.missingDriverNames.join(', ')}`
           : 'Trips were imported, but the file did not contain usable driver names for route loading.';
         setStatusMessage(message);
         showNotification({ message, variant: 'warning' });
@@ -1229,6 +1328,7 @@ const TripDashboardWorkspace = () => {
       setImportPendingTrips([]);
       setImportedServiceDateKeys([]);
       setSelectedImportFileName('');
+      setRouteImportAssignments({});
     } catch (error) {
       const message = error?.message || 'Could not load routes from the selected file.';
       setStatusMessage(message);
@@ -5375,10 +5475,40 @@ const TripDashboardWorkspace = () => {
             <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
             <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
             <div className="small text-muted mb-3">{importPendingTrips.length > 0 ? `${importPendingTrips.length} trip(s) ready to import.` : 'Choose a SafeRide file to load trips here.'}</div>
+            {importedRouteDriverSummary.usableGroups.length > 0 ? <Alert variant="info" className="mb-3">
+                <div className="fw-semibold mb-1">Routes found in file</div>
+                <div className="small mb-2">Found {importedRouteDriverSummary.usableGroups.length} route name(s) in the file. Match each route to one of your drivers before pressing Load Route.</div>
+                <div className="d-flex flex-column gap-2" style={{ maxHeight: 220, overflowY: 'auto' }}>
+                  {importedRouteDriverSummary.usableGroups.map(group => {
+                    const selectedAssignment = String(routeImportAssignments[group.key] || '').trim();
+                    const exactMatch = findImportedDriverExactMatch(group.label, drivers);
+                    return <div key={`route-driver-match-${group.key}`} className="rounded-3 border p-2 bg-white">
+                        <div className="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                          <div>
+                            <div className="fw-semibold">{group.label}</div>
+                            <div className="small text-muted">{group.tripCount} trip(s){group.serviceDates.length > 0 ? ` • ${group.serviceDates.join(', ')}` : ''}</div>
+                          </div>
+                          <Badge bg={selectedAssignment ? 'success' : exactMatch ? 'primary' : 'warning'}>{selectedAssignment ? 'Matched' : exactMatch ? 'Exact match found' : 'Needs match'}</Badge>
+                        </div>
+                        <Form.Select size="sm" value={selectedAssignment} onChange={event => setRouteImportAssignments(previousAssignments => ({
+                      ...previousAssignments,
+                      [group.key]: event.target.value
+                    }))}>
+                          <option value="">Choose driver...</option>
+                          {exactMatch?.id ? <option value={exactMatch.id}>Use exact match: {exactMatch.name}</option> : null}
+                          <option value={`${ROUTE_IMPORT_ADD_PREFIX}${group.label}`}>Add new driver: {group.label}</option>
+                          {drivers.slice().sort((leftDriver, rightDriver) => String(leftDriver?.name || '').localeCompare(String(rightDriver?.name || ''), undefined, { sensitivity: 'base' })).map(driver => <option key={`route-driver-option-${group.key}-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+                        </Form.Select>
+                      </div>;
+                  })}
+                </div>
+              </Alert> : null}
+            {importPendingTrips.length > 0 && importedRouteDriverSummary.usableGroups.length === 0 ? <Alert variant="warning" className="mb-3">No route or driver names were detected in this file. If this spreadsheet uses another header, I expanded the parser for common driver columns, but this particular file still did not expose a usable route name.</Alert> : null}
+            {importedRouteDriverSummary.missingNameTripCount > 0 ? <div className="small text-muted mb-3">{importedRouteDriverSummary.missingNameTripCount} trip(s) in the file do not have a usable route/driver name, so they cannot be auto-routed until you import a file that includes that column.</div> : null}
             {importPendingTrips.length > 0 ? <Alert variant="success" className="mb-0">
                 <div className="fw-semibold mb-1">Import ready</div>
                 <div>{importPendingTrips.length} trip(s) will be merged into the current local dispatch state.</div>
-                <div className="small mt-2">Use <strong>Load Route</strong> to read the file's driver names, compare them against your drivers, optionally add missing drivers, and build routes automatically.</div>
+                <div className="small mt-2">Use <strong>Load Route</strong> after matching the route names above. You can choose an existing driver or add a new one when the imported name is misspelled or missing from your system.</div>
               </Alert> : null}
           </Modal.Body>
           <Modal.Footer>
