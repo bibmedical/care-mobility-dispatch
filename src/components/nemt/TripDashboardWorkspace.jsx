@@ -2,7 +2,7 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
-import { GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
+import { buildStableDriverId, createBlankDriver, GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
 import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
@@ -99,6 +99,32 @@ const splitRiderName = value => {
     firstName: parts[0],
     lastName: parts.slice(1).join(' ')
   };
+};
+
+const normalizeImportedDriverLookup = value => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const splitImportedDriverName = value => {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return { firstName: 'Imported', lastName: 'Driver' };
+  }
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: 'Driver' };
+  }
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+};
+
+const isImportedDriverUsable = value => {
+  const normalized = normalizeImportedDriverLookup(value);
+  return Boolean(normalized) && !['unassigned', 'dispatcher managed', 'care mobility', 'care services mobility'].includes(normalized);
 };
 
 const stripVehicleCapabilityCount = token => String(token || '').trim().replace(/\d+$/, '');
@@ -776,7 +802,7 @@ const TripDashboardWorkspace = () => {
   const { data: session } = useSession();
   const { changeTheme, themeMode } = useLayoutContext();
   const { data: smsData, saveData: saveSmsData } = useSmsIntegrationApi();
-  const { data: adminData } = useNemtAdminApi();
+  const { data: adminData, saveData: saveAdminData, refresh: refreshAdminData } = useNemtAdminApi();
   const { data: blacklistData, loading: blacklistLoading, saving: blacklistSaving, error: blacklistError, refresh: refreshBlacklist, saveData: saveBlacklistData } = useBlacklistApi();
   const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const {
@@ -880,6 +906,8 @@ const TripDashboardWorkspace = () => {
   const [importedServiceDateKeys, setImportedServiceDateKeys] = useState([]);
   const [selectedImportFileName, setSelectedImportFileName] = useState('');
   const [isImportParsing, setIsImportParsing] = useState(false);
+  const [isRouteImporting, setIsRouteImporting] = useState(false);
+  const [pendingRouteImportPlan, setPendingRouteImportPlan] = useState(null);
   const [cancelTripIds, setCancelTripIds] = useState([]);
   const [cancelReasonDraft, setCancelReasonDraft] = useState('');
   const [noteModalTripId, setNoteModalTripId] = useState(null);
@@ -1010,6 +1038,171 @@ const TripDashboardWorkspace = () => {
     setImportedServiceDateKeys([]);
     setSelectedImportFileName('');
   };
+
+  const buildRouteImportPlan = (pendingTrips, availableDrivers) => {
+    const driverByLookup = new Map((Array.isArray(availableDrivers) ? availableDrivers : []).map(driver => {
+      const normalizedName = normalizeImportedDriverLookup(driver?.name);
+      return normalizedName ? [normalizedName, driver] : null;
+    }).filter(Boolean));
+
+    const missingDriverNames = [];
+    const missingDriverSet = new Set();
+    const routePlanMap = new Map();
+    let matchedTripCount = 0;
+    let skippedTripCount = 0;
+
+    (Array.isArray(pendingTrips) ? pendingTrips : []).forEach(trip => {
+      const importedDriverName = String(trip?.importedDriverName || '').trim();
+      if (!isImportedDriverUsable(importedDriverName)) {
+        skippedTripCount += 1;
+        return;
+      }
+
+      if (String(trip?.status || '').trim().toLowerCase() === 'cancelled') {
+        skippedTripCount += 1;
+        return;
+      }
+
+      const matchedDriver = driverByLookup.get(normalizeImportedDriverLookup(importedDriverName));
+      if (!matchedDriver) {
+        if (!missingDriverSet.has(importedDriverName)) {
+          missingDriverSet.add(importedDriverName);
+          missingDriverNames.push(importedDriverName);
+        }
+        skippedTripCount += 1;
+        return;
+      }
+
+      const serviceDateKey = String(trip?.serviceDate || '').trim() || getLocalDateKey();
+      const routeKey = `${serviceDateKey}::${matchedDriver.id}`;
+      const currentSpec = routePlanMap.get(routeKey) || {
+        name: `${matchedDriver.name} Route`,
+        driverId: matchedDriver.id,
+        tripIds: [],
+        notes: `Loaded from Excel by driver name (${matchedDriver.name})`,
+        serviceDate: serviceDateKey
+      };
+      currentSpec.tripIds.push(String(trip?.id || '').trim());
+      routePlanMap.set(routeKey, currentSpec);
+      matchedTripCount += 1;
+    });
+
+    return {
+      missingDriverNames,
+      routeSpecs: Array.from(routePlanMap.values()).filter(spec => spec.tripIds.length > 0),
+      matchedTripCount,
+      skippedTripCount
+    };
+  };
+
+  const buildImportedAdminDriver = driverName => {
+    const baseDriver = createBlankDriver();
+    const { firstName, lastName } = splitImportedDriverName(driverName);
+    const nextDriver = {
+      ...baseDriver,
+      firstName,
+      lastName,
+      displayName: String(driverName || '').trim(),
+      username: normalizeImportedDriverLookup(driverName).replace(/\s+/g, '.'),
+      notes: 'Created from Trip Dashboard Load Route',
+      checkpoint: 'Imported from route loader',
+      routeRoster: {
+        ...baseDriver.routeRoster,
+        mode: 'permanent'
+      }
+    };
+    return {
+      ...nextDriver,
+      id: buildStableDriverId(nextDriver)
+    };
+  };
+
+  const handleLoadRoutesIntoDashboard = async () => {
+    if (importPendingTrips.length === 0) {
+      setStatusMessage('Select a valid Excel or CSV file first.');
+      return;
+    }
+
+    setIsRouteImporting(true);
+
+    try {
+      let availableDrivers = [...drivers];
+      let routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers);
+
+      if (routePlan.missingDriverNames.length > 0) {
+        const shouldAddMissingDrivers = window.confirm(`These drivers are not in your system:\n\n${routePlan.missingDriverNames.join('\n')}\n\nDo you want to add them now and continue loading routes?`);
+
+        if (shouldAddMissingDrivers) {
+          if (!adminData || !Array.isArray(adminData?.drivers)) {
+            throw new Error('Admin driver data is not ready yet. Try again in a moment.');
+          }
+
+          const existingAdminDrivers = Array.isArray(adminData?.drivers) ? adminData.drivers : [];
+          const existingLookup = new Set(existingAdminDrivers.map(driver => normalizeImportedDriverLookup(driver?.displayName || `${driver?.firstName || ''} ${driver?.lastName || ''}`)));
+          const driversToAdd = routePlan.missingDriverNames
+            .filter(driverName => !existingLookup.has(normalizeImportedDriverLookup(driverName)))
+            .map(buildImportedAdminDriver);
+
+          if (driversToAdd.length > 0) {
+            const nextAdminState = {
+              ...adminData,
+              drivers: [...existingAdminDrivers, ...driversToAdd]
+            };
+            await saveAdminData(nextAdminState);
+            await Promise.allSettled([refreshAdminData(), refreshDrivers()]);
+            availableDrivers = [...availableDrivers, ...driversToAdd.map(driver => ({
+              id: driver.id,
+              name: `${driver.firstName} ${driver.lastName}`.trim()
+            }))];
+          }
+
+          routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers);
+        }
+      }
+
+      upsertImportedTrips(importPendingTrips);
+
+      if (routePlan.routeSpecs.length > 0) {
+        setPendingRouteImportPlan(routePlan.routeSpecs);
+      } else {
+        const message = routePlan.missingDriverNames.length > 0
+          ? 'Trips were imported, but no routes were created because some driver names could not be matched.'
+          : 'Trips were imported, but the file did not contain usable driver names for route loading.';
+        setStatusMessage(message);
+        showNotification({ message, variant: 'warning' });
+      }
+
+      setShowTripImportModal(false);
+      setImportPendingTrips([]);
+      setImportedServiceDateKeys([]);
+      setSelectedImportFileName('');
+    } catch (error) {
+      const message = error?.message || 'Could not load routes from the selected file.';
+      setStatusMessage(message);
+      showNotification({ message, variant: 'danger' });
+    } finally {
+      setIsRouteImporting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!pendingRouteImportPlan || pendingRouteImportPlan.length === 0) return;
+
+    const currentTripIdSet = new Set(trips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
+    const routesReady = pendingRouteImportPlan.every(routeSpec => routeSpec.tripIds.every(tripId => currentTripIdSet.has(String(tripId || '').trim())));
+    if (!routesReady) return;
+
+    const nextRouteSpecs = pendingRouteImportPlan;
+    setPendingRouteImportPlan(null);
+    nextRouteSpecs.forEach(routeSpec => {
+      createRoute(routeSpec);
+    });
+
+    const tripCount = nextRouteSpecs.reduce((total, routeSpec) => total + routeSpec.tripIds.length, 0);
+    const successMessage = `${tripCount} trip(s) imported and ${nextRouteSpecs.length} route(s) loaded by driver name.`;
+    setStatusMessage(successMessage);
+    showNotification({ message: successMessage, variant: 'success' });
+  }, [createRoute, pendingRouteImportPlan, showNotification, trips]);
 
   const [showDriversPanel, setShowDriversPanel] = useState(true);
   const [showRoutesPanel, setShowRoutesPanel] = useState(true);
@@ -5107,11 +5300,13 @@ const TripDashboardWorkspace = () => {
             {importPendingTrips.length > 0 ? <Alert variant="success" className="mb-0">
                 <div className="fw-semibold mb-1">Import ready</div>
                 <div>{importPendingTrips.length} trip(s) will be merged into the current local dispatch state.</div>
+                <div className="small mt-2">Use <strong>Load Route</strong> to read the file's driver names, compare them against your drivers, optionally add missing drivers, and build routes automatically.</div>
               </Alert> : null}
           </Modal.Body>
           <Modal.Footer>
             <Button variant="outline-secondary" onClick={() => setShowTripImportModal(false)}>Close</Button>
             <Button variant="success" onClick={handleImportTripsIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing}>Import Trips</Button>
+            <Button variant="primary" onClick={handleLoadRoutesIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing || isRouteImporting}>{isRouteImporting ? 'Loading Route...' : 'Load Route'}</Button>
           </Modal.Footer>
         </Modal>
 
