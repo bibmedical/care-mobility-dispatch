@@ -19,7 +19,7 @@ import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whats
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
 import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { CircleMarker, MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
@@ -35,6 +35,28 @@ const darkToolbarButtonStyle = {
   color: '#e5e7eb',
   borderColor: 'rgba(226, 232, 240, 0.34)',
   backgroundColor: 'transparent'
+};
+
+const TripDashboardMapResizer = ({ resizeKey }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      map.invalidateSize();
+    });
+    const timeoutId = window.setTimeout(() => {
+      map.invalidateSize();
+    }, 180);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [map, resizeKey]);
+
+  return null;
 };
 
 const iconToolbarButtonStyle = {
@@ -4827,6 +4849,7 @@ const TripDashboardWorkspace = () => {
                 <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
               </div> : null}
             <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+              <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               <ZoomControl position="bottomleft" />
               {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
@@ -4901,6 +4924,7 @@ const TripDashboardWorkspace = () => {
   }];
 
   const dockPanelsVisible = dockPanelsOrdered.filter(panel => panel.visible);
+  const tripDashboardMapResizeKey = [showMapPane ? 'open' : 'closed', layoutMode, Math.round(columnSplit), rightPanelCollapsed ? 'collapsed' : 'expanded', showBottomPanels ? 'bottom' : 'solo', showDriversPanel ? 'drivers' : 'no-drivers', showRoutesPanel ? 'routes' : 'no-routes', showTripsPanel ? 'trips' : 'no-trips'].join('|');
 
   return <>
       {(!showDriversPanel || !showRoutesPanel || !showTripsPanel) && <div style={{
