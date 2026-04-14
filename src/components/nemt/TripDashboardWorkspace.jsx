@@ -4686,7 +4686,7 @@ const TripDashboardWorkspace = () => {
               variant={noteText ? 'outline-info' : 'outline-secondary'}
               size="sm"
               onClick={() => handleOpenTripNote(trip)}
-              title={noteText ? noteText : 'Open note editor'}
+              title={getTripImportedNoteText(trip) || 'Open imported patient note'}
               style={compactTripActionButtonStyle}
             >
               N
@@ -5901,75 +5901,15 @@ const TripDashboardWorkspace = () => {
 
         <Modal show={Boolean(noteModalTrip)} onHide={handleCloseTripNote} centered>
           <Modal.Header closeButton>
-            <Modal.Title>Trip Details</Modal.Title>
+            <Modal.Title>Patient Note</Modal.Title>
           </Modal.Header>
           <Modal.Body>
             <div className="small text-muted mb-2">{noteModalTrip ? getDisplayTripId(noteModalTrip) : ''}</div>
-            <Row className="g-3">
-              <Col md={6}>
-                <Form.Label className="small text-uppercase text-muted fw-semibold">Scheduled pickup</Form.Label>
-                <Form.Control value={tripEditDraft.scheduledPickup} onChange={event => setTripEditDraft(current => ({
-                ...current,
-                scheduledPickup: event.target.value
-              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="10:30 AM" />
-              </Col>
-              <Col md={6}>
-                <Form.Label className="small text-uppercase text-muted fw-semibold">Actual pickup</Form.Label>
-                <Form.Control value={tripEditDraft.actualPickup} onChange={event => setTripEditDraft(current => ({
-                ...current,
-                actualPickup: event.target.value
-              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="10:42 AM" />
-              </Col>
-              <Col md={6}>
-                <Form.Label className="small text-uppercase text-muted fw-semibold">Scheduled dropoff</Form.Label>
-                <Form.Control value={tripEditDraft.scheduledDropoff} onChange={event => setTripEditDraft(current => ({
-                ...current,
-                scheduledDropoff: event.target.value
-              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="11:00 AM" />
-              </Col>
-              <Col md={6}>
-                <Form.Label className="small text-uppercase text-muted fw-semibold">Actual dropoff</Form.Label>
-                <Form.Control value={tripEditDraft.actualDropoff} onChange={event => setTripEditDraft(current => ({
-                ...current,
-                actualDropoff: event.target.value
-              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="11:08 AM" />
-              </Col>
-              <Col md={6}>
-                <Form.Label className="small text-uppercase text-muted fw-semibold">Late minutes</Form.Label>
-                <Form.Control value={tripEditDraft.delay} onChange={event => setTripEditDraft(current => ({
-                ...current,
-                delay: event.target.value
-              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="8" />
-              </Col>
-              <Col md={6}>
-                <Form.Label className="small text-uppercase text-muted fw-semibold">Punctuality</Form.Label>
-                <Form.Select value={tripEditDraft.onTimeStatus} onChange={event => setTripEditDraft(current => ({
-                ...current,
-                onTimeStatus: event.target.value
-              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation}>
-                  <option value="">Auto</option>
-                  <option value="On Time">On Time</option>
-                  <option value="Late">Late</option>
-                  <option value="Pending">Pending</option>
-                </Form.Select>
-              </Col>
-              <Col md={12}>
-                <Form.Label className="small text-uppercase text-muted fw-semibold">Excel / imported note</Form.Label>
-                <Form.Control as="textarea" rows={4} value={getTripImportedNoteText(noteModalTrip)} readOnly onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="No note came from the import for this trip." />
-              </Col>
-              <Col md={12}>
-                <Form.Label className="small text-uppercase text-muted fw-semibold">Trip note</Form.Label>
-                <Form.Control as="textarea" rows={5} value={noteDraft} onChange={event => setNoteDraft(event.target.value)} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="Write your dispatch note for the driver here." />
-              </Col>
-            </Row>
+            <Form.Label className="small text-uppercase text-muted fw-semibold">Imported patient note</Form.Label>
+            <Form.Control as="textarea" rows={8} value={getTripImportedNoteText(noteModalTrip)} readOnly onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="No patient note came from the Excel import for this trip." />
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="outline-info" onClick={() => {
-            handleCloneTrip(noteModalTrip);
-            handleCloseTripNote();
-          }}>Clone Trip</Button>
             <Button variant="secondary" onClick={handleCloseTripNote}>Close</Button>
-            <Button variant="primary" onClick={handleSaveTripNote}>Save Trip</Button>
           </Modal.Footer>
         </Modal>
 
