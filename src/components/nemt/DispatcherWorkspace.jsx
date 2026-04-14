@@ -34,7 +34,7 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 };
 
 const DISPATCHER_ROW1_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW1_BLOCKS__';
-const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'day-summary'];
+const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'day-summary', 'route-actions'];
 const DISPATCHER_ROW2_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW2_BLOCKS__';
 const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'columns'];
 const DISPATCHER_ROW3_BLOCKS_KEY = '__CARE_MOBILITY_DISPATCHER_ROW3_BLOCKS__';
@@ -48,6 +48,7 @@ const DISPATCHER_TOOLBAR_BLOCK_LABELS = {
   'date-controls': 'Date controls',
   'trip-search': 'Search',
   'day-summary': 'Day summary',
+  'route-actions': 'Route actions',
   'stats': 'Stats',
   'actions': 'Actions',
   'columns': 'Columns',
@@ -860,6 +861,7 @@ const DispatcherWorkspace = () => {
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
+  const [isRoutePanelCollapsed, setIsRoutePanelCollapsed] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
   const [toolbarRow1Order, setToolbarRow1Order] = useState(DISPATCHER_ROW1_DEFAULT_BLOCKS);
   const [toolbarRow2Order, setToolbarRow2Order] = useState(DISPATCHER_ROW2_DEFAULT_BLOCKS);
@@ -1385,6 +1387,59 @@ const DispatcherWorkspace = () => {
     }
   };
 
+  const getPreferredRouteIdForDriver = driverId => {
+    const normalizedDriverId = String(driverId || '').trim();
+    if (!normalizedDriverId) return '';
+    const targetDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
+    const candidateRoutes = routePlans.filter(routePlan => {
+      const primaryDriverId = String(routePlan?.driverId || '').trim();
+      const secondaryDriverId = String(routePlan?.secondaryDriverId || '').trim();
+      return primaryDriverId === normalizedDriverId || secondaryDriverId === normalizedDriverId;
+    });
+    if (candidateRoutes.length === 0) return '';
+
+    const sameDayRoutes = candidateRoutes.filter(routePlan => getRouteServiceDateKey(routePlan, trips) === targetDateKey);
+    const preferredRoutes = sameDayRoutes.length > 0 ? sameDayRoutes : candidateRoutes;
+
+    return [...preferredRoutes].sort((leftRoute, rightRoute) => {
+      const leftDate = String(getRouteServiceDateKey(leftRoute, trips) || '').trim();
+      const rightDate = String(getRouteServiceDateKey(rightRoute, trips) || '').trim();
+      if (leftDate !== rightDate) return rightDate.localeCompare(leftDate);
+      return (Array.isArray(rightRoute?.tripIds) ? rightRoute.tripIds.length : 0) - (Array.isArray(leftRoute?.tripIds) ? leftRoute.tripIds.length : 0);
+    })[0]?.id || '';
+  };
+
+  const handleToggleRoutePanel = () => {
+    if (!dispatcherLayout.actionsVisible) {
+      setDispatcherLayout(currentLayout => ({
+        ...currentLayout,
+        actionsVisible: true,
+        preset: 'custom'
+      }));
+      setIsRoutePanelCollapsed(false);
+      setStatusMessage('Panel de ruta visible.');
+      return;
+    }
+
+    setIsRoutePanelCollapsed(currentValue => {
+      const nextValue = !currentValue;
+      setStatusMessage(nextValue ? 'Panel de ruta oculto.' : 'Panel de ruta visible.');
+      return nextValue;
+    });
+  };
+
+  const renderRouteToolbarActions = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
+      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
+      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
+      <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 210 }}>
+        <option value="">Reassign to driver</option>
+        {quickReassignDrivers.map(driver => <option key={`toolbar-${driver.id}`} value={driver.id}>{driver.name}{String(driver?.live || '').trim().toLowerCase() === 'online' ? '' : ' (offline)'}</option>)}
+      </Form.Select>
+      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked || !quickReassignDriverId}>Reassign</Button>
+      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
+      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleToggleRoutePanel}>{actionsPanelVisible ? 'Hide Route Panel' : 'Show Route Panel'}</Button>
+    </div>;
+
   const renderToolbarRow1Block = blockId => {
     switch (canonicalizeToolbarBlockId(blockId)) {
       case 'trip-summary':
@@ -1447,6 +1502,8 @@ const DispatcherWorkspace = () => {
               <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completedByDrivers}</div>
             </div>
           </div>;
+      case 'route-actions':
+        return renderRouteToolbarActions();
       default:
         return null;
     }
@@ -2357,25 +2414,28 @@ const DispatcherWorkspace = () => {
   };
 
   const handleDriverSelectionChange = nextDriverId => {
-    setSelectedDriverId(nextDriverId);
-    setIsManualDriverScope(Boolean(nextDriverId));
-    setSelectedRouteId('');
+    const normalizedDriverId = String(nextDriverId || '').trim();
+    const preferredRouteId = getPreferredRouteIdForDriver(normalizedDriverId);
+    setSelectedDriverId(normalizedDriverId || null);
+    setIsManualDriverScope(Boolean(normalizedDriverId));
+    setSelectedRouteId(preferredRouteId || '');
+    setIsRoutePanelCollapsed(false);
 
-    if (!nextDriverId) {
+    if (!normalizedDriverId) {
       setFollowSelectedDriver(false);
       setStatusMessage('Mostrando todos los trips otra vez.');
       return;
     }
 
-    const driver = drivers.find(item => item.id === nextDriverId);
+    const driver = drivers.find(item => item.id === normalizedDriverId);
     if (!driver) {
       setStatusMessage('Chofer no encontrado.');
       return;
     }
 
-    const assignedCount = trips.filter(trip => trip.driverId === nextDriverId || trip.secondaryDriverId === nextDriverId).length;
+    const assignedCount = trips.filter(trip => trip.driverId === normalizedDriverId || trip.secondaryDriverId === normalizedDriverId).length;
     const openCount = trips.filter(trip => !trip.driverId && !trip.secondaryDriverId).length;
-    setStatusMessage(`Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.`);
+    setStatusMessage(preferredRouteId ? `Viendo ${driver.name}: ${assignedCount} asignados, ${openCount} pendientes y ruta cargada.` : `Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.`);
   };
 
   const handleUnassign = () => {
@@ -2967,7 +3027,7 @@ const DispatcherWorkspace = () => {
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
   const inlineMapVisible = dispatcherLayout.mapVisible && showInlineMap;
-  const actionsPanelVisible = dispatcherLayout.actionsVisible;
+  const actionsPanelVisible = dispatcherLayout.actionsVisible && !isRoutePanelCollapsed;
   const hasLeftColumn = inlineMapVisible || dispatcherLayout.messagingVisible;
   const hasRightColumn = dispatcherLayout.tripsVisible || actionsPanelVisible;
   const hasTopRow = inlineMapVisible || dispatcherLayout.tripsVisible;
@@ -3462,13 +3522,19 @@ const DispatcherWorkspace = () => {
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 h-100">
               <DispatcherMessagingPanel hideThreadList drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
+              const normalizedDriverId = String(nextDriverId || '').trim();
               setIsManualDriverScope(false);
-              setSelectedDriverId(nextDriverId || null);
+              setSelectedDriverId(normalizedDriverId || null);
+              setSelectedRouteId(getPreferredRouteIdForDriver(normalizedDriverId) || '');
+              setIsRoutePanelCollapsed(false);
             }} onLocateDriver={driverId => {
+              const normalizedDriverId = String(driverId || '').trim();
               setIsManualDriverScope(false);
-              setSelectedDriverId(driverId);
+              setSelectedDriverId(normalizedDriverId || null);
+              setSelectedRouteId(getPreferredRouteIdForDriver(normalizedDriverId) || '');
+              setIsRoutePanelCollapsed(false);
               setFollowSelectedDriver(true);
-              setStatusMessage(dispatcherLayout.mapVisible ? `Driver ${driverId} selected for the map.` : `Driver ${driverId} selected. Open the map manually when you want to view it.`);
+              setStatusMessage(dispatcherLayout.mapVisible ? `Driver ${normalizedDriverId} selected for the map.` : `Driver ${normalizedDriverId} selected. Open the map manually when you want to view it.`);
             }} onOpenLayout={() => {
               setShowLayoutModal(true);
             }} openFullChat={() => {
@@ -3484,17 +3550,9 @@ const DispatcherWorkspace = () => {
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 d-flex flex-column h-100">
               <div className="d-flex justify-content-between align-items-center px-2 py-2 border-bottom gap-2 flex-wrap" style={dispatcherSurfaceStyles.header}>
-                <div className="d-flex gap-2 flex-wrap align-items-center">
-                  <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
-                  <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
-                </div>
-                <div className="d-flex gap-2 flex-wrap align-items-center justify-content-end">
-                  <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220, ...dispatcherSurfaceStyles.select }}>
-                    <option value="">Reassign to driver</option>
-                    {quickReassignDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}{String(driver?.live || '').trim().toLowerCase() === 'online' ? '' : ' (offline)'}</option>)}
-                  </Form.Select>
-                  <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked}>Reassign</Button>
-                  <Button variant="outline-secondary" size="sm" style={dispatcherSurfaceStyles.button} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
+                <div className="d-flex flex-column gap-1">
+                  <strong>{selectedRoute?.name || (selectedDriver ? `Route for ${selectedDriver.name}` : 'Route details')}</strong>
+                  <span className="small text-muted">{routeTrips.length} trip(s) shown</span>
                 </div>
               </div>
               <div className="table-responsive flex-grow-1" style={{ minHeight: 0 }}>
