@@ -20,13 +20,26 @@ export const DEFAULT_USER_PREFERENCES = {
     actionsVisible: true
   },
   tripDashboard: {
+    storageVersion: 0,
     row1: [],
     row2: [],
     row3: [],
     toolbarVisibility: {},
-    layoutMode: 'normal',
+    layoutMode: 'focus-right',
     panelView: 'both',
-    panelOrder: 'drivers-first'
+    panelOrder: 'drivers-first',
+    showBottomPanels: true,
+    showMapPane: false,
+    showDriversPanel: true,
+    showRoutesPanel: true,
+    showTripsPanel: true,
+    rightPanelCollapsed: false,
+    showConfirmationTools: false,
+    tripOrderMode: 'original',
+    columnSplit: 38,
+    rowSplit: 68,
+    columnWidths: {},
+    closedRouteStateByKey: {}
   },
   confirmation: {
     outputColumns: []
@@ -45,6 +58,31 @@ const normalizeStringArray = value => Array.from(new Set((Array.isArray(value) ?
 const normalizeBooleanMap = value => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).map(([key, itemValue]) => [String(key || '').trim(), itemValue !== false]));
+};
+
+const normalizeFiniteNumber = (value, fallback, min = Number.NEGATIVE_INFINITY, max = Number.POSITIVE_INFINITY) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.min(max, Math.max(min, numericValue));
+};
+
+const normalizeNumberMap = value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).flatMap(([key, itemValue]) => {
+    const normalizedKey = String(key || '').trim();
+    const normalizedValue = Math.round(normalizeFiniteNumber(itemValue, Number.NaN, 24, 640));
+    if (!normalizedKey || !Number.isFinite(normalizedValue)) return [];
+    return [[normalizedKey, normalizedValue]];
+  }));
+};
+
+const normalizeObjectMap = value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).flatMap(([key, itemValue]) => {
+    const normalizedKey = String(key || '').trim();
+    if (!normalizedKey || !itemValue || typeof itemValue !== 'object' || Array.isArray(itemValue)) return [];
+    return [[normalizedKey, itemValue]];
+  }));
 };
 
 const normalizeConfirmationPreferences = value => ({
@@ -67,13 +105,26 @@ const normalizeDispatcherLayoutPreferences = value => ({
 });
 
 const normalizeTripDashboardPreferences = value => ({
+  storageVersion: normalizeFiniteNumber(value?.storageVersion, DEFAULT_USER_PREFERENCES.tripDashboard.storageVersion, 0, 99),
   row1: normalizeStringArray(value?.row1),
   row2: normalizeStringArray(value?.row2),
   row3: normalizeStringArray(value?.row3),
   toolbarVisibility: normalizeBooleanMap(value?.toolbarVisibility),
   layoutMode: String(value?.layoutMode || DEFAULT_USER_PREFERENCES.tripDashboard.layoutMode).trim() || DEFAULT_USER_PREFERENCES.tripDashboard.layoutMode,
   panelView: String(value?.panelView || DEFAULT_USER_PREFERENCES.tripDashboard.panelView).trim() || DEFAULT_USER_PREFERENCES.tripDashboard.panelView,
-  panelOrder: String(value?.panelOrder || DEFAULT_USER_PREFERENCES.tripDashboard.panelOrder).trim() || DEFAULT_USER_PREFERENCES.tripDashboard.panelOrder
+  panelOrder: String(value?.panelOrder || DEFAULT_USER_PREFERENCES.tripDashboard.panelOrder).trim() || DEFAULT_USER_PREFERENCES.tripDashboard.panelOrder,
+  showBottomPanels: value?.showBottomPanels !== false,
+  showMapPane: value?.showMapPane === true,
+  showDriversPanel: value?.showDriversPanel !== false,
+  showRoutesPanel: value?.showRoutesPanel !== false,
+  showTripsPanel: value?.showTripsPanel !== false,
+  rightPanelCollapsed: value?.rightPanelCollapsed === true,
+  showConfirmationTools: value?.showConfirmationTools === true,
+  tripOrderMode: String(value?.tripOrderMode || DEFAULT_USER_PREFERENCES.tripDashboard.tripOrderMode).trim() || DEFAULT_USER_PREFERENCES.tripDashboard.tripOrderMode,
+  columnSplit: normalizeFiniteNumber(value?.columnSplit, DEFAULT_USER_PREFERENCES.tripDashboard.columnSplit, 16, 94),
+  rowSplit: normalizeFiniteNumber(value?.rowSplit, DEFAULT_USER_PREFERENCES.tripDashboard.rowSplit, 32, 84),
+  columnWidths: normalizeNumberMap(value?.columnWidths),
+  closedRouteStateByKey: normalizeObjectMap(value?.closedRouteStateByKey)
 });
 
 const normalizeDispatcherMessagingPreferences = value => ({
