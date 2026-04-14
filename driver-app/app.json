@@ -44,7 +44,7 @@
       "predictiveBackGestureEnabled": false
     },
     "extra": {
-      "apiBaseUrl": "https://care-mobility-dispatch-web.onrender.com",
+      "apiBaseUrl": "https://care-mobility-dispatch-web-v2.onrender.com",
       "eas": {
         "projectId": "18100902-f02f-4e6e-a660-d3718fd5200d"
       }

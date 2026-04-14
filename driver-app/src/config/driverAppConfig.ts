@@ -5,8 +5,8 @@ const normalizeApiBaseUrl = (value?: string) => {
   return normalizedValue.replace(/\/$/, '');
 };
 
-// Force Render API during Expo Go testing to avoid local DB-only failures.
-const resolvedApiBaseUrl = 'https://care-mobility-dispatch-web.onrender.com';
+// Force the active Render API during Expo Go testing to avoid local DB-only failures.
+const resolvedApiBaseUrl = 'https://care-mobility-dispatch-web-v2.onrender.com';
 
 export const DRIVER_APP_CONFIG = {
   apiBaseUrl: resolvedApiBaseUrl,

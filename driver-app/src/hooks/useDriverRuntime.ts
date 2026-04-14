@@ -16,7 +16,7 @@ const formatDateTime = (value: number | null) => {
 const SESSION_RESTORE_TIMEOUT_MS = 2500;
 const NETWORK_TIMEOUT_MS = 45000;
 const isLocalPasswordlessDriverLoginEnabled = __DEV__;
-const DRIVER_RENDER_API_BASE_URL = 'https://care-mobility-dispatch-web.onrender.com';
+const DRIVER_RENDER_API_BASE_URL = 'https://care-mobility-dispatch-web-v2.onrender.com';
 const DRIVER_ALERT_CHANNEL_ID = 'driver-alerts';
 const shouldRegisterRemotePushToken = true;
 
