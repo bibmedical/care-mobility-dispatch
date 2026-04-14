@@ -1940,6 +1940,16 @@ const TripDashboardWorkspace = () => {
       H
     </Button>;
 
+  const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
+      <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => setSelectedDriverId(event.target.value || null)} style={{ ...compactToolbarSelectBaseStyle, width: 210 }}>
+        <option value="">Reassign to driver</option>
+        {drivers.map(driver => <option key={`route-reassign-toolbar-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+      </Form.Select>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleRoutePanelReassign}>Reassign</Button>
+    </div>;
+
   const renderTripSearchBlock = () => <Form.Control
       size="sm"
       value={tripIdSearch}
@@ -4696,13 +4706,6 @@ const TripDashboardWorkspace = () => {
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex flex-column p-2 border-bottom gap-2" style={tripDashboardToolbarShellStyle}>
           <div className="d-flex align-items-center gap-2 flex-wrap">
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
-            <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => setSelectedDriverId(event.target.value || null)} style={{ width: 180 }}>
-              <option value="">Driver</option>
-              {drivers.map(driver => <option key={`route-driver-${driver.id}`} value={driver.id}>{driver.name}</option>)}
-            </Form.Select>
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleRoutePanelReassign}>Reassign</Button>
             <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 180 }}>
               <option value="">2nd driver</option>
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
@@ -5140,8 +5143,9 @@ const TripDashboardWorkspace = () => {
                   </button>
                   {renderStatusFilterBlock()}
                   {renderDispatchHistoryButton()}
-                  {renderSecondaryToolbarActionBlocks()}
                   {renderColumnsButton()}
+                  {renderSecondaryToolbarActionBlocks()}
+                  {renderRouteUtilityButtonsBlock()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                     <div>
