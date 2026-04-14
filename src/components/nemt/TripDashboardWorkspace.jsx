@@ -4838,21 +4838,17 @@ const TripDashboardWorkspace = () => {
 
   const routePanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
-        <div className="d-flex flex-column p-2 border-bottom gap-2" style={tripDashboardToolbarShellStyle}>
-          <div className="d-flex align-items-center gap-2 flex-wrap">
+        <div className="p-2 border-bottom" style={tripDashboardToolbarShellStyle}>
+          <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin', minWidth: 0, whiteSpace: 'nowrap' }}>
             {renderRouteUtilityButtonsBlock()}
-          </div>
-          <div className="d-flex align-items-center gap-2 flex-wrap">
-            <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 150 }}>
+            <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 150, minWidth: 150, flex: '0 0 150px' }}>
               <option value="">2nd driver</option>
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
             </Form.Select>
-            <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800 }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver">A2</Button>
-            <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
-            {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
-          </div>
-          <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-            <Badge bg="dark">{selectedRoutePanelTripIds.length} selected</Badge>
+            <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver">A2</Button>
+            <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
+            {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
+            <Badge bg="dark" style={{ flex: '0 0 auto' }}>{selectedRoutePanelTripIds.length} selected</Badge>
           </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
