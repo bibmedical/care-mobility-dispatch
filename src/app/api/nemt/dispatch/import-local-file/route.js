@@ -5,6 +5,7 @@ import path from 'path';
 import { parseTripImportBuffer } from '@/helpers/nemt-trip-import';
 
 const ALLOWED_EXTENSIONS = new Set(['.csv', '.xlsx', '.xls']);
+const isProduction = process.env.NODE_ENV === 'production';
 
 const normalizeCandidatePath = rawValue => path.normalize(String(rawValue || '').trim());
 
@@ -24,6 +25,10 @@ const isPathAllowed = absolutePath => {
 };
 
 export async function POST(request) {
+  if (isProduction) {
+    return NextResponse.json({ error: 'Local file path import is disabled in production. Upload the file from your device instead.' }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
     const candidatePath = normalizeCandidatePath(body?.path);
