@@ -1941,8 +1941,8 @@ const TripDashboardWorkspace = () => {
     </Button>;
 
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handlePrintRoute}>Print Route</Button>
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleShareRouteWhatsapp}>WhatsApp</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">P</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handleShareRouteWhatsapp} title="WhatsApp" aria-label="WhatsApp">W</Button>
       <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => setSelectedDriverId(event.target.value || null)} style={{ ...compactToolbarSelectBaseStyle, width: 210 }}>
         <option value="">Reassign to driver</option>
         {drivers.map(driver => <option key={`route-reassign-toolbar-${driver.id}`} value={driver.id}>{driver.name}</option>)}
@@ -4613,6 +4613,19 @@ const TripDashboardWorkspace = () => {
             <Button variant="outline-dark" size="sm" style={greenIconToolbarButtonStyle} onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')} title={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'} aria-label={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}>
               <IconifyIcon icon={themeMode === 'dark' ? 'iconoir:sun-light' : 'iconoir:half-moon'} />
             </Button>
+            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            router.push('/vehicles');
+            setStatusMessage('Opening Vehicles.');
+          }}>
+              Vehicle
+            </Button>
+            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            refreshDrivers();
+            router.push('/drivers');
+            setStatusMessage('Opening Drivers.');
+          }}>
+              Driver
+            </Button>
             <Button variant="outline-danger" size="sm" style={greenIconToolbarButtonStyle} onClick={() => {
             void handleTripDashboardLogoff();
           }} title="Log off" aria-label="Log off">
@@ -4713,7 +4726,7 @@ const TripDashboardWorkspace = () => {
               <option value="">2nd driver</option>
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
             </Form.Select>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleRoutePanelAssignSecondary}>Assign 2nd</Button>
+            <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800 }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver">A2</Button>
             <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
             {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
           </div>
