@@ -339,6 +339,7 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 };
 
 const BLACKLIST_CATEGORY_OPTIONS = ['Do Not Schedule', 'Medical Hold', 'Deceased', 'This Week Only', 'Legal / Claim', 'Safety Risk', 'Other'];
+const TRIP_SYSTEM_NOTE_PREFIXES = ['[TRIP UPDATE]', '[SCHEDULE CHANGE]', '[DISPATCH NOTE]', '[CANCELLED]'];
 const TRIP_CONFIRMATION_OUTPUT_COLUMNS = ['tripId', 'rider', 'phone', 'pickupTime', 'pickupAddress', 'dropoffTime', 'dropoffAddress', 'leg', 'type'];
 
 const createEmptyBlacklistEntryDraft = () => ({
@@ -769,7 +770,55 @@ const getDisplayTripId = trip => {
   return tripId.split('-')[0] || tripId;
 };
 
-const getTripNoteText = trip => String(trip?.notes || trip?.note || trip?.comments || '').trim();
+const getUniqueNoteBlocks = values => {
+  const seen = new Set();
+  return values.map(value => String(value || '').trim()).filter(Boolean).filter(value => {
+    const normalized = value.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+};
+
+const splitTripNoteSections = trip => {
+  const legacyImportedNotes = [trip?.note, trip?.comments].map(value => String(value || '').trim()).filter(Boolean).join('\n\n');
+  const rawUnifiedNotes = String(trip?.notes || '').trim();
+  const storedDispatchNotes = String(trip?.dispatchNotes || trip?.dispatchNote || '').trim();
+
+  if (!rawUnifiedNotes) {
+    return {
+      importedNotes: legacyImportedNotes,
+      dispatchNotes: storedDispatchNotes,
+      combinedNotes: getUniqueNoteBlocks([legacyImportedNotes, storedDispatchNotes]).join('\n\n')
+    };
+  }
+
+  const importedLines = [];
+  const systemLines = [];
+  rawUnifiedNotes.split(/\r?\n/).forEach(line => {
+    const trimmedLine = String(line || '').trim();
+    if (!trimmedLine) return;
+    if (TRIP_SYSTEM_NOTE_PREFIXES.some(prefix => trimmedLine.startsWith(prefix))) {
+      systemLines.push(trimmedLine);
+      return;
+    }
+    importedLines.push(trimmedLine);
+  });
+
+  const importedNotes = getUniqueNoteBlocks([legacyImportedNotes, importedLines.join('\n')]).join('\n\n');
+  const dispatchNotes = getUniqueNoteBlocks([storedDispatchNotes, systemLines.join('\n')]).join('\n\n');
+  return {
+    importedNotes,
+    dispatchNotes,
+    combinedNotes: getUniqueNoteBlocks([importedNotes, dispatchNotes]).join('\n\n')
+  };
+};
+
+const getTripImportedNoteText = trip => splitTripNoteSections(trip).importedNotes;
+
+const getTripDispatchNoteText = trip => splitTripNoteSections(trip).dispatchNotes;
+
+const getTripNoteText = trip => splitTripNoteSections(trip).combinedNotes;
 
 const buildTripEditDraft = trip => ({
   notes: String(trip?.notes || '').trim(),
@@ -3172,7 +3221,7 @@ const TripDashboardWorkspace = () => {
 
   const handleOpenTripNote = trip => {
     setNoteModalTripId(trip.id);
-    setNoteDraft(getTripNoteText(trip));
+    setNoteDraft(getTripDispatchNoteText(trip));
     setTripEditDraft(buildTripEditDraft(trip));
   };
 
@@ -3190,8 +3239,11 @@ const TripDashboardWorkspace = () => {
 
   const handleSaveTripNote = () => {
     if (!noteModalTrip) return;
+    const importedNotes = getTripImportedNoteText(noteModalTrip);
+    const dispatchNotes = String(noteDraft || '').trim();
     updateTripRecord(noteModalTrip.id, {
-      notes: noteDraft,
+      dispatchNotes,
+      notes: getUniqueNoteBlocks([importedNotes, dispatchNotes]).join('\n\n'),
       scheduledPickup: tripEditDraft.scheduledPickup,
       actualPickup: tripEditDraft.actualPickup,
       scheduledDropoff: tripEditDraft.scheduledDropoff,
@@ -5902,8 +5954,12 @@ const TripDashboardWorkspace = () => {
                 </Form.Select>
               </Col>
               <Col md={12}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Excel / imported note</Form.Label>
+                <Form.Control as="textarea" rows={4} value={getTripImportedNoteText(noteModalTrip)} readOnly onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="No note came from the import for this trip." />
+              </Col>
+              <Col md={12}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Trip note</Form.Label>
-                <Form.Control as="textarea" rows={5} value={noteDraft} onChange={event => setNoteDraft(event.target.value)} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="Write the note for the driver here." />
+                <Form.Control as="textarea" rows={5} value={noteDraft} onChange={event => setNoteDraft(event.target.value)} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} placeholder="Write your dispatch note for the driver here." />
               </Col>
             </Row>
           </Modal.Body>
