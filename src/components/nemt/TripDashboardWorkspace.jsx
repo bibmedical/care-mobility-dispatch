@@ -2012,6 +2012,13 @@ const TripDashboardWorkspace = () => {
       {isActiveRouteClosed ? 'Open Route' : 'Close Route'}
     </Button>;
 
+  const renderSecondaryToolbarActionBlocks = () => <>
+      {isToolbarEditMode || isToolbarBlockEnabled('action-buttons') ? renderActionButtonsBlock() : null}
+      {isToolbarEditMode || isToolbarBlockEnabled('leg-buttons') ? renderLegButtonsBlock() : null}
+      {isToolbarEditMode || isToolbarBlockEnabled('type-buttons') ? renderTypeButtonsBlock() : null}
+      {isToolbarEditMode || isToolbarBlockEnabled('closed-route') ? renderClosedRouteBlock() : null}
+    </>;
+
   const renderToolbarRow1Block = blockId => {
     switch (blockId) {
       case 'date-controls':
@@ -2023,13 +2030,13 @@ const TripDashboardWorkspace = () => {
       case 'driver-assigned':
         return selectedDriver ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>{selectedDriverAssignedTripCount} assigned</Badge> : null;
       case 'action-buttons':
-        return renderActionButtonsBlock();
+        return null;
       case 'leg-buttons':
-        return renderLegButtonsBlock();
+        return null;
       case 'type-buttons':
-        return renderTypeButtonsBlock();
+        return null;
       case 'closed-route':
-        return renderClosedRouteBlock();
+        return null;
       default:
         return null;
     }
@@ -5121,6 +5128,7 @@ const TripDashboardWorkspace = () => {
                     AI Route
                   </button>
                   {renderStatusFilterBlock()}
+                  {renderSecondaryToolbarActionBlocks()}
                   {renderColumnsButton()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
