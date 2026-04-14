@@ -5154,6 +5154,9 @@ const TripDashboardWorkspace = () => {
               borderRadius: 10,
               padding: '4px 6px'
             }}>
+                  <Button variant="warning" size="sm" onClick={openDetachedMapScreen} style={yellowMapTabStyle}>
+                    Map
+                  </Button>
                   <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={aiPlannerCollapsedTriggerStyle}>
                     AI Route
                   </button>
