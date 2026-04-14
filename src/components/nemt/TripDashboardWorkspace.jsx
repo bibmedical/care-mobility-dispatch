@@ -281,6 +281,21 @@ const yellowMapTabStyle = {
   boxShadow: '0 10px 26px rgba(120, 73, 0, 0.24)'
 };
 
+const compactMapToolbarButtonStyle = {
+  minWidth: 38,
+  width: 38,
+  height: 30,
+  padding: 0,
+  borderRadius: 6,
+  border: '1px solid rgba(161, 98, 7, 0.48)',
+  background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
+  color: '#5b3b00',
+  fontSize: 12,
+  fontWeight: 800,
+  lineHeight: 1,
+  boxShadow: 'none'
+};
+
 const lightToolbarButtonStyle = {
   color: '#10212b',
   borderColor: 'rgba(15, 23, 42, 0.24)',
@@ -5178,7 +5193,7 @@ const TripDashboardWorkspace = () => {
               borderRadius: 10,
               padding: '4px 6px'
             }}>
-                  <Button variant="warning" size="sm" onClick={openDetachedMapScreen} style={yellowMapTabStyle}>
+                  <Button variant="warning" size="sm" onClick={openDetachedMapScreen} style={compactMapToolbarButtonStyle}>
                     Map
                   </Button>
                   <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={aiPlannerCollapsedTriggerStyle}>
