@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { migrateLegacyBinaryAssetsToDatabase } from '@/server/binary-asset-store';
 
 const formatMb = value => Math.round((Number(value) || 0) / 1024 / 1024);
 
@@ -22,18 +21,7 @@ const buildMemoryPayload = () => {
 };
 
 export function GET() {
-  return migrateLegacyBinaryAssetsToDatabase()
-    .then(migration => NextResponse.json({
-      ...buildMemoryPayload(),
-      assetMigration: migration
-    }))
-    .catch(error => NextResponse.json({
-      ...buildMemoryPayload(),
-      assetMigration: {
-        ok: false,
-        error: String(error?.message || error)
-      }
-    }, { status: 500 }));
+  return NextResponse.json(buildMemoryPayload());
 }
 
 export async function POST() {
