@@ -2694,24 +2694,6 @@ const TripDashboardWorkspace = () => {
       }]);
     }
 
-    if (selectedDriver) {
-      return routeTrips.flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: selectedDriverCandidateTripIds.has(trip.id) ? 'dropoff' : 'pickup',
-        position: trip.position,
-        title: `Pickup ${trip.pickup}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${trip.dropoff}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
-    }
-
     if (selectedRoute) {
       return routeTrips.flatMap((trip, index) => [{
         key: `${trip.id}-pickup`,
@@ -4846,8 +4828,8 @@ const TripDashboardWorkspace = () => {
               <option value="">2nd driver</option>
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
             </Form.Select>
-            <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver">A2</Button>
-            <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={handleRoutePanelUnassign} title="Unassign selected trips">U</Button>
+            <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver" disabled={selectedRoutePanelTripIds.length === 0}>A2</Button>
+            <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={handleRoutePanelUnassign} title="Unassign selected trips" disabled={selectedRoutePanelTripIds.length === 0}>U</Button>
             {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
             <Badge bg="dark" style={{ flex: '0 0 auto' }}>{selectedRoutePanelTripIds.length} selected</Badge>
           </div>
