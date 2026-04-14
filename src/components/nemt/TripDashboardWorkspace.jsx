@@ -4706,6 +4706,9 @@ const TripDashboardWorkspace = () => {
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="d-flex flex-column p-2 border-bottom gap-2" style={tripDashboardToolbarShellStyle}>
           <div className="d-flex align-items-center gap-2 flex-wrap">
+            {renderRouteUtilityButtonsBlock()}
+          </div>
+          <div className="d-flex align-items-center gap-2 flex-wrap">
             <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 180 }}>
               <option value="">2nd driver</option>
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
@@ -5145,7 +5148,6 @@ const TripDashboardWorkspace = () => {
                   {renderDispatchHistoryButton()}
                   {renderColumnsButton()}
                   {renderSecondaryToolbarActionBlocks()}
-                  {renderRouteUtilityButtonsBlock()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                     <div>
