@@ -5568,7 +5568,7 @@ const TripDashboardWorkspace = () => {
         cursor: 'row-resize',
         gridColumn: isStackedLayout ? 1 : '1 / span 3',
         gridRow: 2,
-        display: 'none'
+        display: showBottomPanels && !isFocusRightLayout ? 'block' : 'none'
       }}>
           <div className="position-absolute top-50 start-50 translate-middle rounded-pill" style={{ width: 56, height: 6, backgroundColor: '#6b7280' }} />
         </div>
@@ -5586,7 +5586,7 @@ const TripDashboardWorkspace = () => {
         cursor: 'move',
         zIndex: 50,
         boxShadow: '0 0 0 2px rgba(88, 96, 122, 0.25)',
-        display: 'none'
+        display: showBottomPanels && isStandardLayout ? 'block' : 'none'
       }} />
 
         {isStandardLayout ? <div style={{
