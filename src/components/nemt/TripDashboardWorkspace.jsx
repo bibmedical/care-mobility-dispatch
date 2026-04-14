@@ -1929,6 +1929,17 @@ const TripDashboardWorkspace = () => {
       Columns
     </Button>;
 
+  const renderDispatchHistoryButton = () => <Button
+      variant="outline-dark"
+      size="sm"
+      style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, fontWeight: 800, paddingInline: 0 }}
+      onClick={() => router.push('/dispatch-history')}
+      title="Dispatch History"
+      aria-label="Open Dispatch History"
+    >
+      H
+    </Button>;
+
   const renderTripSearchBlock = () => <Form.Control
       size="sm"
       value={tripIdSearch}
@@ -5128,6 +5139,7 @@ const TripDashboardWorkspace = () => {
                     AI Route
                   </button>
                   {renderStatusFilterBlock()}
+                  {renderDispatchHistoryButton()}
                   {renderSecondaryToolbarActionBlocks()}
                   {renderColumnsButton()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>
