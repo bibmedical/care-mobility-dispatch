@@ -471,6 +471,12 @@ const formatDriveMinutes = minutes => {
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 };
 
+const formatRemainingEta = minutesOrMiles => {
+  if (!Number.isFinite(minutesOrMiles)) return 'ETA unavailable';
+  if (minutesOrMiles <= 0) return 'Arriving now';
+  return `${formatDriveMinutes(minutesOrMiles)} left`;
+};
+
 const sortTripsByPickupTime = items => [...items].sort((leftTrip, rightTrip) => {
   const leftTime = leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
   const rightTime = rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
@@ -1921,10 +1927,11 @@ const DispatcherWorkspace = () => {
     if (!dispatcherLayout.mapVisible || !selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverEtaTrip) return null;
     const target = getSelectedDriverEtaTarget(selectedDriverEtaTrip);
     const miles = selectedDriverRouteMetrics?.distanceMiles ?? getDistanceMiles(selectedDriver.position, target?.position);
+    const remainingMinutes = selectedDriverRouteMetrics?.durationMinutes;
     return {
       target,
       miles,
-      label: selectedDriverRouteMetrics?.durationMinutes != null ? formatDriveMinutes(selectedDriverRouteMetrics.durationMinutes) : formatEta(miles)
+      label: remainingMinutes != null ? formatRemainingEta(remainingMinutes) : formatEta(miles)
     };
   }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip, selectedDriverRouteMetrics]);
   const driverEtaPreviewById = useMemo(() => {
@@ -1936,7 +1943,12 @@ const DispatcherWorkspace = () => {
       const target = getSelectedDriverEtaTarget(activeTrip);
       if (!Array.isArray(target?.position) || target.position.length !== 2) return;
       const miles = getDistanceMiles(driver.position, target.position);
-      etaByDriver.set(String(driver.id || '').trim(), formatEta(miles));
+      etaByDriver.set(String(driver.id || '').trim(), {
+        etaLabel: formatEta(miles),
+        rider: String(activeTrip?.rider || '').trim(),
+        tripId: String(activeTrip?.brokerTripId || activeTrip?.id || '').trim(),
+        targetLabel: String(target?.label || '').trim()
+      });
     });
     return etaByDriver;
   }, [drivers, trips]);
@@ -3118,7 +3130,8 @@ const DispatcherWorkspace = () => {
                 <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                   <div className="fw-semibold">{selectedDriver.name}</div>
                   <div>{getDriverMapLocationLabel(selectedDriver)}</div>
-                  <div className="small text-muted">ETA: {selectedDriverEta?.label || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim()) || 'ETA unavailable'}</div>
+                  <div className="small text-muted">Left to arrive: {selectedDriverEta?.label || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim())?.etaLabel || 'ETA unavailable'}</div>
+                  <div className="small text-muted">Patient: {selectedDriverEtaTrip?.rider || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim())?.rider || 'Not assigned'}</div>
                 </Tooltip>
               </Marker> : null}
             {nonSelectedDriversWithRealLocation.map(driver => <Circle key={`driver-area-${driver.id}`} center={driver.position} radius={Math.max(100, Number(driver.gpsAreaRadiusMeters) || 800)} pathOptions={{ color: getDriverColor(driver.id || driver.name), weight: 1.5, opacity: 0.25, fillOpacity: 0.03 }} />)}
@@ -3129,7 +3142,8 @@ const DispatcherWorkspace = () => {
           })}>
                 <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                   <div className="fw-semibold">{driver.name}</div>
-                  <div className="small text-muted">ETA: {driverEtaPreviewById.get(String(driver.id || '').trim()) || 'ETA unavailable'}</div>
+                  <div className="small text-muted">Left to arrive: {driverEtaPreviewById.get(String(driver.id || '').trim())?.etaLabel || 'ETA unavailable'}</div>
+                  <div className="small text-muted">Patient: {driverEtaPreviewById.get(String(driver.id || '').trim())?.rider || 'Not assigned'}</div>
                   <div>{getDriverMapLocationLabel(driver)}</div>
                   <div className="small text-muted">{driver.live}</div>
                 </Tooltip>
