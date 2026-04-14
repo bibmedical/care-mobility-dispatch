@@ -81,11 +81,33 @@ const greenIconToolbarButtonStyle = {
 };
 
 const compactTripActionButtonStyle = {
-  minWidth: 32,
-  width: 32,
+  minWidth: 26,
+  width: 26,
+  height: 20,
   paddingLeft: 0,
   paddingRight: 0,
+  paddingTop: 0,
+  paddingBottom: 0,
   fontWeight: 700,
+  fontSize: 11,
+  lineHeight: 1,
+  borderRadius: 4,
+  whiteSpace: 'nowrap'
+};
+
+const compactTripActionLabelButtonStyle = {
+  minWidth: 30,
+  width: 30,
+  height: 20,
+  paddingLeft: 0,
+  paddingRight: 0,
+  paddingTop: 0,
+  paddingBottom: 0,
+  fontWeight: 700,
+  fontSize: 10,
+  lineHeight: 1,
+  letterSpacing: 0,
+  borderRadius: 4,
   whiteSpace: 'nowrap'
 };
 
@@ -5484,7 +5506,7 @@ const TripDashboardWorkspace = () => {
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
                       {hasTripNotesColumn ? renderTripHeader('notes', <IconifyIcon icon="iconoir:page-edit" />, 44, false) : null}
-                      {showConfirmationTools ? renderTripHeader('confirmation-tools', 'Confirm', 136, false) : null}
+                      {showConfirmationTools ? renderTripHeader('confirmation-tools', 'Confirm', 158, false) : null}
                       {orderedVisibleTripColumnsWithoutNotes.map(columnKey => {
                         const metadata = tripColumnMeta[columnKey];
                         if (!metadata) return null;
@@ -5521,10 +5543,9 @@ const TripDashboardWorkspace = () => {
                           </div>
                         </td>
                         {hasTripNotesColumn ? renderTripDataCell(row.trip)('notes') : null}
-                        {showConfirmationTools ? <td style={{ width: columnWidths.notes ?? 136, minWidth: columnWidths.notes ?? 136, maxWidth: columnWidths.notes ?? 136, whiteSpace: 'normal' }}>
-                          <div className="d-flex flex-column gap-1" style={{ width: 120 }}>
-                            <div className="d-flex align-items-center gap-1">
-                              <Button variant={getTripConfirmationActionVariant(row.trip, tripBlockingMap.get(row.trip.id))} size="sm" onClick={() => handleManualConfirm(row.trip)} style={compactTripActionWideButtonStyle} title={getTripConfirmationActionLabel(row.trip, tripBlockingMap.get(row.trip.id))}>
+                        {showConfirmationTools ? <td style={{ width: 158, minWidth: 158, maxWidth: 158, whiteSpace: 'nowrap', paddingTop: 4, paddingBottom: 4 }}>
+                          <div className="d-flex align-items-center gap-1 flex-nowrap" style={{ width: 'max-content' }}>
+                              <Button variant={getTripConfirmationActionVariant(row.trip, tripBlockingMap.get(row.trip.id))} size="sm" onClick={() => handleManualConfirm(row.trip)} style={compactTripActionLabelButtonStyle} title={getTripConfirmationActionLabel(row.trip, tripBlockingMap.get(row.trip.id))}>
                                 {String(getTripConfirmationActionLabel(row.trip, tripBlockingMap.get(row.trip.id)) || 'Confirm').slice(0, 2).toUpperCase()}
                               </Button>
                               <Button variant="outline-danger" size="sm" onClick={() => handleCancelWithNote(row.trip)} style={compactTripActionButtonStyle} title="Cancel trip">
@@ -5533,8 +5554,6 @@ const TripDashboardWorkspace = () => {
                               <Button variant="outline-info" size="sm" onClick={() => handleOpenTripUpdateModal(row.trip)} style={compactTripActionButtonStyle} title="Open note and trip update editor">
                                 N
                               </Button>
-                            </div>
-                            <div className="d-flex align-items-center gap-1">
                               <Button variant="outline-secondary" size="sm" onClick={() => handleCloneTrip(row.trip)} title="Clone trip" style={compactTripActionButtonStyle}>
                                 C
                               </Button>
@@ -5545,11 +5564,10 @@ const TripDashboardWorkspace = () => {
                             }
                           }} title={`Delete cloned copy ${row.trip.id}`} style={compactTripActionButtonStyle}>
                                   D
-                                </Button> : <span style={{ width: 32, flex: '0 0 32px' }} />}
-                              <Button size="sm" style={{ ...compactTripActionWideButtonStyle, backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff' }} onClick={() => void handleToggleTripBlock(row.trip)} title={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Remove from black list' : 'Add to black list'}>
+                                </Button> : <span style={{ width: 26, flex: '0 0 26px' }} />}
+                              <Button size="sm" style={{ ...compactTripActionLabelButtonStyle, backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff' }} onClick={() => void handleToggleTripBlock(row.trip)} title={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Remove from black list' : 'Add to black list'}>
                                 {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'RM' : 'BL'}
                               </Button>
-                            </div>
                           </div>
                         </td> : null}
                         {orderedVisibleTripColumnsWithoutNotes.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
