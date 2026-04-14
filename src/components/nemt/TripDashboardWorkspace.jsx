@@ -1685,6 +1685,8 @@ const TripDashboardWorkspace = () => {
     sortable: option.key !== 'notes'
   }])), []);
   const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
+  const hasTripNotesColumn = orderedVisibleTripColumns.includes('notes');
+  const orderedVisibleTripColumnsWithoutNotes = useMemo(() => orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes'), [orderedVisibleTripColumns]);
   const activeDateTripIdSet = useMemo(() => {
     if (tripDateFilter === 'all') return null;
     return new Set(trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter).map(trip => String(trip?.id || '').trim()).filter(Boolean));
@@ -5433,8 +5435,9 @@ const TripDashboardWorkspace = () => {
                         </div>
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
-                      {showConfirmationTools ? renderTripHeader('notes', 'Confirm', 136, false) : null}
-                      {orderedVisibleTripColumns.map(columnKey => {
+                      {hasTripNotesColumn ? renderTripHeader('notes', <IconifyIcon icon="iconoir:page-edit" />, 44, false) : null}
+                      {showConfirmationTools ? renderTripHeader('confirmation-tools', 'Confirm', 136, false) : null}
+                      {orderedVisibleTripColumnsWithoutNotes.map(columnKey => {
                         const metadata = tripColumnMeta[columnKey];
                         if (!metadata) return null;
                         return <React.Fragment key={`trip-header-${columnKey}`}>{renderTripHeader(columnKey, metadata.label, metadata.width, metadata.sortable, true)}</React.Fragment>;
@@ -5469,6 +5472,7 @@ const TripDashboardWorkspace = () => {
                         }}>ACT</Button>
                           </div>
                         </td>
+                        {hasTripNotesColumn ? renderTripDataCell(row.trip)('notes') : null}
                         {showConfirmationTools ? <td style={{ width: columnWidths.notes ?? 136, minWidth: columnWidths.notes ?? 136, maxWidth: columnWidths.notes ?? 136, whiteSpace: 'normal' }}>
                           <div className="d-flex flex-column gap-1" style={{ width: 120 }}>
                             <div className="d-flex align-items-center gap-1">
@@ -5500,7 +5504,7 @@ const TripDashboardWorkspace = () => {
                             </div>
                           </div>
                         </td> : null}
-                        {orderedVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
+                        {orderedVisibleTripColumnsWithoutNotes.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
                       </tr>) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No activity found for that day. If a route was saved, check the same day in Trip Route to view related trips and drivers.</td>
                       </tr>}
