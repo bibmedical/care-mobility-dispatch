@@ -299,6 +299,24 @@ const yellowMapTabStyle = {
   boxShadow: '0 10px 26px rgba(120, 73, 0, 0.24)'
 };
 
+const greenMapTabStyle = {
+  ...yellowMapTabStyle,
+  top: 74,
+  border: '1px solid rgba(22, 101, 52, 0.48)',
+  background: 'linear-gradient(180deg, #86efac 0%, #22c55e 100%)',
+  color: '#14532d',
+  boxShadow: '0 10px 26px rgba(21, 128, 61, 0.24)'
+};
+
+const blueMapTabStyle = {
+  ...yellowMapTabStyle,
+  top: 120,
+  border: '1px solid rgba(29, 78, 216, 0.48)',
+  background: 'linear-gradient(180deg, #93c5fd 0%, #2563eb 100%)',
+  color: '#eff6ff',
+  boxShadow: '0 10px 26px rgba(37, 99, 235, 0.26)'
+};
+
 const compactMapToolbarButtonStyle = {
   minWidth: 38,
   width: 38,
@@ -984,7 +1002,7 @@ const TripDashboardWorkspace = () => {
     uiPreferences,
     hasLoadedUserUiPreferences,
     setDispatcherVisibleTripColumns,
-    setMapProvider
+    setMapProvider,
   } = useNemtContext();
   const { showNotification } = useNotificationContext();
   const [routeName, setRouteName] = useState('');
@@ -4885,6 +4903,12 @@ const TripDashboardWorkspace = () => {
         }} style={yellowMapTabStyle}>
                 Hide Map
               </Button>
+            <Button variant="success" type="button" onClick={() => applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.focusRight)} style={greenMapTabStyle}>
+                Focus Right
+              </Button>
+            <Button variant="primary" type="button" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)} style={blueMapTabStyle}>
+                Panels Anchored
+              </Button>
             <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'hidden', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
               <>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
@@ -4901,15 +4925,7 @@ const TripDashboardWorkspace = () => {
                     <option value="openstreetmap">Map: OSM</option>
                     <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
-                  <Button variant="dark" size="sm" onClick={() => {
-                setShowBottomPanels(true);
-                setPanelView(TRIP_DASHBOARD_PANEL_VIEWS.both);
-                if (isStandardLayout && showMapPane) {
-                  setRightPanelCollapsed(false);
-                  setColumnSplit(current => clamp(current, 38, 68));
-                }
-                setStatusMessage('Bottom panels anchored.');
-              }}>Panels anchored</Button>
+                  <Button variant="dark" size="sm" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)}>Panels anchored</Button>
                 </>
             </div>
             {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
