@@ -4633,7 +4633,7 @@ const TripDashboardWorkspace = () => {
             <Button
               variant={noteText ? 'outline-info' : 'outline-secondary'}
               size="sm"
-              onClick={() => handleOpenTripUpdateModal(trip)}
+              onClick={() => handleOpenTripNote(trip)}
               title={noteText ? noteText : 'Open note editor'}
               style={compactTripActionButtonStyle}
             >
