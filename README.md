@@ -59,16 +59,24 @@ Archivo:
 render.yaml
 ```
 
-### Por que hizo falta update
+### Estado actual de persistencia
 
-La web guarda informacion en archivos JSON:
+La web ya no depende de archivos JSON locales para estado critico en produccion.
 
-- `nemt-admin.json`
-- `nemt-dispatch.json`
-- `system-users.json`
-- `integrations.json`
+Ahora la persistencia principal va por PostgreSQL para:
 
-En Render, el filesystem normal no es confiable para persistencia entre reinicios y deploys. Por eso ahora el proyecto usa `STORAGE_ROOT` y un disco persistente.
+- dispatch
+- admin
+- users
+- messages
+- preferences
+- integrations
+- blacklist
+- driver discipline
+- branding assets
+- assistant knowledge assets
+
+El filesystem local queda solo para desarrollo local y compatibilidad legacy temporal.
 
 ### Variables importantes en Render
 
@@ -78,7 +86,6 @@ NEXTAUTH_URL=https://your-service.onrender.com
 NEXTAUTH_SECRET=generated-in-render
 NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_public_token
 NEXT_PUBLIC_MAPBOX_STYLE_ID=mapbox/streets-v12
-STORAGE_ROOT=/var/data/care-mobility/storage
 SMTP_HOST=your_smtp_host
 SMTP_PORT=587
 SMTP_USER=your_smtp_user
@@ -86,19 +93,19 @@ SMTP_PASS=your_smtp_password
 SMTP_FROM=your_from_address
 ```
 
-### Disco persistente
+### Scaling en Render
 
-Render debe montar un disk en:
+Para poder usar multiples instancias o autoscaling, el web service no debe tener persistent disk adjunto.
 
-```bash
-/var/data/care-mobility
-```
+Checklist esperado:
 
-La app guardara los JSON dentro de:
+- sin `disk` en el servicio web
+- sin `STORAGE_ROOT` obligatorio
+- `DATABASE_URL` configurado
+- health check en `/api/health`
+- branding y assistant knowledge ya migrados a SQL
 
-```bash
-/var/data/care-mobility/storage
-```
+Los snapshots locales de respaldo estan desactivados en produccion para mantener el servicio stateless.
 
 ## Auth
 

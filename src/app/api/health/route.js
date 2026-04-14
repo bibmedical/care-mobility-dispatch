@@ -8,7 +8,7 @@ const buildMemoryPayload = () => {
 
   return {
     ok: true,
-    service: 'care-mobility-dispatch',
+    service: 'care-mobility-dispatch-web',
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.round(process.uptime()),
     memory: {
