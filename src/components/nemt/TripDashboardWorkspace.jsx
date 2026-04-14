@@ -1929,24 +1929,107 @@ const TripDashboardWorkspace = () => {
       Columns
     </Button>;
 
+  const renderTripSearchBlock = () => <Form.Control
+      size="sm"
+      value={tripIdSearch}
+      onChange={event => setTripIdSearch(event.target.value)}
+      placeholder="Search trip or rider"
+      style={{ width: 190 }}
+    />;
+
+  const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <div className="d-flex align-items-center gap-1 flex-nowrap">
+      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
+      <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
+      <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
+      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+    </div>;
+
+  const renderLegButtonsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
+      <span className="fw-semibold small" style={isDarkTheme ? compactToolbarLabelStyle : { color: '#10212b' }}>Leg</span>
+      <Button variant={tripLegFilter === 'AL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'AL' ? undefined : toolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="First leg to appointment">AL</Button>
+      <Button variant={tripLegFilter === 'BL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'BL' ? undefined : toolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
+      <Button variant={tripLegFilter === 'CL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'CL' ? undefined : toolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Third or connector leg">CL</Button>
+    </div>;
+
+  const renderTypeButtonsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
+      <span className="fw-semibold small" style={isDarkTheme ? compactToolbarLabelStyle : { color: '#10212b' }}>Type</span>
+      <Button variant={tripTypeFilter === 'A' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'A' ? undefined : toolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
+      <Button variant={tripTypeFilter === 'W' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'W' ? undefined : toolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
+      <Button variant={tripTypeFilter === 'STR' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'STR' ? undefined : toolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
+      <Button variant={serviceAnimalOnly ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={serviceAnimalOnly ? undefined : toolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
+    </div>;
+
+  const renderStatusFilterBlock = () => <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 130 }}>
+      <option value="all">All</option>
+      <option value="unassigned">Unassigned</option>
+      <option value="assigned">Assigned</option>
+      <option value="inprogress">In progress</option>
+      <option value="completed">Completed</option>
+      <option value="willcall">WillCall</option>
+      <option value="confirm">Confirmed</option>
+      <option value="unconfirm">Unconfirmed</option>
+      <option value="cancelled">Cancelled</option>
+      <option value="block">Blocked</option>
+    </Form.Select>;
+
+  const renderShowMapBlock = () => <Button variant="warning" size="sm" onClick={() => {
+      if (!showMapPane) {
+        applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
+        return;
+      }
+      setShowMapPane(false);
+      setStatusMessage('Map hidden in Trip Dashboard.');
+    }} style={showMapPane ? undefined : {
+      color: '#5b3b00',
+      borderColor: 'rgba(161, 98, 7, 0.48)',
+      background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
+      fontWeight: 800
+    }}>
+      {showMapPane ? 'Hide Map' : 'Show Map'}
+    </Button>;
+
+  const renderToolbarEditBlock = () => <Button variant={isToolbarEditMode ? 'dark' : 'outline-dark'} size="sm" style={isToolbarEditMode ? undefined : toolbarButtonStyle} onClick={() => setIsToolbarEditMode(current => !current)}>
+      {isToolbarEditMode ? 'Done' : 'Edit toolbar'}
+    </Button>;
+
+  const renderLayoutBlock = () => <Form.Select size="sm" value={layoutMode} onChange={event => applyLayoutMode(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 160 }}>
+      <option value={TRIP_DASHBOARD_LAYOUTS.normal}>Layout: Normal</option>
+      <option value={TRIP_DASHBOARD_LAYOUTS.focusRight}>Layout: Focus Right</option>
+      <option value={TRIP_DASHBOARD_LAYOUTS.stacked}>Layout: Stacked</option>
+    </Form.Select>;
+
+  const renderPanelsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
+      <Button variant={showDriversPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showDriversPanel ? undefined : toolbarButtonStyle} onClick={() => setShowDriversPanel(current => !current)}>Drivers</Button>
+      <Button variant={showRoutesPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showRoutesPanel ? undefined : toolbarButtonStyle} onClick={() => setShowRoutesPanel(current => !current)}>Routes</Button>
+      <Button variant={showTripsPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showTripsPanel ? undefined : toolbarButtonStyle} onClick={() => setShowTripsPanel(current => !current)}>Trips</Button>
+    </div>;
+
+  const renderTripOrderBlock = () => <Button variant={tripOrderMode === 'time' ? 'dark' : 'outline-dark'} size="sm" style={tripOrderMode === 'time' ? undefined : toolbarButtonStyle} onClick={handleTripOrderModeToggle}>
+      {tripOrderMode === 'time' ? 'Order: Time' : 'Order: Original'}
+    </Button>;
+
+  const renderClosedRouteBlock = () => <Button variant={isActiveRouteClosed ? 'danger' : compactToolbarOutlineVariant} size="sm" style={isActiveRouteClosed ? undefined : toolbarButtonStyle} onClick={handleToggleClosedRoute}>
+      {isActiveRouteClosed ? 'Open Route' : 'Close Route'}
+    </Button>;
+
   const renderToolbarRow1Block = blockId => {
     switch (blockId) {
       case 'date-controls':
-        return null;
+        return renderInlineDateControls();
       case 'status-filter':
-        return null;
+        return renderStatusFilterBlock();
       case 'trip-search':
-        return null;
+        return renderTripSearchBlock();
       case 'driver-assigned':
         return selectedDriver ? <Badge bg={themeMode === 'dark' ? 'secondary' : 'light'} text={themeMode === 'dark' ? 'light' : 'dark'}>{selectedDriverAssignedTripCount} assigned</Badge> : null;
       case 'action-buttons':
-        return null;
+        return renderActionButtonsBlock();
       case 'leg-buttons':
-        return null;
+        return renderLegButtonsBlock();
       case 'type-buttons':
-        return null;
+        return renderTypeButtonsBlock();
       case 'closed-route':
-        return null;
+        return renderClosedRouteBlock();
       default:
         return null;
     }
@@ -1955,7 +2038,7 @@ const TripDashboardWorkspace = () => {
   const renderToolbarRow2Block = blockId => {
     switch (blockId) {
       case 'show-map':
-        return null;
+        return renderShowMapBlock();
       case 'peek-panel':
         return isStandardLayout && showMapPane ? <Button variant="outline-dark" size="sm" style={toolbarButtonStyle} onClick={() => {
           setRightPanelCollapsed(true);
@@ -1965,15 +2048,15 @@ const TripDashboardWorkspace = () => {
             Peek panel
           </Button> : null;
       case 'toolbar-edit':
-        return null;
+        return renderToolbarEditBlock();
       case 'columns':
-        return null;
+        return renderColumnsButton();
       case 'layout':
-        return null;
+        return renderLayoutBlock();
       case 'panels':
-        return null;
+        return renderPanelsBlock();
       case 'trip-order':
-        return null;
+        return renderTripOrderBlock();
       default:
         return null;
     }
@@ -5034,47 +5117,10 @@ const TripDashboardWorkspace = () => {
               borderRadius: 10,
               padding: '4px 6px'
             }}>
-                  {!showMapPane ? <Button variant="warning" size="sm" onClick={() => {
-                openDetachedMapScreen();
-              }} style={{
-                color: '#5b3b00',
-                borderColor: 'rgba(161, 98, 7, 0.48)',
-                background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
-                fontWeight: 800
-              }}>
-                      Map
-                    </Button> : null}
                   <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={aiPlannerCollapsedTriggerStyle}>
                     AI Route
                   </button>
-                  {renderInlineDateControls()}
-                  {tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <>
-                      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-                      <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
-                      <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
-                      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
-                    </>}
-                  <span className="fw-semibold small ms-1" style={isDarkTheme ? compactToolbarLabelStyle : { color: '#10212b' }}>Leg</span>
-                  <Button variant={tripLegFilter === 'AL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'AL' ? undefined : toolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'AL' ? 'all' : 'AL')} title="First leg to appointment">AL</Button>
-                  <Button variant={tripLegFilter === 'BL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'BL' ? undefined : toolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'BL' ? 'all' : 'BL')} title="Return-leg trips">BL</Button>
-                  <Button variant={tripLegFilter === 'CL' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripLegFilter === 'CL' ? undefined : toolbarButtonStyle} onClick={() => setTripLegFilter(current => current === 'CL' ? 'all' : 'CL')} title="Third or connector leg">CL</Button>
-                  <span className="fw-semibold small ms-1" style={isDarkTheme ? compactToolbarLabelStyle : { color: '#10212b' }}>Type</span>
-                  <Button variant={tripTypeFilter === 'A' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'A' ? undefined : toolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'A' ? 'all' : 'A')} title="Ambulatory">A</Button>
-                  <Button variant={tripTypeFilter === 'W' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'W' ? undefined : toolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'W' ? 'all' : 'W')} title="Wheelchair">W</Button>
-                  <Button variant={tripTypeFilter === 'STR' ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={tripTypeFilter === 'STR' ? undefined : toolbarButtonStyle} onClick={() => setTripTypeFilter(current => current === 'STR' ? 'all' : 'STR')} title="Stretcher">STR</Button>
-                  <Button variant={serviceAnimalOnly ? compactToolbarActiveVariant : compactToolbarOutlineVariant} size="sm" style={serviceAnimalOnly ? undefined : toolbarButtonStyle} onClick={() => setServiceAnimalOnly(current => !current)} title="Service Animal">SA</Button>
-                  <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 130, marginLeft: 8 }}>
-                    <option value="all">All</option>
-                    <option value="unassigned">Unassigned</option>
-                    <option value="assigned">Assigned</option>
-                    <option value="inprogress">In progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="willcall">WillCall</option>
-                    <option value="confirm">Confirmed</option>
-                    <option value="unconfirm">Unconfirmed</option>
-                    <option value="cancelled">Cancelled</option>
-                    <option value="block">Blocked</option>
-                  </Form.Select>
+                  {renderStatusFilterBlock()}
                   {renderColumnsButton()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>
                   <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
