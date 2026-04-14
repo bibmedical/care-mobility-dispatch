@@ -80,6 +80,24 @@ const greenIconToolbarButtonStyle = {
   borderRadius: 4
 };
 
+const compactTripActionButtonStyle = {
+  minWidth: 32,
+  width: 32,
+  paddingLeft: 0,
+  paddingRight: 0,
+  fontWeight: 700,
+  whiteSpace: 'nowrap'
+};
+
+const compactTripActionWideButtonStyle = {
+  minWidth: 72,
+  width: 72,
+  paddingLeft: 0,
+  paddingRight: 0,
+  fontWeight: 700,
+  whiteSpace: 'nowrap'
+};
+
 const addressClampStyle = {
   maxWidth: 260,
   minWidth: 220,
@@ -5403,7 +5421,7 @@ const TripDashboardWorkspace = () => {
                         </div>
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
-                      {showConfirmationTools ? renderTripHeader('notes', 'Confirm', 240, false) : null}
+                      {showConfirmationTools ? renderTripHeader('notes', 'Confirm', 136, false) : null}
                       {orderedVisibleTripColumns.map(columnKey => {
                         const metadata = tripColumnMeta[columnKey];
                         if (!metadata) return null;
@@ -5439,31 +5457,35 @@ const TripDashboardWorkspace = () => {
                         }}>ACT</Button>
                           </div>
                         </td>
-                        {showConfirmationTools ? <td style={{ width: columnWidths.notes ?? 240, minWidth: columnWidths.notes ?? 240, whiteSpace: 'nowrap' }}>
-                          <div className="d-flex align-items-center gap-1 flex-nowrap" style={{ minWidth: 220, whiteSpace: 'nowrap' }}>
-                            <Button variant={getTripConfirmationActionVariant(row.trip, tripBlockingMap.get(row.trip.id))} size="sm" onClick={() => handleManualConfirm(row.trip)} style={{ minWidth: 104, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                              {getTripConfirmationActionLabel(row.trip, tripBlockingMap.get(row.trip.id))}
-                            </Button>
-                            <Button variant="outline-danger" size="sm" onClick={() => handleCancelWithNote(row.trip)} style={{ width: 72, whiteSpace: 'nowrap' }}>
-                              Cancel
-                            </Button>
-                            <Button variant="outline-info" size="sm" onClick={() => handleOpenTripUpdateModal(row.trip)} style={{ width: 72, whiteSpace: 'nowrap' }}>
-                              Update
-                            </Button>
-                            <Button variant="outline-secondary" size="sm" onClick={() => handleCloneTrip(row.trip)} title="Clone trip" style={{ minWidth: 42 }}>
-                              C
-                            </Button>
-                            {row.trip.clonedFromTripId ? <Button variant="outline-danger" size="sm" onClick={() => {
-                          if (window.confirm(`DELETE COPY ${row.trip.id}\nOriginal: ${row.trip.clonedFromTripId}\nRider: ${row.trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
-                            deleteTripRecord(row.trip.id);
-                            setStatusMessage(`Cloned trip ${row.trip.id} deleted.`);
-                          }
-                        }} title={`Delete cloned copy ${row.trip.id}`} style={{ minWidth: 42 }}>
-                                D
-                              </Button> : null}
-                            <Button size="sm" style={{ backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff', minWidth: 82 }} onClick={() => void handleToggleTripBlock(row.trip)}>
-                              {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Remove' : 'Black List'}
-                            </Button>
+                        {showConfirmationTools ? <td style={{ width: columnWidths.notes ?? 136, minWidth: columnWidths.notes ?? 136, maxWidth: columnWidths.notes ?? 136, whiteSpace: 'normal' }}>
+                          <div className="d-flex flex-column gap-1" style={{ width: 120 }}>
+                            <div className="d-flex align-items-center gap-1">
+                              <Button variant={getTripConfirmationActionVariant(row.trip, tripBlockingMap.get(row.trip.id))} size="sm" onClick={() => handleManualConfirm(row.trip)} style={compactTripActionWideButtonStyle} title={getTripConfirmationActionLabel(row.trip, tripBlockingMap.get(row.trip.id))}>
+                                {String(getTripConfirmationActionLabel(row.trip, tripBlockingMap.get(row.trip.id)) || 'Confirm').slice(0, 2).toUpperCase()}
+                              </Button>
+                              <Button variant="outline-danger" size="sm" onClick={() => handleCancelWithNote(row.trip)} style={compactTripActionButtonStyle} title="Cancel trip">
+                                X
+                              </Button>
+                              <Button variant="outline-info" size="sm" onClick={() => handleOpenTripUpdateModal(row.trip)} style={compactTripActionButtonStyle} title="Open note and trip update editor">
+                                N
+                              </Button>
+                            </div>
+                            <div className="d-flex align-items-center gap-1">
+                              <Button variant="outline-secondary" size="sm" onClick={() => handleCloneTrip(row.trip)} title="Clone trip" style={compactTripActionButtonStyle}>
+                                C
+                              </Button>
+                              {row.trip.clonedFromTripId ? <Button variant="outline-danger" size="sm" onClick={() => {
+                            if (window.confirm(`DELETE COPY ${row.trip.id}\nOriginal: ${row.trip.clonedFromTripId}\nRider: ${row.trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
+                              deleteTripRecord(row.trip.id);
+                              setStatusMessage(`Cloned trip ${row.trip.id} deleted.`);
+                            }
+                          }} title={`Delete cloned copy ${row.trip.id}`} style={compactTripActionButtonStyle}>
+                                  D
+                                </Button> : <span style={{ width: 32, flex: '0 0 32px' }} />}
+                              <Button size="sm" style={{ ...compactTripActionWideButtonStyle, backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff' }} onClick={() => void handleToggleTripBlock(row.trip)} title={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Remove from black list' : 'Add to black list'}>
+                                {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'RM' : 'BL'}
+                              </Button>
+                            </div>
                           </div>
                         </td> : null}
                         {orderedVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
