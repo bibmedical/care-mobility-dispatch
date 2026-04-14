@@ -112,6 +112,49 @@ export const readNemtDispatchThreads = async () => {
   }
 };
 
+export const readNemtDispatchThreadByDriverId = async driverId => {
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) return null;
+
+  try {
+    await ensureDispatchSchema();
+    const res = await query(`SELECT data FROM dispatch_threads WHERE driver_id = $1 LIMIT 1`, [normalizedDriverId]);
+    const thread = res.rows[0]?.data || null;
+    return thread ? normalizeDispatchThreadRecord(thread) : null;
+  } catch {
+    const state = await readLocalDispatchState();
+    return state.dispatchThreads.map(normalizeDispatchThreadRecord).find(thread => String(thread?.driverId || '').trim() === normalizedDriverId) || null;
+  }
+};
+
+export const readAssignedTripsForDriverByServiceDates = async ({ driverId, serviceDateKeys = [] }) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  const normalizedServiceDateKeys = Array.from(new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean)));
+  if (!normalizedDriverId || normalizedServiceDateKeys.length === 0) return [];
+
+  try {
+    await ensureDispatchSchema();
+    const res = await query(
+      `SELECT data
+       FROM dispatch_trips
+       WHERE service_date = ANY($1::text[])
+         AND ((data->>'driverId') = $2 OR (data->>'secondaryDriverId') = $2)
+       ORDER BY updated_at DESC`,
+      [normalizedServiceDateKeys, normalizedDriverId]
+    );
+    return res.rows.map(row => row.data);
+  } catch {
+    const state = await readLocalDispatchState();
+    return (Array.isArray(state?.trips) ? state.trips : []).filter(trip => {
+      const serviceDateKey = getLocalDateKey(new Date(trip?.serviceDate || trip?.rawServiceDate || trip?.date || 0));
+      const primaryDriverId = String(trip?.driverId || '').trim();
+      const secondaryDriverId = String(trip?.secondaryDriverId || '').trim();
+      return normalizedServiceDateKeys.includes(String(trip?.serviceDate || trip?.rawServiceDate || '').trim() || serviceDateKey)
+        && (primaryDriverId === normalizedDriverId || secondaryDriverId === normalizedDriverId);
+    });
+  }
+};
+
 // ─── WRITE ────────────────────────────────────────────────────────────────────
 
 export const writeNemtDispatchState = async (nextState, options = {}) => {
