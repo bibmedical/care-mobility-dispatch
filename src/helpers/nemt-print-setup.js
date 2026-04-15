@@ -120,12 +120,43 @@ const formatMinutesTo24Hour = minutes => {
   return `${hours}:${mins}`;
 };
 
+const parseSpreadsheetTimeMinutes = value => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const fractionalDay = numeric - Math.floor(numeric);
+  const totalMinutes = Math.round(fractionalDay * 24 * 60);
+  if (!Number.isFinite(totalMinutes)) return null;
+  return ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+};
+
+const looksLikeExcelSerialTime = value => /^\d{4,6}(?:\.\d+)?$/.test(String(value || '').trim());
+
 const getTripPrintTimeDisplay = (scheduledValue, fallbackValue) => {
-  const text = String(scheduledValue || fallbackValue || '').trim();
-  if (!text) return '-';
-  const minutes = parseTripClockMinutes(text);
-  if (minutes == null) return text;
-  return formatMinutesTo24Hour(minutes);
+  const scheduledText = String(scheduledValue || '').trim();
+  const fallbackText = String(fallbackValue || '').trim();
+  if (!scheduledText && !fallbackText) return '-';
+
+  const scheduledClockMinutes = parseTripClockMinutes(scheduledText);
+  if (scheduledClockMinutes != null) return formatMinutesTo24Hour(scheduledClockMinutes);
+
+  const fallbackClockMinutes = parseTripClockMinutes(fallbackText);
+  if (fallbackClockMinutes != null) return formatMinutesTo24Hour(fallbackClockMinutes);
+
+  const scheduledSpreadsheetMinutes = looksLikeExcelSerialTime(scheduledText)
+    ? parseSpreadsheetTimeMinutes(scheduledText)
+    : null;
+  if (scheduledSpreadsheetMinutes != null && (scheduledText.includes('.') || !fallbackText || String(fallbackText).trim().toLowerCase() === 'tbd')) {
+    return formatMinutesTo24Hour(scheduledSpreadsheetMinutes);
+  }
+
+  const fallbackSpreadsheetMinutes = looksLikeExcelSerialTime(fallbackText)
+    ? parseSpreadsheetTimeMinutes(fallbackText)
+    : null;
+  if (fallbackSpreadsheetMinutes != null) return formatMinutesTo24Hour(fallbackSpreadsheetMinutes);
+
+  if (scheduledSpreadsheetMinutes != null) return formatMinutesTo24Hour(scheduledSpreadsheetMinutes);
+  if (fallbackText.toLowerCase() === 'tbd' || scheduledText.toLowerCase() === 'tbd') return 'TBD';
+  return scheduledText || fallbackText;
 };
 
 const getAllPrintColumnDefinitions = getTripTypeLabel => ({

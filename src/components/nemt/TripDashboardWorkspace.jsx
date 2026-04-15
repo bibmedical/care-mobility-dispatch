@@ -4936,7 +4936,7 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
-  const routePanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
+  const routePanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode} style={showRoutePrintColumnPicker ? { overflow: 'visible' } : undefined}>
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="p-2 border-bottom" style={tripDashboardToolbarShellStyle}>
           <div className="d-flex align-items-start gap-2 flex-nowrap" style={{ overflowX: 'auto', overflowY: 'visible', scrollbarWidth: 'thin', minWidth: 0, whiteSpace: 'nowrap' }}>
