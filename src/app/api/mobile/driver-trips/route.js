@@ -153,6 +153,14 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
   const wheelChairIsXL = /(\bxl\b|extra\s*large)/i.test(wheelText);
   const wheelChairFoldable = /(fold|foldable|can\s*fold|foldo)/i.test(wheelText);
   const confirmationStatus = String(normalizedTrip?.confirmation?.status || '').trim();
+  const providerSnapshot = normalizedTrip?.providerSnapshot && typeof normalizedTrip.providerSnapshot === 'object' ? normalizedTrip.providerSnapshot : null;
+  const localOverrides = normalizedTrip?.localOverrides && typeof normalizedTrip.localOverrides === 'object' ? normalizedTrip.localOverrides : null;
+  const providerNotes = String(providerSnapshot?.notes || '').trim();
+  const providerScheduledPickup = String(providerSnapshot?.scheduledPickup || providerSnapshot?.pickup || '').trim();
+  const providerScheduledDropoff = String(providerSnapshot?.scheduledDropoff || providerSnapshot?.dropoff || '').trim();
+  const hasPickupTimeOverride = Boolean(localOverrides?.pickupTime) && Boolean(providerScheduledPickup) && providerScheduledPickup !== String(normalizedTrip.scheduledPickup || '').trim();
+  const hasDropoffTimeOverride = Boolean(localOverrides?.dropoffTime) && Boolean(providerScheduledDropoff) && providerScheduledDropoff !== String(normalizedTrip.scheduledDropoff || '').trim();
+  const hasNotesOverride = Boolean(localOverrides?.notes) && providerNotes !== rawNotes;
 
   return {
     id: normalizedTrip.id,
@@ -171,6 +179,12 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
     dropoffZip: normalizedTrip.destinationZip || normalizedTrip.doZip || '',
     notes: rawNotes,
     note: rawNotes,
+    providerNotes,
+    providerScheduledPickup,
+    providerScheduledDropoff,
+    hasPickupTimeOverride,
+    hasDropoffTimeOverride,
+    hasNotesOverride,
     patientPhoneNumber: normalizedTrip.patientPhoneNumber || '',
     assistanceNeeds: normalizedTrip.assistanceNeeds || '',
     mobilityType: normalizedTrip.mobilityType || '',

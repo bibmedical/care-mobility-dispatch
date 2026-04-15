@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: care-mobility-dispatch-web
+    name: care-mobility-dispatch-web-v2
     runtime: node
     rootDir: .
     plan: pro
@@ -14,6 +14,8 @@ services:
     healthCheckPath: /api/health
     autoDeployTrigger: commit
     envVars:
+      - key: DATABASE_URL
+        sync: false
       - key: NODE_VERSION
         value: 20.19.0
       - key: NODE_ENV
@@ -56,6 +58,8 @@ services:
           .catch(e => { console.error(e.message); process.exit(1); })
       "
     envVars:
+      - key: DATABASE_URL
+        sync: false
       - key: NEXTAUTH_URL
         sync: false
       - key: CRON_SECRET

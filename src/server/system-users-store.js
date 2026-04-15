@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { buildStableDriverId, createBlankDriver, getFullName } from '@/helpers/nemt-admin-model';
+import { buildStableDriverId, createBlankDriver, getFullName, normalizePasswordChangedAt } from '@/helpers/nemt-admin-model';
 import { DEFAULT_PROTECTED_SYSTEM_USER_IDS, USER_SEED, authorizeSystemUser, buildPasswordForUser, enrichSystemUser, getUserSyncStatus, isAdminRole, isDriverRole, isProtectedSystemUser, normalizeAuthValue } from '@/helpers/system-users';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { query } from '@/server/db';
@@ -22,6 +22,7 @@ const normalizeUserRecord = user => ({
   role: String(user?.role ?? ''),
   username: String(user?.username ?? ''),
   password: String(user?.password || buildPasswordForUser(user)),
+  passwordChangedAt: normalizePasswordChangedAt(user?.passwordChangedAt),
   webLoginCode: String(user?.webLoginCode ?? '').replace(/\D/g, '').slice(0, 6),
   webAccess: typeof user?.webAccess === 'boolean' ? user.webAccess : true,
   androidAccess: typeof user?.androidAccess === 'boolean' ? user.androidAccess : true,
@@ -180,6 +181,7 @@ const syncUserIntoDriverState = (drivers, user) => {
     email: user.email,
     phone: user.phone,
     password: user.password,
+    passwordChangedAt: normalizePasswordChangedAt(user?.passwordChangedAt) || baseDriver.passwordChangedAt || '',
     webAccess: user.webAccess,
     androidAccess: user.androidAccess,
     isCompany: user.isCompany,
@@ -452,6 +454,7 @@ export const writeSystemUsersState = async nextState => {
 export const updatePersistedSystemUserPasswordByEmail = async (email, password) => {
   const normalizedEmail = normalizeAuthValue(email);
   const nextPassword = String(password ?? '').trim();
+  const passwordChangedAt = new Date().toISOString();
 
   if (!normalizedEmail) {
     throw new Error('Email is required');
@@ -471,7 +474,8 @@ export const updatePersistedSystemUserPasswordByEmail = async (email, password) 
 
   const nextUsers = currentState.users.map(user => user.id === matchedUser.id ? {
     ...user,
-    password: nextPassword
+    password: nextPassword,
+    passwordChangedAt
   } : user);
 
   await writeSystemUsersState({

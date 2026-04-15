@@ -3,6 +3,7 @@ import { SYSTEM_USERS, isDriverRole, normalizePhoneDigits, normalizeAuthValue } 
 const ORLANDO_CENTER = [28.5383, -81.3792];
 const ALERT_WINDOW_DAYS = 30;
 const ONLINE_WINDOW_MINUTES = 5;
+export const PASSWORD_MAX_AGE_DAYS = 90;
 const ROUTE_ROSTER_DEFAULT_START = '12:00 AM';
 const ROUTE_ROSTER_DEFAULT_END = '11:59 PM';
 const DRIVER_GPS_DEFAULTS = {
@@ -42,6 +43,25 @@ const clampNumeric = (value, min, max, fallback) => {
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(max, Math.max(min, numeric));
 };
+
+export const normalizePasswordChangedAt = value => {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toISOString();
+};
+
+export const hasPasswordExpired = value => {
+  const normalizedChangedAt = normalizePasswordChangedAt(value);
+  if (!normalizedChangedAt) return true;
+
+  const ageMs = Date.now() - new Date(normalizedChangedAt).getTime();
+  return ageMs >= PASSWORD_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+};
+
+export const isDriverPasswordResetRequired = driver => Boolean(driver?.passwordResetRequired) || hasPasswordExpired(driver?.passwordChangedAt);
 
 export const normalizeDriverGpsSettings = value => {
   const settings = value && typeof value === 'object' ? value : {};
@@ -345,6 +365,7 @@ export const createBlankDriver = () => ({
   mobilePin: '',
   mfaEnabled: false,
   passwordResetRequired: false,
+  passwordChangedAt: new Date().toISOString(),
   backgroundCheckStatus: 'Pending',
   drugScreenStatus: 'Pending',
   cprCertified: false,
@@ -476,6 +497,7 @@ export const isDriverOnline = driver => {
 export const normalizeDriverTracking = driver => ({
   ...driver,
   mobilePin: getDefaultDriverMobilePin(driver),
+  passwordChangedAt: normalizePasswordChangedAt(driver?.passwordChangedAt),
   routeRoster: normalizeRouteRoster(driver?.routeRoster, driver),
   trackingSource: driver?.trackingSource || '',
   trackingLastSeen: driver?.trackingLastSeen || '',

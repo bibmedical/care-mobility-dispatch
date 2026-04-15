@@ -7,6 +7,28 @@ export type LocationSnapshot = {
   timestamp: number;
 };
 
+export type DriverTripActionName = 'accept' | 'en-route' | 'arrived' | 'patient-onboard' | 'start-trip' | 'arrived-destination' | 'complete' | 'cancel';
+
+export type DriverPendingTripAction = {
+  id: string;
+  driverId: string;
+  tripId: string;
+  action: DriverTripActionName;
+  createdAt: number;
+  lastAttemptAt?: number | null;
+  attemptCount: number;
+  riderSignatureName?: string;
+  riderSignatureData?: {
+    points: Array<{ x: number; y: number }>;
+    width: number;
+    height: number;
+  };
+  cancellationReason?: string;
+  cancellationPhotoDataUrl?: string;
+  completionPhotoDataUrl?: string;
+  locationSnapshot?: LocationSnapshot | null;
+};
+
 export type DriverShiftState = 'available' | 'en-route' | 'arrived' | 'completed';
 
 export type DriverAppTab = 'home' | 'trips' | 'messages' | 'alerts' | 'gps' | 'settings' | 'profile' | 'history' | 'documents' | 'help' | 'fuel' | 'timeoff';
@@ -75,6 +97,12 @@ export type DriverTrip = {
   dropoffZip?: string;
   notes?: string;
   note?: string;
+  providerNotes?: string;
+  providerScheduledPickup?: string;
+  providerScheduledDropoff?: string;
+  hasPickupTimeOverride?: boolean;
+  hasDropoffTimeOverride?: boolean;
+  hasNotesOverride?: boolean;
   patientPhoneNumber?: string;
   assistanceNeeds?: string;
   mobilityType?: string;

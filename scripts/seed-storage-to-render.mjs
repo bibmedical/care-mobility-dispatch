@@ -3,7 +3,7 @@ import path from 'path';
 
 const args = process.argv.slice(2);
 const options = {
-  baseUrl: 'https://care-mobility-dispatch-web.onrender.com',
+  baseUrl: 'https://care-mobility-dispatch-web-v2.onrender.com',
   token: '',
   storageDir: 'storage'
 };

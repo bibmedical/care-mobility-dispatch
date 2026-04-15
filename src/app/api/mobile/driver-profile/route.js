@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { normalizePhoneDigits } from '@/helpers/system-users';
 import { readSystemUsersState, writeSystemUsersState } from '@/server/system-users-store';
-import { getFullName } from '@/helpers/nemt-admin-model';
+import { getFullName, isDriverPasswordResetRequired } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
@@ -16,7 +16,7 @@ const splitFullName = value => {
   };
 };
 
-const buildSessionPayload = driver => ({
+const buildSessionPayload = (driver, request = null) => ({
   driverId: driver.id,
   driverCode: driver.portalUsername || driver.username || '',
   name: getFullName(driver),
@@ -26,7 +26,9 @@ const buildSessionPayload = driver => ({
   address: String(driver.address || driver.baseAddress || '').trim(),
   timeOffAppointment: driver.timeOffAppointment || null,
   vehicleId: driver.vehicleId || '',
-  passwordResetRequired: Boolean(driver.passwordResetRequired)
+  passwordResetRequired: isDriverPasswordResetRequired(driver),
+  deviceId: request?.headers.get('x-driver-device-id') || '',
+  sessionToken: request?.headers.get('x-driver-session-token') || ''
 });
 
 const findDriver = (drivers, driverId) => (Array.isArray(drivers) ? drivers : []).find(driver => String(driver?.id || '').trim() === String(driverId || '').trim());
@@ -46,7 +48,7 @@ export async function GET(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
-  return jsonWithMobileCors(request, { ok: true, session: buildSessionPayload(driver) });
+  return jsonWithMobileCors(request, { ok: true, session: buildSessionPayload(driver, request) });
 }
 
 export async function POST(request) {
@@ -122,9 +124,7 @@ export async function POST(request) {
   }
 
   return jsonWithMobileCors(request, { ok: true, session: {
-    ...buildSessionPayload(updatedDriver),
-    deviceId: request.headers.get('x-driver-device-id') || '',
-    sessionToken: request.headers.get('x-driver-session-token') || ''
+    ...buildSessionPayload(updatedDriver, request)
   } });
 }
 

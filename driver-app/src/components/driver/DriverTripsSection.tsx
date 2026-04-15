@@ -1,4 +1,4 @@
-import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
@@ -53,9 +53,11 @@ const getCleanTripReference = (trip: { rideId?: string; brokerTripId?: string; i
 
 export const DriverTripsSection = ({ runtime }: Props) => {
   const OUTSIDE_SMS_TEMPLATE = 'Hi this is Care Mobility. Your driver is outside waiting for you.';
+  const isAndroidDevice = Platform.OS === 'android';
   const [queueMode, setQueueMode] = useState<QueueMode>('scheduled');
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const [destinationElapsedSecs, setDestinationElapsedSecs] = useState(0);
+  const [showCancelComposer, setShowCancelComposer] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelPhotoDataUrl, setCancelPhotoDataUrl] = useState('');
   const [completionPhotoDataUrl, setCompletionPhotoDataUrl] = useState('');
@@ -73,6 +75,43 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
   const openTrips = useMemo(() => runtime.assignedTrips.filter(trip => !isClosedTrip(trip.status)), [runtime.assignedTrips]);
   const focusTrip = openTrips.find(trip => trip.id === runtime.activeTrip?.id) || null;
+  const isDriverLockedIntoTrip = (trip?: typeof openTrips[number] | null) => {
+    if (!trip) return false;
+    const normalizedStatus = String(trip.status || '').toLowerCase();
+    return Boolean(
+      trip.driverWorkflow?.acceptedAt
+      || trip.enRouteAt
+      || trip.arrivedAt
+      || trip.patientOnboardAt
+      || trip.startTripAt
+      || trip.arrivedDestinationAt
+      || normalizedStatus === 'accepted'
+      || normalizedStatus.includes('progress')
+      || normalizedStatus.includes('route')
+      || normalizedStatus.includes('arrived')
+    );
+  };
+  const blockingTrip = useMemo(() => openTrips.find(trip => isDriverLockedIntoTrip(trip)) || null, [openTrips]);
+  const inProgressFocusTrip = useMemo(() => {
+    if (focusTrip && isInProgressTrip(focusTrip.status)) {
+      return focusTrip;
+    }
+    return openTrips.find(trip => isInProgressTrip(trip.status)) || null;
+  }, [focusTrip, openTrips]);
+
+  useEffect(() => {
+    setCancelReason('');
+    setCancelPhotoDataUrl('');
+  }, [focusTrip?.id]);
+
+  const openCancelComposer = (trip?: typeof openTrips[number] | null) => {
+    if (trip) {
+      runtime.setActiveTrip(trip);
+    }
+    setCancelReason('');
+    setCancelPhotoDataUrl('');
+    setShowCancelComposer(true);
+  };
 
   const filteredTrips = useMemo(() => {
     const today = new Date();
@@ -95,19 +134,22 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     return openTrips.filter(trip => !isInProgressTrip(trip.status)).filter(matchesDateFilter);
   }, [openTrips, queueMode, runtime.tripDateFilter]);
 
-  const workflow = focusTrip?.driverWorkflow || null;
+  const displayedScheduledTrips = queueMode === 'scheduled' ? filteredTrips : [];
+  const displayedFocusTrip = queueMode === 'in-progress' ? inProgressFocusTrip : null;
+
+  const workflow = displayedFocusTrip?.driverWorkflow || null;
   const hasAcceptedState = Boolean(
-    focusTrip && (
+    displayedFocusTrip && (
       Boolean(workflow?.acceptedAt)
       || String(workflow?.status || '').toLowerCase() === 'accepted'
-      || String(focusTrip.status || '').toLowerCase().includes('progress')
+      || String(displayedFocusTrip.status || '').toLowerCase().includes('progress')
     )
   );
-  const hasStartedRouteToPickup = Boolean(focusTrip?.enRouteAt || workflow?.departureToPickupAt || workflow?.departureAt);
-  const hasArrivedPickup = Boolean(focusTrip?.arrivedAt || workflow?.arrivedPickupAt || workflow?.arrivalAt);
-  const hasPatientOnboard = Boolean(focusTrip?.patientOnboardAt || workflow?.patientOnboardAt || focusTrip?.actualPickup);
-  const hasStartedTripToDestination = Boolean(focusTrip?.startTripAt || workflow?.startTripAt || workflow?.destinationDepartureAt);
-  const hasArrivedDestination = Boolean(focusTrip?.arrivedDestinationAt || workflow?.arrivedDestinationAt || workflow?.destinationArrivalAt);
+  const hasStartedRouteToPickup = Boolean(displayedFocusTrip?.enRouteAt || workflow?.departureToPickupAt || workflow?.departureAt);
+  const hasArrivedPickup = Boolean(displayedFocusTrip?.arrivedAt || workflow?.arrivedPickupAt || workflow?.arrivalAt);
+  const hasPatientOnboard = Boolean(displayedFocusTrip?.patientOnboardAt || workflow?.patientOnboardAt || displayedFocusTrip?.actualPickup);
+  const hasStartedTripToDestination = Boolean(displayedFocusTrip?.startTripAt || workflow?.startTripAt || workflow?.destinationDepartureAt);
+  const hasArrivedDestination = Boolean(displayedFocusTrip?.arrivedDestinationAt || workflow?.arrivedDestinationAt || workflow?.destinationArrivalAt);
 
   const canAcceptTrip = !hasAcceptedState;
   const canStartRoute = hasAcceptedState && !hasStartedRouteToPickup;
@@ -127,11 +169,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const showDirectionsAction = hasStartedRouteToPickup && !Boolean(focusTrip?.completedAt || workflow?.completedAt);
 
   const routeStartedAt = hasStartedRouteToPickup && !hasArrivedPickup
-    ? Number(workflow?.departureToPickupAt || workflow?.departureAt || focusTrip?.enRouteAt || 0)
+    ? Number(workflow?.departureToPickupAt || workflow?.departureAt || displayedFocusTrip?.enRouteAt || 0)
     : 0;
 
   useEffect(() => {
-    if (!routeStartedAt || !focusTrip) {
+    if (!routeStartedAt || !displayedFocusTrip) {
       setElapsedSecs(0);
       return;
     }
@@ -139,8 +181,8 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     const interval = setInterval(() => {
       const secs = Math.floor((Date.now() - routeStartedAt) / 1000);
       setElapsedSecs(secs);
-      const scheduled = parseScheduledPickup(focusTrip.scheduledPickup);
-      const lateKey = `${focusTrip.id}:${focusTrip.scheduledPickup || ''}`;
+      const scheduled = parseScheduledPickup(displayedFocusTrip.scheduledPickup);
+      const lateKey = `${displayedFocusTrip.id}:${displayedFocusTrip.scheduledPickup || ''}`;
       if (scheduled && Date.now() > scheduled.getTime() && lateAlertSentRef.current !== lateKey) {
         lateAlertSentRef.current = lateKey;
         void runtime.sendPresetDriverAlert('delay');
@@ -148,14 +190,14 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [routeStartedAt, focusTrip?.id, focusTrip?.scheduledPickup]);
+  }, [routeStartedAt, displayedFocusTrip?.id, displayedFocusTrip?.scheduledPickup]);
 
   const destinationStartedAt = hasStartedTripToDestination && !hasArrivedDestination
-    ? Number(workflow?.startTripAt || workflow?.destinationDepartureAt || focusTrip?.startTripAt || 0)
+    ? Number(workflow?.startTripAt || workflow?.destinationDepartureAt || displayedFocusTrip?.startTripAt || 0)
     : 0;
 
   useEffect(() => {
-    if (!destinationStartedAt || !focusTrip) {
+    if (!destinationStartedAt || !displayedFocusTrip) {
       setDestinationElapsedSecs(0);
       return;
     }
@@ -175,10 +217,15 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     ? `${String(Math.floor(destinationElapsedSecs / 60)).padStart(2, '0')}:${String(destinationElapsedSecs % 60).padStart(2, '0')}`
     : null;
 
-  const scheduledPickupDate = parseScheduledPickup(focusTrip?.scheduledPickup);
+  const scheduledPickupDate = parseScheduledPickup(displayedFocusTrip?.scheduledPickup);
   const isLateToPickup = Boolean(routeStartedAt && scheduledPickupDate && Date.now() > scheduledPickupDate.getTime());
-  const scheduledDropoffDate = parseScheduledDropoff(focusTrip?.scheduledDropoff || focusTrip?.dropoff);
+  const scheduledDropoffDate = parseScheduledDropoff(displayedFocusTrip?.scheduledDropoff || displayedFocusTrip?.dropoff);
   const isLateToDestination = Boolean(destinationStartedAt && scheduledDropoffDate && Date.now() > scheduledDropoffDate.getTime());
+  const driverNotes = String(displayedFocusTrip?.notes || '').trim();
+  const providerNotes = String(displayedFocusTrip?.providerNotes || '').trim();
+  const showDispatcherNotesCard = Boolean(driverNotes);
+  const showPickupTimeChange = Boolean(displayedFocusTrip?.hasPickupTimeOverride && displayedFocusTrip?.providerScheduledPickup && displayedFocusTrip?.scheduledPickup);
+  const showDropoffTimeChange = Boolean(displayedFocusTrip?.hasDropoffTimeOverride && displayedFocusTrip?.providerScheduledDropoff && displayedFocusTrip?.scheduledDropoff);
 
   const openDirectionsToPickup = async (trip: NonNullable<typeof focusTrip>) => {
     const query = encodeURIComponent(trip.address || '');
@@ -286,15 +333,20 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       Alert.alert('Cancellation', 'Write why the rider cancelled.');
       return;
     }
-    if (!cancelPhotoDataUrl) {
-      Alert.alert('Cancellation', 'Attach a photo before cancelling.');
-      return;
-    }
+    const confirmed = await new Promise<boolean>(resolve => {
+      Alert.alert('Submit cancellation', `Reason: ${cancelReason.trim()}`, [
+        { text: 'Back', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Submit', onPress: () => resolve(true) }
+      ]);
+    });
+    if (!confirmed) return;
+
     const ok = await runtime.submitTripAction('cancel', {
       cancellationReason: cancelReason.trim(),
-      cancellationPhotoDataUrl: cancelPhotoDataUrl
+      cancellationPhotoDataUrl: cancelPhotoDataUrl || undefined
     });
     if (ok) {
+      setShowCancelComposer(false);
       setCancelReason('');
       setCancelPhotoDataUrl('');
     }
@@ -425,7 +477,16 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       || tripStatus.includes('route')
       || tripStatus.includes('arrived')
     );
+    const hasOtherBlockingTrip = blockingTrip && String(blockingTrip.id || '').trim() !== String(trip.id || '').trim();
     if (!tripHasAccepted) {
+      if (hasOtherBlockingTrip) {
+        Alert.alert(
+          'Finish current trip first',
+          `${blockingTrip.rider || 'The current patient'} is still active. Complete or cancel that trip before accepting another one.`
+        );
+        return;
+      }
+
       Alert.alert(
         'Accept trip?',
         `${trip.rider || 'Patient'}\n${trip.address || ''}${trip.scheduledPickup ? `\nPickup: ${trip.scheduledPickup}` : ''}`,
@@ -456,14 +517,25 @@ export const DriverTripsSection = ({ runtime }: Props) => {
             <Text style={[styles.queueChipText, queueMode === 'in-progress' ? styles.queueChipTextActive : null]}>In Progress</Text>
           </Pressable>
         </View>
+        {isAndroidDevice ? <View style={styles.androidPatchBanner}>
+            <Text style={styles.androidPatchBannerText}>Android local patch active: Cancel + queued send + GPS checks</Text>
+          </View> : null}
       </View>
 
       {runtime.isLoadingTrips && runtime.assignedTrips.length === 0 ? <ActivityIndicator color={driverTheme.colors.primary} /> : null}
-      {runtime.tripSyncError ? <Text style={driverSharedStyles.warningText}>{runtime.tripSyncError}</Text> : null}
+      {runtime.tripSyncError ? <View style={styles.syncErrorCard}>
+          <Text style={driverSharedStyles.warningText}>{runtime.tripSyncError}</Text>
+          <Pressable style={styles.syncRetryButton} onPress={() => void runtime.reloadTrips()}>
+            <Text style={styles.syncRetryButtonText}>Retry trips</Text>
+          </Pressable>
+        </View> : null}
 
-      {filteredTrips.length === 0 ? <View style={driverSharedStyles.card}>
+      {queueMode === 'scheduled' && filteredTrips.length === 0 ? <View style={driverSharedStyles.card}>
           <Text style={driverSharedStyles.emptyText}>No trips in this queue.</Text>
-        </View> : filteredTrips.map(trip => <Pressable key={trip.id} onPress={() => handleTripCardPress(trip)} style={[styles.routeCard, runtime.activeTrip?.id === trip.id ? styles.routeCardActive : null]}>
+        </View> : null}
+
+      {displayedScheduledTrips.map(trip => <View key={trip.id} style={[styles.routeCard, runtime.activeTrip?.id === trip.id ? styles.routeCardActive : null]}>
+              <Pressable onPress={() => handleTripCardPress(trip)}>
               <View style={styles.routeCardTop}>
                 <View style={styles.routeTopHeaderRow}>
                   <View style={styles.routeTopCopy}>
@@ -480,66 +552,97 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               </View>
 
               <View style={styles.routeCardBottom}>
-                <View style={styles.routeBottomLeft}>
-                  <View style={styles.quickContactRow}>
-                    <Pressable style={styles.callBadge} onPress={() => void openPhoneCall(trip.patientPhoneNumber)}>
-                      <Text style={styles.callBadgeText}>Call</Text>
-                    </Pressable>
-                    <Pressable style={styles.smsBadge} onPress={() => void sendOutsideSms(trip)}>
-                      <Text style={styles.smsBadgeText}>SMS</Text>
-                    </Pressable>
-                  </View>
-                </View>
                 <View style={styles.routeTimeColumn}>
                   <Text style={styles.routeTimeText}>{getTripWindow(trip)}</Text>
                   <Text style={styles.routeRiderText}>{trip.rider || 'Florida Mobility Group Service'}</Text>
                 </View>
                 <Text style={styles.routeStatusText}>{trip.punctualityLabel || trip.status || 'Assigned'}</Text>
               </View>
-            </Pressable>)}
+              </Pressable>
+              <View style={styles.routeQuickActionsRow}>
+                <Pressable style={[styles.callBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void openPhoneCall(trip.patientPhoneNumber)}>
+                  <Text style={styles.callBadgeText}>Call</Text>
+                </Pressable>
+                <Pressable style={[styles.smsBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void sendOutsideSms(trip)}>
+                  <Text style={styles.smsBadgeText}>{isAndroidDevice ? 'Message' : 'SMS'}</Text>
+                </Pressable>
+                <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(trip)}>
+                  <Text style={styles.cancelBadgeText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>)}
 
-      {focusTrip ? <View style={driverSharedStyles.card}>
+      {displayedFocusTrip ? <View style={driverSharedStyles.card}>
           <View style={driverSharedStyles.rowBetween}>
             <View style={styles.copyBlock}>
               <Text style={driverSharedStyles.eyebrow}>Current trip</Text>
-              <Text style={styles.focusTitle}>{focusTrip.rider}</Text>
-              <Text style={styles.focusMeta}>{getCleanTripReference(focusTrip) ? `${getCleanTripReference(focusTrip)} | ` : ''}{getTripWindow(focusTrip)}</Text>
+              <Text style={styles.focusTitle}>{displayedFocusTrip.rider}</Text>
+              <Text style={styles.focusMeta}>{getCleanTripReference(displayedFocusTrip) ? `${getCleanTripReference(displayedFocusTrip)} | ` : ''}{getTripWindow(displayedFocusTrip)}</Text>
               <View style={styles.focusDirectionsBlock}>
                 <View style={styles.routeRow}>
-                  <Text style={styles.routeText}>PU {focusTrip.address}</Text>
+                  <Text style={styles.routeText}>PU {displayedFocusTrip.address}</Text>
                   {hasStartedRouteToPickup && !hasArrivedPickup ? <Text style={styles.enRouteCheck}>Going to pickup</Text> : null}
                 </View>
-                <Text style={styles.routeText}>DO {focusTrip.destination}</Text>
+                <Text style={styles.routeText}>DO {displayedFocusTrip.destination}</Text>
               </View>
             </View>
-            <View style={[driverSharedStyles.pill, { backgroundColor: getTripTone(focusTrip.punctualityVariant) }]}>
-              <Text style={driverSharedStyles.pillText}>{focusTrip.punctualityLabel || focusTrip.status || 'Pending'}</Text>
+            <View style={[driverSharedStyles.pill, { backgroundColor: getTripTone(displayedFocusTrip.punctualityVariant) }]}>
+              <Text style={driverSharedStyles.pillText}>{displayedFocusTrip.punctualityLabel || displayedFocusTrip.status || 'Pending'}</Text>
             </View>
           </View>
 
           <View style={styles.focusRequirementsRow}>
             <View style={styles.focusRequirementsLeft}>
-              {renderSupportBadges(focusTrip)}
+              <View style={styles.focusQuickActionsRow}>
+                <Pressable style={[styles.callBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void openPhoneCall(displayedFocusTrip.patientPhoneNumber)}>
+                  <Text style={styles.callBadgeText}>Call</Text>
+                </Pressable>
+                <Pressable style={[styles.smsBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void sendOutsideSms(displayedFocusTrip)}>
+                  <Text style={styles.smsBadgeText}>{isAndroidDevice ? 'Message' : 'SMS'}</Text>
+                </Pressable>
+                <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(displayedFocusTrip)}>
+                  <Text style={styles.cancelBadgeText}>Cancel</Text>
+                </Pressable>
+              </View>
+              {renderSupportBadges(displayedFocusTrip)}
             </View>
             <View style={styles.focusRequirementsRight}>
-              <Text style={styles.focusRequirementsRightValue}>{focusTrip.miles ? `${focusTrip.miles} mi` : '--'}</Text>
-              <Text style={styles.focusRequirementsRightSub}>{focusTrip.vehicleType || 'Vehicle'}</Text>
+              <Text style={styles.focusRequirementsRightValue}>{displayedFocusTrip.miles ? `${displayedFocusTrip.miles} mi` : '--'}</Text>
+              <Text style={styles.focusRequirementsRightSub}>{displayedFocusTrip.vehicleType || 'Vehicle'}</Text>
             </View>
           </View>
 
-          {focusTrip.notes ? <Text style={styles.noteText}>Notes: {focusTrip.notes}</Text> : null}
+          {showDispatcherNotesCard ? <View style={styles.dispatchNoteCard}>
+              <Text style={styles.dispatchNoteTitle}>Dispatcher Notes</Text>
+              <Text style={styles.dispatchNoteBody}>{driverNotes}</Text>
+              {displayedFocusTrip.hasNotesOverride && providerNotes ? <Text style={styles.dispatchNoteMeta}>Updated from web dispatch notes.</Text> : null}
+            </View> : null}
+
+          {showPickupTimeChange || showDropoffTimeChange ? <View style={styles.timeChangeCard}>
+              <Text style={styles.timeChangeTitle}>Time Update</Text>
+              {showPickupTimeChange ? <View style={styles.timeChangeRow}>
+                  <Text style={styles.timeChangeLabel}>Pickup</Text>
+                  <Text style={styles.timeChangeValue}>Hora: {displayedFocusTrip.providerScheduledPickup}</Text>
+                  <Text style={styles.timeChangeValueStrong}>New hora: {displayedFocusTrip.scheduledPickup}</Text>
+                </View> : null}
+              {showDropoffTimeChange ? <View style={styles.timeChangeRow}>
+                  <Text style={styles.timeChangeLabel}>Dropoff</Text>
+                  <Text style={styles.timeChangeValue}>Hora: {displayedFocusTrip.providerScheduledDropoff}</Text>
+                  <Text style={styles.timeChangeValueStrong}>New hora: {displayedFocusTrip.scheduledDropoff}</Text>
+                </View> : null}
+            </View> : null}
 
           {elapsedLabel ? <View style={[styles.timerBanner, isLateToPickup ? styles.timerBannerLate : styles.timerBannerOk]}>
               <Text style={styles.timerLabel}>{isLateToPickup ? 'LATE - En route' : 'En route to pickup'}</Text>
               <Text style={styles.timerValue}>{elapsedLabel}</Text>
-              {isLateToPickup && focusTrip.scheduledPickup ? <Text style={styles.timerSub}>Pickup was at {focusTrip.scheduledPickup}. Alert sent to dispatcher.</Text> : null}
+              {isLateToPickup && displayedFocusTrip.scheduledPickup ? <Text style={styles.timerSub}>Pickup was at {displayedFocusTrip.scheduledPickup}. Alert sent to dispatcher.</Text> : null}
             </View> : null}
 
           {destinationElapsedLabel ? <View style={[styles.timerBanner, isLateToDestination ? styles.timerBannerLate : styles.timerBannerOk]}>
               <Text style={styles.timerLabel}>{isLateToDestination ? 'LATE - To destination' : 'To destination'}</Text>
               <Text style={styles.timerValue}>{destinationElapsedLabel}</Text>
-              {focusTrip.scheduledDropoff ? <Text style={styles.timerSubNeutral}>Dropoff target: {focusTrip.scheduledDropoff}</Text> : null}
-              {isLateToDestination && focusTrip.scheduledDropoff ? <Text style={styles.timerSub}>Destination is running late.</Text> : null}
+              {displayedFocusTrip.scheduledDropoff ? <Text style={styles.timerSubNeutral}>Dropoff target: {displayedFocusTrip.scheduledDropoff}</Text> : null}
+              {isLateToDestination && displayedFocusTrip.scheduledDropoff ? <Text style={styles.timerSub}>Destination is running late.</Text> : null}
             </View> : null}
 
           <View style={styles.workflowCard}>
@@ -547,20 +650,23 @@ export const DriverTripsSection = ({ runtime }: Props) => {
             <Text style={styles.workflowLine}>Accepted: {workflow?.acceptedTimeLabel || 'Pending'}</Text>
             <Text style={styles.workflowLine}>Start route: {workflow?.departureToPickupTimeLabel || workflow?.departureTimeLabel || 'Pending'}</Text>
             <Text style={styles.workflowLine}>Arrived pickup: {workflow?.arrivedPickupTimeLabel || workflow?.arrivalTimeLabel || 'Pending'}</Text>
-            <Text style={styles.workflowLine}>Patient onboard: {workflow?.patientOnboardTimeLabel || focusTrip.actualPickup || 'Pending'}</Text>
+            <Text style={styles.workflowLine}>Patient onboard: {workflow?.patientOnboardTimeLabel || displayedFocusTrip.actualPickup || 'Pending'}</Text>
             <Text style={styles.workflowLine}>Start trip: {workflow?.startTripTimeLabel || workflow?.destinationDepartureTimeLabel || 'Pending'}</Text>
             <Text style={styles.workflowLine}>Arrived destination: {workflow?.arrivedDestinationTimeLabel || workflow?.destinationArrivalTimeLabel || 'Pending'}</Text>
             <Text style={styles.workflowLine}>Completion: {workflow?.completedTimeLabel || 'Pending'}</Text>
           </View>
 
           <View style={styles.actionRow}>
-            {showAcceptAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canAcceptTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('accept')} disabled={!canAcceptTrip || runtime.activeTripAction.length > 0}>
+            {showAcceptAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canAcceptTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => {
+                setQueueMode('in-progress');
+                void runtime.submitTripAction('accept');
+              }} disabled={!canAcceptTrip || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'accept' ? 'Sending...' : 'Accept'}</Text>
               </Pressable> : null}
 
             {showStartRouteAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canStartRoute || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => {
                 void runtime.submitTripAction('en-route');
-                void openDirectionsToPickup(focusTrip);
+                void openDirectionsToPickup(displayedFocusTrip);
               }} disabled={!canStartRoute || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'en-route' ? 'Sending...' : 'Start Route'}</Text>
               </Pressable> : null}
@@ -585,6 +691,10 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                 <Text style={driverSharedStyles.secondaryButtonText}>Directions</Text>
               </Pressable> : null}
 
+            {!hasPatientOnboard && !hasStartedTripToDestination ? <Pressable style={[styles.prominentCancelButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => openCancelComposer(displayedFocusTrip)} disabled={runtime.activeTripAction.length > 0}>
+                <Text style={styles.prominentCancelButtonText}>Cancel</Text>
+              </Pressable> : null}
+
             {showCompleteAction ? <Pressable style={[driverSharedStyles.primaryButton, !canCompleteTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void submitCompleteTrip()} disabled={!canCompleteTrip || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.primaryButtonText}>{runtime.activeTripAction === 'complete' ? 'Sending...' : 'Complete'}</Text>
               </Pressable> : null}
@@ -599,22 +709,36 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               </Pressable>
             </View> : null}
 
-          {hasArrivedPickup && !hasPatientOnboard && !hasStartedTripToDestination ? <View style={styles.cancelCard}>
-              <Text style={styles.cancelTitle}>Cancel trip (rider no-show / rider refused)</Text>
-              <TextInput value={cancelReason} onChangeText={setCancelReason} placeholder="Reason for cancellation" placeholderTextColor="#6b7280" multiline style={styles.cancelInput} />
-              {cancelPhotoDataUrl ? <Image source={{ uri: cancelPhotoDataUrl }} style={styles.cancelPhotoPreview} resizeMode="cover" /> : null}
-              <View style={styles.cancelButtonsRow}>
-                <Pressable style={[styles.cancelAttachButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void pickCancelPhoto()} disabled={runtime.activeTripAction.length > 0}>
-                  <Text style={styles.cancelAttachButtonText}>{cancelPhotoDataUrl ? 'Change Photo' : 'Add Photo'}</Text>
-                </Pressable>
-                <Pressable style={[styles.cancelSubmitButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void submitCancelTrip()} disabled={runtime.activeTripAction.length > 0}>
-                  <Text style={styles.cancelSubmitButtonText}>{runtime.activeTripAction === 'cancel' ? 'Sending...' : 'Cancel Trip'}</Text>
-                </Pressable>
-              </View>
-            </View> : null}
-
           {runtime.tripActionError ? <Text style={driverSharedStyles.warningText}>{runtime.tripActionError}</Text> : null}
         </View> : null}
+
+      {displayedFocusTrip && showCancelComposer ? <Modal transparent animationType="slide" visible={showCancelComposer} onRequestClose={() => setShowCancelComposer(false)}>
+          <View style={styles.cancelModalOverlay}>
+            <View style={styles.cancelModalCard}>
+              <Text style={styles.cancelTitle}>Cancel trip now</Text>
+              <Text style={styles.cancelHelpText}>Write the reason below. The driver does not have to wait for the server. The app queues the cancel first and sends it after.</Text>
+              <Text style={styles.cancelTripName}>{displayedFocusTrip.rider || 'Patient'}</Text>
+              <TextInput value={cancelReason} onChangeText={setCancelReason} placeholder="Reason for cancellation" placeholderTextColor="#6b7280" multiline autoFocus style={styles.cancelInput} />
+              {cancelPhotoDataUrl ? <Image source={{ uri: cancelPhotoDataUrl }} style={styles.cancelPhotoPreview} resizeMode="cover" /> : null}
+              <View style={styles.cancelButtonsRow}>
+                <Pressable style={styles.cancelCallButton} onPress={() => void openPhoneCall(displayedFocusTrip.patientPhoneNumber)}>
+                  <Text style={styles.cancelCallButtonText}>Call</Text>
+                </Pressable>
+                <Pressable style={[styles.cancelAttachButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void pickCancelPhoto()} disabled={runtime.activeTripAction.length > 0}>
+                  <Text style={styles.cancelAttachButtonText}>{cancelPhotoDataUrl ? 'Change Photo' : 'Photo Optional'}</Text>
+                </Pressable>
+              </View>
+              <View style={styles.cancelFooterRow}>
+                <Pressable style={styles.cancelDismissButton} onPress={() => setShowCancelComposer(false)}>
+                  <Text style={styles.cancelDismissButtonText}>Close</Text>
+                </Pressable>
+                <Pressable style={[styles.cancelSubmitButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void submitCancelTrip()} disabled={runtime.activeTripAction.length > 0}>
+                  <Text style={styles.cancelSubmitButtonText}>{runtime.activeTripAction === 'cancel' ? 'Queueing...' : 'Submit Cancel'}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal> : null}
     </View>;
 };
 
@@ -655,6 +779,20 @@ const styles = StyleSheet.create({
   queueChipTextActive: {
     color: '#ffffff'
   },
+  androidPatchBanner: {
+    marginTop: 8,
+    backgroundColor: '#fff7ed',
+    borderRadius: driverTheme.radius.sm,
+    borderWidth: 1,
+    borderColor: '#fb923c',
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  androidPatchBannerText: {
+    color: '#9a3412',
+    fontSize: 12,
+    fontWeight: '800'
+  },
   routeCard: {
     borderWidth: 1,
     borderColor: driverTheme.colors.border,
@@ -693,7 +831,27 @@ const styles = StyleSheet.create({
   quickContactRow: {
     flexDirection: 'row',
     gap: 6,
-    marginTop: 6
+    marginTop: 6,
+    flexWrap: 'wrap'
+  },
+  routeQuickActionsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    flexWrap: 'wrap'
+  },
+  focusQuickActionsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 4,
+    flexWrap: 'wrap'
+  },
+  androidQuickActionButton: {
+    flex: 1,
+    minWidth: 96,
+    height: 40
   },
   callBadge: {
     width: 34,
@@ -711,6 +869,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
+  cancelBadge: {
+    minWidth: 72,
+    height: 34,
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: '#b91c1c',
+    borderWidth: 1,
+    borderColor: '#7f1d1d',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10
+  },
   callBadgeText: {
     color: '#ffffff',
     fontSize: 10,
@@ -720,6 +889,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 9,
     fontWeight: '800'
+  },
+  cancelBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '900'
   },
   routeIdText: {
     color: '#cbd5e1',
@@ -844,7 +1018,7 @@ const styles = StyleSheet.create({
   },
   focusRequirementsLeft: {
     flex: 1,
-    maxWidth: '76%'
+    maxWidth: '100%'
   },
   focusRequirementsRight: {
     minWidth: 72,
@@ -872,6 +1046,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18
   },
+  dispatchNoteCard: {
+    backgroundColor: '#fff7ed',
+    borderRadius: driverTheme.radius.md,
+    borderWidth: 1,
+    borderColor: '#fdba74',
+    padding: 12,
+    gap: 6
+  },
+  dispatchNoteTitle: {
+    color: '#9a3412',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase'
+  },
+  dispatchNoteBody: {
+    color: '#7c2d12',
+    lineHeight: 19,
+    fontWeight: '700'
+  },
+  dispatchNoteMeta: {
+    color: '#c2410c',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  timeChangeCard: {
+    backgroundColor: '#eff6ff',
+    borderRadius: driverTheme.radius.md,
+    borderWidth: 1,
+    borderColor: '#93c5fd',
+    padding: 12,
+    gap: 8
+  },
+  timeChangeTitle: {
+    color: '#1d4ed8',
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase'
+  },
+  timeChangeRow: {
+    gap: 2
+  },
+  timeChangeLabel: {
+    color: '#1e3a8a',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  timeChangeValue: {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  timeChangeValueStrong: {
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: '900'
+  },
   routeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -887,8 +1117,40 @@ const styles = StyleSheet.create({
     gap: 10,
     flexWrap: 'wrap'
   },
+  syncErrorCard: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fdba74',
+    borderWidth: 1,
+    borderRadius: driverTheme.radius.md,
+    padding: 12,
+    gap: 8
+  },
+  syncRetryButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#c2410c',
+    borderRadius: driverTheme.radius.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  syncRetryButtonText: {
+    color: '#ffffff',
+    fontWeight: '800'
+  },
   mapButton: {
     backgroundColor: driverTheme.colors.primarySoft
+  },
+  prominentCancelButton: {
+    minWidth: 120,
+    backgroundColor: '#b91c1c',
+    borderRadius: driverTheme.radius.sm,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  prominentCancelButtonText: {
+    color: '#ffffff',
+    fontWeight: '900'
   },
   workflowCard: {
     backgroundColor: driverTheme.colors.surfaceMuted,
@@ -981,6 +1243,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textTransform: 'uppercase'
   },
+  cancelHelpText: {
+    color: '#7f1d1d',
+    fontSize: 12,
+    lineHeight: 18
+  },
   cancelInput: {
     minHeight: 70,
     borderRadius: driverTheme.radius.sm,
@@ -1002,6 +1269,39 @@ const styles = StyleSheet.create({
   cancelButtonsRow: {
     flexDirection: 'row',
     gap: 8
+  },
+  cancelFooterRow: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  cancelModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'flex-end'
+  },
+  cancelModalCard: {
+    backgroundColor: '#fff7f7',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 16,
+    gap: 10,
+    borderTopWidth: 1,
+    borderColor: '#f8b4b4'
+  },
+  cancelTripName: {
+    color: '#7f1d1d',
+    fontWeight: '800'
+  },
+  cancelCallButton: {
+    width: 52,
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: '#2f855a',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  cancelCallButtonText: {
+    color: '#ffffff',
+    fontWeight: '900'
   },
   cancelAttachButton: {
     flex: 1,
@@ -1025,6 +1325,19 @@ const styles = StyleSheet.create({
   },
   cancelSubmitButtonText: {
     color: '#ffffff',
+    fontWeight: '800'
+  },
+  cancelDismissButton: {
+    minWidth: 84,
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: '#e5e7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10
+  },
+  cancelDismissButtonText: {
+    color: '#111827',
     fontWeight: '800'
   }
 });

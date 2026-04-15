@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { authorizePersistedSystemUser } from '@/server/system-users-store';
 import { buildDriverSessionError, claimDriverMobileSession } from '@/server/driver-mobile-session-store';
 import { normalizeAuthValue, normalizePhoneDigits } from '@/helpers/system-users';
-import { buildStableDriverId, createBlankDriver, getFullName, mapAdminDataToDispatchDrivers, normalizeDriverGpsSettings, normalizeDriverTracking, normalizeRouteRoster } from '@/helpers/nemt-admin-model';
+import { buildStableDriverId, createBlankDriver, getFullName, isDriverPasswordResetRequired, mapAdminDataToDispatchDrivers, normalizeDriverGpsSettings, normalizeDriverTracking, normalizePasswordChangedAt, normalizeRouteRoster } from '@/helpers/nemt-admin-model';
 import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors } from '@/server/mobile-api-cors';
 
@@ -51,6 +51,47 @@ const findDriverFromAuthUser = (drivers, authUser) => {
 
     return sameUsername || samePortalUsername || sameEmail || samePortalEmail;
   });
+};
+
+const syncDriverAuthUserLink = async (state, driver, authUser) => {
+  if (!driver || !authUser?.id) {
+    return {
+      state,
+      driver
+    };
+  }
+
+  const driverId = String(driver?.id || '').trim();
+  const authUserId = String(authUser?.id || '').trim();
+  if (!driverId || !authUserId || String(driver?.authUserId || '').trim() === authUserId) {
+    return {
+      state,
+      driver
+    };
+  }
+
+  const nextDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(item => {
+    if (String(item?.id || '').trim() !== driverId) return item;
+    return {
+      ...item,
+      authUserId,
+      username: item?.username || authUser?.username || '',
+      portalUsername: item?.portalUsername || authUser?.username || '',
+      email: item?.email || authUser?.email || '',
+      portalEmail: item?.portalEmail || authUser?.email || ''
+    };
+  });
+
+  const nextState = await writeNemtAdminState({
+    ...state,
+    drivers: nextDrivers
+  });
+
+  const linkedDriver = (Array.isArray(nextState?.drivers) ? nextState.drivers : []).map(normalizeDriverTracking).find(item => String(item?.id || '').trim() === driverId) || driver;
+  return {
+    state: nextState,
+    driver: linkedDriver
+  };
 };
 
 const findDriverFromDirectCredentials = (drivers, state, identifier, password) => {
@@ -110,6 +151,7 @@ const ensureDriverMirrorForAuthUser = async (state, authUser) => {
     email: authUser.email || '',
     phone: authUser.phone || '',
     password: authUser.password || '',
+    passwordChangedAt: normalizePasswordChangedAt(authUser?.passwordChangedAt) || new Date().toISOString(),
     role: 'Driver(Driver)',
     portalUsername: authUser.username || '',
     portalEmail: authUser.email || '',
@@ -181,7 +223,7 @@ export async function POST(request) {
           address: String(driver.address || driver.baseAddress || '').trim(),
           timeOffAppointment: driver.timeOffAppointment || null,
           vehicleId: driver.vehicleId || '',
-          passwordResetRequired: Boolean(driver.passwordResetRequired),
+          passwordResetRequired: isDriverPasswordResetRequired(driver),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
         }, deviceId)
       });
@@ -228,6 +270,13 @@ export async function POST(request) {
         driver = mirrored.driver || findDriverFromAuthUser(normalizedDrivers, authUser) || null;
       }
 
+      if (driver && authUser) {
+        const linked = await syncDriverAuthUserLink(state, driver, authUser);
+        state = linked.state;
+        driver = linked.driver;
+        normalizedDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(normalizeDriverTracking);
+      }
+
       if (!driver) {
         return jsonWithMobileCors(request, { ok: false, error: 'Driver profile not found.' }, { status: 404 });
       }
@@ -251,7 +300,7 @@ export async function POST(request) {
           address: String(driver.address || driver.baseAddress || '').trim(),
           timeOffAppointment: driver.timeOffAppointment || null,
           vehicleId: driver.vehicleId || '',
-          passwordResetRequired: Boolean(driver.passwordResetRequired),
+          passwordResetRequired: isDriverPasswordResetRequired(driver),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
         }, deviceId)
       });
@@ -303,7 +352,7 @@ export async function POST(request) {
         address: String(driver.address || driver.baseAddress || '').trim(),
         timeOffAppointment: driver.timeOffAppointment || null,
         vehicleId: driver.vehicleId || '',
-        passwordResetRequired: Boolean(driver.passwordResetRequired),
+        passwordResetRequired: isDriverPasswordResetRequired(driver),
         gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
       }, deviceId)
     });

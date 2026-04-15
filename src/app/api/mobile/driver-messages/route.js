@@ -8,6 +8,7 @@ import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } 
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
 const MOBILE_MESSAGES_MAX_ITEMS = 200;
+const DRIVER_ALERT_TYPES = new Set(['delay-alert', 'backup-driver-request', 'uber-request']);
 
 const normalizeDriverIdentitySet = (...values) => {
   const identities = new Set();
@@ -208,9 +209,22 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
   }
 
+  const normalizedType = String(body.type || 'driver-reply').trim();
+  const tripId = String(body.tripId || '').trim();
+  const stableAlertId = DRIVER_ALERT_TYPES.has(normalizedType) && tripId
+    ? `driver-alert-${String(driver?.id || '').trim()}-${tripId}-${normalizedType}`
+    : '';
+
+  if (stableAlertId) {
+    const existingMessage = (await readSystemMessages()).find(message => String(message?.id || '').trim() === stableAlertId) || null;
+    if (existingMessage && String(existingMessage.status || '').trim().toLowerCase() === 'resolved') {
+      return jsonWithMobileCors(request, { ok: true, suppressed: true, message: null });
+    }
+  }
+
   const message = {
-    id: body.id || `driver-msg-${Date.now()}`,
-    type: body.type || 'driver-reply',
+    id: stableAlertId || body.id || `driver-msg-${Date.now()}`,
+    type: normalizedType,
     priority: body.priority || 'normal',
     audience: 'Dispatcher',
     subject: body.subject || `Driver message from ${driver.name}`,
@@ -224,7 +238,8 @@ export async function POST(request) {
     createdAt: new Date().toISOString(),
     resolvedAt: null,
     source: 'mobile-driver-app',
-    deliveryMethod: body.deliveryMethod || 'in-app'
+    deliveryMethod: body.deliveryMethod || 'in-app',
+    tripId: tripId || null
   };
 
   await upsertSystemMessage(message);

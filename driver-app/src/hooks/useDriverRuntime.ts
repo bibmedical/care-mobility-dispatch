@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Linking, Vibration } from 'react-native';
+import { AppState, Linking, Platform, Vibration } from 'react-native';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { DRIVER_APP_CONFIG } from '../config/driverAppConfig';
-import { DriverNotificationMode, clearStoredDriverSession, readOrCreateDriverDeviceId, readStoredDriverSession, readStoredNotificationMode, readStoredTrackingPreference, writeStoredDriverSession, writeStoredNotificationMode, writeStoredTrackingPreference } from '../services/driverSessionStorage';
+import { DriverNotificationMode, clearStoredDriverSession, enqueueStoredPendingTripAction, readOrCreateDriverDeviceId, readStoredDriverSession, readStoredNotificationMode, readStoredPendingTripActions, readStoredTrackingPreference, removeStoredPendingTripAction, writeStoredDriverSession, writeStoredNotificationMode, writeStoredPendingTripActions, writeStoredTrackingPreference } from '../services/driverSessionStorage';
 import { isBackgroundLocationTrackingActive, startBackgroundLocationTracking, stopBackgroundLocationTracking } from '../services/driverBackgroundLocation';
-import { DriverAppTab, DriverDocuments, DriverFuelReceipt, DriverFuelRequest, DriverMessage, DriverReviewSummary, DriverSession, DriverShiftState, DriverTimeOffAppointment, DriverTrip, LocationSnapshot } from '../types/driver';
+import { DriverAppTab, DriverDocuments, DriverFuelReceipt, DriverFuelRequest, DriverMessage, DriverPendingTripAction, DriverReviewSummary, DriverSession, DriverShiftState, DriverTimeOffAppointment, DriverTrip, DriverTripActionName, LocationSnapshot } from '../types/driver';
 
 const formatDateTime = (value: number | null) => {
   if (!value) return 'No update yet';
@@ -130,6 +130,32 @@ const getDocumentUri = (value: unknown) => {
   return '';
 };
 
+const getDriverMessageIdentity = (message: Partial<DriverMessage> | null | undefined) => {
+  const explicitId = String(message?.id || '').trim();
+  if (explicitId) return explicitId;
+  return [
+    String(message?.subject || '').trim(),
+    String(message?.body || '').trim(),
+    String(message?.createdAt || '').trim(),
+    String(message?.source || '').trim()
+  ].join('|');
+};
+
+const dedupeDriverMessages = (messages: DriverMessage[]) => {
+  const seen = new Set<string>();
+  return (Array.isArray(messages) ? messages : []).filter(message => {
+    const identity = getDriverMessageIdentity(message);
+    if (!identity || seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+};
+
+const appendDriverMessage = (currentMessages: DriverMessage[], nextMessage: DriverMessage | null | undefined) => {
+  if (!nextMessage) return dedupeDriverMessages(currentMessages);
+  return dedupeDriverMessages([nextMessage, ...(Array.isArray(currentMessages) ? currentMessages : [])]);
+};
+
 export const useDriverRuntime = () => {
   const [tripDateFilter, setTripDateFilter] = useState<'all' | 'today' | 'next-day'>('all');
   const [driverCode, setDriverCode] = useState('');
@@ -139,6 +165,7 @@ export const useDriverRuntime = () => {
   const [activeTab, setActiveTab] = useState<DriverAppTab>('home');
   const [trackingEnabled, setTrackingEnabledState] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const [locationServicesEnabled, setLocationServicesEnabled] = useState(true);
   const [locationSnapshot, setLocationSnapshot] = useState<LocationSnapshot | null>(null);
   const [watchError, setWatchError] = useState('');
   const [backgroundTrackingError, setBackgroundTrackingError] = useState('');
@@ -176,8 +203,12 @@ export const useDriverRuntime = () => {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [tripActionError, setTripActionError] = useState('');
   const [activeTripAction, setActiveTripAction] = useState('');
+  const [pendingTripActions, setPendingTripActions] = useState<DriverPendingTripAction[]>([]);
+  const [isProcessingPendingTripActions, setIsProcessingPendingTripActions] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileError, setProfileError] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordChangeError, setPasswordChangeError] = useState('');
   const [driverDocuments, setDriverDocuments] = useState<DriverDocuments>(EMPTY_DRIVER_DOCUMENTS);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
@@ -201,6 +232,31 @@ export const useDriverRuntime = () => {
   const [isRegisteringPushToken, setIsRegisteringPushToken] = useState(false);
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const requestedBackgroundSettingsRef = useRef(false);
+  const processingPendingTripActionsRef = useRef(false);
+
+  const syncLocationProviderState = async (promptToEnable = false) => {
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    setLocationServicesEnabled(servicesEnabled);
+
+    if (servicesEnabled) return true;
+
+    if (promptToEnable && Platform.OS === 'android') {
+      try {
+        await Location.enableNetworkProviderAsync();
+        const enabledAfterPrompt = await Location.hasServicesEnabledAsync();
+        setLocationServicesEnabled(enabledAfterPrompt);
+        if (enabledAfterPrompt) {
+          setWatchError('');
+          return true;
+        }
+      } catch {
+        // Fall back to showing a clear error and opening settings manually.
+      }
+    }
+
+    setWatchError('Location service is off on this tablet. Turn on GPS/Location in Android settings.');
+    return false;
+  };
 
   const clearDriverRuntimeState = async (message = '') => {
     setLoggedIn(false);
@@ -243,6 +299,151 @@ export const useDriverRuntime = () => {
     void writeStoredTrackingPreference(nextValue);
   };
 
+  const syncPendingTripActions = async () => {
+    const storedActions = await readStoredPendingTripActions();
+    setPendingTripActions(storedActions);
+    return storedActions;
+  };
+
+  const buildOptimisticTripPatch = (action: DriverTripActionName, options: {
+    cancellationReason?: string;
+    cancellationPhotoDataUrl?: string;
+    completionPhotoDataUrl?: string;
+  } = {}) => {
+    const now = Date.now();
+    const workflow: NonNullable<DriverTrip['driverWorkflow']> = {
+      status: action
+    };
+    const patch: Partial<DriverTrip> = {
+      status: action === 'complete' ? 'Completed' : action === 'cancel' ? 'Cancelled' : action === 'arrived' || action === 'arrived-destination' ? 'Arrived' : 'In Progress'
+    };
+
+    if (action === 'accept') {
+      workflow.acceptedAt = now;
+      workflow.acceptedTimeLabel = formatDateTime(now);
+    }
+    if (action === 'en-route') {
+      patch.enRouteAt = now;
+      workflow.departureToPickupAt = now;
+      workflow.departureToPickupTimeLabel = formatDateTime(now);
+    }
+    if (action === 'arrived') {
+      patch.arrivedAt = now;
+      workflow.arrivedPickupAt = now;
+      workflow.arrivedPickupTimeLabel = formatDateTime(now);
+    }
+    if (action === 'patient-onboard') {
+      patch.patientOnboardAt = now;
+      workflow.patientOnboardAt = now;
+      workflow.patientOnboardTimeLabel = formatDateTime(now);
+    }
+    if (action === 'start-trip') {
+      patch.startTripAt = now;
+      workflow.startTripAt = now;
+      workflow.startTripTimeLabel = formatDateTime(now);
+    }
+    if (action === 'arrived-destination') {
+      patch.arrivedDestinationAt = now;
+      workflow.arrivedDestinationAt = now;
+      workflow.arrivedDestinationTimeLabel = formatDateTime(now);
+    }
+    if (action === 'complete') {
+      patch.completedAt = now;
+      patch.completionPhotoDataUrl = String(options.completionPhotoDataUrl || '').trim() || undefined;
+      workflow.completedAt = now;
+      workflow.completedTimeLabel = formatDateTime(now);
+    }
+
+    if (action === 'cancel') {
+      patch.canceledAt = now;
+      patch.cancellationReason = String(options.cancellationReason || '').trim() || undefined;
+      patch.cancellationPhotoDataUrl = String(options.cancellationPhotoDataUrl || '').trim() || undefined;
+    }
+
+    patch.driverWorkflow = workflow;
+    return patch;
+  };
+
+  const applyOptimisticTripAction = (tripId: string, action: DriverTripActionName, options: {
+    cancellationReason?: string;
+    cancellationPhotoDataUrl?: string;
+    completionPhotoDataUrl?: string;
+  } = {}) => {
+    const normalizedTripId = String(tripId || '').trim();
+    if (!normalizedTripId) return;
+    const optimisticPatch = buildOptimisticTripPatch(action, options);
+
+    setAssignedTrips(currentTrips => currentTrips.map(trip => String(trip.id || '').trim() === normalizedTripId ? {
+      ...trip,
+      ...optimisticPatch,
+      driverWorkflow: {
+        ...(trip.driverWorkflow || {}),
+        ...(optimisticPatch.driverWorkflow || {})
+      }
+    } : trip));
+    setActiveTrip(currentTrip => {
+      if (!currentTrip || String(currentTrip.id || '').trim() !== normalizedTripId) {
+        return currentTrip;
+      }
+
+      return {
+        ...currentTrip,
+        ...optimisticPatch,
+        driverWorkflow: {
+          ...(currentTrip.driverWorkflow || {}),
+          ...(optimisticPatch.driverWorkflow || {})
+        }
+      };
+    });
+
+    if (action === 'accept') setShiftState('available');
+    if (action === 'en-route') setShiftState('en-route');
+    if (action === 'arrived') setShiftState('arrived');
+    if (action === 'start-trip') setShiftState('en-route');
+    if (action === 'arrived-destination') setShiftState('arrived');
+    if (action === 'complete') setShiftState('completed');
+    if (action === 'cancel') setShiftState('available');
+    if (action === 'complete' || action === 'cancel') setActiveTab('history');
+  };
+
+  const applyPendingActionsToTrips = (trips: DriverTrip[], queuedActions: DriverPendingTripAction[]) => {
+    if (!Array.isArray(trips) || !trips.length || !Array.isArray(queuedActions) || !queuedActions.length) {
+      return Array.isArray(trips) ? trips : [];
+    }
+
+    const sortedActions = [...queuedActions]
+      .filter(action => action.driverId === driverSession?.driverId)
+      .sort((leftAction, rightAction) => Number(leftAction.createdAt || 0) - Number(rightAction.createdAt || 0));
+
+    if (!sortedActions.length) return trips;
+
+    return trips.map(trip => {
+      const normalizedTripId = String(trip?.id || '').trim();
+      if (!normalizedTripId) return trip;
+
+      return sortedActions.reduce<DriverTrip>((currentTrip, queuedAction) => {
+        if (String(queuedAction.tripId || '').trim() !== normalizedTripId) {
+          return currentTrip;
+        }
+
+        const optimisticPatch = buildOptimisticTripPatch(queuedAction.action, {
+          cancellationReason: queuedAction.cancellationReason,
+          cancellationPhotoDataUrl: queuedAction.cancellationPhotoDataUrl,
+          completionPhotoDataUrl: queuedAction.completionPhotoDataUrl
+        });
+
+        return {
+          ...currentTrip,
+          ...optimisticPatch,
+          driverWorkflow: {
+            ...(currentTrip.driverWorkflow || {}),
+            ...(optimisticPatch.driverWorkflow || {})
+          }
+        };
+      }, trip);
+    });
+  };
+
   const reloadTrips = async () => {
     if (!loggedIn) return false;
 
@@ -254,14 +455,21 @@ export const useDriverRuntime = () => {
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to load trips.'));
 
-      const nextTrips: DriverTrip[] = Array.isArray(payload?.trips) ? payload.trips : [];
+      const pendingActions = await readStoredPendingTripActions();
+      const fetchedTrips: DriverTrip[] = Array.isArray(payload?.trips) ? payload.trips : [];
+      const nextTrips = applyPendingActionsToTrips(fetchedTrips, pendingActions);
       setAssignedTrips(nextTrips);
       setActiveTrip(currentTrip => {
         if (currentTrip) {
           const refreshedCurrentTrip = nextTrips.find(trip => trip.id === currentTrip.id);
           if (refreshedCurrentTrip) return refreshedCurrentTrip;
         }
-        return payload?.activeTrip ?? nextTrips[0] ?? null;
+
+        const payloadActiveTrip = payload?.activeTrip && typeof payload.activeTrip === 'object'
+          ? applyPendingActionsToTrips([payload.activeTrip], pendingActions)[0]
+          : null;
+
+        return payloadActiveTrip ?? nextTrips[0] ?? null;
       });
       setTripSyncError('');
       setLastTripSyncAt(Date.now());
@@ -270,6 +478,106 @@ export const useDriverRuntime = () => {
       setTripSyncError(error instanceof Error ? error.message : 'Unable to load trips.');
       return false;
     }
+  };
+
+  const processPendingTripActions = async () => {
+    if (processingPendingTripActionsRef.current || !driverSession?.driverId) return false;
+
+    processingPendingTripActionsRef.current = true;
+    setIsProcessingPendingTripActions(true);
+
+    try {
+      let queuedActions = await readStoredPendingTripActions();
+      if (!queuedActions.length) {
+        setPendingTripActions([]);
+        return true;
+      }
+
+      let successfulSend = false;
+
+      for (const queuedAction of queuedActions) {
+        if (queuedAction.driverId !== driverSession.driverId) continue;
+
+        const sendTripActionRequest = async (overrides: Record<string, unknown> = {}) => {
+          return await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-trip-actions`, {
+            method: 'POST',
+            headers: {
+              ...getDriverAuthHeaders(driverSession, {
+                'Content-Type': 'application/json'
+              })
+            },
+            body: JSON.stringify({
+              driverId: queuedAction.driverId,
+              tripId: queuedAction.tripId,
+              action: queuedAction.action,
+              riderSignatureName: String(queuedAction.riderSignatureName || '').trim() || undefined,
+              riderSignatureData: queuedAction.riderSignatureData || undefined,
+              cancellationReason: String(queuedAction.cancellationReason || '').trim() || undefined,
+              cancellationPhotoDataUrl: String(queuedAction.cancellationPhotoDataUrl || '').trim() || undefined,
+              completionPhotoDataUrl: String(queuedAction.completionPhotoDataUrl || '').trim() || undefined,
+              locationSnapshot: queuedAction.locationSnapshot || undefined,
+              ...overrides
+            })
+          });
+        };
+
+        try {
+          let { response, payload } = await sendTripActionRequest();
+          if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+
+          const actionAllowsSignatureBypass = ['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination'].includes(queuedAction.action);
+          const backendSignatureError = /signature|firma/i.test(String(payload?.error || ''));
+
+          if (!response.ok && actionAllowsSignatureBypass && backendSignatureError) {
+            const retryResult = await sendTripActionRequest({
+              riderSignatureName: 'Driver workflow acknowledgment'
+            });
+            response = retryResult.response;
+            payload = retryResult.payload;
+            if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+          }
+
+          if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to update trip.'));
+
+          await removeStoredPendingTripAction(queuedAction.id);
+          queuedActions = queuedActions.filter(item => item.id !== queuedAction.id);
+          successfulSend = true;
+        } catch (error) {
+          const failureMessage = error instanceof Error ? error.message : 'Unable to send pending trip update.';
+          const nextQueuedActions = queuedActions.map(item => item.id === queuedAction.id ? {
+            ...item,
+            attemptCount: Number(item.attemptCount || 0) + 1,
+            lastAttemptAt: Date.now()
+          } : item);
+          await writeStoredPendingTripActions(nextQueuedActions);
+          queuedActions = nextQueuedActions;
+          setPendingTripActions(nextQueuedActions);
+          if (/unable to reach the driver api|failed to fetch|network request failed|too long to respond/i.test(failureMessage.toLowerCase())) {
+            setTripActionError('Trip update queued. Driver can keep working and resend pending updates later.');
+          } else {
+            setTripActionError(failureMessage);
+          }
+          return false;
+        }
+      }
+
+      setPendingTripActions(queuedActions);
+      if (successfulSend) {
+        await reloadTrips();
+        await loadDriverReviewSummary(true);
+      }
+      if (!queuedActions.length) {
+        setTripActionError('');
+      }
+      return true;
+    } finally {
+      processingPendingTripActionsRef.current = false;
+      setIsProcessingPendingTripActions(false);
+    }
+  };
+
+  const resendPendingTripActions = async () => {
+    return await processPendingTripActions();
   };
 
   const loadMessages = async (signalActive = true) => {
@@ -284,7 +592,7 @@ export const useDriverRuntime = () => {
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to load messages.'));
       if (!signalActive) return;
-      setMessages(Array.isArray(payload?.messages) ? payload.messages : []);
+      setMessages(dedupeDriverMessages(Array.isArray(payload?.messages) ? payload.messages : []));
       setMessagesError('');
       setLastMessageSyncAt(Date.now());
     } catch (error) {
@@ -371,6 +679,16 @@ export const useDriverRuntime = () => {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    if (!loggedIn || !driverSession?.driverId) return;
+
+    void refreshDriverSession(driverSession);
+  }, [driverSession?.driverId, loggedIn]);
+
+  useEffect(() => {
+    void syncPendingTripActions();
   }, []);
 
   useEffect(() => {
@@ -473,6 +791,11 @@ export const useDriverRuntime = () => {
         return;
       }
 
+      const servicesEnabled = await syncLocationProviderState();
+      if (!servicesEnabled) {
+        return;
+      }
+
       setPermissionStatus('granted');
       setWatchError('');
 
@@ -510,6 +833,32 @@ export const useDriverRuntime = () => {
       subscription?.remove();
     };
   }, [effectiveForegroundGpsDistanceIntervalMeters, effectiveForegroundGpsTimeIntervalMs, loggedIn, trackingEnabled]);
+
+  useEffect(() => {
+    let active = true;
+
+    const syncProviderOnMount = async () => {
+      try {
+        const servicesEnabled = await Location.hasServicesEnabledAsync();
+        if (active) setLocationServicesEnabled(servicesEnabled);
+      } catch {
+        if (active) setLocationServicesEnabled(true);
+      }
+    };
+
+    void syncProviderOnMount();
+
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        void syncProviderOnMount();
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -641,6 +990,24 @@ export const useDriverRuntime = () => {
   }, [driverSession?.driverId, loggedIn, trackingEnabled]);
 
   useEffect(() => {
+    if (!loggedIn || !driverSession?.driverId) return;
+
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        void syncPendingTripActions().then(actions => {
+          if (actions.some(action => action.driverId === driverSession.driverId)) {
+            void processPendingTripActions();
+          }
+        });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [driverSession?.driverId, loggedIn]);
+
+  useEffect(() => {
     if (!loggedIn) {
       setAssignedTrips([]);
       setActiveTrip(null);
@@ -657,8 +1024,6 @@ export const useDriverRuntime = () => {
         await reloadTrips();
       } catch (error) {
         if (!active) return;
-        setAssignedTrips([]);
-        setActiveTrip(null);
         setTripSyncError(error instanceof Error ? error.message : 'Unable to load trips.');
       } finally {
         if (active) setIsLoadingTrips(false);
@@ -860,8 +1225,7 @@ export const useDriverRuntime = () => {
         content: {
           title: latest.subject || 'New dispatch message',
           body: latest.body || 'You have a new dispatcher message.',
-          sound: notificationMode === 'sound' ? 'default' : undefined,
-          channelId: DRIVER_ALERT_CHANNEL_ID
+          sound: notificationMode === 'sound' ? 'default' : undefined
         },
         trigger: null
       });
@@ -1015,6 +1379,67 @@ export const useDriverRuntime = () => {
     await clearDriverRuntimeState('');
   };
 
+  const changeDriverPassword = async (newPassword: string, currentPassword = '') => {
+    if (!driverSession?.driverId) return false;
+
+    setIsChangingPassword(true);
+    setPasswordChangeError('');
+    try {
+      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-password`, {
+        method: 'POST',
+        headers: {
+          ...getDriverAuthHeaders(driverSession, {
+            'Content-Type': 'application/json'
+          })
+        },
+        body: JSON.stringify({
+          driverId: driverSession.driverId,
+          currentPassword: String(currentPassword || '').trim(),
+          newPassword: String(newPassword || '').trim()
+        })
+      });
+
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok || !payload?.session) {
+        throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to change password.'));
+      }
+
+      setDriverSession(payload.session);
+      setPassword(String(newPassword || '').trim());
+      await writeStoredDriverSession(payload.session);
+      setPasswordChangeError('');
+      return true;
+    } catch (error) {
+      setPasswordChangeError(error instanceof Error ? error.message : 'Unable to change password.');
+      return false;
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const refreshDriverSession = async (session = driverSession) => {
+    if (!session?.driverId) return false;
+
+    try {
+      const { response, payload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-profile?driverId=${encodeURIComponent(session.driverId)}`,
+        {
+          headers: getDriverAuthHeaders(session)
+        }
+      );
+
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok || !payload?.session) return false;
+
+      setDriverSession(payload.session);
+      setDriverCode(payload.session.driverCode || payload.session.username || payload.session.driverId);
+      await writeStoredDriverSession(payload.session);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const requestLocationPermission = async () => {
     setIsRequestingPermission(true);
     try {
@@ -1022,6 +1447,12 @@ export const useDriverRuntime = () => {
       setPermissionStatus(foregroundPermission.status === 'granted' ? 'granted' : 'denied');
       if (foregroundPermission.status !== 'granted') {
         setWatchError('Location permission denied.');
+        return;
+      }
+
+      const servicesEnabled = await syncLocationProviderState(true);
+      if (!servicesEnabled) {
+        await Linking.openSettings();
         return;
       }
 
@@ -1060,7 +1491,7 @@ export const useDriverRuntime = () => {
     void writeStoredNotificationMode(mode);
   };
 
-  const submitTripAction = async (action: 'accept' | 'en-route' | 'arrived' | 'patient-onboard' | 'start-trip' | 'arrived-destination' | 'complete' | 'cancel', options: {
+  const submitTripAction = async (action: DriverTripActionName, options: {
     tripId?: string;
     riderSignatureName?: string;
     riderSignatureData?: {
@@ -1078,81 +1509,32 @@ export const useDriverRuntime = () => {
     setActiveTripAction(action);
     setTripActionError('');
 
-    const optimisticStatus = action === 'complete'
-      ? 'Completed'
-      : action === 'cancel'
-        ? 'Cancelled'
-      : action === 'arrived' || action === 'arrived-destination'
-        ? 'Arrived'
-        : 'In Progress';
-    setAssignedTrips(current => current.map(trip => trip.id === targetTripId ? {
-      ...trip,
-      status: optimisticStatus
-    } : trip));
-    setActiveTrip(current => current?.id === targetTripId ? {
-      ...current,
-      status: optimisticStatus
-    } : current);
+    applyOptimisticTripAction(targetTripId, action, {
+      cancellationReason: options.cancellationReason,
+      cancellationPhotoDataUrl: options.cancellationPhotoDataUrl,
+      completionPhotoDataUrl: options.completionPhotoDataUrl
+    });
 
-    try {
-      const sendTripActionRequest = async (overrides: Record<string, unknown> = {}) => {
-        return await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-trip-actions`, {
-          method: 'POST',
-          headers: {
-            ...getDriverAuthHeaders(driverSession, {
-              'Content-Type': 'application/json'
-            })
-          },
-          body: JSON.stringify({
-            driverId: driverSession.driverId,
-            tripId: targetTripId,
-            action,
-            riderSignatureName: String(options.riderSignatureName || '').trim() || undefined,
-            riderSignatureData: options.riderSignatureData || undefined,
-            cancellationReason: String(options.cancellationReason || '').trim() || undefined,
-            cancellationPhotoDataUrl: String(options.cancellationPhotoDataUrl || '').trim() || undefined,
-            completionPhotoDataUrl: String(options.completionPhotoDataUrl || '').trim() || undefined,
-            locationSnapshot: locationSnapshot || undefined,
-            ...overrides
-          })
-        });
-      };
+    const queuedAction: DriverPendingTripAction = {
+      id: `trip-action-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      driverId: driverSession.driverId,
+      tripId: targetTripId,
+      action,
+      createdAt: Date.now(),
+      attemptCount: 0,
+      riderSignatureName: String(options.riderSignatureName || '').trim() || undefined,
+      riderSignatureData: options.riderSignatureData || undefined,
+      cancellationReason: String(options.cancellationReason || '').trim() || undefined,
+      cancellationPhotoDataUrl: String(options.cancellationPhotoDataUrl || '').trim() || undefined,
+      completionPhotoDataUrl: String(options.completionPhotoDataUrl || '').trim() || undefined,
+      locationSnapshot: locationSnapshot || undefined
+    };
 
-      let { response, payload } = await sendTripActionRequest();
-      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
-
-      const actionAllowsSignatureBypass = ['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination'].includes(action);
-      const backendSignatureError = /signature|firma/i.test(String(payload?.error || ''));
-
-      if (!response.ok && actionAllowsSignatureBypass && backendSignatureError) {
-        const retryResult = await sendTripActionRequest({
-          riderSignatureName: 'Driver workflow acknowledgment'
-        });
-        response = retryResult.response;
-        payload = retryResult.payload;
-        if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
-      }
-
-      if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to update trip.'));
-
-      if (action === 'accept') setShiftState('available');
-      if (action === 'en-route') setShiftState('en-route');
-      if (action === 'arrived') setShiftState('arrived');
-      if (action === 'start-trip') setShiftState('en-route');
-      if (action === 'arrived-destination') setShiftState('arrived');
-      if (action === 'complete') setShiftState('completed');
-      if (action === 'cancel') setShiftState('available');
-      await reloadTrips();
-      await loadDriverReviewSummary(true);
-      if (action === 'complete' || action === 'cancel') setActiveTab('history');
-      return true;
-    } catch (error) {
-      setTripActionError(error instanceof Error ? error.message : 'Unable to update trip.');
-      await reloadTrips();
-      return false;
-    } finally {
-      setActiveTripAction('');
-    }
+    await enqueueStoredPendingTripAction(queuedAction);
+    setPendingTripActions(current => [...current, queuedAction]);
+    setActiveTripAction('');
+    void processPendingTripActions();
+    return true;
   };
 
   const sendDriverMessage = async (recipientName?: string, options?: { mediaUrl?: string; mediaType?: string }) => {
@@ -1183,7 +1565,7 @@ export const useDriverRuntime = () => {
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to send message.'));
 
-      setMessages(current => [payload.message, ...current]);
+      setMessages(current => appendDriverMessage(current, payload?.message));
       setMessageDraft('');
       setMessagesError('');
       return true;
@@ -1226,7 +1608,7 @@ export const useDriverRuntime = () => {
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to log rider SMS notice.'));
 
-      setMessages(current => [payload.message, ...current]);
+      setMessages(current => appendDriverMessage(current, payload?.message));
       setMessagesError('');
       return true;
     } catch (error) {
@@ -1249,7 +1631,7 @@ export const useDriverRuntime = () => {
 
     if (mode === 'delay') {
       subject = `Late ETA for trip ${tripReference}`;
-      body = `Driver ${driverSession.name} reports trip ${tripReference} for ${riderName} is running late by about ${lateMinutes} minutes. Please review coverage and advise if another driver or Uber is needed.`;
+      body = `Driver ${driverSession.name} reports trip ${tripReference} for ${riderName} is running late by about ${lateMinutes} minutes. Please review coverage and advise if backup help is needed.`;
     }
 
     if (mode === 'backup-driver') {
@@ -1274,6 +1656,7 @@ export const useDriverRuntime = () => {
         },
         body: JSON.stringify({
           driverId: driverSession.driverId,
+          tripId: String(activeTrip.id || '').trim(),
           body,
           subject,
           type: mode === 'delay' ? 'delay-alert' : mode === 'backup-driver' ? 'backup-driver-request' : 'uber-request',
@@ -1284,7 +1667,9 @@ export const useDriverRuntime = () => {
       if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
       if (!response.ok) throw new Error(payload?.error || getMobileApiErrorMessage(response, 'Unable to send driver alert.'));
 
-      setMessages(current => [payload.message, ...current]);
+      if (!payload?.suppressed) {
+        setMessages(current => appendDriverMessage(current, payload?.message));
+      }
       setMessageDraft('');
       setMessagesError('');
       return true;
@@ -1703,6 +2088,7 @@ export const useDriverRuntime = () => {
     trackingEnabled,
     setTrackingEnabled,
     permissionStatus,
+    locationServicesEnabled,
     locationSnapshot,
     watchError,
     backgroundTrackingError,
@@ -1734,8 +2120,14 @@ export const useDriverRuntime = () => {
     isSendingMessage,
     tripActionError,
     activeTripAction,
+    pendingTripActions,
+    pendingTripActionCount: pendingTripActions.length,
+    isProcessingPendingTripActions,
     isSavingProfile,
     profileError,
+    isChangingPassword,
+    passwordChangeError,
+    requiresPasswordReset: Boolean(loggedIn && driverSession?.passwordResetRequired),
     driverDocuments,
     isLoadingDocuments,
     isUploadingDocument,
@@ -1749,7 +2141,10 @@ export const useDriverRuntime = () => {
     statusCard,
     signIn,
     signOut,
+    changeDriverPassword,
     requestLocationPermission,
+    reloadTrips,
+    resendPendingTripActions,
     requestNotificationPermission,
     setDriverNotificationMode,
     submitTripAction,

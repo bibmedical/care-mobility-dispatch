@@ -23,16 +23,23 @@ export const DriverTrackingCard = ({ runtime }: Props) => {
           <Text style={styles.metricValue}>{runtime.permissionStatus}</Text>
         </View>
         <View style={styles.metricPanel}>
-          <Text style={styles.metricLabel}>Last GPS</Text>
-          <Text style={styles.metricValue}>{runtime.locationSnapshot ? runtime.formatDateTime(runtime.locationSnapshot.timestamp) : 'No ping'}</Text>
+          <Text style={styles.metricLabel}>GPS service</Text>
+          <Text style={styles.metricValue}>{runtime.locationServicesEnabled ? 'On' : 'Off'}</Text>
         </View>
       </View>
 
       <View style={styles.metricsRow}>
         <View style={styles.metricPanel}>
+          <Text style={styles.metricLabel}>Last GPS</Text>
+          <Text style={styles.metricValue}>{runtime.locationSnapshot ? runtime.formatDateTime(runtime.locationSnapshot.timestamp) : 'No ping'}</Text>
+        </View>
+        <View style={styles.metricPanel}>
           <Text style={styles.metricLabel}>Current city</Text>
           <Text style={styles.metricValue}>{runtime.currentCity || 'Unknown city'}</Text>
         </View>
+      </View>
+
+      <View style={styles.metricsRow}>
         <View style={styles.metricPanel}>
           <Text style={styles.metricLabel}>Accuracy</Text>
           <Text style={styles.metricValue}>{runtime.locationSnapshot?.accuracy ? `${Math.round(runtime.locationSnapshot.accuracy)} m` : 'No signal yet'}</Text>
@@ -40,8 +47,16 @@ export const DriverTrackingCard = ({ runtime }: Props) => {
       </View>
 
       <Pressable style={styles.permissionButton} onPress={() => void runtime.requestLocationPermission()}>
-        {runtime.isRequestingPermission ? <ActivityIndicator color={driverTheme.colors.primaryText} /> : <Text style={styles.permissionButtonText}>Set GPS to Always Allow</Text>}
+        {runtime.isRequestingPermission ? <ActivityIndicator color={driverTheme.colors.primaryText} /> : <Text style={styles.permissionButtonText}>{runtime.locationServicesEnabled ? 'Set GPS to Always Allow' : 'Turn On GPS and Always Allow'}</Text>}
       </Pressable>
+
+      {runtime.pendingTripActionCount > 0 ? <View style={styles.pendingCard}>
+          <Text style={styles.pendingTitle}>Pending trip updates</Text>
+          <Text style={styles.pendingBody}>{runtime.pendingTripActionCount} update{runtime.pendingTripActionCount === 1 ? '' : 's'} waiting to reach dispatch. The driver can keep using the phone and resend later.</Text>
+          <Pressable style={styles.pendingButton} onPress={() => void runtime.resendPendingTripActions()}>
+            {runtime.isProcessingPendingTripActions ? <ActivityIndicator color={driverTheme.colors.white} /> : <Text style={styles.pendingButtonText}>Resend pending updates</Text>}
+          </Pressable>
+        </View> : null}
 
       {runtime.watchError ? <Text style={driverSharedStyles.warningText}>{runtime.watchError}</Text> : null}
       {runtime.backgroundTrackingError ? <Text style={driverSharedStyles.warningText}>{runtime.backgroundTrackingError}</Text> : null}
@@ -84,6 +99,34 @@ const styles = StyleSheet.create({
   },
   permissionButtonText: {
     color: driverTheme.colors.primaryText,
+    fontWeight: '800'
+  },
+  pendingCard: {
+    backgroundColor: '#fff8e8',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f4d38b',
+    padding: 14,
+    gap: 8
+  },
+  pendingTitle: {
+    color: '#7c4a03',
+    fontWeight: '800',
+    fontSize: 13,
+    textTransform: 'uppercase'
+  },
+  pendingBody: {
+    color: '#8a5a18',
+    lineHeight: 19
+  },
+  pendingButton: {
+    backgroundColor: '#b45309',
+    borderRadius: 14,
+    alignItems: 'center',
+    paddingVertical: 12
+  },
+  pendingButtonText: {
+    color: driverTheme.colors.white,
     fontWeight: '800'
   }
 });

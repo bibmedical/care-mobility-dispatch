@@ -1,5 +1,5 @@
 param(
-  [string]$BaseUrl = 'https://care-mobility-dispatch-web.onrender.com',
+  [string]$BaseUrl = 'https://care-mobility-dispatch-web-v2.onrender.com',
   [string]$Token = '',
   [string]$StorageDir = 'storage'
 )

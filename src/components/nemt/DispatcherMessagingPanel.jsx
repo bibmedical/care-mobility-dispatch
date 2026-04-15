@@ -189,6 +189,16 @@ const getAlertLabel = alert => {
   return 'Driver Alert';
 };
 
+const getAlertDisplayBody = alert => {
+  const rawBody = String(alert?.body || '').trim();
+  if (!rawBody) return '';
+  if (alert?.type !== 'delay-alert') return rawBody;
+
+  return rawBody
+    .replace(/another driver or uber is needed\.?/i, 'backup help is needed.')
+    .replace(/driver or uber/i, 'backup help');
+};
+
 const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
   try {
     await fetch('/api/system-logs', {
@@ -1303,11 +1313,11 @@ const DispatcherMessagingPanel = ({
                         <Button size="sm" variant="success" onClick={() => void handleResolveAlert(alert.id)} disabled={resolvingAlertId === alert.id}>{resolvingAlertId === alert.id ? 'Resolving...' : 'Resolve'}</Button>
                       </div>
                     </div>
-                    <div className="mt-2 small">{alert.body}</div>
+                    <div className="mt-2 small">{getAlertDisplayBody(alert)}</div>
                     <div className="mt-3 d-flex gap-2 flex-wrap">
                       <Button size="sm" variant="warning" onClick={() => void handleSendSmsTemplate(alert, DRIVER_ALERT_SMS_TEMPLATES['delay-alert'](activeDriver?.name || 'driver'))} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Late ETA SMS</Button>
                       <Button size="sm" variant="primary" onClick={() => void handleSendSmsTemplate(alert, DRIVER_ALERT_SMS_TEMPLATES['backup-driver-request'](activeDriver?.name || 'driver'))} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Backup Driver SMS</Button>
-                      <Button size="sm" variant="danger" onClick={() => void handleSendSmsTemplate(alert, DRIVER_ALERT_SMS_TEMPLATES['uber-request'](activeDriver?.name || 'driver'))} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Uber SMS</Button>
+                      {alert?.type !== 'delay-alert' ? <Button size="sm" variant="danger" onClick={() => void handleSendSmsTemplate(alert, DRIVER_ALERT_SMS_TEMPLATES['uber-request'](activeDriver?.name || 'driver'))} disabled={isSendingSms || normalizePhoneDigits(activeDriver?.phone).length < 10}>Uber SMS</Button> : null}
                     </div>
                   </div>)}
               </div> : null}

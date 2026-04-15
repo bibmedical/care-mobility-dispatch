@@ -9,7 +9,7 @@ import { DriverHelpSection } from '../components/driver/DriverHelpSection';
 import { DriverHistorySection } from '../components/driver/DriverHistorySection';
 import { DriverMessagesSection } from '../components/driver/DriverMessagesSection';
 import { DriverProfileSection } from '../components/driver/DriverProfileSection';
-import { DriverTimeOffSection } from '../components/driver/DriverTimeOffSection.tsx';
+import { DriverTimeOffSection } from '../components/driver/DriverTimeOffSection';
 import { DriverTripsSection } from '../components/driver/DriverTripsSection';
 import { getDriverAccentColor, withDriverAccentAlpha } from '../components/driver/driverColor';
 import { driverSharedStyles, driverTheme } from '../components/driver/driverTheme';

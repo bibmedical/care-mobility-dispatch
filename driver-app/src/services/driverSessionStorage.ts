@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DriverSession } from '../types/driver';
+import { DriverPendingTripAction, DriverSession } from '../types/driver';
 
 const DRIVER_SESSION_STORAGE_KEY = 'care-mobility-driver-session';
 const DRIVER_TRACKING_STORAGE_KEY = 'care-mobility-driver-tracking-enabled';
 const DRIVER_NOTIFICATION_MODE_KEY = 'care-mobility-driver-notification-mode';
 const DRIVER_DEVICE_ID_STORAGE_KEY = 'care-mobility-driver-device-id';
+const DRIVER_PENDING_TRIP_ACTIONS_KEY = 'care-mobility-driver-pending-trip-actions';
 
 export type DriverNotificationMode = 'sound' | 'vibrate' | 'silent';
 
@@ -57,4 +58,37 @@ export const readStoredNotificationMode = async (): Promise<DriverNotificationMo
 
 export const writeStoredNotificationMode = async (mode: DriverNotificationMode) => {
   await AsyncStorage.setItem(DRIVER_NOTIFICATION_MODE_KEY, mode);
+};
+
+export const readStoredPendingTripActions = async (): Promise<DriverPendingTripAction[]> => {
+  const rawValue = await AsyncStorage.getItem(DRIVER_PENDING_TRIP_ACTIONS_KEY);
+  if (!rawValue) return [];
+
+  try {
+    const parsedValue = JSON.parse(rawValue);
+    return Array.isArray(parsedValue) ? parsedValue as DriverPendingTripAction[] : [];
+  } catch {
+    await AsyncStorage.removeItem(DRIVER_PENDING_TRIP_ACTIONS_KEY);
+    return [];
+  }
+};
+
+export const writeStoredPendingTripActions = async (actions: DriverPendingTripAction[]) => {
+  await AsyncStorage.setItem(DRIVER_PENDING_TRIP_ACTIONS_KEY, JSON.stringify(Array.isArray(actions) ? actions : []));
+};
+
+export const enqueueStoredPendingTripAction = async (action: DriverPendingTripAction) => {
+  const currentActions = await readStoredPendingTripActions();
+  await writeStoredPendingTripActions([...currentActions, action]);
+};
+
+export const removeStoredPendingTripAction = async (actionId: string) => {
+  const normalizedActionId = String(actionId || '').trim();
+  if (!normalizedActionId) return;
+  const currentActions = await readStoredPendingTripActions();
+  await writeStoredPendingTripActions(currentActions.filter(action => String(action?.id || '').trim() !== normalizedActionId));
+};
+
+export const clearStoredPendingTripActions = async () => {
+  await AsyncStorage.removeItem(DRIVER_PENDING_TRIP_ACTIONS_KEY);
 };
