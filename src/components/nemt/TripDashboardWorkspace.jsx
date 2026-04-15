@@ -59,24 +59,6 @@ const TripDashboardMapResizer = ({ resizeKey }) => {
   return null;
 };
 
-const TripDashboardDriverMapFocus = ({ focusKey, position }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!focusKey || !Array.isArray(position) || position.length !== 2) return;
-
-    const [latitude, longitude] = position;
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-
-    map.flyTo([latitude, longitude], map.getZoom(), {
-      animate: true,
-      duration: 0.8
-    });
-  }, [focusKey, map, position]);
-
-  return null;
-};
-
 const iconToolbarButtonStyle = {
   minWidth: 34,
   width: 34,
@@ -1094,7 +1076,6 @@ const TripDashboardWorkspace = () => {
   const showInlineMap = true;
   const [showMapPane, setShowMapPane] = useState(() => getInitialTripDashboardLayoutMode() === TRIP_DASHBOARD_LAYOUTS.normal);
   const [mapLocked, setMapLocked] = useState(false);
-  const [mapDriverFocusKey, setMapDriverFocusKey] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showRoutePrintColumnPicker, setShowRoutePrintColumnPicker] = useState(false);
@@ -2118,13 +2099,13 @@ const TripDashboardWorkspace = () => {
     </Button>;
 
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 98, fontWeight: 700 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">Print Route</Button>
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 92, fontWeight: 700 }} onClick={handleShareRouteWhatsapp} title="WhatsApp" aria-label="WhatsApp">WhatsApp</Button>
-      <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value || null)} style={{ ...compactToolbarSelectBaseStyle, width: 170 }}>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">P</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handleShareRouteWhatsapp} title="WhatsApp" aria-label="WhatsApp">W</Button>
+      <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => setSelectedDriverId(event.target.value || null)} style={{ ...compactToolbarSelectBaseStyle, width: 150 }}>
         <option value="">Reassign to driver</option>
         {drivers.map(driver => <option key={`route-reassign-toolbar-${driver.id}`} value={driver.id}>{driver.name}</option>)}
       </Form.Select>
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 88, fontWeight: 700 }} onClick={handleRoutePanelReassign}>Reassign</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleRoutePanelReassign}>Reassign</Button>
     </div>;
 
   const renderRoutePrintColumnsBlock = () => <div className="ms-auto" style={{ flex: '0 0 auto' }}>
@@ -3933,7 +3914,6 @@ const TripDashboardWorkspace = () => {
   const handleDriverSelectionChange = nextDriverId => {
     setSelectedDriverId(nextDriverId);
     setSelectedRouteId('');
-    setMapDriverFocusKey(nextDriverId ? `${nextDriverId}:${Date.now()}` : '');
 
     if (!nextDriverId) {
       setStatusMessage('Showing all trips again.');
@@ -5021,6 +5001,7 @@ const TripDashboardWorkspace = () => {
         <div className="border-bottom" style={tripDashboardToolbarShellStyle}>
           <div className="p-2">
             <div className="d-flex align-items-start gap-2 flex-nowrap" style={{ overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin', minWidth: 0, whiteSpace: 'nowrap' }}>
+            {renderRouteUtilityButtonsBlock()}
             <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 150, minWidth: 150, flex: '0 0 150px' }}>
               <option value="">2nd driver</option>
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
@@ -5066,9 +5047,6 @@ const TripDashboardWorkspace = () => {
           <div>
             <div className="fw-semibold">Route for {selectedDriver?.name || routeTitle}</div>
             <div className="small text-muted">{routeTrips.length} trip(s) shown</div>
-          </div>
-          <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-            {renderRouteUtilityButtonsBlock()}
           </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
@@ -5163,7 +5141,6 @@ const TripDashboardWorkspace = () => {
               </div> : null}
             <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
               <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
-              <TripDashboardDriverMapFocus focusKey={selectedDriver?.hasRealLocation ? mapDriverFocusKey : ''} position={selectedDriver?.hasRealLocation ? selectedDriver.position : null} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               <ZoomControl position="bottomleft" />
               {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
