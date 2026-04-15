@@ -182,6 +182,9 @@ const UserManagementWorkspace = () => {
 
   const validateUser = user => {
     const errors = [];
+    const normalizedUsername = String(user.username ?? '').trim().toLowerCase();
+    const currentSavedUser = users.find(existingUser => existingUser.id === user.id) || null;
+    const isKeepingExistingUsername = Boolean(currentSavedUser) && String(currentSavedUser.username ?? '').trim().toLowerCase() === normalizedUsername;
     if (!user.firstName.trim()) errors.push('First Name is required.');
     if (!user.lastName.trim()) errors.push('Last Name is required.');
     if (!user.username.trim()) errors.push('Username is required.');
@@ -191,7 +194,7 @@ const UserManagementWorkspace = () => {
     if (user.isCompany && !String(user.taxId ?? '').trim()) errors.push('Tax ID is required when Company is enabled.');
     if (!user.webAccess && !user.androidAccess) errors.push('Enable at least one access type: Web or Android.');
     if (user.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) errors.push('Email format is invalid.');
-    if (users.some(existingUser => existingUser.id !== user.id && existingUser.username.toLowerCase() === user.username.toLowerCase())) errors.push('Username must be unique.');
+    if (!isKeepingExistingUsername && users.some(existingUser => existingUser.id !== user.id && String(existingUser.username ?? '').trim().toLowerCase() === normalizedUsername)) errors.push('Username must be unique.');
     return errors;
   };
 
