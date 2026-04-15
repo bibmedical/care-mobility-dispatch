@@ -4951,7 +4951,7 @@ const TripDashboardWorkspace = () => {
                     </div>
                   </th>}
                 {!isFocusRightLayout ? renderDriverHeader('attendant', 'Attendant') : null}
-                {!isFocusRightLayout ? renderDriverHeader('info', 'Trips') : null}
+                {renderDriverHeader('info', 'Trips')}
                 {renderDriverHeader('live', 'Live')}
                 <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff', borderRight: 'none' }}>#</th>
                 <th className="py-1" style={{ width: 60, backgroundColor: '#198754', color: '#fff', borderLeft: 'none' }}>ACT</th>
@@ -4968,7 +4968,7 @@ const TripDashboardWorkspace = () => {
                   </td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}><div className="fw-semibold">{driver.name}</div></td>
                   {!isFocusRightLayout ? <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td> : null}
-                  {!isFocusRightLayout ? <td className="py-1 text-center" style={{ whiteSpace: 'nowrap', minWidth: 72 }}><Badge bg={driverAssignedTripCount > 0 ? 'primary' : 'secondary'}>{driverAssignedTripCount}</Badge></td> : null}
+                  <td className="py-1 text-center" style={{ whiteSpace: 'nowrap', minWidth: 72 }}><Badge bg={driverAssignedTripCount > 0 ? 'primary' : 'secondary'}>{driverAssignedTripCount}</Badge></td>
                   <td className="py-1 text-center" style={{ whiteSpace: 'nowrap' }}>
                     <Badge bg={driver.live === 'Online' ? 'success' : 'secondary'} className="fw-normal" style={driver.live === 'Online' ? undefined : offlineDriverBadgeStyle}>{driver.live || 'Offline'}</Badge>
                   </td>
@@ -4980,7 +4980,7 @@ const TripDashboardWorkspace = () => {
                   </td>
                 </tr>;
               }) : <tr>
-                  <td colSpan={isFocusRightLayout ? 5 : 7} className="text-center text-muted py-4">No drivers or vehicles loaded.</td>
+                  <td colSpan={isFocusRightLayout ? 6 : 7} className="text-center text-muted py-4">No drivers or vehicles loaded.</td>
                 </tr>}
             </tbody>
           </Table>
