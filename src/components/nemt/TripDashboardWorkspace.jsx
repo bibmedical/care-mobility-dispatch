@@ -1656,6 +1656,12 @@ const TripDashboardWorkspace = () => {
     });
   };
 
+  const removeTripIdsFromSelection = tripIds => {
+    const targetTripIdSet = new Set((Array.isArray(tripIds) ? tripIds : []).map(normalizeTripId).filter(Boolean));
+    if (targetTripIdSet.size === 0) return;
+    setSelectedTripIds(currentTripIds => currentTripIds.map(normalizeTripId).filter(id => id && !targetTripIdSet.has(id)));
+  };
+
   const syncTripTableScroll = source => {
     if (tripTableScrollSyncRef.current) return;
     const topNode = tripTableTopScrollerRef.current;
@@ -2210,12 +2216,17 @@ const TripDashboardWorkspace = () => {
       {isActiveRouteClosed ? 'Open Route' : 'Close Route'}
     </Button>;
 
+  const renderRemainingTripsBlock = () => tripStatusFilter === 'unassigned' ? <Badge bg="danger" style={{ minWidth: 56, fontSize: '0.75rem' }} title="Visible unassigned trips remaining">
+      {remainingVisibleTripCount} left
+    </Badge> : null;
+
   const renderSecondaryToolbarActionBlocks = () => <>
       {isToolbarEditMode || isToolbarBlockEnabled('action-buttons') ? renderActionButtonsBlock() : null}
       {isToolbarEditMode || isToolbarBlockEnabled('leg-buttons') ? renderLegButtonsBlock() : null}
       {isToolbarEditMode || isToolbarBlockEnabled('type-buttons') ? renderTypeButtonsBlock() : null}
       {isToolbarEditMode || isToolbarBlockEnabled('closed-route') ? renderClosedRouteBlock() : null}
       {renderTimeDisplayToggleBlock()}
+      {renderRemainingTripsBlock()}
     </>;
 
   const renderToolbarRow1Block = blockId => {
@@ -2809,6 +2820,7 @@ const TripDashboardWorkspace = () => {
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
+  const remainingVisibleTripCount = filteredTrips.length;
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
     const preferredTrip = trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id));
@@ -4045,6 +4057,7 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToDriver(driverId, targetTripIds);
+    removeTripIdsFromSelection(targetTripIds);
     setStatusMessage('Trips assigned to selected driver.');
   };
 
@@ -4064,6 +4077,7 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToSecondaryDriver(driverId, targetTripIds);
+    removeTripIdsFromSelection(targetTripIds);
     setStatusMessage('Trips updated with secondary driver.');
   };
 
@@ -4083,6 +4097,7 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToDriver(selectedDriverId, targetTripIds);
+    removeTripIdsFromSelection(targetTripIds);
     setStatusMessage(`Reassigned ${targetTripIds.length} trip(s) to selected driver.`);
   };
 
@@ -4102,6 +4117,7 @@ const TripDashboardWorkspace = () => {
     }
 
     assignTripsToSecondaryDriver(selectedSecondaryDriverId, targetTripIds);
+    removeTripIdsFromSelection(targetTripIds);
     setStatusMessage(`Added secondary driver to ${targetTripIds.length} trip(s).`);
   };
 
