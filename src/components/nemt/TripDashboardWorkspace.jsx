@@ -2094,8 +2094,8 @@ const TripDashboardWorkspace = () => {
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleRoutePanelReassign}>Reassign</Button>
     </div>;
 
-  const renderRoutePrintColumnsBlock = () => <div className="d-flex flex-column gap-2 ms-auto" style={{ minWidth: 0, flex: '1 1 320px', alignItems: 'flex-end' }}>
-      <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+  const renderRoutePrintColumnsBlock = () => <div className="ms-auto position-relative" style={{ flex: '0 0 auto' }}>
+      <div className="d-flex align-items-center gap-2">
         <Badge bg={showRoutePrintColumnPicker ? 'info' : 'secondary'} style={{ flex: '0 0 auto' }}>{routePrintColumns.length} print</Badge>
         <Button
           variant={showRoutePrintColumnPicker ? 'dark' : isDarkTheme ? 'outline-light' : 'outline-dark'}
@@ -2108,18 +2108,38 @@ const TripDashboardWorkspace = () => {
           Print cols
         </Button>
       </div>
-      {showRoutePrintColumnPicker ? <div className="d-flex align-items-center justify-content-end gap-2 flex-wrap" style={{ minWidth: 0 }}>
-          {PRINT_COLUMN_OPTIONS.map(option => <Form.Check
-            key={`route-print-column-${option.key}`}
-            type="checkbox"
-            inline
-            id={`route-print-column-${option.key}`}
-            label={option.label}
-            checked={routePrintColumns.includes(option.key)}
-            onChange={() => handleToggleRoutePrintColumn(option.key)}
+      {showRoutePrintColumnPicker ? <div
+          className="position-absolute end-0 mt-2 p-3 rounded shadow-lg"
+          style={{
+            top: '100%',
+            width: 'min(280px, calc(100vw - 32px))',
+            zIndex: 25,
+            backgroundColor: isDarkTheme ? '#0f172a' : '#ffffff',
+            border: isDarkTheme ? '1px solid rgba(148, 163, 184, 0.35)' : '1px solid #d1d5db'
+          }}
+        >
+          <div
             className="small"
-          />)}
-          <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleResetRoutePrintColumns}>Reset</Button>
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: '0.35rem 0.75rem',
+              alignItems: 'start'
+            }}
+          >
+            {PRINT_COLUMN_OPTIONS.map(option => <Form.Check
+              key={`route-print-column-${option.key}`}
+              type="checkbox"
+              id={`route-print-column-${option.key}`}
+              label={option.label}
+              checked={routePrintColumns.includes(option.key)}
+              onChange={() => handleToggleRoutePrintColumn(option.key)}
+              className="small mb-0"
+            />)}
+          </div>
+          <div className="d-flex justify-content-end mt-2">
+            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleResetRoutePrintColumns}>Reset</Button>
+          </div>
         </div> : null}
     </div>;
 
@@ -4919,7 +4939,7 @@ const TripDashboardWorkspace = () => {
   const routePanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="p-2 border-bottom" style={tripDashboardToolbarShellStyle}>
-          <div className="d-flex align-items-start gap-2 flex-nowrap" style={{ overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin', minWidth: 0, whiteSpace: 'nowrap' }}>
+          <div className="d-flex align-items-start gap-2 flex-nowrap" style={{ overflowX: 'auto', overflowY: 'visible', scrollbarWidth: 'thin', minWidth: 0, whiteSpace: 'nowrap' }}>
             {renderRouteUtilityButtonsBlock()}
             <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 150, minWidth: 150, flex: '0 0 150px' }}>
               <option value="">2nd driver</option>
