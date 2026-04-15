@@ -445,6 +445,13 @@ const TRIP_DASHBOARD_PANEL_ORDERS = {
   routesFirst: 'routes-first'
 };
 
+const TRIP_TIME_DISPLAY_MODES = {
+  standard: '12h',
+  military: '24h'
+};
+
+const normalizeTripTimeDisplayMode = value => String(value || '').trim() === TRIP_TIME_DISPLAY_MODES.military ? TRIP_TIME_DISPLAY_MODES.military : TRIP_TIME_DISPLAY_MODES.standard;
+
 const getInitialTripDashboardLayoutMode = () => TRIP_DASHBOARD_LAYOUTS.focusRight;
 
 const getStatusBadge = status => {
@@ -527,11 +534,14 @@ const formatMinutesToTimeInput = minutes => {
   return `${hours}:${mins}`;
 };
 
-const formatMinutesAsClock = minutes => {
+const formatMinutesAsClock = (minutes, mode = TRIP_TIME_DISPLAY_MODES.standard) => {
   if (!Number.isFinite(minutes)) return '';
   const normalized = ((Math.round(minutes) % (24 * 60)) + 24 * 60) % (24 * 60);
   const hours24 = Math.floor(normalized / 60);
   const mins = normalized % 60;
+  if (normalizeTripTimeDisplayMode(mode) === TRIP_TIME_DISPLAY_MODES.military) {
+    return `${String(hours24).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
   const suffix = hours24 >= 12 ? 'PM' : 'AM';
   const hours12 = hours24 % 12 || 12;
   return `${String(hours12).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${suffix}`;
@@ -566,6 +576,26 @@ const normalizeTripTimeDisplay = value => {
   if (spreadsheetMinutes != null) return formatMinutesToTimeInput(spreadsheetMinutes);
 
   return text;
+};
+
+const formatTripTimeDisplay = (value, mode = TRIP_TIME_DISPLAY_MODES.standard) => {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+
+  const asClockMinutes = parseTripClockMinutes(text);
+  if (asClockMinutes != null) return formatMinutesAsClock(asClockMinutes, mode);
+
+  const spreadsheetMinutes = parseSpreadsheetTimeMinutes(text);
+  if (spreadsheetMinutes != null) return formatMinutesAsClock(spreadsheetMinutes, mode);
+
+  return text;
+};
+
+const getTripDisplayTimeText = (trip, field = 'pickup', mode = TRIP_TIME_DISPLAY_MODES.standard) => {
+  if (field === 'dropoff') {
+    return formatTripTimeDisplay(getEffectiveTimeText(trip?.scheduledDropoff, trip?.dropoff), mode);
+  }
+  return formatTripTimeDisplay(getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup), mode);
 };
 
 const getSuggestedPlannerCutoffTime = trip => {
@@ -1488,6 +1518,7 @@ const TripDashboardWorkspace = () => {
   const [showDriversPanel, setShowDriversPanel] = useState(true);
   const [showRoutesPanel, setShowRoutesPanel] = useState(true);
   const [showTripsPanel, setShowTripsPanel] = useState(true);
+  const [timeDisplayMode, setTimeDisplayMode] = useState(TRIP_TIME_DISPLAY_MODES.standard);
   const [driversWindowOpen, setDriversWindowOpen] = useState(false);
   const [routesWindowOpen, setRoutesWindowOpen] = useState(false);
   const [tripsWindowOpen, setTripsWindowOpen] = useState(false);
@@ -1810,12 +1841,13 @@ const TripDashboardWorkspace = () => {
     showTripsPanel,
     rightPanelCollapsed,
     showConfirmationTools,
+    timeDisplayMode,
     tripOrderMode,
     columnSplit: Math.round(columnSplit * 100) / 100,
     rowSplit: Math.round(rowSplit * 100) / 100,
     columnWidths,
     closedRouteStateByKey
-  }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showTripsPanel, tripOrderMode]);
+  }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showTripsPanel, timeDisplayMode, tripOrderMode]);
 
   useEffect(() => {
     if (!todayDateKey) return;
@@ -2138,6 +2170,23 @@ const TripDashboardWorkspace = () => {
       {tripOrderMode === 'time' ? 'Order: Time' : 'Order: Original'}
     </Button>;
 
+  const handleToggleTimeDisplayMode = () => {
+    const nextMode = timeDisplayMode === TRIP_TIME_DISPLAY_MODES.military ? TRIP_TIME_DISPLAY_MODES.standard : TRIP_TIME_DISPLAY_MODES.military;
+    setTimeDisplayMode(nextMode);
+    setStatusMessage(nextMode === TRIP_TIME_DISPLAY_MODES.military ? '24-hour time enabled.' : '12-hour time enabled.');
+  };
+
+  const renderTimeDisplayToggleBlock = () => <Button
+      variant={timeDisplayMode === TRIP_TIME_DISPLAY_MODES.military ? 'warning' : 'outline-dark'}
+      size="sm"
+      style={timeDisplayMode === TRIP_TIME_DISPLAY_MODES.military ? { minWidth: 40, fontWeight: 800 } : { ...toolbarButtonStyle, minWidth: 40, fontWeight: 800 }}
+      onClick={handleToggleTimeDisplayMode}
+      title="Toggle 24-hour time"
+      aria-label="Toggle 24-hour time"
+    >
+      24
+    </Button>;
+
   const renderClosedRouteBlock = () => <Button variant={isActiveRouteClosed ? 'danger' : compactToolbarOutlineVariant} size="sm" style={isActiveRouteClosed ? undefined : toolbarButtonStyle} onClick={handleToggleClosedRoute}>
       {isActiveRouteClosed ? 'Open Route' : 'Close Route'}
     </Button>;
@@ -2147,6 +2196,7 @@ const TripDashboardWorkspace = () => {
       {isToolbarEditMode || isToolbarBlockEnabled('leg-buttons') ? renderLegButtonsBlock() : null}
       {isToolbarEditMode || isToolbarBlockEnabled('type-buttons') ? renderTypeButtonsBlock() : null}
       {isToolbarEditMode || isToolbarBlockEnabled('closed-route') ? renderClosedRouteBlock() : null}
+      {renderTimeDisplayToggleBlock()}
     </>;
 
   const renderToolbarRow1Block = blockId => {
@@ -2387,14 +2437,14 @@ const TripDashboardWorkspace = () => {
       tripId: trip.id,
       position: trip.position,
       color: '#0284c7',
-      label: `PU ${trip.pickup}`,
+      label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
       detail: trip.address || 'No pickup address available'
     }, {
       key: `${trip.id}-dropoff-selected-map`,
       tripId: trip.id,
       position: trip.destinationPosition ?? trip.position,
       color: '#16a34a',
-      label: `DO ${trip.dropoff}`,
+      label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
       detail: trip.destination || 'No dropoff address available'
     }]);
   }, [activeDateTripIdSet, selectedTrips, showRoute]);
@@ -2684,14 +2734,14 @@ const TripDashboardWorkspace = () => {
         label: `${index * 2 + 1}`,
         variant: 'pickup',
         position: trip.position,
-        title: `Pickup ${trip.pickup}`,
+        title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
         detail: trip.address
       }, {
         key: `${trip.id}-dropoff`,
         label: `${index * 2 + 2}`,
         variant: 'dropoff',
         position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${trip.dropoff}`,
+        title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
         detail: trip.destination || 'Destination pending'
       }]);
     }
@@ -2702,14 +2752,14 @@ const TripDashboardWorkspace = () => {
         label: `${index * 2 + 1}`,
         variant: 'pickup',
         position: trip.position,
-        title: `Pickup ${trip.pickup}`,
+        title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
         detail: trip.address
       }, {
         key: `${trip.id}-dropoff`,
         label: `${index * 2 + 2}`,
         variant: 'dropoff',
         position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${trip.dropoff}`,
+        title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
         detail: trip.destination || 'Destination pending'
       }]);
     }
@@ -2807,8 +2857,8 @@ const TripDashboardWorkspace = () => {
   const tripUpdateSupportsBothLegs = tripUpdateSiblingTrips.length > 0;
 
   const buildTripConfirmationLine = trip => {
-    const pickupTime = normalizeTripTimeDisplay(getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup)) || '-';
-    const dropoffTime = normalizeTripTimeDisplay(getEffectiveTimeText(trip?.scheduledDropoff, trip?.dropoff)) || '-';
+    const pickupTime = getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-';
+    const dropoffTime = getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-';
     return [`Trip ID: ${trip?.id || '-'}`, `Rider: ${trip?.rider || '-'}`, `Phone: ${trip?.patientPhoneNumber || '-'}`, `Pickup Time: ${pickupTime}`, `Pickup Address: ${trip?.address || '-'}`, `Dropoff Time: ${dropoffTime}`, `Dropoff Address: ${trip?.destination || '-'}`, `Leg: ${String(trip?.legLabel || 'AL').trim() || 'AL'}`, `Type: ${getTripMobilityLabel(trip) || '-'}`].join(' | ');
   };
 
@@ -4111,7 +4161,7 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    const message = [`Hello ${targetDriver.name},`, '', `Your route: ${routeTitle}`, `Total trips: ${routeTrips.length}`, '', routeTrips.map((trip, index) => [`${index + 1}. ${trip.pickup} - ${trip.dropoff} | ${trip.rider}`,
+    const message = [`Hello ${targetDriver.name},`, '', `Your route: ${routeTitle}`, `Total trips: ${routeTrips.length}`, '', routeTrips.map((trip, index) => [`${index + 1}. ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'} - ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'} | ${trip.rider}`,
       `PU: ${trip.address || 'No pickup address'}`,
       `DO: ${trip.destination || 'No dropoff address'}`
     ].join('\n')).join('\n\n')].join('\n');
@@ -4229,6 +4279,7 @@ const TripDashboardWorkspace = () => {
       setShowTripsPanel(dashboardPreferences.showTripsPanel !== false);
       setRightPanelCollapsed(dashboardPreferences.rightPanelCollapsed === true);
       setShowConfirmationTools(dashboardPreferences.showConfirmationTools === true);
+      setTimeDisplayMode(normalizeTripTimeDisplayMode(dashboardPreferences.timeDisplayMode));
       setTripOrderMode(dashboardPreferences.tripOrderMode || 'original');
       setColumnSplit(dashboardPreferences.columnSplit ?? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT);
       setRowSplit(dashboardPreferences.rowSplit ?? TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -4242,6 +4293,7 @@ const TripDashboardWorkspace = () => {
       setShowTripsPanel(true);
       setRightPanelCollapsed(true);
       setShowConfirmationTools(false);
+      setTimeDisplayMode(TRIP_TIME_DISPLAY_MODES.standard);
       setTripOrderMode('original');
       setColumnSplit(94);
       setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -4541,21 +4593,21 @@ const TripDashboardWorkspace = () => {
         return renderInlineEditableTripCell({
           trip,
           columnKey: 'pickup',
-          displayValue: trip.pickup,
+          displayValue: getTripDisplayTimeText(trip, 'pickup', timeDisplayMode),
           cellStyle: {
             whiteSpace: 'nowrap'
           },
-          placeholder: '07:40 AM'
+          placeholder: timeDisplayMode === TRIP_TIME_DISPLAY_MODES.military ? '07:40' : '07:40 AM'
         });
       case 'dropoff':
         return renderInlineEditableTripCell({
           trip,
           columnKey: 'dropoff',
-          displayValue: trip.dropoff,
+          displayValue: getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode),
           cellStyle: {
             whiteSpace: 'nowrap'
           },
-          placeholder: '08:15 AM'
+          placeholder: timeDisplayMode === TRIP_TIME_DISPLAY_MODES.military ? '08:15' : '08:15 AM'
         });
       case 'miles':
         return renderInlineEditableTripCell({
@@ -4840,8 +4892,8 @@ const TripDashboardWorkspace = () => {
                   <td className="fw-semibold">{trip.id}{getTripAddedByLabel(trip) ? <div className="small mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}</td>
                   <td><Badge bg={getTripTypeLabel(trip) === 'STR' ? 'danger' : getTripTypeLabel(trip) === 'W' ? 'warning' : 'success'} text={getTripTypeLabel(trip) === 'W' ? 'dark' : undefined}>{getTripTypeLabel(trip)}</Badge></td>
                   <td>{trip.miles || '-'}</td>
-                  <td>{trip.pickup}</td>
-                  <td>{trip.dropoff}</td>
+                  <td>{getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}</td>
+                  <td>{getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}</td>
                   <td>{trip.rider}</td>
                   <td>{trip.patientPhoneNumber || '-'}</td>
                   <td>
@@ -4905,9 +4957,9 @@ const TripDashboardWorkspace = () => {
         }}>
                 <div className="small text-uppercase" style={{ color: '#94a3b8' }}>PU {activeInfoTrip.id}</div>
                 <div className="fw-semibold">{activeInfoTrip.rider}</div>
-                <div className="small">{activeInfoTrip.pickup}</div>
+                <div className="small">{getTripDisplayTimeText(activeInfoTrip, 'pickup', timeDisplayMode) || '-'}</div>
                 <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.address || 'No pickup address available'}</div>
-                <div className="small mt-1">DO {activeInfoTrip.dropoff}</div>
+                <div className="small mt-1">DO {getTripDisplayTimeText(activeInfoTrip, 'dropoff', timeDisplayMode) || '-'}</div>
                 <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
               </div> : null}
             <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
@@ -4933,13 +4985,13 @@ const TripDashboardWorkspace = () => {
               tripId: trip.id,
               position: trip.position,
               color: '#0ea5e9',
-              label: `PU ${trip.pickup}`
+              label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
             }, {
               key: `${trip.id}-dropoff-mapquick`,
               tripId: trip.id,
               position: trip.destinationPosition ?? trip.position,
               color: '#22c55e',
-              label: `DO ${trip.dropoff}`
+              label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
             }];
             return points;
           }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
