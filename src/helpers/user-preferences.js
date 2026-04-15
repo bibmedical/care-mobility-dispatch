@@ -1,4 +1,5 @@
 import { normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences } from '@/helpers/nemt-dispatch-state';
+import { DEFAULT_ROUTE_PRINT_COLUMNS, normalizeRoutePrintColumns } from '@/helpers/nemt-print-setup';
 
 export const DEFAULT_USER_PREFERENCES = {
   nemtUiPreferences: normalizeNemtUiPreferences(null),
@@ -37,6 +38,7 @@ export const DEFAULT_USER_PREFERENCES = {
     showConfirmationTools: false,
     timeDisplayMode: '12h',
     tripOrderMode: 'original',
+    printColumns: DEFAULT_ROUTE_PRINT_COLUMNS,
     columnSplit: 47,
     rowSplit: 68,
     columnWidths: {},
@@ -123,6 +125,7 @@ const normalizeTripDashboardPreferences = value => ({
   showConfirmationTools: value?.showConfirmationTools === true,
   timeDisplayMode: String(value?.timeDisplayMode || DEFAULT_USER_PREFERENCES.tripDashboard.timeDisplayMode).trim() === '24h' ? '24h' : '12h',
   tripOrderMode: String(value?.tripOrderMode || DEFAULT_USER_PREFERENCES.tripDashboard.tripOrderMode).trim() || DEFAULT_USER_PREFERENCES.tripDashboard.tripOrderMode,
+  printColumns: normalizeRoutePrintColumns(value?.printColumns),
   columnSplit: normalizeFiniteNumber(value?.columnSplit, DEFAULT_USER_PREFERENCES.tripDashboard.columnSplit, 16, 94),
   rowSplit: normalizeFiniteNumber(value?.rowSplit, DEFAULT_USER_PREFERENCES.tripDashboard.rowSplit, 32, 84),
   columnWidths: normalizeNumberMap(value?.columnWidths),

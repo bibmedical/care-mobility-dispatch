@@ -1,4 +1,40 @@
 const DEFAULT_PRINT_TEMPLATE = 'ride-id-office';
+export const DEFAULT_ROUTE_PRINT_COLUMNS = ['sequence', 'rideId', 'pickup', 'dropoff', 'rider', 'phone', 'miles', 'address', 'destination'];
+
+export const PRINT_COLUMN_OPTIONS = [{
+  key: 'sequence',
+  label: '#'
+}, {
+  key: 'rideId',
+  label: 'Ride ID'
+}, {
+  key: 'tripId',
+  label: 'Trip ID'
+}, {
+  key: 'type',
+  label: 'Type'
+}, {
+  key: 'pickup',
+  label: 'PU'
+}, {
+  key: 'dropoff',
+  label: 'DO'
+}, {
+  key: 'rider',
+  label: 'Rider'
+}, {
+  key: 'phone',
+  label: 'Phone'
+}, {
+  key: 'miles',
+  label: 'Miles'
+}, {
+  key: 'address',
+  label: 'PU Address'
+}, {
+  key: 'destination',
+  label: 'DO Address'
+}];
 
 export const PRINT_TEMPLATE_OPTIONS = [{
   id: 'ride-id-office',
@@ -26,6 +62,13 @@ export const normalizePrintTemplate = value => {
 export const normalizePrintSetup = value => ({
   template: normalizePrintTemplate(value?.template)
 });
+
+const PRINT_COLUMN_KEY_LOOKUP = new Set(PRINT_COLUMN_OPTIONS.map(option => option.key));
+
+export const normalizeRoutePrintColumns = value => {
+  const normalized = Array.from(new Set((Array.isArray(value) ? value : []).map(item => String(item || '').trim()).filter(item => PRINT_COLUMN_KEY_LOOKUP.has(item))));
+  return normalized.length > 0 ? normalized : [...DEFAULT_ROUTE_PRINT_COLUMNS];
+};
 
 export const formatPrintGeneratedAt = value => {
   const date = value instanceof Date ? value : new Date(value ?? Date.now());
@@ -85,111 +128,105 @@ const getTripPrintTimeDisplay = (scheduledValue, fallbackValue) => {
   return formatMinutesTo24Hour(minutes);
 };
 
-const getPrintColumns = getTripTypeLabel => ({
-  'ride-id-office': [{
+const getAllPrintColumnDefinitions = getTripTypeLabel => ({
+  sequence: {
     key: 'sequence',
     label: '#',
     render: (_, index) => String(index + 1)
-  }, {
+  },
+  rideId: {
     key: 'rideId',
     label: 'Ride ID',
     render: trip => getTripRideIdDisplay(trip) || '-'
-  }, {
-    key: 'pickup',
-    label: 'PU',
-    render: trip => getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup)
-  }, {
-    key: 'dropoff',
-    label: 'DO',
-    render: trip => getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff)
-  }, {
-    key: 'rider',
-    label: 'Rider',
-    render: trip => trip?.rider || '-'
-  }, {
-    key: 'phone',
-    label: 'Phone',
-    render: trip => getTripPhoneDisplay(trip)
-  }, {
-    key: 'miles',
-    label: 'Miles',
-    render: trip => getMilesDisplay(trip)
-  }, {
-    key: 'address',
-    label: 'PU Address',
-    render: trip => trip?.address || '-'
-  }, {
-    key: 'destination',
-    label: 'DO Address',
-    render: trip => trip?.destination || '-'
-  }],
-  'ride-id-compact': [{
-    key: 'sequence',
-    label: '#',
-    render: (_, index) => String(index + 1)
-  }, {
-    key: 'rideId',
-    label: 'Ride ID',
-    render: trip => getTripRideIdDisplay(trip) || '-'
-  }, {
-    key: 'pickup',
-    label: 'PU',
-    render: trip => getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup)
-  }, {
-    key: 'dropoff',
-    label: 'DO',
-    render: trip => getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff)
-  }, {
-    key: 'miles',
-    label: 'Miles',
-    render: trip => getMilesDisplay(trip)
-  }, {
-    key: 'rider',
-    label: 'Rider',
-    render: trip => trip?.rider || '-'
-  }],
-  'ride-id-manifest': [{
-    key: 'sequence',
-    label: '#',
-    render: (_, index) => String(index + 1)
-  }, {
-    key: 'rideId',
-    label: 'Ride ID',
-    render: trip => getTripRideIdDisplay(trip) || '-'
-  }, {
+  },
+  tripId: {
+    key: 'tripId',
+    label: 'Trip ID',
+    render: trip => String(trip?.id || '').trim() || '-'
+  },
+  type: {
     key: 'type',
     label: 'Type',
     render: trip => getTripTypeLabel(trip)
-  }, {
+  },
+  pickup: {
     key: 'pickup',
     label: 'PU',
     render: trip => getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup)
-  }, {
+  },
+  dropoff: {
     key: 'dropoff',
     label: 'DO',
     render: trip => getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff)
-  }, {
-    key: 'miles',
-    label: 'Miles',
-    render: trip => getMilesDisplay(trip)
-  }, {
+  },
+  rider: {
     key: 'rider',
     label: 'Rider',
     render: trip => trip?.rider || '-'
-  }, {
+  },
+  phone: {
     key: 'phone',
     label: 'Phone',
     render: trip => getTripPhoneDisplay(trip)
-  }, {
+  },
+  miles: {
+    key: 'miles',
+    label: 'Miles',
+    render: trip => getMilesDisplay(trip)
+  },
+  address: {
     key: 'address',
     label: 'PU Address',
     render: trip => trip?.address || '-'
-  }, {
+  },
+  destination: {
     key: 'destination',
     label: 'DO Address',
     render: trip => trip?.destination || '-'
-  }]
+  }
 });
+
+const PRINT_TEMPLATE_COLUMN_KEYS = {
+  'ride-id-office': ['sequence', 'rideId', 'pickup', 'dropoff', 'rider', 'phone', 'miles', 'address', 'destination'],
+  'ride-id-compact': ['sequence', 'rideId', 'pickup', 'dropoff', 'miles', 'rider'],
+  'ride-id-manifest': ['sequence', 'rideId', 'type', 'pickup', 'dropoff', 'miles', 'rider', 'phone', 'address', 'destination']
+};
+
+const resolvePrintColumns = ({ getTripTypeLabel, template, selectedColumns }) => {
+  const allColumns = getAllPrintColumnDefinitions(getTripTypeLabel);
+  const requestedColumnKeys = Array.isArray(selectedColumns) && selectedColumns.length > 0
+    ? normalizeRoutePrintColumns(selectedColumns)
+    : (PRINT_TEMPLATE_COLUMN_KEYS[template] || PRINT_TEMPLATE_COLUMN_KEYS[DEFAULT_PRINT_TEMPLATE]);
+
+  return requestedColumnKeys.map(columnKey => allColumns[columnKey]).filter(Boolean);
+};
+
+const getPrintColumnClassName = key => {
+  switch (String(key || '').trim()) {
+    case 'sequence':
+      return 'col-sequence';
+    case 'rideId':
+      return 'col-ride-id';
+    case 'pickup':
+      return 'col-pickup-time';
+    case 'dropoff':
+      return 'col-dropoff-time';
+    case 'type':
+      return 'col-type';
+    case 'phone':
+      return 'col-phone';
+    case 'miles':
+      return 'col-miles';
+    case 'rider':
+      return 'col-rider';
+    case 'address':
+      return 'col-pickup-address';
+    case 'destination':
+      return 'col-dropoff-address';
+    default:
+      return '';
+  }
+};
 
 export const buildRoutePrintDocument = ({
   routeTitle,
@@ -197,17 +234,31 @@ export const buildRoutePrintDocument = ({
   generatedAt,
   routeTrips,
   printSetup,
+  printColumns,
   getTripTypeLabel
 }) => {
   const template = normalizePrintTemplate(printSetup?.template);
-  const templateColumns = getPrintColumns(getTripTypeLabel)[template] || getPrintColumns(getTripTypeLabel)[DEFAULT_PRINT_TEMPLATE];
+  const templateColumns = resolvePrintColumns({
+    getTripTypeLabel,
+    template,
+    selectedColumns: printColumns
+  });
   const totalMiles = routeTrips.reduce((sum, trip) => {
     const miles = Number(trip?.miles);
     return Number.isFinite(miles) ? sum + miles : sum;
   }, 0);
-  const headerMarkup = templateColumns.map(column => `<th>${escapeHtml(column.label)}</th>`).join('');
-  const rowsMarkup = routeTrips.map((trip, index) => `<tr>${templateColumns.map(column => `<td>${escapeHtml(column.render(trip, index))}</td>`).join('')}</tr>`).join('');
-  const templateLabel = PRINT_TEMPLATE_LOOKUP.get(template)?.label || 'Ride ID Office';
+  const headerMarkup = templateColumns.map(column => {
+    const className = getPrintColumnClassName(column.key);
+    return `<th class="${escapeHtml(className)}">${escapeHtml(column.label)}</th>`;
+  }).join('');
+  const rowsMarkup = routeTrips.map((trip, index) => `<tr>${templateColumns.map(column => {
+    const className = getPrintColumnClassName(column.key);
+    return `<td class="${escapeHtml(className)}">${escapeHtml(column.render(trip, index))}</td>`;
+  }).join('')}</tr>`).join('');
+  const isCustomColumnSelection = Array.isArray(printColumns) && printColumns.length > 0;
+  const templateLabel = isCustomColumnSelection
+    ? `Custom columns (${templateColumns.length})`
+    : (PRINT_TEMPLATE_LOOKUP.get(template)?.label || 'Ride ID Office');
 
   return `<!doctype html>
 <html>
@@ -220,7 +271,15 @@ export const buildRoutePrintDocument = ({
       table { width: 100%; border-collapse: collapse; table-layout: auto; }
       th, td { border: 1px solid #d1d5db; padding: 6px 7px; text-align: left; font-size: 11px; vertical-align: top; }
       th { background: #f3f4f6; white-space: nowrap; }
-      td { word-break: break-word; }
+      td { word-break: break-word; overflow-wrap: anywhere; }
+      th.col-sequence, td.col-sequence { width: 28px; min-width: 28px; text-align: center; white-space: nowrap; }
+      th.col-ride-id, td.col-ride-id { min-width: 74px; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+      th.col-pickup-time, td.col-pickup-time, th.col-dropoff-time, td.col-dropoff-time { min-width: 78px; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+      th.col-phone, td.col-phone { min-width: 74px; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+      th.col-miles, td.col-miles { min-width: 48px; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+      th.col-type, td.col-type { min-width: 52px; white-space: nowrap; }
+      th.col-rider, td.col-rider { min-width: 92px; }
+      th.col-pickup-address, td.col-pickup-address, th.col-dropoff-address, td.col-dropoff-address { min-width: 210px; }
       .meta { display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; flex-wrap: wrap; }
       .meta strong { color: #111827; }
       .template { color: #4b5563; font-size: 12px; margin-bottom: 12px; }
@@ -259,16 +318,16 @@ export const buildEarlyMorningRideReportDocument = ({
     return Number.isFinite(miles) ? sum + miles : sum;
   }, 0);
   const rowsMarkup = trips.map((trip, index) => `<tr>
-      <td>${index + 1}</td>
-      <td>${escapeHtml(getTripRideIdDisplay(trip) || '-')}</td>
-      <td>${escapeHtml(String(trip?.id || '').trim() || '-')}</td>
-      <td>${escapeHtml(getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup))}</td>
-      <td>${escapeHtml(getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff))}</td>
-      <td>${escapeHtml(trip?.rider || '-')}</td>
-      <td>${escapeHtml(getTripPhoneDisplay(trip))}</td>
-      <td>${escapeHtml(Number.isFinite(Number(trip?.miles)) ? Number(trip.miles).toFixed(2) : '-')}</td>
-      <td>${escapeHtml(trip?.address || '-')}</td>
-      <td>${escapeHtml(trip?.destination || '-')}</td>
+      <td class="col-sequence">${index + 1}</td>
+      <td class="col-ride-id">${escapeHtml(getTripRideIdDisplay(trip) || '-')}</td>
+      <td class="col-ride-id">${escapeHtml(String(trip?.id || '').trim() || '-')}</td>
+      <td class="col-pickup-time">${escapeHtml(getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup))}</td>
+      <td class="col-dropoff-time">${escapeHtml(getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff))}</td>
+      <td class="col-rider">${escapeHtml(trip?.rider || '-')}</td>
+      <td class="col-phone">${escapeHtml(getTripPhoneDisplay(trip))}</td>
+      <td class="col-miles">${escapeHtml(Number.isFinite(Number(trip?.miles)) ? Number(trip.miles).toFixed(2) : '-')}</td>
+      <td class="col-pickup-address">${escapeHtml(trip?.address || '-')}</td>
+      <td class="col-dropoff-address">${escapeHtml(trip?.destination || '-')}</td>
     </tr>`).join('');
 
   return `<!doctype html>
@@ -282,7 +341,14 @@ export const buildEarlyMorningRideReportDocument = ({
       table { width: 100%; border-collapse: collapse; table-layout: auto; }
       th, td { border: 1px solid #d1d5db; padding: 6px 7px; text-align: left; font-size: 11px; vertical-align: top; }
       th { background: #f3f4f6; white-space: nowrap; }
-      td { word-break: break-word; }
+      td { word-break: break-word; overflow-wrap: anywhere; }
+      th.col-sequence, td.col-sequence { width: 28px; min-width: 28px; text-align: center; white-space: nowrap; }
+      th.col-ride-id, td.col-ride-id { min-width: 74px; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+      th.col-pickup-time, td.col-pickup-time, th.col-dropoff-time, td.col-dropoff-time { min-width: 78px; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+      th.col-phone, td.col-phone { min-width: 74px; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+      th.col-miles, td.col-miles { min-width: 48px; white-space: nowrap; word-break: keep-all; overflow-wrap: normal; }
+      th.col-rider, td.col-rider { min-width: 92px; }
+      th.col-pickup-address, td.col-pickup-address, th.col-dropoff-address, td.col-dropoff-address { min-width: 210px; }
       .meta { display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; flex-wrap: wrap; }
       .meta strong { color: #111827; }
       @media print {

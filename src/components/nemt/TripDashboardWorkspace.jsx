@@ -4,7 +4,7 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { buildStableDriverId, createBlankDriver, GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
 import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
-import { buildRoutePrintDocument, formatPrintGeneratedAt } from '@/helpers/nemt-print-setup';
+import { buildRoutePrintDocument, DEFAULT_ROUTE_PRINT_COLUMNS, formatPrintGeneratedAt, normalizeRoutePrintColumns, PRINT_COLUMN_OPTIONS } from '@/helpers/nemt-print-setup';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import { parseTripImportFile } from '@/helpers/nemt-trip-import';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
@@ -1078,6 +1078,7 @@ const TripDashboardWorkspace = () => {
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [showRoutePrintColumnPicker, setShowRoutePrintColumnPicker] = useState(false);
   const [showToolbarTools, setShowToolbarTools] = useState(false);
   const [showConfirmationTools, setShowConfirmationTools] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
@@ -1096,6 +1097,7 @@ const TripDashboardWorkspace = () => {
   const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [tripOrderMode, setTripOrderMode] = useState('original');
+  const [routePrintColumns, setRoutePrintColumns] = useState(DEFAULT_ROUTE_PRINT_COLUMNS);
   const [tripSort, setTripSort] = useState({
     key: 'pickup',
     direction: 'asc'
@@ -1843,11 +1845,12 @@ const TripDashboardWorkspace = () => {
     showConfirmationTools,
     timeDisplayMode,
     tripOrderMode,
+    printColumns: routePrintColumns,
     columnSplit: Math.round(columnSplit * 100) / 100,
     rowSplit: Math.round(rowSplit * 100) / 100,
     columnWidths,
     closedRouteStateByKey
-  }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showTripsPanel, timeDisplayMode, tripOrderMode]);
+  }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, routePrintColumns, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showTripsPanel, timeDisplayMode, tripOrderMode]);
 
   useEffect(() => {
     if (!todayDateKey) return;
@@ -2089,6 +2092,35 @@ const TripDashboardWorkspace = () => {
         {drivers.map(driver => <option key={`route-reassign-toolbar-${driver.id}`} value={driver.id}>{driver.name}</option>)}
       </Form.Select>
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleRoutePanelReassign}>Reassign</Button>
+    </div>;
+
+  const renderRoutePrintColumnsBlock = () => <div className="d-flex flex-column gap-2 ms-auto" style={{ minWidth: 0, flex: '1 1 320px', alignItems: 'flex-end' }}>
+      <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+        <Badge bg={showRoutePrintColumnPicker ? 'info' : 'secondary'} style={{ flex: '0 0 auto' }}>{routePrintColumns.length} print</Badge>
+        <Button
+          variant={showRoutePrintColumnPicker ? 'dark' : isDarkTheme ? 'outline-light' : 'outline-dark'}
+          size="sm"
+          style={{ ...toolbarButtonStyle, minWidth: 92, fontWeight: 700 }}
+          onClick={() => setShowRoutePrintColumnPicker(current => !current)}
+          title="Choose route print columns"
+          aria-label="Choose route print columns"
+        >
+          Print cols
+        </Button>
+      </div>
+      {showRoutePrintColumnPicker ? <div className="d-flex align-items-center justify-content-end gap-2 flex-wrap" style={{ minWidth: 0 }}>
+          {PRINT_COLUMN_OPTIONS.map(option => <Form.Check
+            key={`route-print-column-${option.key}`}
+            type="checkbox"
+            inline
+            id={`route-print-column-${option.key}`}
+            label={option.label}
+            checked={routePrintColumns.includes(option.key)}
+            onChange={() => handleToggleRoutePrintColumn(option.key)}
+            className="small"
+          />)}
+          <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleResetRoutePrintColumns}>Reset</Button>
+        </div> : null}
     </div>;
 
   const renderTripSearchBlock = () => <Form.Control
@@ -4117,9 +4149,33 @@ const TripDashboardWorkspace = () => {
     setStatusMessage(`Route ${route.name} loaded.`);
   };
 
+  const handleToggleRoutePrintColumn = columnKey => {
+    const normalizedColumnKey = String(columnKey || '').trim();
+    if (!normalizedColumnKey) return;
+    setRoutePrintColumns(currentColumns => {
+      const normalizedCurrentColumns = normalizeRoutePrintColumns(currentColumns);
+      if (normalizedCurrentColumns.includes(normalizedColumnKey)) {
+        if (normalizedCurrentColumns.length === 1) return normalizedCurrentColumns;
+        return normalizedCurrentColumns.filter(currentColumnKey => currentColumnKey !== normalizedColumnKey);
+      }
+      const nextColumnSet = new Set([...normalizedCurrentColumns, normalizedColumnKey]);
+      return PRINT_COLUMN_OPTIONS.map(option => option.key).filter(optionKey => nextColumnSet.has(optionKey));
+    });
+  };
+
+  const handleResetRoutePrintColumns = () => {
+    setRoutePrintColumns([...DEFAULT_ROUTE_PRINT_COLUMNS]);
+    setStatusMessage('Route print columns restored to default office layout.');
+  };
+
   const handlePrintRoute = () => {
     if (routeTrips.length === 0) {
       setStatusMessage('No route available to print yet.');
+      return;
+    }
+
+    if (routePrintColumns.length === 0) {
+      setStatusMessage('Choose at least one print column first.');
       return;
     }
 
@@ -4136,6 +4192,7 @@ const TripDashboardWorkspace = () => {
       generatedAt,
       routeTrips,
       printSetup: uiPreferences?.printSetup,
+      printColumns: routePrintColumns,
       getTripTypeLabel
     }));
     printWindow.document.close();
@@ -4281,6 +4338,7 @@ const TripDashboardWorkspace = () => {
       setShowConfirmationTools(dashboardPreferences.showConfirmationTools === true);
       setTimeDisplayMode(normalizeTripTimeDisplayMode(dashboardPreferences.timeDisplayMode));
       setTripOrderMode(dashboardPreferences.tripOrderMode || 'original');
+      setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(dashboardPreferences.columnSplit ?? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT);
       setRowSplit(dashboardPreferences.rowSplit ?? TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
       setColumnWidths(dashboardPreferences.columnWidths || {});
@@ -4295,6 +4353,7 @@ const TripDashboardWorkspace = () => {
       setShowConfirmationTools(false);
       setTimeDisplayMode(TRIP_TIME_DISPLAY_MODES.standard);
       setTripOrderMode('original');
+      setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(94);
       setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
       setColumnWidths({});
@@ -4860,7 +4919,7 @@ const TripDashboardWorkspace = () => {
   const routePanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
         <div className="p-2 border-bottom" style={tripDashboardToolbarShellStyle}>
-          <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin', minWidth: 0, whiteSpace: 'nowrap' }}>
+          <div className="d-flex align-items-start gap-2 flex-nowrap" style={{ overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin', minWidth: 0, whiteSpace: 'nowrap' }}>
             {renderRouteUtilityButtonsBlock()}
             <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 150, minWidth: 150, flex: '0 0 150px' }}>
               <option value="">2nd driver</option>
@@ -4870,6 +4929,7 @@ const TripDashboardWorkspace = () => {
             <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={handleRoutePanelUnassign} title="Unassign selected trips" disabled={selectedRoutePanelTripIds.length === 0}>U</Button>
             {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
             <Badge bg="dark" style={{ flex: '0 0 auto' }}>{selectedRoutePanelTripIds.length} selected</Badge>
+            {renderRoutePrintColumnsBlock()}
           </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
