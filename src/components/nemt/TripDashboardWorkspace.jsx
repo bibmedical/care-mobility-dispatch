@@ -4,7 +4,7 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { buildStableDriverId, createBlankDriver, GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
 import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
-import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
+import { buildRoutePrintDocument, formatPrintGeneratedAt } from '@/helpers/nemt-print-setup';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import { parseTripImportFile } from '@/helpers/nemt-trip-import';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
@@ -4079,7 +4079,7 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = formatPrintGeneratedAt(new Date());
     printWindow.document.write(buildRoutePrintDocument({
       routeTitle,
       driverName: selectedDriver ? selectedDriver.name : 'No driver selected',

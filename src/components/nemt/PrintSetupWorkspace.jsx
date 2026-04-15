@@ -3,7 +3,7 @@
 import PageTitle from '@/components/PageTitle';
 import { useNemtContext } from '@/context/useNemtContext';
 import { getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
-import { buildEarlyMorningRideReportDocument, getTripPhoneDisplay, getTripRideIdDisplay, PRINT_TEMPLATE_OPTIONS } from '@/helpers/nemt-print-setup';
+import { buildEarlyMorningRideReportDocument, formatPrintGeneratedAt, getTripPhoneDisplay, getTripRideIdDisplay, PRINT_TEMPLATE_OPTIONS } from '@/helpers/nemt-print-setup';
 import Link from 'next/link';
 import React, { useMemo, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
@@ -60,7 +60,7 @@ const PrintSetupWorkspace = () => {
     printWindow.document.write(buildEarlyMorningRideReportDocument({
       reportTitle: 'Early Morning Ride Report',
       selectedDate: reportDate,
-      generatedAt: new Date().toLocaleString(),
+      generatedAt: formatPrintGeneratedAt(new Date()),
       trips: earlyMorningTrips
     }));
     printWindow.document.close();

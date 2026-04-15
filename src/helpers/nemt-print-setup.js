@@ -27,6 +27,17 @@ export const normalizePrintSetup = value => ({
   template: normalizePrintTemplate(value?.template)
 });
 
+export const formatPrintGeneratedAt = value => {
+  const date = value instanceof Date ? value : new Date(value ?? Date.now());
+  if (Number.isNaN(date.getTime())) return '';
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const year = String(date.getFullYear());
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${month}/${day}/${year}, ${hours}:${minutes}`;
+};
+
 export const getTripRideIdDisplay = trip => {
   const rideId = String(trip?.rideId || '').trim();
   if (rideId) return rideId;
@@ -251,8 +262,8 @@ export const buildEarlyMorningRideReportDocument = ({
       <td>${index + 1}</td>
       <td>${escapeHtml(getTripRideIdDisplay(trip) || '-')}</td>
       <td>${escapeHtml(String(trip?.id || '').trim() || '-')}</td>
-      <td>${escapeHtml(trip?.pickup || '-')}</td>
-      <td>${escapeHtml(trip?.dropoff || '-')}</td>
+      <td>${escapeHtml(getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup))}</td>
+      <td>${escapeHtml(getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff))}</td>
       <td>${escapeHtml(trip?.rider || '-')}</td>
       <td>${escapeHtml(getTripPhoneDisplay(trip))}</td>
       <td>${escapeHtml(Number.isFinite(Number(trip?.miles)) ? Number(trip.miles).toFixed(2) : '-')}</td>

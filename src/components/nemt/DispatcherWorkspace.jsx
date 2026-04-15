@@ -11,7 +11,7 @@ import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
-import { buildRoutePrintDocument } from '@/helpers/nemt-print-setup';
+import { buildRoutePrintDocument, formatPrintGeneratedAt } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
@@ -2675,7 +2675,7 @@ const DispatcherWorkspace = () => {
     }
 
     const title = selectedDriver ? `Ruta de ${selectedDriver.name}` : selectedRoute ? `Ruta ${selectedRoute.name}` : 'Ruta actual';
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = formatPrintGeneratedAt(new Date());
     printWindow.document.write(buildRoutePrintDocument({
       routeTitle: title,
       driverName: selectedDriver ? selectedDriver.name : 'No driver selected',
