@@ -1,18 +1,11 @@
-import { readFile } from 'fs/promises';
 import { getLocalDateKey, normalizeDispatchThreadRecord, normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState } from '@/server/dispatch-history-store';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
-import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
-import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
-const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
 
 let ensureDispatchSchemaPromise = null;
-let lastKnownDispatchState = null;
-
-const getDispatchStorageFile = () => getStorageFilePath('nemt-dispatch.json');
 
 const ensureDispatchSchema = async () => {
   if (!hasDatabaseUrl()) {
@@ -26,120 +19,57 @@ const ensureDispatchSchema = async () => {
   return ensureDispatchSchemaPromise;
 };
 
-const readLocalDispatchState = async () => {
-  try {
-    const raw = await readFile(getDispatchStorageFile(), 'utf8');
-    return normalizePersistentDispatchState(JSON.parse(raw));
-  } catch {
-    return normalizePersistentDispatchState({});
-  }
-};
-
-const hasMeaningfulDispatchData = state => {
-  const normalized = normalizePersistentDispatchState(state || {});
-  return normalized.trips.length > 0
-    || normalized.routePlans.length > 0
-    || normalized.dispatchThreads.length > 0
-    || normalized.dailyDrivers.length > 0
-    || normalized.auditLog.length > 0;
-};
-
-const writeLocalDispatchState = async nextState => {
-  const normalized = normalizePersistentDispatchState(nextState);
-  await writeJsonFileWithSnapshots({
-    filePath: getDispatchStorageFile(),
-    nextValue: normalized,
-    backupName: 'nemt-dispatch-local'
-  });
-  return normalized;
-};
-
 // ─── READ ─────────────────────────────────────────────────────────────────────
 
 export const readNemtDispatchState = async (options = {}) => {
-  try {
-    await ensureDispatchSchema();
-    const includePastDates = options?.includePastDates === true;
-    const prefsStateRow = await queryOne(`SELECT data FROM dispatch_ui_prefs WHERE id = 'singleton'`);
-    const timeZone = prefsStateRow?.data?.timeZone;
-    const todayKey = getLocalDateKey(new Date(), timeZone);
-    const [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
-      includePastDates
-        ? query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`)
-        : query(`SELECT data FROM dispatch_trips WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 500`, [todayKey]),
-      includePastDates
-        ? query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`)
-        : query(`SELECT data FROM dispatch_route_plans WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 100`, [todayKey]),
-      includePastDates
-        ? query(`SELECT data FROM dispatch_threads ORDER BY driver_id`)
-        : query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 100`),
-      includePastDates
-        ? query(`SELECT data FROM dispatch_daily_drivers ORDER BY created_at DESC`)
-        : query(`SELECT data FROM dispatch_daily_drivers ORDER BY created_at DESC LIMIT 50`),
-      includePastDates
-        ? query(`SELECT data FROM dispatch_audit_log ORDER BY occurred_at DESC`)
-        : query(`SELECT data FROM dispatch_audit_log ORDER BY occurred_at DESC LIMIT 100`),
-      Promise.resolve(prefsStateRow)
-    ]);
+  await ensureDispatchSchema();
+  const includePastDates = options?.includePastDates === true;
+  const prefsStateRow = await queryOne(`SELECT data FROM dispatch_ui_prefs WHERE id = 'singleton'`);
+  const timeZone = prefsStateRow?.data?.timeZone;
+  const todayKey = getLocalDateKey(new Date(), timeZone);
+  const [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
+    includePastDates
+      ? query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`)
+      : query(`SELECT data FROM dispatch_trips WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 500`, [todayKey]),
+    includePastDates
+      ? query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`)
+      : query(`SELECT data FROM dispatch_route_plans WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 100`, [todayKey]),
+    includePastDates
+      ? query(`SELECT data FROM dispatch_threads ORDER BY driver_id`)
+      : query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 100`),
+    includePastDates
+      ? query(`SELECT data FROM dispatch_daily_drivers ORDER BY created_at DESC`)
+      : query(`SELECT data FROM dispatch_daily_drivers ORDER BY created_at DESC LIMIT 50`),
+    includePastDates
+      ? query(`SELECT data FROM dispatch_audit_log ORDER BY occurred_at DESC`)
+      : query(`SELECT data FROM dispatch_audit_log ORDER BY occurred_at DESC LIMIT 100`),
+    Promise.resolve(prefsStateRow)
+  ]);
 
-    const nextState = normalizePersistentDispatchState({
-      trips: tripsRes.rows.map(r => r.data),
-      routePlans: routesRes.rows.map(r => r.data),
-      dispatchThreads: threadsRes.rows.map(r => r.data),
-      dailyDrivers: ddRes.rows.map(r => r.data),
-      auditLog: auditRes.rows.map(r => r.data),
-      uiPreferences: prefsRow?.data ?? {}
-    });
-    if (hasMeaningfulDispatchData(nextState)) {
-      lastKnownDispatchState = nextState;
-    }
-    return nextState;
-  } catch (error) {
-    if (!shouldUseLocalFallback()) {
-      throw error;
-    }
-    const localState = await readLocalDispatchState();
-    if (hasMeaningfulDispatchData(localState)) {
-      lastKnownDispatchState = localState;
-      return localState;
-    }
-    if (lastKnownDispatchState) {
-      return lastKnownDispatchState;
-    }
-    return localState;
-  }
+  return normalizePersistentDispatchState({
+    trips: tripsRes.rows.map(r => r.data),
+    routePlans: routesRes.rows.map(r => r.data),
+    dispatchThreads: threadsRes.rows.map(r => r.data),
+    dailyDrivers: ddRes.rows.map(r => r.data),
+    auditLog: auditRes.rows.map(r => r.data),
+    uiPreferences: prefsRow?.data ?? {}
+  });
 };
 
 export const readNemtDispatchThreads = async () => {
-  try {
-    await ensureDispatchSchema();
-    const res = await query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 500`);
-    return res.rows.map(r => r.data).map(normalizeDispatchThreadRecord);
-  } catch (error) {
-    if (!shouldUseLocalFallback()) {
-      throw error;
-    }
-    const state = await readLocalDispatchState();
-    return state.dispatchThreads.map(normalizeDispatchThreadRecord);
-  }
+  await ensureDispatchSchema();
+  const res = await query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 500`);
+  return res.rows.map(r => r.data).map(normalizeDispatchThreadRecord);
 };
 
 export const readNemtDispatchThreadByDriverId = async driverId => {
   const normalizedDriverId = String(driverId || '').trim();
   if (!normalizedDriverId) return null;
 
-  try {
-    await ensureDispatchSchema();
-    const res = await query(`SELECT data FROM dispatch_threads WHERE driver_id = $1 LIMIT 1`, [normalizedDriverId]);
-    const thread = res.rows[0]?.data || null;
-    return thread ? normalizeDispatchThreadRecord(thread) : null;
-  } catch (error) {
-    if (!shouldUseLocalFallback()) {
-      throw error;
-    }
-    const state = await readLocalDispatchState();
-    return state.dispatchThreads.map(normalizeDispatchThreadRecord).find(thread => String(thread?.driverId || '').trim() === normalizedDriverId) || null;
-  }
+  await ensureDispatchSchema();
+  const res = await query(`SELECT data FROM dispatch_threads WHERE driver_id = $1 LIMIT 1`, [normalizedDriverId]);
+  const thread = res.rows[0]?.data || null;
+  return thread ? normalizeDispatchThreadRecord(thread) : null;
 };
 
 export const readAssignedTripsForDriverByServiceDates = async ({ driverId, serviceDateKeys = [] }) => {
@@ -147,30 +77,16 @@ export const readAssignedTripsForDriverByServiceDates = async ({ driverId, servi
   const normalizedServiceDateKeys = Array.from(new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean)));
   if (!normalizedDriverId || normalizedServiceDateKeys.length === 0) return [];
 
-  try {
-    await ensureDispatchSchema();
-    const res = await query(
-      `SELECT data
-       FROM dispatch_trips
-       WHERE service_date = ANY($1::text[])
-         AND ((data->>'driverId') = $2 OR (data->>'secondaryDriverId') = $2)
-       ORDER BY updated_at DESC`,
-      [normalizedServiceDateKeys, normalizedDriverId]
-    );
-    return res.rows.map(row => row.data);
-  } catch (error) {
-    if (!shouldUseLocalFallback()) {
-      throw error;
-    }
-    const state = await readLocalDispatchState();
-    return (Array.isArray(state?.trips) ? state.trips : []).filter(trip => {
-      const serviceDateKey = getLocalDateKey(new Date(trip?.serviceDate || trip?.rawServiceDate || trip?.date || 0));
-      const primaryDriverId = String(trip?.driverId || '').trim();
-      const secondaryDriverId = String(trip?.secondaryDriverId || '').trim();
-      return normalizedServiceDateKeys.includes(String(trip?.serviceDate || trip?.rawServiceDate || '').trim() || serviceDateKey)
-        && (primaryDriverId === normalizedDriverId || secondaryDriverId === normalizedDriverId);
-    });
-  }
+  await ensureDispatchSchema();
+  const res = await query(
+    `SELECT data
+     FROM dispatch_trips
+     WHERE service_date = ANY($1::text[])
+       AND ((data->>'driverId') = $2 OR (data->>'secondaryDriverId') = $2)
+     ORDER BY updated_at DESC`,
+    [normalizedServiceDateKeys, normalizedDriverId]
+  );
+  return res.rows.map(row => row.data);
 };
 
 // ─── WRITE ────────────────────────────────────────────────────────────────────
@@ -180,18 +96,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
   const allowPrune = options?.allowPrune !== false;
   const allowDestructiveEmptyPrune = options?.allowDestructiveEmptyPrune === true;
 
-  try {
-    await ensureDispatchSchema();
-  } catch (error) {
-    if (!shouldUseLocalFallback()) {
-      throw error;
-    }
-    const localState = await writeLocalDispatchState(normalized);
-    if (hasMeaningfulDispatchData(localState)) {
-      lastKnownDispatchState = localState;
-    }
-    return localState;
-  }
+  await ensureDispatchSchema();
 
   const archiveResult = await withTransaction(async client => {
     const { nextState: activeState } = await archiveDispatchState(normalized, { queryExecutor: client });
@@ -324,9 +229,6 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
     return activeState;
   });
 
-  if (hasMeaningfulDispatchData(archiveResult)) {
-    lastKnownDispatchState = archiveResult;
-  }
   return archiveResult;
 };
 
@@ -336,24 +238,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
 export const upsertIncomingDriverThreadMessage = async (driverId, message) => {
   const normalizedDriverId = String(driverId || '').trim();
   if (!normalizedDriverId) throw new Error('driverId is required');
-  try {
-    await ensureDispatchSchema();
-  } catch (error) {
-    if (!shouldUseLocalFallback()) {
-      throw error;
-    }
-    const state = await readLocalDispatchState();
-    const existing = state.dispatchThreads.find(thread => String(thread?.driverId || '').trim() === normalizedDriverId) || { driverId: normalizedDriverId, messages: [] };
-    const existingMessages = Array.isArray(existing.messages) ? existing.messages : [];
-    const messageId = String(message?.id || '').trim();
-    if (messageId && existingMessages.some(item => String(item?.id || '').trim() === messageId)) {
-      return { ok: true, duplicate: true };
-    }
-    const nextThreads = state.dispatchThreads.filter(thread => String(thread?.driverId || '').trim() !== normalizedDriverId);
-    nextThreads.push({ ...existing, messages: [...existingMessages, message] });
-    await writeLocalDispatchState({ ...state, dispatchThreads: nextThreads });
-    return { ok: true, duplicate: false };
-  }
+  await ensureDispatchSchema();
   return withTransaction(async client => {
     const res = await client.query(
       `SELECT data FROM dispatch_threads WHERE driver_id = $1 FOR UPDATE`,
@@ -378,26 +263,7 @@ export const upsertIncomingDriverThreadMessage = async (driverId, message) => {
 // ─── DRIVER TRIP UPDATE (mobile) ──────────────────────────────────────────────
 
 export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => {
-  try {
-    await ensureDispatchSchema();
-  } catch (error) {
-    if (!shouldUseLocalFallback()) {
-      throw error;
-    }
-    const state = await readLocalDispatchState();
-    const normalizedDriverId = String(driverId || '').trim();
-    const normalizedTripId = String(tripId || '').trim();
-    const currentTrip = state.trips.find(trip => String(trip?.id || '').trim() === normalizedTripId);
-    if (!currentTrip) return { ok: false, reason: 'not-found' };
-    const tripDriverId = String(currentTrip?.driverId || '').trim();
-    const tripSecondaryDriverId = String(currentTrip?.secondaryDriverId || '').trim();
-    if (tripDriverId !== normalizedDriverId && tripSecondaryDriverId !== normalizedDriverId) {
-      return { ok: false, reason: 'forbidden' };
-    }
-    const nextTrips = state.trips.map(trip => String(trip?.id || '').trim() === normalizedTripId ? { ...trip, ...patch } : trip);
-    await writeLocalDispatchState({ ...state, trips: nextTrips });
-    return { ok: true };
-  }
+  await ensureDispatchSchema();
   return withTransaction(async client => {
     const result = await client.query(`SELECT data FROM dispatch_trips WHERE id = $1 FOR UPDATE`, [String(tripId || '').trim()]);
     if (!result.rows.length) return { ok: false, reason: 'not-found' };

@@ -44,6 +44,36 @@ const getMilesDisplay = trip => {
   return Number.isFinite(miles) && miles > 0 ? miles.toFixed(2) : '-';
 };
 
+const parseTripClockMinutes = value => {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  const match = text.match(/(\d{1,2}):(\d{2})(?:\s*(am|pm))?/i);
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const suffix = String(match[3] ?? '').toLowerCase();
+  if (suffix === 'pm' && hours < 12) hours += 12;
+  if (suffix === 'am' && hours === 12) hours = 0;
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+};
+
+const formatMinutesTo24Hour = minutes => {
+  if (!Number.isFinite(minutes)) return '';
+  const normalized = ((Math.round(minutes) % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hours = String(Math.floor(normalized / 60)).padStart(2, '0');
+  const mins = String(normalized % 60).padStart(2, '0');
+  return `${hours}:${mins}`;
+};
+
+const getTripPrintTimeDisplay = (scheduledValue, fallbackValue) => {
+  const text = String(scheduledValue || fallbackValue || '').trim();
+  if (!text) return '-';
+  const minutes = parseTripClockMinutes(text);
+  if (minutes == null) return text;
+  return formatMinutesTo24Hour(minutes);
+};
+
 const getPrintColumns = getTripTypeLabel => ({
   'ride-id-office': [{
     key: 'sequence',
@@ -56,11 +86,11 @@ const getPrintColumns = getTripTypeLabel => ({
   }, {
     key: 'pickup',
     label: 'PU',
-    render: trip => trip?.pickup || '-'
+    render: trip => getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup)
   }, {
     key: 'dropoff',
     label: 'DO',
-    render: trip => trip?.dropoff || '-'
+    render: trip => getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff)
   }, {
     key: 'rider',
     label: 'Rider',
@@ -81,10 +111,6 @@ const getPrintColumns = getTripTypeLabel => ({
     key: 'destination',
     label: 'DO Address',
     render: trip => trip?.destination || '-'
-  }, {
-    key: 'notes',
-    label: 'Notes',
-    render: trip => String(trip?.notes || '').trim() || '-'
   }],
   'ride-id-compact': [{
     key: 'sequence',
@@ -97,11 +123,11 @@ const getPrintColumns = getTripTypeLabel => ({
   }, {
     key: 'pickup',
     label: 'PU',
-    render: trip => trip?.pickup || '-'
+    render: trip => getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup)
   }, {
     key: 'dropoff',
     label: 'DO',
-    render: trip => trip?.dropoff || '-'
+    render: trip => getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff)
   }, {
     key: 'miles',
     label: 'Miles',
@@ -110,10 +136,6 @@ const getPrintColumns = getTripTypeLabel => ({
     key: 'rider',
     label: 'Rider',
     render: trip => trip?.rider || '-'
-  }, {
-    key: 'notes',
-    label: 'Notes',
-    render: trip => String(trip?.notes || '').trim() || '-'
   }],
   'ride-id-manifest': [{
     key: 'sequence',
@@ -130,11 +152,11 @@ const getPrintColumns = getTripTypeLabel => ({
   }, {
     key: 'pickup',
     label: 'PU',
-    render: trip => trip?.pickup || '-'
+    render: trip => getTripPrintTimeDisplay(trip?.scheduledPickup, trip?.pickup)
   }, {
     key: 'dropoff',
     label: 'DO',
-    render: trip => trip?.dropoff || '-'
+    render: trip => getTripPrintTimeDisplay(trip?.scheduledDropoff, trip?.dropoff)
   }, {
     key: 'miles',
     label: 'Miles',
@@ -155,10 +177,6 @@ const getPrintColumns = getTripTypeLabel => ({
     key: 'destination',
     label: 'DO Address',
     render: trip => trip?.destination || '-'
-  }, {
-    key: 'notes',
-    label: 'Notes',
-    render: trip => String(trip?.notes || '').trim() || '-'
   }]
 });
 
