@@ -66,6 +66,59 @@ const normalizeProtectedIds = (protectedUserIds, users) => {
   return users[0] ? [users[0].id] : [];
 };
 
+const scoreDuplicateUserCandidate = (user, protectedUserIds = DEFAULT_PROTECTED_SYSTEM_USER_IDS) => {
+  let score = 0;
+  if (isProtectedSystemUser(user, protectedUserIds)) score += 1000;
+  if (isAdminRole(user?.role)) score += 100;
+  if (user?.webAccess) score += 25;
+  if (user?.androidAccess) score += 10;
+  if (String(user?.email || '').trim()) score += 5;
+  if (String(user?.password || '').trim()) score += 5;
+  if (String(user?.passwordChangedAt || '').trim()) score += 1;
+  return score;
+};
+
+const dedupeUsersByNormalizedUsername = (users, protectedUserIds = DEFAULT_PROTECTED_SYSTEM_USER_IDS) => {
+  const list = Array.isArray(users) ? users : [];
+  const bestUserIndexByUsername = new Map();
+  const removedUserIds = new Set();
+
+  list.forEach((user, index) => {
+    const normalizedUsername = normalizeAuthValue(user?.username);
+    if (!normalizedUsername) return;
+
+    const existingIndex = bestUserIndexByUsername.get(normalizedUsername);
+    if (existingIndex == null) {
+      bestUserIndexByUsername.set(normalizedUsername, index);
+      return;
+    }
+
+    const existingUser = list[existingIndex];
+    const currentScore = scoreDuplicateUserCandidate(user, protectedUserIds);
+    const existingScore = scoreDuplicateUserCandidate(existingUser, protectedUserIds);
+
+    if (currentScore > existingScore) {
+      removedUserIds.add(String(existingUser?.id || '').trim());
+      bestUserIndexByUsername.set(normalizedUsername, index);
+      return;
+    }
+
+    removedUserIds.add(String(user?.id || '').trim());
+  });
+
+  if (removedUserIds.size === 0) {
+    return {
+      users: list,
+      removedUserIds: []
+    };
+  }
+
+  return {
+    users: list.filter(user => !removedUserIds.has(String(user?.id || '').trim())),
+    removedUserIds: Array.from(removedUserIds)
+  };
+};
+
 const normalizeUsersState = value => {
   const sourceVersion = Number(value?.version || 0);
   const users = Array.isArray(value?.users) ? value.users.map(user => {
@@ -345,6 +398,32 @@ export const readSystemUsersState = async () => {
   } catch (error) {
     if (!shouldUseLocalFallback()) throw error;
     effectiveState = await readLocalUsersState();
+  }
+
+  const dedupedUsersResult = dedupeUsersByNormalizedUsername(effectiveState.users, effectiveState.protectedUserIds);
+  if (dedupedUsersResult.removedUserIds.length > 0) {
+    const dedupedState = normalizeUsersState({
+      version: effectiveState.version,
+      protectedUserIds: effectiveState.protectedUserIds,
+      users: dedupedUsersResult.users
+    });
+
+    try {
+      await query(
+        `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
+        [dedupedState.version, JSON.stringify(dedupedState.protectedUserIds), JSON.stringify(dedupedState.users)]
+      );
+    } catch (error) {
+      if (!shouldUseLocalFallback()) throw error;
+      await writeLocalUsersState(dedupedState);
+    }
+
+    await syncUsersToAdminState(
+      dedupedState.users.map(user => enrichSystemUser(user, dedupedState.protectedUserIds)),
+      effectiveState.users.map(user => enrichSystemUser(user, effectiveState.protectedUserIds))
+    );
+
+    effectiveState = dedupedState;
   }
 
   if (effectiveState.users.length === 0) {
