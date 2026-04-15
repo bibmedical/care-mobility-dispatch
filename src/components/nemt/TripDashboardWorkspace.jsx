@@ -2220,12 +2220,17 @@ const TripDashboardWorkspace = () => {
       {remainingVisibleTripCount} left
     </Badge> : null;
 
+  const renderCompletedRoutesBlock = () => tripStatusFilter === 'unassigned' ? <Badge bg="success" style={{ minWidth: 62, fontSize: '0.75rem' }} title="Routes already built in the current scope">
+      {completedRoutesCount} rutas
+    </Badge> : null;
+
   const renderSecondaryToolbarActionBlocks = () => <>
       {isToolbarEditMode || isToolbarBlockEnabled('action-buttons') ? renderActionButtonsBlock() : null}
       {isToolbarEditMode || isToolbarBlockEnabled('leg-buttons') ? renderLegButtonsBlock() : null}
       {isToolbarEditMode || isToolbarBlockEnabled('type-buttons') ? renderTypeButtonsBlock() : null}
       {isToolbarEditMode || isToolbarBlockEnabled('closed-route') ? renderClosedRouteBlock() : null}
       {renderTimeDisplayToggleBlock()}
+      {renderCompletedRoutesBlock()}
       {renderRemainingTripsBlock()}
     </>;
 
@@ -2419,6 +2424,58 @@ const TripDashboardWorkspace = () => {
     const dropoffCityValue = doCityFilter.trim().toLowerCase();
     return tripMatchesCity(trip, dropoffCityValue);
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
+  const assignmentProgressTrips = useMemo(() => trips.filter(trip => {
+    const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
+    const profilePhoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
+    const profileRiderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
+    const profileKey = profilePhoneKey ? `phone:${profilePhoneKey}` : profileRiderKey ? `rider:${profileRiderKey}` : '';
+    const exclusion = profileKey ? riderProfiles?.[profileKey]?.exclusion : null;
+    const exclusionMode = String(exclusion?.mode || '').trim().toLowerCase();
+    const exclusionStart = String(exclusion?.startDate || '').trim();
+    const exclusionEnd = String(exclusion?.endDate || '').trim();
+    const blockingState = tripBlockingMap.get(trip.id);
+    const hasActiveBlacklistBlock = blockingState?.source === 'blacklist';
+    const isAutoCancelledByExclusion = !hasActiveBlacklistBlock && Boolean(tripDateKey) && (exclusionMode === 'always' || exclusionMode === 'single-day' && tripDateKey === exclusionStart || exclusionMode === 'range' && exclusionStart && exclusionEnd && tripDateKey >= exclusionStart && tripDateKey <= exclusionEnd);
+    const normalizedStatus = isAutoCancelledByExclusion ? 'cancelled' : String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
+    const nowDateKey = getLocalDateKey(new Date());
+    const hasActiveHospitalRehab = Boolean(trip?.hospitalStatus?.startDate) && Boolean(trip?.hospitalStatus?.endDate) && nowDateKey >= String(trip.hospitalStatus.startDate) && nowDateKey <= String(trip.hospitalStatus.endDate);
+    const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(normalizedStatus) || hasActiveHospitalRehab;
+    return !isNonOperationalTrip;
+  }).filter(trip => {
+    if (tripDateFilter === 'all') return true;
+    return getTripTimelineDateKey(trip, routePlans, trips) === tripDateFilter;
+  }).filter(trip => {
+    if (tripLegFilter === 'all') return true;
+    return getTripLegFilterKey(trip) === tripLegFilter;
+  }).filter(trip => {
+    if (tripTypeFilter === 'all') return true;
+    return getTripTypeLabel(trip) === tripTypeFilter;
+  }).filter(trip => {
+    if (!serviceAnimalOnly) return true;
+    return Boolean(trip?.hasServiceAnimal);
+  }).filter(trip => {
+    const searchValue = deferredTripIdSearch.trim().toLowerCase();
+    if (!searchValue) return true;
+    const tokens = searchValue.split(/\s+/).filter(Boolean);
+    const haystack = [trip.id, trip.brokerTripId, trip.rideId, trip.rider, trip.patientFirstName, trip.patientLastName, trip.patientName, trip.patientPhoneNumber, trip.address, trip.destination, getPickupZip(trip), getDropoffZip(trip), getPickupCity(trip), getDropoffCity(trip), trip.notes, trip.status, trip.safeRideStatus].filter(Boolean).join(' ').toLowerCase();
+    return tokens.every(token => haystack.includes(token));
+  }).filter(trip => {
+    const pickupZipValue = pickupZipFilter.trim();
+    return tripMatchesZip(trip, pickupZipValue);
+  }).filter(trip => {
+    const dropoffZipValue = dropoffZipFilter.trim();
+    return tripMatchesZip(trip, dropoffZipValue);
+  }).filter(trip => {
+    const zipValue = zipFilter.trim().toLowerCase();
+    if (!zipValue) return true;
+    return getPickupZip(trip).toLowerCase().includes(zipValue) || getDropoffZip(trip).toLowerCase().includes(zipValue);
+  }).filter(trip => {
+    const pickupCityValue = puCityFilter.trim().toLowerCase();
+    return tripMatchesCity(trip, pickupCityValue);
+  }).filter(trip => {
+    const dropoffCityValue = doCityFilter.trim().toLowerCase();
+    return tripMatchesCity(trip, dropoffCityValue);
+  }), [deferredTripIdSearch, doCityFilter, doCityFilter, dropoffZipFilter, pickupZipFilter, puCityFilter, riderProfiles, serviceAnimalOnly, tripDateFilter, tripLegFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
   const mapQuickCityOptions = useMemo(() => {
     const citySet = new Set();
     for (const trip of cityOptionTrips) {
@@ -2821,6 +2878,7 @@ const TripDashboardWorkspace = () => {
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const remainingVisibleTripCount = filteredTrips.length;
+  const completedRoutesCount = useMemo(() => new Set(assignmentProgressTrips.map(trip => normalizeDriverId(trip?.driverId)).filter(Boolean)).size, [assignmentProgressTrips]);
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
     const preferredTrip = trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id));
