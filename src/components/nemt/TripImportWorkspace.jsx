@@ -359,6 +359,7 @@ const TripImportWorkspace = () => {
   const [isParsing, setIsParsing] = useState(false);
   const [selectedAuditDate, setSelectedAuditDate] = useState(() => toLocalDateKey(new Date()));
   const [importScan, setImportScan] = useState(null);
+  const [previewSearch, setPreviewSearch] = useState('');
 
   const requireTypedDeleteConfirmation = warningLabel => {
     const typedValue = String(window.prompt(`Safety check: type BORRAR to continue.\n\n${warningLabel}`) || '').trim();
@@ -464,6 +465,24 @@ const TripImportWorkspace = () => {
     value: 'Reemplazar dias coincidentes'
   }], [pendingTrips.length, selectedFileName, trips.length]);
 
+  const filteredPendingTrips = useMemo(() => {
+    const normalizedSearch = String(previewSearch || '').trim().toLowerCase();
+    if (!normalizedSearch) return pendingTrips;
+
+    return pendingTrips.filter(trip => [
+      trip.id,
+      trip.rideId,
+      trip.brokerTripId,
+      trip.rider,
+      trip.address,
+      trip.destination,
+      trip.patientPhoneNumber,
+      trip.vehicleType,
+      trip.pickup,
+      trip.dropoff
+    ].some(value => String(value || '').toLowerCase().includes(normalizedSearch)));
+  }, [pendingTrips, previewSearch]);
+
   const handleDownloadTemplate = () => {
     const templateRows = [
       ['rideId', 'tripId', 'fromAddress', 'fromZipcode', 'toAddress', 'toZipcode', 'pickupTime', 'appointmentTime', 'scheduledPickup', 'actualPickup', 'scheduledDropoff', 'actualDropoff', 'delayMinutes', 'onTimeStatus', 'fromLatitude', 'fromLongitude', 'toLatitude', 'toLogitude', 'patientFirstName', 'patientLastName', 'patientPhoneNumber', 'requestedVehicleType', 'additionalNotes', 'status', 'confirmationStatus', 'tripType', 'driverName'],
@@ -482,6 +501,7 @@ const TripImportWorkspace = () => {
     setPendingTrips([]);
     setSelectedFileName('');
     setImportScan(null);
+    setPreviewSearch('');
     setMessage('Todos los viajes y rutas guardadas fueron eliminados.');
   };
 
@@ -506,6 +526,7 @@ const TripImportWorkspace = () => {
       if (!Array.isArray(rows) || rows.length === 0) {
         setPendingTrips([]);
         setImportScan(null);
+        setPreviewSearch('');
         setMessage('El archivo no tiene filas para importar.');
         return;
       }
@@ -514,12 +535,14 @@ const TripImportWorkspace = () => {
       const nextImportScan = analyzeImportedTrips(importedTrips);
       setPendingTrips(importedTrips);
       setImportScan(nextImportScan);
+      setPreviewSearch('');
       const dayCount = Array.from(new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).length;
       const scanSuffix = nextImportScan.findingCount > 0 ? ` Scanner: ${nextImportScan.blockingCount} bloqueo(s), ${nextImportScan.warningCount} advertencia(s).` : ' Scanner: no se detectaron problemas obvios.';
       setMessage(`${importedTrips.length} viajes SafeRide listos para importar. Se actualizaran ${dayCount} dia${dayCount === 1 ? '' : 's'} segun el archivo.${scanSuffix}`);
     } catch {
       setPendingTrips([]);
       setImportScan(null);
+      setPreviewSearch('');
       setMessage('No se pudo leer el archivo. Usa Excel .xlsx, .xls o CSV con encabezados.');
     } finally {
       setIsParsing(false);
@@ -690,8 +713,15 @@ const TripImportWorkspace = () => {
             <CardBody className="p-0">
               <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark">
                 <strong>Preview de viajes importados</strong>
-                <div className="d-flex align-items-center gap-2">
-                  <Badge bg="light" text="dark">{pendingTrips.length}</Badge>
+                <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                  <Form.Control
+                    size="sm"
+                    value={previewSearch}
+                    onChange={event => setPreviewSearch(event.target.value)}
+                    placeholder="Buscar ride, trip, pasajero o direccion"
+                    style={{ width: 280, maxWidth: '100%' }}
+                  />
+                  <Badge bg="light" text="dark">{filteredPendingTrips.length}{previewSearch ? `/${pendingTrips.length}` : ''}</Badge>
                   <Button variant="light" size="sm" onClick={handleImportTrips} disabled={pendingTrips.length === 0}>Importar</Button>
                 </div>
               </div>
@@ -714,7 +744,7 @@ const TripImportWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {pendingTrips.length > 0 ? pendingTrips.map(trip => <tr key={trip.id}>
+                    {filteredPendingTrips.length > 0 ? filteredPendingTrips.map(trip => <tr key={trip.id}>
                         <td className="fw-semibold">{trip.id}</td>
                         <td>{trip.brokerTripId || '-'}</td>
                         <td><Badge bg={trip.legVariant || 'secondary'}>{trip.legLabel || 'Viaje'}</Badge></td>
@@ -728,7 +758,7 @@ const TripImportWorkspace = () => {
                         <td>{trip.destination || '-'}</td>
                         <td>{trip.vehicleType || '-'}</td>
                       </tr>) : <tr>
-                        <td colSpan={12} className="text-center text-muted py-5">Carga la plantilla oficial de SafeRide para ver el preview.</td>
+                        <td colSpan={12} className="text-center text-muted py-5">{pendingTrips.length > 0 ? 'No hay viajes que coincidan con la busqueda.' : 'Carga la plantilla oficial de SafeRide para ver el preview.'}</td>
                       </tr>}
                   </tbody>
                 </Table>
