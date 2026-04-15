@@ -156,6 +156,8 @@ const NOTIFICATION_TONE_OPTIONS = {
 
 const COORDINATE_LIKE_TEXT = /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/;
 
+const normalizeDriverId = value => String(value || '').trim();
+
 const getAlertVariant = priority => {
   if (priority === 'high' || priority === 'urgent') return 'danger';
   if (priority === 'normal') return 'warning';
@@ -230,9 +232,12 @@ const readJsonResponse = async response => {
 
 const mergeThreads = (threads, drivers) => {
   const existingThreads = Array.isArray(threads) ? threads : [];
-  const byDriverId = new Map(existingThreads.map(thread => [thread.driverId, thread]));
-  return drivers.map(driver => byDriverId.get(driver.id) ?? {
-    driverId: driver.id,
+  const byDriverId = new Map(existingThreads.map(thread => [normalizeDriverId(thread?.driverId), {
+    ...thread,
+    driverId: normalizeDriverId(thread?.driverId)
+  }]));
+  return drivers.map(driver => byDriverId.get(normalizeDriverId(driver?.id)) ?? {
+    driverId: normalizeDriverId(driver?.id),
     messages: []
   });
 };
@@ -323,10 +328,11 @@ const DispatcherMessagingPanel = ({
       _isDaily: true
     }))
   ], [drivers, dailyDrivers]);
+  const allDriversById = useMemo(() => new Map(allDrivers.map(driver => [normalizeDriverId(driver?.id), driver])), [allDrivers]);
 
   const normalizedThreads = useMemo(() => mergeThreads(dispatchThreads, allDrivers), [allDrivers, dispatchThreads]);
-  const hiddenDriverIdSet = useMemo(() => new Set(Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []), [hiddenDriverIds]);
-  const visibleThreads = useMemo(() => normalizedThreads.filter(thread => !hiddenDriverIdSet.has(thread.driverId)), [hiddenDriverIdSet, normalizedThreads]);
+  const hiddenDriverIdSet = useMemo(() => new Set((Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []).map(normalizeDriverId).filter(Boolean)), [hiddenDriverIds]);
+  const visibleThreads = useMemo(() => normalizedThreads.filter(thread => !hiddenDriverIdSet.has(normalizeDriverId(thread?.driverId))), [hiddenDriverIdSet, normalizedThreads]);
 
   useEffect(() => {
     latestUserPreferencesRef.current = userPreferences;
@@ -335,7 +341,7 @@ const DispatcherMessagingPanel = ({
   useEffect(() => {
     if (userPreferencesLoading) return;
     const normalizedDispatcherMessaging = {
-      hiddenDriverIds: Array.isArray(userPreferences?.dispatcherMessaging?.hiddenDriverIds) ? userPreferences.dispatcherMessaging.hiddenDriverIds : [],
+      hiddenDriverIds: (Array.isArray(userPreferences?.dispatcherMessaging?.hiddenDriverIds) ? userPreferences.dispatcherMessaging.hiddenDriverIds : []).map(normalizeDriverId).filter(Boolean),
       chatTheme: String(userPreferences?.dispatcherMessaging?.chatTheme || 'ocean').trim() || 'ocean',
       notificationTone: String(userPreferences?.dispatcherMessaging?.notificationTone || 'classic').trim() || 'classic',
       customNotificationSoundName: String(userPreferences?.dispatcherMessaging?.customNotificationSoundName || '').trim(),
@@ -369,22 +375,28 @@ const DispatcherMessagingPanel = ({
       dispatcherMessaging: nextDispatcherMessaging
     }).catch(() => {});
   }, [chatTheme, customNotificationSoundDataUrl, customNotificationSoundName, hiddenDriverIds, notificationTone, saveUserPreferences, userPreferencesLoading]);
+
   const normalizedSearch = driverSearch.trim().toLowerCase();
   const filteredThreads = useMemo(() => visibleThreads.filter(thread => {
     if (!normalizedSearch) return true;
-    const driver = allDrivers.find(item => item.id === thread.driverId);
+    const driver = allDriversById.get(normalizeDriverId(thread?.driverId));
     const haystack = [driver?.name, driver?.vehicle, driver?.live, thread.messages[thread.messages.length - 1]?.text].filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(normalizedSearch);
-  }), [allDrivers, normalizedSearch, visibleThreads]);
-  const activeDriverId = selectedDriverId && visibleThreads.some(thread => thread.driverId === selectedDriverId) ? selectedDriverId : visibleThreads[0]?.driverId ?? null;
-  const activeThread = normalizedThreads.find(thread => thread.driverId === activeDriverId) ?? null;
+  }), [allDriversById, normalizedSearch, visibleThreads]);
+  const activeDriverId = useMemo(() => {
+    const normalizedSelectedDriverId = normalizeDriverId(selectedDriverId);
+    if (normalizedSelectedDriverId && visibleThreads.some(thread => normalizeDriverId(thread?.driverId) === normalizedSelectedDriverId)) return normalizedSelectedDriverId;
+    return normalizeDriverId(visibleThreads[0]?.driverId) || null;
+  }, [selectedDriverId, visibleThreads]);
+  const activeThread = normalizedThreads.find(thread => normalizeDriverId(thread?.driverId) === activeDriverId) ?? null;
   const activeAlertCounts = useMemo(() => driverAlerts.reduce((accumulator, alert) => {
-    if (!alert?.driverId || alert?.status === 'resolved') return accumulator;
-    accumulator[alert.driverId] = (accumulator[alert.driverId] || 0) + 1;
+    const driverId = normalizeDriverId(alert?.driverId);
+    if (!driverId || alert?.status === 'resolved') return accumulator;
+    accumulator[driverId] = (accumulator[driverId] || 0) + 1;
     return accumulator;
   }, {}), [driverAlerts]);
   const unreadCount = visibleThreads.reduce((total, thread) => total + thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length, 0);
-  const activeDriverAlerts = useMemo(() => driverAlerts.filter(alert => alert.driverId === activeDriverId && alert.status !== 'resolved'), [activeDriverId, driverAlerts]);
+  const activeDriverAlerts = useMemo(() => driverAlerts.filter(alert => normalizeDriverId(alert?.driverId) === activeDriverId && alert.status !== 'resolved'), [activeDriverId, driverAlerts]);
   const dispatcherSenderName = String(session?.user?.name || session?.user?.email || 'Dispatch').trim() || 'Dispatch';
   const selectedChatTheme = useMemo(() => resolveChatThemeColors(chatTheme, isDarkMode), [chatTheme, isDarkMode]);
   const gpsOnlineCount = useMemo(() => allDrivers.filter(driver => {
@@ -453,16 +465,17 @@ const DispatcherMessagingPanel = ({
   };
 
   const handleSelectDriver = driverId => {
-    setSelectedDriverId(driverId);
-    markDispatchThreadRead(driverId);
+    const normalizedDriverId = normalizeDriverId(driverId);
+    setSelectedDriverId(normalizedDriverId || null);
+    markDispatchThreadRead(normalizedDriverId);
     setSmsStatus('');
   };
 
   useEffect(() => {
     const incomingMessages = normalizedThreads.flatMap(thread => thread.messages.filter(message => message.direction === 'incoming').map(message => ({
       ...message,
-      driverId: thread.driverId,
-      driverName: allDrivers.find(driver => driver.id === thread.driverId)?.name || 'Driver'
+      driverId: normalizeDriverId(thread?.driverId),
+      driverName: allDriversById.get(normalizeDriverId(thread?.driverId))?.name || 'Driver'
     })));
 
     if (seenIncomingMessageIdsRef.current.size === 0) {
@@ -483,7 +496,7 @@ const DispatcherMessagingPanel = ({
     });
     showBrowserNotification(`Message from ${latest.driverName}`, latest.text || '[Photo]');
     playIncomingTone();
-  }, [allDrivers, normalizedThreads, showNotification]);
+  }, [allDriversById, normalizedThreads, showNotification]);
 
   useEffect(() => {
     if (seenAlertIdsRef.current.size === 0) {
@@ -532,6 +545,7 @@ const DispatcherMessagingPanel = ({
           }] : [];
           upsertDispatchThreadMessage({
             driverId: message.driverId,
+            markDispatchDirty: false,
             markIncomingRead: activeDriverIdRef.current === message.driverId,
             message: {
               id: message.id,
@@ -816,18 +830,19 @@ const DispatcherMessagingPanel = ({
   };
 
   const handleHideDriver = driverId => {
+    const normalizedDriverId = normalizeDriverId(driverId);
     setHiddenDriverIds(currentHiddenDriverIds => {
-      const nextHiddenDriverIds = Array.isArray(currentHiddenDriverIds) ? [...currentHiddenDriverIds] : [];
-      if (!nextHiddenDriverIds.includes(driverId)) nextHiddenDriverIds.push(driverId);
+      const nextHiddenDriverIds = (Array.isArray(currentHiddenDriverIds) ? currentHiddenDriverIds : []).map(normalizeDriverId).filter(Boolean);
+      if (!nextHiddenDriverIds.includes(normalizedDriverId)) nextHiddenDriverIds.push(normalizedDriverId);
       return nextHiddenDriverIds;
     });
-    if (driverId === activeDriverId) {
-      const nextVisibleThread = visibleThreads.find(thread => thread.driverId !== driverId);
-      setSelectedDriverId(nextVisibleThread?.driverId ?? null);
+    if (normalizedDriverId === activeDriverId) {
+      const nextVisibleThread = visibleThreads.find(thread => normalizeDriverId(thread?.driverId) !== normalizedDriverId);
+      setSelectedDriverId(normalizeDriverId(nextVisibleThread?.driverId) || null);
     }
   };
 
-  const activeDriver = allDrivers.find(driver => driver.id === activeDriverId) ?? null;
+  const activeDriver = allDriversById.get(activeDriverId) ?? null;
 
   const handleOpenDriverWhatsApp = () => {
     const phoneNumber = normalizePhoneDigits(activeDriver?.phone);
@@ -1045,10 +1060,11 @@ const DispatcherMessagingPanel = ({
   };
 
   const handleDeleteDailyDriver = driverId => {
-    removeDailyDriver(driverId);
-    if (driverId === activeDriverId) {
-      const next = visibleThreads.find(t => t.driverId !== driverId);
-      setSelectedDriverId(next?.driverId ?? null);
+    const normalizedDriverId = normalizeDriverId(driverId);
+    removeDailyDriver(normalizedDriverId);
+    if (normalizedDriverId === activeDriverId) {
+      const next = visibleThreads.find(thread => normalizeDriverId(thread?.driverId) !== normalizedDriverId);
+      setSelectedDriverId(normalizeDriverId(next?.driverId) || null);
     }
   };
 
@@ -1190,21 +1206,23 @@ const DispatcherMessagingPanel = ({
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             {filteredThreads.length > 0 ? filteredThreads.map(thread => {
-              const driver = allDrivers.find(item => item.id === thread.driverId);
+              const threadDriverId = normalizeDriverId(thread?.driverId);
+              const driver = allDriversById.get(threadDriverId) ?? null;
               const isDaily = driver?._isDaily === true;
-              const hasGps = Boolean(driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2));
-              const sequencePreview = driverSequencePreviewById?.get?.(thread.driverId) ?? null;
+              const hasGps = Boolean(driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2 && driver.position.every(value => Number.isFinite(Number(value)))));
+              const sequencePreview = driverSequencePreviewById?.get?.(threadDriverId) ?? null;
               const lastMessage = thread.messages[thread.messages.length - 1];
               const threadUnreadCount = thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length;
-              const threadAlertCount = activeAlertCounts[thread.driverId] || 0;
-              const hasUrgentAlert = driverAlerts.some(alert => alert.driverId === thread.driverId && alert.status !== 'resolved' && (alert.priority === 'high' || alert.priority === 'urgent'));
-              const driverColor = getDriverColor(driver?.id || driver?.name || thread.driverId);
+              const threadAlertCount = activeAlertCounts[threadDriverId] || 0;
+              const hasUrgentAlert = driverAlerts.some(alert => normalizeDriverId(alert?.driverId) === threadDriverId && alert.status !== 'resolved' && (alert.priority === 'high' || alert.priority === 'urgent'));
+              const isActiveThread = threadDriverId === activeDriverId;
+              const driverColor = getDriverColor(driver?.id || driver?.name || threadDriverId);
               return (
                 <div
-                  key={thread.driverId}
-                  className={`border-bottom ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
+                  key={threadDriverId}
+                  className={`border-bottom ${isActiveThread ? 'text-white' : 'text-body'}`}
                   style={{
-                    backgroundColor: thread.driverId === activeDriverId ? driverColor : hasUrgentAlert ? messagingSurfaceStyles.threadUrgentBackground : withDriverAlpha(driverColor, isDarkMode ? 0.16 : 0.05),
+                    backgroundColor: isActiveThread ? driverColor : hasUrgentAlert ? messagingSurfaceStyles.threadUrgentBackground : withDriverAlpha(driverColor, isDarkMode ? 0.16 : 0.05),
                     borderBottomColor: isDarkMode ? 'rgba(71, 85, 105, 0.4)' : '#e2e8f0',
                     borderLeft: `4px solid ${hasUrgentAlert ? '#ea580c' : driverColor}`
                   }}
@@ -1214,17 +1232,17 @@ const DispatcherMessagingPanel = ({
                       <button
                         type="button"
                         onClick={() => {
-                          handleSelectDriver(thread.driverId);
-                          if (hasGps) onLocateDriver?.(thread.driverId);
+                          handleSelectDriver(threadDriverId);
+                          if (hasGps) onLocateDriver?.(threadDriverId);
                         }}
-                        className={`w-100 text-start border-0 px-1 ${thread.driverId === activeDriverId ? 'text-white' : 'text-body'}`}
+                        className={`w-100 text-start border-0 px-1 ${isActiveThread ? 'text-white' : 'text-body'}`}
                         style={{ backgroundColor: 'transparent' }}
                       >
                         <div className="d-flex justify-content-between align-items-center gap-2">
                           <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
                             <div style={{ minWidth: 0 }}>
                               <div className="fw-semibold d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: 210 }}>
-                                <span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${thread.driverId === activeDriverId ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
+                                <span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${isActiveThread ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
                                 {driver?.name ?? 'Driver'}
                                 {hasGps ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
                               </div>
@@ -1232,12 +1250,12 @@ const DispatcherMessagingPanel = ({
                                 className="small text-truncate"
                                 style={{
                                   maxWidth: 220,
-                                  color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText,
+                                  color: isActiveThread ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText,
                                   fontWeight: 600
                                 }}
-                                title={`${sequencePreview.stageLabel} ${sequencePreview.timeLabel} | ${sequencePreview.rider || sequencePreview.tripId || 'Current trip'}`}
+                                title={`${sequencePreview.rider || sequencePreview.tripId || 'Current trip'} | ${sequencePreview.stageLabel} ${sequencePreview.timeLabel}`}
                               >
-                                {sequencePreview.stageLabel} {sequencePreview.timeLabel} | {sequencePreview.rider || sequencePreview.tripId || 'Current trip'}
+                                {sequencePreview.rider || sequencePreview.tripId || 'Current trip'}
                               </div> : null}
                               <span
                                 role={hasGps ? 'button' : undefined}
@@ -1245,29 +1263,29 @@ const DispatcherMessagingPanel = ({
                                 onClick={event => {
                                   event.stopPropagation();
                                   if (!hasGps) return;
-                                  handleSelectDriver(thread.driverId);
-                                  onLocateDriver?.(thread.driverId);
+                                  handleSelectDriver(threadDriverId);
+                                  onLocateDriver?.(threadDriverId);
                                 }}
                                 onKeyDown={event => {
                                   if (!hasGps) return;
                                   if (event.key !== 'Enter' && event.key !== ' ') return;
                                   event.preventDefault();
                                   event.stopPropagation();
-                                  handleSelectDriver(thread.driverId);
-                                  onLocateDriver?.(thread.driverId);
+                                  handleSelectDriver(threadDriverId);
+                                  onLocateDriver?.(threadDriverId);
                                 }}
                                 className="d-inline-block mt-1 text-start small"
                                 style={{
                                   maxWidth: 220,
-                                  color: hasGps ? (thread.driverId === activeDriverId ? '#dbeafe' : driverColor) : (thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText),
+                                  color: hasGps ? (isActiveThread ? '#dbeafe' : driverColor) : (isActiveThread ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText),
                                   textDecoration: hasGps ? 'underline' : 'none',
                                   cursor: hasGps ? 'pointer' : 'default'
                                 }}
-                                title={hasGps ? 'Center this driver on the map and follow live ETA' : 'This driver has no live GPS yet'}
+                                title={hasGps ? 'Center this driver on the map' : 'This driver has no live GPS yet'}
                               >
-                                {sequencePreview?.targetLabel || getDriverLocationLabel(driver)}
+                                {sequencePreview ? `${sequencePreview.stageLabel} ${sequencePreview.timeLabel}${sequencePreview.targetLabel ? ` | ${sequencePreview.targetLabel}` : ''}` : getDriverLocationLabel(driver)}
                               </span>
-                              <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
+                              <div className="small text-truncate" style={{ maxWidth: 220, color: isActiveThread ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                             </div>
                           </div>
                           <div className="text-end">
@@ -1279,11 +1297,11 @@ const DispatcherMessagingPanel = ({
                         </div>
                       </button>
                     </div>
-                    <Button variant="link" size="sm" className="p-1 text-decoration-none" style={{ color: thread.driverId === activeDriverId ? '#ffffff' : '#64748b' }} onClick={() => handleHideDriver(thread.driverId)} title="Remove driver from this panel">
+                    <Button variant="link" size="sm" className="p-1 text-decoration-none" style={{ color: isActiveThread ? '#ffffff' : '#64748b' }} onClick={() => handleHideDriver(threadDriverId)} title="Remove driver from this panel">
                       <IconifyIcon icon="iconoir:xmark" />
                     </Button>
                     {isDaily ? (
-                      <Button variant="link" size="sm" className="p-1 text-decoration-none text-danger" onClick={() => handleDeleteDailyDriver(thread.driverId)} title="Borrar Daily Driver">
+                      <Button variant="link" size="sm" className="p-1 text-decoration-none text-danger" onClick={() => handleDeleteDailyDriver(threadDriverId)} title="Borrar Daily Driver">
                         <IconifyIcon icon="iconoir:trash" />
                       </Button>
                     ) : null}

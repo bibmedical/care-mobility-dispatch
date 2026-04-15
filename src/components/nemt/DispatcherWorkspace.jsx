@@ -501,6 +501,8 @@ const sortTripsByPickupTime = items => [...items].sort((leftTrip, rightTrip) => 
 });
 
 const normalizeTripId = tripId => String(tripId || '').trim();
+const normalizeDriverId = driverId => String(driverId || '').trim();
+const normalizeRouteId = routeId => String(routeId || '').trim();
 
 const normalizeSortValue = value => {
   if (value == null) return '';
@@ -985,9 +987,17 @@ const DispatcherWorkspace = () => {
     });
   };
 
-  const selectedDriver = useMemo(() => drivers.find(driver => driver.id === selectedDriverId) ?? null, [drivers, selectedDriverId]);
+  const selectedDriver = useMemo(() => {
+    const normalizedSelectedDriverId = normalizeDriverId(selectedDriverId);
+    if (!normalizedSelectedDriverId) return null;
+    return drivers.find(driver => normalizeDriverId(driver?.id) === normalizedSelectedDriverId) ?? null;
+  }, [drivers, selectedDriverId]);
   const selectedDriverColor = useMemo(() => getDriverColor(selectedDriver?.id || selectedDriver?.name), [selectedDriver]);
-  const selectedRoute = useMemo(() => routePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [routePlans, selectedRouteId]);
+  const selectedRoute = useMemo(() => {
+    const normalizedSelectedRouteId = normalizeRouteId(selectedRouteId);
+    if (!normalizedSelectedRouteId) return null;
+    return routePlans.find(routePlan => normalizeRouteId(routePlan?.id) === normalizedSelectedRouteId) ?? null;
+  }, [routePlans, selectedRouteId]);
   const dispatchTimeZone = uiPreferences?.timeZone;
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), dispatchTimeZone), [dispatchTimeZone]);
   const daySummaryMetrics = useMemo(() => {
@@ -1012,7 +1022,8 @@ const DispatcherWorkspace = () => {
 
   useEffect(() => {
     if (!selectedDriverId) return;
-    if (drivers.some(driver => driver.id === selectedDriverId)) return;
+    const normalizedSelectedDriverId = normalizeDriverId(selectedDriverId);
+    if (drivers.some(driver => normalizeDriverId(driver?.id) === normalizedSelectedDriverId)) return;
     setSelectedDriverId(null);
     setIsManualDriverScope(false);
   }, [drivers, selectedDriverId]);
@@ -1767,7 +1778,11 @@ const DispatcherWorkspace = () => {
   const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
   const filteredDrivers = drivers;
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
-  const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
+  const selectedDriverAssignedTripCount = useMemo(() => {
+    const normalizedSelectedDriverId = normalizeDriverId(selectedDriverId);
+    if (!normalizedSelectedDriverId) return 0;
+    return trips.filter(trip => normalizeDriverId(trip?.driverId) === normalizedSelectedDriverId || normalizeDriverId(trip?.secondaryDriverId) === normalizedSelectedDriverId).length;
+  }, [selectedDriverId, trips]);
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
       const leftAssignedToSelectedDriver = isTripAssignedToDriver(leftTrip, selectedDriverId) ? 1 : 0;
@@ -1958,8 +1973,10 @@ const DispatcherWorkspace = () => {
     const scopedTrips = activeDateTripIdSet ? trips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : trips;
 
     drivers.forEach(driver => {
+      const driverId = String(driver?.id || '').trim();
+      if (!driverId) return;
       const assignedTrips = sortTripsByPickupTime(scopedTrips.filter(trip => {
-        if (!isTripAssignedToDriver(trip, driver.id)) return false;
+        if (!isTripAssignedToDriver(trip, driverId)) return false;
         const effectiveStatus = String(getEffectiveTripStatus(trip) || '').trim().toLowerCase();
         return effectiveStatus !== 'cancelled';
       }));
@@ -1971,7 +1988,7 @@ const DispatcherWorkspace = () => {
       const target = getSelectedDriverEtaTarget(currentTrip);
       const stageLabel = target?.stage === 'dropoff' ? 'DO' : 'PU';
       const timeLabel = target?.stage === 'dropoff' ? currentTrip?.dropoff : currentTrip?.pickup;
-      previewByDriver.set(String(driver?.id || '').trim(), {
+      previewByDriver.set(driverId, {
         tripId: String(currentTrip?.brokerTripId || currentTrip?.id || '').trim(),
         rider: String(currentTrip?.rider || '').trim(),
         stageLabel,
@@ -2350,7 +2367,7 @@ const DispatcherWorkspace = () => {
     toggleTripSelection(tripId);
 
     if (isSelecting && trip?.driverId) {
-      setSelectedDriverId(trip.driverId);
+      setSelectedDriverId(normalizeDriverId(trip.driverId) || null);
       setIsManualDriverScope(false);
       setStatusMessage(`SMS listo con ${getDriverName(trip.driverId)} para el trip ${trip.id}.`);
     }
@@ -3460,7 +3477,7 @@ const DispatcherWorkspace = () => {
                       </tr> : <tr key={row.trip.id} onClick={() => {
                         if (mapLocked) return;
                         setSelectedTripIds([row.trip.id]);
-                        setSelectedRouteId(row.trip.routeId);
+                        setSelectedRouteId(normalizeRouteId(row.trip.routeId) || '');
                         setStatusMessage(`Trip ${row.trip.id} seleccionado.`);
                       }} style={{
                         ...(selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? dispatcherSurfaceStyles.rowSelected : isTripAssignedToSelectedDriver(row.trip) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault),
@@ -3490,8 +3507,8 @@ const DispatcherWorkspace = () => {
                             <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={event => {
                           event.stopPropagation();
                           setSelectedTripIds([row.trip.id]);
-                          setSelectedDriverId(row.trip.driverId ?? selectedDriverId);
-                          setSelectedRouteId(row.trip.routeId);
+                          setSelectedDriverId(normalizeDriverId(row.trip.driverId ?? selectedDriverId) || null);
+                          setSelectedRouteId(normalizeRouteId(row.trip.routeId) || '');
                           if (row.trip.driverId && !dispatcherLayout.messagingVisible) {
                             persistDispatcherLayout({
                               ...dispatcherLayout,

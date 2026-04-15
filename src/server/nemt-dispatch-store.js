@@ -27,7 +27,7 @@ export const readNemtDispatchState = async (options = {}) => {
   const prefsStateRow = await queryOne(`SELECT data FROM dispatch_ui_prefs WHERE id = 'singleton'`);
   const timeZone = prefsStateRow?.data?.timeZone;
   const todayKey = getLocalDateKey(new Date(), timeZone);
-  const [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
+  let [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
     includePastDates
       ? query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`)
       : query(`SELECT data FROM dispatch_trips WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 500`, [todayKey]),
@@ -45,6 +45,25 @@ export const readNemtDispatchState = async (options = {}) => {
       : query(`SELECT data FROM dispatch_audit_log ORDER BY occurred_at DESC LIMIT 100`),
     Promise.resolve(prefsStateRow)
   ]);
+
+  if (!includePastDates && tripsRes.rows.length === 0 && routesRes.rows.length === 0) {
+    const latestServiceDateRow = await queryOne(
+      `SELECT MAX(service_date) AS service_date
+       FROM (
+         SELECT service_date FROM dispatch_trips
+         UNION ALL
+         SELECT service_date FROM dispatch_route_plans
+       ) AS dispatch_dates`
+    );
+    const latestServiceDate = String(latestServiceDateRow?.service_date || '').trim();
+
+    if (latestServiceDate) {
+      [tripsRes, routesRes] = await Promise.all([
+        query(`SELECT data FROM dispatch_trips WHERE service_date = $1 ORDER BY updated_at DESC LIMIT 500`, [latestServiceDate]),
+        query(`SELECT data FROM dispatch_route_plans WHERE service_date = $1 ORDER BY updated_at DESC LIMIT 100`, [latestServiceDate])
+      ]);
+    }
+  }
 
   return normalizePersistentDispatchState({
     trips: tripsRes.rows.map(r => r.data),
@@ -93,7 +112,7 @@ export const readAssignedTripsForDriverByServiceDates = async ({ driverId, servi
 
 export const writeNemtDispatchState = async (nextState, options = {}) => {
   const normalized = normalizePersistentDispatchState(nextState);
-  const allowPrune = options?.allowPrune !== false;
+  const allowPrune = options?.allowPrune === true || options?.allowTripShrink === true;
   const allowDestructiveEmptyPrune = options?.allowDestructiveEmptyPrune === true;
 
   await ensureDispatchSchema();

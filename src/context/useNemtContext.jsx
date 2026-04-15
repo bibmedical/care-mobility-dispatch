@@ -1026,7 +1026,7 @@ export const NemtProvider = ({
     });
   };
 
-  const upsertDispatchThreadMessage = ({ driverId, message, markIncomingRead = false }) => updateState(currentState => {
+  const upsertDispatchThreadMessage = ({ driverId, message, markIncomingRead = false, markDispatchDirty = true }) => updateState(currentState => {
     const normalizedDriverId = String(driverId || '').trim();
     const normalizedMessage = normalizeDispatchMessageRecord(message);
     if (!normalizedDriverId || (!normalizedMessage.text && normalizedMessage.attachments.length === 0)) return currentState;
@@ -1051,7 +1051,7 @@ export const NemtProvider = ({
       dispatchThreads: nextThreads
     };
   }, {
-    markDispatchDirty: true,
+    markDispatchDirty,
     buildAuditEntry: () => ({
       action: 'message-thread-upsert',
       entityType: 'dispatch-thread',
@@ -1078,7 +1078,7 @@ export const NemtProvider = ({
         } : message)
       } : thread)
     };
-  }, { markDispatchDirty: true });
+  }, { markDispatchDirty: false });
 
   const removeDispatchThreadMessageMedia = messageId => updateState(currentState => {
     const normalizedMessageId = String(messageId || '').trim();
