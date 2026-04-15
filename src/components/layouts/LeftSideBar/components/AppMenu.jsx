@@ -81,7 +81,7 @@ const MenuItemLink = ({
 
     try {
       if (session?.user?.id) {
-        void fetch('/api/auth/logout', {
+        await fetch('/api/auth/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           keepalive: true,
@@ -89,7 +89,7 @@ const MenuItemLink = ({
             userId: session.user.id,
             authSessionId: session.user.authSessionId
           })
-        }).catch(error => console.error('Failed to log logout:', error));
+        });
       }
     } catch (error) {
       console.error('Error in logout logging:', error);

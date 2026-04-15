@@ -4515,7 +4515,7 @@ const TripDashboardWorkspace = () => {
   const handleTripDashboardLogoff = async () => {
     try {
       if (session?.user?.id) {
-        void fetch('/api/auth/logout', {
+        await fetch('/api/auth/logout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           keepalive: true,
@@ -4523,7 +4523,7 @@ const TripDashboardWorkspace = () => {
             userId: session.user.id,
             authSessionId: session.user.authSessionId
           })
-        }).catch(() => {});
+        });
       }
     } catch {
     }

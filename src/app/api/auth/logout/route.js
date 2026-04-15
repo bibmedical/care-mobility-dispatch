@@ -1,4 +1,5 @@
 import { revokeWebAuthSession } from '@/server/web-auth-session-store';
+import { logLogoutEvent } from '@/server/activity-logs-store';
 
 export async function POST(req) {
   try {
@@ -16,6 +17,11 @@ export async function POST(req) {
       sessionId: authSessionId,
       reason: 'User logout'
     });
+
+    if (userId) {
+      await logLogoutEvent(String(userId).trim());
+    }
+
     return Response.json({ success: true });
   } catch (error) {
     console.error('Error closing web auth session:', error);

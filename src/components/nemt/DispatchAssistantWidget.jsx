@@ -767,17 +767,17 @@ const DispatchAssistantWidget = () => {
       speakReply(assistantMessage.text);
       if (payload?.action === 'signout') {
         window.setTimeout(async () => {
-          // Log logout event
           if (session?.user?.id) {
             try {
               await fetch('/api/auth/logout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                keepalive: true,
                 body: JSON.stringify({
                   userId: session.user.id,
                   authSessionId: session.user.authSessionId
                 })
-              }).catch(err => console.error('Failed to log logout:', err));
+              });
             } catch (error) {
               console.error('Error in logout logging:', error);
             }

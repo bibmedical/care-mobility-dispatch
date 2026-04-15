@@ -58,24 +58,29 @@ const useInactivityLogout = ({ enabled = true } = {}) => {
     // Set logout timeout
     timeoutRef.current = setTimeout(() => {
       setShowWarning(false);
-      
-      // Log inactivity logout
-      if (session?.user?.id) {
-        fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: session.user.id,
-            authSessionId: session.user.authSessionId
-          })
-        }).catch(err => console.error('Failed to log inactivity logout:', err));
-      }
-      
-      void signOut({ redirect: false }).then(() => {
+
+      void (async () => {
+        try {
+          if (session?.user?.id) {
+            await fetch('/api/auth/logout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              keepalive: true,
+              body: JSON.stringify({
+                userId: session.user.id,
+                authSessionId: session.user.authSessionId
+              })
+            });
+          }
+        } catch (err) {
+          console.error('Failed to log inactivity logout:', err);
+        }
+
+        await signOut({ redirect: false });
         if (typeof window !== 'undefined') {
           window.location.assign('/auth/login');
         }
-      });
+      })();
     }, timeoutMs);
   }, [enabled, session?.user?.id, session?.user?.inactivityTimeoutMinutes, showWarning, showNotification]);
 
