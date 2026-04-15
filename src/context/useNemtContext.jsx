@@ -3,7 +3,6 @@
 import { getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import { normalizeUserPreferences } from '@/helpers/user-preferences';
-import useLocalStorage from '@/hooks/useLocalStorage';
 import { hasMapboxConfigured } from '@/utils/map-tiles';
 import { useSession } from 'next-auth/react';
 import { createContext, startTransition, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -303,7 +302,7 @@ export const NemtProvider = ({
   syncEnabled = true
 }) => {
   const { data: session } = useSession();
-  const [persistedState, setPersistedState] = useLocalStorage('__CARE_MOBILITY_NEMT__', createInitialState());
+  const [persistedState, setPersistedState] = useState(() => createInitialState());
   const [selectedDriverIdState, setSelectedDriverIdState] = useState(() => persistedState?.selectedDriverId || null);
   const [userUiPreferences, setUserUiPreferences] = useState(normalizeNemtUiPreferences(null));
   const [hasLoadedUserUiPreferences, setHasLoadedUserUiPreferences] = useState(false);

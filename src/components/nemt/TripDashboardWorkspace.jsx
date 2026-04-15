@@ -399,7 +399,7 @@ const TRIP_DASHBOARD_DEFAULT_NORMAL_MAP_SPLIT = 47;
 const TRIP_DASHBOARD_FOCUS_RIGHT_MIN_SPLIT = 16;
 const TRIP_DASHBOARD_FOCUS_RIGHT_MAX_SPLIT = 84;
 const TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT = 58;
-const TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT = 38;
+const TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT = 47;
 const TRIP_DASHBOARD_DEFAULT_ROW_SPLIT = 68;
 
 const TRIP_DASHBOARD_ALL_TOOLBAR_BLOCKS = [...TRIP_DASHBOARD_ROW1_DEFAULT_BLOCKS, ...TRIP_DASHBOARD_ROW2_DEFAULT_BLOCKS, ...TRIP_DASHBOARD_ROW3_DEFAULT_BLOCKS];
@@ -560,10 +560,10 @@ const normalizeTripTimeDisplay = value => {
   if (!text) return '';
 
   const asClockMinutes = parseTripClockMinutes(text);
-  if (asClockMinutes != null) return formatMinutesAsClock(asClockMinutes);
+  if (asClockMinutes != null) return formatMinutesToTimeInput(asClockMinutes);
 
   const spreadsheetMinutes = parseSpreadsheetTimeMinutes(text);
-  if (spreadsheetMinutes != null) return formatMinutesAsClock(spreadsheetMinutes);
+  if (spreadsheetMinutes != null) return formatMinutesToTimeInput(spreadsheetMinutes);
 
   return text;
 };
@@ -1064,14 +1064,14 @@ const TripDashboardWorkspace = () => {
   const [layoutMode, setLayoutMode] = useState(() => getInitialTripDashboardLayoutMode());
   const [panelView, setPanelView] = useState(TRIP_DASHBOARD_PANEL_VIEWS.both);
   const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
-  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(true);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [tripOrderMode, setTripOrderMode] = useState('original');
   const [tripSort, setTripSort] = useState({
     key: 'pickup',
     direction: 'asc'
   });
   const [columnWidths, setColumnWidths] = useState({});
-  const [statusMessage, setStatusMessage] = useState('Trip dashboard ready with map-only view and panel tab.');
+  const [statusMessage, setStatusMessage] = useState('Trip dashboard ready in focus-right layout with dock panels open.');
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
   const [columnSplit, setColumnSplit] = useState(() => getInitialTripDashboardLayoutMode() === TRIP_DASHBOARD_LAYOUTS.focusRight ? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT : TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT);
   const [rowSplit, setRowSplit] = useState(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -2807,8 +2807,8 @@ const TripDashboardWorkspace = () => {
   const tripUpdateSupportsBothLegs = tripUpdateSiblingTrips.length > 0;
 
   const buildTripConfirmationLine = trip => {
-    const pickupTime = String(trip?.scheduledPickup || trip?.pickup || '').trim() || '-';
-    const dropoffTime = String(trip?.scheduledDropoff || trip?.dropoff || '').trim() || '-';
+    const pickupTime = normalizeTripTimeDisplay(getEffectiveTimeText(trip?.scheduledPickup, trip?.pickup)) || '-';
+    const dropoffTime = normalizeTripTimeDisplay(getEffectiveTimeText(trip?.scheduledDropoff, trip?.dropoff)) || '-';
     return [`Trip ID: ${trip?.id || '-'}`, `Rider: ${trip?.rider || '-'}`, `Phone: ${trip?.patientPhoneNumber || '-'}`, `Pickup Time: ${pickupTime}`, `Pickup Address: ${trip?.address || '-'}`, `Dropoff Time: ${dropoffTime}`, `Dropoff Address: ${trip?.destination || '-'}`, `Leg: ${String(trip?.legLabel || 'AL').trim() || 'AL'}`, `Type: ${getTripMobilityLabel(trip) || '-'}`].join(' | ');
   };
 

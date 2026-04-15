@@ -36,7 +36,7 @@ export const DEFAULT_USER_PREFERENCES = {
     rightPanelCollapsed: false,
     showConfirmationTools: false,
     tripOrderMode: 'original',
-    columnSplit: 38,
+    columnSplit: 47,
     rowSplit: 68,
     columnWidths: {},
     closedRouteStateByKey: {}
