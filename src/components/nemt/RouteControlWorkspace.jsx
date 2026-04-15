@@ -1,7 +1,7 @@
 'use client';
 
 import { useNemtContext } from '@/context/useNemtContext';
-import { getRouteServiceDateKey, getTripLateMinutes, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver } from '@/helpers/nemt-dispatch-state';
+import { getTripLateMinutes, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver } from '@/helpers/nemt-dispatch-state';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
@@ -173,11 +173,6 @@ const RouteControlWorkspace = () => {
   const hasSelectedDate = Boolean(dateFilter);
 
   const effectiveRoutes = useMemo(() => Array.isArray(routePlans) ? routePlans : [], [routePlans]);
-  const availableDateKeys = useMemo(() => Array.from(new Set(
-    trips.map(trip => getTripTimelineDateKey(trip, effectiveRoutes, trips)).filter(Boolean)
-      .concat(effectiveRoutes.map(route => getRouteServiceDateKey(route, trips)).filter(Boolean))
-  )).sort(), [effectiveRoutes, trips]);
-  const defaultDateFilter = useMemo(() => availableDateKeys[availableDateKeys.length - 1] || '', [availableDateKeys]);
 
   useEffect(() => {
     let active = true;
@@ -210,15 +205,6 @@ const RouteControlWorkspace = () => {
     window.addEventListener('nemt-assistant-action', handleAssistantAction);
     return () => window.removeEventListener('nemt-assistant-action', handleAssistantAction);
   }, [refreshDispatchState]);
-
-  useEffect(() => {
-    if (!defaultDateFilter) return;
-
-    setDateFilter(currentValue => {
-      if (currentValue && availableDateKeys.includes(currentValue)) return currentValue;
-      return defaultDateFilter;
-    });
-  }, [availableDateKeys, defaultDateFilter]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;

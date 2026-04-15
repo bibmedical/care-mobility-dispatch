@@ -1836,10 +1836,6 @@ const TripDashboardWorkspace = () => {
   const activeClosedRouteState = useMemo(() => activeClosedRouteKey ? closedRouteStateByKey[activeClosedRouteKey] ?? null : null, [activeClosedRouteKey, closedRouteStateByKey]);
   const isActiveRouteClosed = Boolean(activeClosedRouteState?.closed);
   const availableTripDateKeys = useMemo(() => Array.from(new Set(trips.map(getTripTimelineDateKey).filter(Boolean).concat(routePlans.map(routePlan => getRouteServiceDateKey(routePlan, trips)).filter(Boolean)))).sort(), [routePlans, trips]);
-  const defaultTripDateKey = useMemo(() => {
-    if (todayDateKey && availableTripDateKeys.includes(todayDateKey)) return todayDateKey;
-    return availableTripDateKeys[availableTripDateKeys.length - 1] || todayDateKey || 'all';
-  }, [availableTripDateKeys, todayDateKey]);
   const activeTripDateLabel = useMemo(() => formatTripDateLabel(tripDateFilter), [tripDateFilter]);
   const tripDashboardPreferenceState = useMemo(() => ({
     storageVersion: 1,
@@ -1863,17 +1859,12 @@ const TripDashboardWorkspace = () => {
   }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, routePrintColumns, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showTripsPanel, timeDisplayMode, tripOrderMode]);
 
   useEffect(() => {
-    if (!defaultTripDateKey) return;
-    setTripDateFilter(currentValue => {
-      if (currentValue && currentValue !== 'all' && availableTripDateKeys.includes(currentValue)) {
-        return currentValue;
-      }
-      return defaultTripDateKey;
-    });
+    if (!todayDateKey) return;
+    setTripDateFilter(todayDateKey);
     setSelectedTripIds([]);
     setSelectedDriverId(null);
     setSelectedRouteId(null);
-  }, [availableTripDateKeys, defaultTripDateKey]);
+  }, [todayDateKey]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
