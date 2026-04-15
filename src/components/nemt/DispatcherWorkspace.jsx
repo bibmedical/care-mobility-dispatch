@@ -1504,20 +1504,7 @@ const DispatcherWorkspace = () => {
       case 'selected-count':
         return null;
       case 'day-summary':
-        return <div className="d-flex align-items-center" style={{ border: '1px solid rgba(8,19,26,0.25)', borderRadius: 6, overflow: 'hidden' }} title={`Day summary for ${daySummaryMetrics.dateKey}`}>
-            <div className="px-2 py-1" style={{ backgroundColor: '#e2e8f0', minWidth: 74 }}>
-              <div className="small text-muted" style={{ lineHeight: 1 }}>Total</div>
-              <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.total}</div>
-            </div>
-            <div className="px-2 py-1 border-start" style={{ backgroundColor: '#fee2e2', minWidth: 94 }}>
-              <div className="small text-muted" style={{ lineHeight: 1 }}>Cancelled</div>
-              <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.cancelled}</div>
-            </div>
-            <div className="px-2 py-1 border-start" style={{ backgroundColor: '#dcfce7', minWidth: 104 }}>
-              <div className="small text-muted" style={{ lineHeight: 1 }}>Completed</div>
-              <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completedByDrivers}</div>
-            </div>
-          </div>;
+        return null;
       case 'route-actions':
         return null;
       default:
@@ -1528,10 +1515,24 @@ const DispatcherWorkspace = () => {
   const renderToolbarRow2Block = blockId => {
     switch (canonicalizeToolbarBlockId(blockId)) {
       case 'stats':
-        return <>
+        return <div className="d-flex align-items-center gap-2 flex-nowrap">
             <Badge bg="primary">{filteredTrips.length} trips</Badge>
             <Badge bg="secondary">{liveDrivers} live</Badge>
-          </>;
+            <div className="d-flex align-items-center" style={{ border: '1px solid rgba(8,19,26,0.25)', borderRadius: 6, overflow: 'hidden' }} title={`Day summary for ${daySummaryMetrics.dateKey}`}>
+              <div className="px-2 py-1" style={{ backgroundColor: '#e2e8f0', minWidth: 74 }}>
+                <div className="small text-muted" style={{ lineHeight: 1 }}>Total</div>
+                <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.total}</div>
+              </div>
+              <div className="px-2 py-1 border-start" style={{ backgroundColor: '#fee2e2', minWidth: 94 }}>
+                <div className="small text-muted" style={{ lineHeight: 1 }}>Cancelled</div>
+                <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.cancelled}</div>
+              </div>
+              <div className="px-2 py-1 border-start" style={{ backgroundColor: '#dcfce7', minWidth: 104 }}>
+                <div className="small text-muted" style={{ lineHeight: 1 }}>Completed</div>
+                <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completedByDrivers}</div>
+              </div>
+            </div>
+          </div>;
       case 'toolbar-edit':
         return null;
       case 'columns':
