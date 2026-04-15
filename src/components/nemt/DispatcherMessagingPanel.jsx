@@ -246,6 +246,7 @@ const getDriverLocationLabel = driver => {
 
 const DispatcherMessagingPanel = ({
   drivers,
+  driverSequencePreviewById,
   selectedDriverId,
   setSelectedDriverId,
   onLocateDriver,
@@ -1192,6 +1193,7 @@ const DispatcherMessagingPanel = ({
               const driver = allDrivers.find(item => item.id === thread.driverId);
               const isDaily = driver?._isDaily === true;
               const hasGps = Boolean(driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2));
+              const sequencePreview = driverSequencePreviewById?.get?.(thread.driverId) ?? null;
               const lastMessage = thread.messages[thread.messages.length - 1];
               const threadUnreadCount = thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length;
               const threadAlertCount = activeAlertCounts[thread.driverId] || 0;
@@ -1224,8 +1226,19 @@ const DispatcherMessagingPanel = ({
                               <div className="fw-semibold d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: 210 }}>
                                 <span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${thread.driverId === activeDriverId ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
                                 {driver?.name ?? 'Driver'}
-                                {driver?.live === 'Online' ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
+                                {hasGps ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
                               </div>
+                              {sequencePreview ? <div
+                                className="small text-truncate"
+                                style={{
+                                  maxWidth: 220,
+                                  color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText,
+                                  fontWeight: 600
+                                }}
+                                title={`${sequencePreview.stageLabel} ${sequencePreview.timeLabel} | ${sequencePreview.rider || sequencePreview.tripId || 'Current trip'}`}
+                              >
+                                {sequencePreview.stageLabel} {sequencePreview.timeLabel} | {sequencePreview.rider || sequencePreview.tripId || 'Current trip'}
+                              </div> : null}
                               <span
                                 role={hasGps ? 'button' : undefined}
                                 tabIndex={hasGps ? 0 : undefined}
@@ -1252,13 +1265,14 @@ const DispatcherMessagingPanel = ({
                                 }}
                                 title={hasGps ? 'Center this driver on the map and follow live ETA' : 'This driver has no live GPS yet'}
                               >
-                                {getDriverLocationLabel(driver)}
+                                {sequencePreview?.targetLabel || getDriverLocationLabel(driver)}
                               </span>
                               <div className="small text-truncate" style={{ maxWidth: 220, color: thread.driverId === activeDriverId ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                             </div>
                           </div>
                           <div className="text-end">
                             <div className="small">{lastMessage ? formatDispatchTime(lastMessage.timestamp, uiPreferences?.timeZone) : '--:--'}</div>
+                            {hasGps ? <div className="d-flex justify-content-end mt-1"><span className="rounded-circle bg-success d-inline-block" style={{ width: 10, height: 10 }} title="GPS active" /></div> : null}
                             {threadUnreadCount > 0 ? <Badge bg="danger">{threadUnreadCount}</Badge> : null}
                             {threadAlertCount > 0 ? <Badge bg="warning" text="dark" className="ms-1">{threadAlertCount}</Badge> : null}
                           </div>

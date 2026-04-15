@@ -336,6 +336,26 @@ const FollowDriverMapController = ({ enabled, position, zoom = 14 }) => {
   return null;
 };
 
+const FocusDriverMapController = ({ request, zoom = 14 }) => {
+  const map = useMap();
+  const lastRequestKeyRef = useRef('');
+
+  useEffect(() => {
+    const position = Array.isArray(request?.position) ? request.position : null;
+    if (!position || position.length !== 2) return;
+    const normalizedPosition = position.map(value => Number(value));
+    if (normalizedPosition.some(value => !Number.isFinite(value))) return;
+    const requestKey = String(request?.key || normalizedPosition.join(','));
+    if (lastRequestKeyRef.current === requestKey) return;
+    lastRequestKeyRef.current = requestKey;
+    map.setView(normalizedPosition, Math.max(map.getZoom(), zoom), {
+      animate: false
+    });
+  }, [map, request, zoom]);
+
+  return null;
+};
+
 const PauseFollowOnMapInteractionController = ({ enabled, onPause }) => {
   useMapEvents({
     dragstart: () => {
@@ -884,6 +904,7 @@ const DispatcherWorkspace = () => {
   const [routeMetrics, setRouteMetrics] = useState(null);
   const [selectedDriverRouteGeometry, setSelectedDriverRouteGeometry] = useState([]);
   const [selectedDriverRouteMetrics, setSelectedDriverRouteMetrics] = useState(null);
+  const [mapFocusRequest, setMapFocusRequest] = useState(null);
   const [tripOrderMode, setTripOrderMode] = useState('time');
   const [quickReassignDriverId, setQuickReassignDriverId] = useState('');
   const [noteModalTripId, setNoteModalTripId] = useState(null);
@@ -1932,6 +1953,36 @@ const DispatcherWorkspace = () => {
     });
     return etaByDriver;
   }, [drivers, trips]);
+  const driverSequencePreviewById = useMemo(() => {
+    const previewByDriver = new Map();
+    const scopedTrips = activeDateTripIdSet ? trips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : trips;
+
+    drivers.forEach(driver => {
+      const assignedTrips = sortTripsByPickupTime(scopedTrips.filter(trip => {
+        if (!isTripAssignedToDriver(trip, driver.id)) return false;
+        const effectiveStatus = String(getEffectiveTripStatus(trip) || '').trim().toLowerCase();
+        return effectiveStatus !== 'cancelled';
+      }));
+      if (assignedTrips.length === 0) return;
+
+      const currentTrip = assignedTrips.find(trip => isTripEnRoute(trip)) || assignedTrips.find(trip => String(getEffectiveTripStatus(trip) || '').trim().toLowerCase() !== 'completed') || assignedTrips[0];
+      if (!currentTrip) return;
+
+      const target = getSelectedDriverEtaTarget(currentTrip);
+      const stageLabel = target?.stage === 'dropoff' ? 'DO' : 'PU';
+      const timeLabel = target?.stage === 'dropoff' ? currentTrip?.dropoff : currentTrip?.pickup;
+      previewByDriver.set(String(driver?.id || '').trim(), {
+        tripId: String(currentTrip?.brokerTripId || currentTrip?.id || '').trim(),
+        rider: String(currentTrip?.rider || '').trim(),
+        stageLabel,
+        timeLabel: String(timeLabel || '').trim() || '--',
+        targetLabel: String(target?.label || '').trim(),
+        targetDetail: String(target?.detail || '').trim()
+      });
+    });
+
+    return previewByDriver;
+  }, [activeDateTripIdSet, drivers, trips]);
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
   const nonSelectedDriversWithRealLocation = useMemo(() => {
     if (selectedDriverId) return [];
@@ -3083,6 +3134,7 @@ const DispatcherWorkspace = () => {
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%', cursor: mapInteractionLocked ? 'not-allowed' : 'grab' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-inline`} />
             <DispatchMapInteractionController enabled={!mapInteractionLocked} />
+            <FocusDriverMapController request={mapFocusRequest} />
             <FollowDriverMapController enabled={followSelectedDriver && Boolean(selectedDriver?.hasRealLocation)} position={selectedDriver?.position} />
             <PauseFollowOnMapInteractionController enabled={followSelectedDriver && !mapInteractionLocked} onPause={() => {
             setFollowSelectedDriver(false);
@@ -3515,7 +3567,7 @@ const DispatcherWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: dispatcherLayout.messagingVisible ? 'block' : 'none', gridColumn: 1, gridRow: messagingPanelGridRow }}>
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 h-100">
-              <DispatcherMessagingPanel hideThreadList drivers={filteredDrivers} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
+              <DispatcherMessagingPanel hideThreadList drivers={filteredDrivers} driverSequencePreviewById={driverSequencePreviewById} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
               const normalizedDriverId = String(nextDriverId || '').trim();
               setIsManualDriverScope(false);
               setSelectedDriverId(normalizedDriverId || null);
@@ -3523,12 +3575,19 @@ const DispatcherWorkspace = () => {
               setIsRoutePanelCollapsed(false);
             }} onLocateDriver={driverId => {
               const normalizedDriverId = String(driverId || '').trim();
+              const driver = drivers.find(item => String(item?.id || '').trim() === normalizedDriverId) || null;
               setIsManualDriverScope(false);
               setSelectedDriverId(normalizedDriverId || null);
               setSelectedRouteId(getPreferredRouteIdForDriver(normalizedDriverId) || '');
               setIsRoutePanelCollapsed(false);
-              setFollowSelectedDriver(true);
-              setStatusMessage(dispatcherLayout.mapVisible ? `Driver ${normalizedDriverId} selected for the map.` : `Driver ${normalizedDriverId} selected. Open the map manually when you want to view it.`);
+              setFollowSelectedDriver(false);
+              if (Array.isArray(driver?.position) && driver.position.length === 2) {
+                setMapFocusRequest({
+                  key: `${normalizedDriverId}-${Date.now()}`,
+                  position: driver.position
+                });
+              }
+              setStatusMessage(dispatcherLayout.mapVisible ? `Driver ${normalizedDriverId} centered on the map.` : `Driver ${normalizedDriverId} selected. Open the map manually when you want to view it.`);
             }} onOpenLayout={() => {
               setShowLayoutModal(true);
             }} openFullChat={() => {
