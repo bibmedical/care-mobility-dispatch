@@ -1607,9 +1607,7 @@ const DispatcherWorkspace = () => {
       case 'route-filter':
         return null;
       case 'table-view-mode':
-        return <Form.Select size="sm" value={dispatcherTableViewMode} onChange={event => handleDispatcherTableViewModeChange(event.target.value)} disabled={mapLocked} style={{ width: 138 }} title="Modo rapido de tabla">
-            {DISPATCHER_TABLE_VIEW_MODES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </Form.Select>;
+        return null;
       case 'metric-miles':
         return routeMetrics?.distanceMiles != null ? <Badge bg="light" text="dark">Miles {routeMetrics.distanceMiles.toFixed(1)}</Badge> : null;
       case 'metric-duration':
