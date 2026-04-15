@@ -74,12 +74,15 @@ const getTripLookupKeys = trip => {
   const importFingerprint = String(trip?.importFingerprint || '').trim().toLowerCase();
 
   if (tripId) keys.push(`id:${tripId}`);
-  if (rideId) keys.push(`ride:${rideId}`);
-  if (rideId && brokerTripId) keys.push(`ride-broker:${rideId}:${brokerTripId}`);
+  if (importFingerprint) keys.push(`import:${importFingerprint}`);
+  // Imported round trips can share ride/broker identifiers across multiple legs.
+  // When a per-leg fingerprint exists, avoid broad ride-level matching so sibling
+  // legs do not overwrite each other during import merges.
+  if (rideId && !importFingerprint) keys.push(`ride:${rideId}`);
+  if (rideId && brokerTripId && !importFingerprint) keys.push(`ride-broker:${rideId}:${brokerTripId}`);
   // SafeRide round trips can share the same broker trip id across multiple legs.
   // Only use broker-only matching when there is no ride id or fingerprint to disambiguate the leg.
   if (brokerTripId && !rideId && !importFingerprint) keys.push(`broker:${brokerTripId}`);
-  if (importFingerprint) keys.push(`import:${importFingerprint}`);
 
   return keys;
 };
