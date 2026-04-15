@@ -2476,6 +2476,15 @@ const TripDashboardWorkspace = () => {
     const dropoffCityValue = doCityFilter.trim().toLowerCase();
     return tripMatchesCity(trip, dropoffCityValue);
   }), [deferredTripIdSearch, doCityFilter, doCityFilter, dropoffZipFilter, pickupZipFilter, puCityFilter, riderProfiles, serviceAnimalOnly, tripDateFilter, tripLegFilter, tripTypeFilter, routePlans, tripBlockingMap, trips, zipFilter]);
+  const driverAssignedTripCountById = useMemo(() => {
+    const counts = new Map();
+    assignmentProgressTrips.forEach(trip => {
+      const primaryDriverId = normalizeDriverId(trip?.driverId);
+      if (!primaryDriverId) return;
+      counts.set(primaryDriverId, (counts.get(primaryDriverId) || 0) + 1);
+    });
+    return counts;
+  }, [assignmentProgressTrips]);
   const mapQuickCityOptions = useMemo(() => {
     const citySet = new Set();
     for (const trip of cityOptionTrips) {
@@ -2595,7 +2604,7 @@ const TripDashboardWorkspace = () => {
         case 'attendant':
           return driver?.attendant;
         case 'info':
-          return driver?.info;
+          return driverAssignedTripCountById.get(normalizeDriverId(driver?.id)) || 0;
         case 'live':
           return driver?.live;
         case 'name':
@@ -2615,7 +2624,7 @@ const TripDashboardWorkspace = () => {
       const result = leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: 'base' });
       return driverSort.direction === 'asc' ? result : -result;
     });
-  }, [adminDriversById, adminGroupingsById, adminVehiclesById, driverSearch, driverSort.direction, driverSort.key, driverVehicleCapabilityFilters, drivers]);
+  }, [adminDriversById, adminGroupingsById, adminVehiclesById, driverAssignedTripCountById, driverSearch, driverSort.direction, driverSort.key, driverVehicleCapabilityFilters, drivers]);
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
   const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIdSet]);
   const selectedDriverWorkingTrips = useMemo(() => {
@@ -4942,6 +4951,7 @@ const TripDashboardWorkspace = () => {
                     </div>
                   </th>}
                 {!isFocusRightLayout ? renderDriverHeader('attendant', 'Attendant') : null}
+                {!isFocusRightLayout ? renderDriverHeader('info', 'Trips') : null}
                 {renderDriverHeader('live', 'Live')}
                 <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff', borderRight: 'none' }}>#</th>
                 <th className="py-1" style={{ width: 60, backgroundColor: '#198754', color: '#fff', borderLeft: 'none' }}>ACT</th>
@@ -4950,6 +4960,7 @@ const TripDashboardWorkspace = () => {
             <tbody>
               {filteredDrivers.length > 0 ? filteredDrivers.map((driver, index) => {
                 const driverVehicleMeta = getDriverVehicleMeta(driver);
+                const driverAssignedTripCount = driverAssignedTripCountById.get(normalizeDriverId(driver?.id)) || 0;
                 return <tr key={driver.id} className={selectedDriverId === driver.id ? 'table-primary' : ''}>
                   <td className="py-1" style={{ whiteSpace: 'normal', minWidth: 220 }}>
                     <div>{driverVehicleMeta.vehicleLabel || driver.vehicle}</div>
@@ -4957,7 +4968,7 @@ const TripDashboardWorkspace = () => {
                   </td>
                   <td className="py-1" style={{ whiteSpace: 'nowrap' }}><div className="fw-semibold">{driver.name}</div></td>
                   {!isFocusRightLayout ? <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td> : null}
-                  {!isFocusRightLayout ? <td className="py-1 small text-truncate" style={{ maxWidth: 220 }}>{driver.info}</td> : null}
+                  {!isFocusRightLayout ? <td className="py-1 text-center" style={{ whiteSpace: 'nowrap', minWidth: 72 }}><Badge bg={driverAssignedTripCount > 0 ? 'primary' : 'secondary'}>{driverAssignedTripCount}</Badge></td> : null}
                   <td className="py-1 text-center" style={{ whiteSpace: 'nowrap' }}>
                     <Badge bg={driver.live === 'Online' ? 'success' : 'secondary'} className="fw-normal" style={driver.live === 'Online' ? undefined : offlineDriverBadgeStyle}>{driver.live || 'Offline'}</Badge>
                   </td>
