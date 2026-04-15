@@ -2118,13 +2118,13 @@ const TripDashboardWorkspace = () => {
     </Button>;
 
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">P</Button>
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handleShareRouteWhatsapp} title="WhatsApp" aria-label="WhatsApp">W</Button>
-      <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => setSelectedDriverId(event.target.value || null)} style={{ ...compactToolbarSelectBaseStyle, width: 150 }}>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 98, fontWeight: 700 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">Print Route</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 92, fontWeight: 700 }} onClick={handleShareRouteWhatsapp} title="WhatsApp" aria-label="WhatsApp">WhatsApp</Button>
+      <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value || null)} style={{ ...compactToolbarSelectBaseStyle, width: 170 }}>
         <option value="">Reassign to driver</option>
         {drivers.map(driver => <option key={`route-reassign-toolbar-${driver.id}`} value={driver.id}>{driver.name}</option>)}
       </Form.Select>
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleRoutePanelReassign}>Reassign</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 88, fontWeight: 700 }} onClick={handleRoutePanelReassign}>Reassign</Button>
     </div>;
 
   const renderRoutePrintColumnsBlock = () => <div className="ms-auto" style={{ flex: '0 0 auto' }}>
@@ -5021,7 +5021,6 @@ const TripDashboardWorkspace = () => {
         <div className="border-bottom" style={tripDashboardToolbarShellStyle}>
           <div className="p-2">
             <div className="d-flex align-items-start gap-2 flex-nowrap" style={{ overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'thin', minWidth: 0, whiteSpace: 'nowrap' }}>
-            {renderRouteUtilityButtonsBlock()}
             <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} style={{ width: 150, minWidth: 150, flex: '0 0 150px' }}>
               <option value="">2nd driver</option>
               {drivers.map(driver => <option key={`route-secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
@@ -5062,6 +5061,15 @@ const TripDashboardWorkspace = () => {
                 <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleResetRoutePrintColumns}>Reset</Button>
               </div>
             </div> : null}
+        </div>
+        <div className="px-3 py-2 border-bottom d-flex align-items-start justify-content-between gap-3 flex-wrap" style={{ backgroundColor: themeMode === 'dark' ? 'rgba(15, 23, 42, 0.78)' : '#f8fafc' }}>
+          <div>
+            <div className="fw-semibold">Route for {selectedDriver?.name || routeTitle}</div>
+            <div className="small text-muted">{routeTrips.length} trip(s) shown</div>
+          </div>
+          <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+            {renderRouteUtilityButtonsBlock()}
+          </div>
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto' }}>
           <Table className="align-middle mb-0" data-bs-theme={themeMode}>
