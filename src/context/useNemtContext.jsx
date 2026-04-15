@@ -137,9 +137,41 @@ const getPreferredImportedNumericValue = (overrideFlag, currentValue, importedVa
   return Number.isFinite(parsedImported) ? parsedImported : currentValue;
 };
 
+const normalizeRouteComparisonValue = value => String(value ?? '').trim().toLowerCase();
+
+const hasImportedTripRoutingChange = (currentTrip, importedTrip) => {
+  const fieldsToCompare = [
+    'rideId',
+    'brokerTripId',
+    'serviceDate',
+    'pickup',
+    'scheduledPickup',
+    'dropoff',
+    'scheduledDropoff',
+    'address',
+    'destination',
+    'fromZipcode',
+    'toZipcode'
+  ];
+
+  return fieldsToCompare.some(field => {
+    const currentValue = normalizeRouteComparisonValue(currentTrip?.[field]);
+    const importedValue = normalizeRouteComparisonValue(importedTrip?.[field]);
+    return Boolean(currentValue || importedValue) && currentValue !== importedValue;
+  });
+};
+
 const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
   const shouldAutoCancel = isSafeRideCancelledImport(importedTrip);
-  const localOverrides = currentTrip?.localOverrides && typeof currentTrip.localOverrides === 'object' ? currentTrip.localOverrides : {};
+  const hasRoutingChange = hasImportedTripRoutingChange(currentTrip, importedTrip);
+  const baseLocalOverrides = currentTrip?.localOverrides && typeof currentTrip.localOverrides === 'object' ? currentTrip.localOverrides : {};
+  const localOverrides = hasRoutingChange ? {
+    ...baseLocalOverrides,
+    pickupTime: false,
+    dropoffTime: false,
+    pickupAddress: false,
+    dropoffAddress: false
+  } : baseLocalOverrides;
   const providerSnapshot = {
     ...buildTripProviderSnapshot(importedTrip),
     importedAt: new Date().toISOString()
@@ -149,9 +181,9 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
     ...importedTrip,
     id: String(currentTrip?.id || importedTrip?.id || '').trim(),
     importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
-    driverId: shouldAutoCancel ? null : currentTrip?.driverId ?? null,
-    secondaryDriverId: shouldAutoCancel ? null : currentTrip?.secondaryDriverId ?? null,
-    routeId: shouldAutoCancel ? null : currentTrip?.routeId ?? null,
+    driverId: shouldAutoCancel || hasRoutingChange ? null : currentTrip?.driverId ?? null,
+    secondaryDriverId: shouldAutoCancel || hasRoutingChange ? null : currentTrip?.secondaryDriverId ?? null,
+    routeId: shouldAutoCancel || hasRoutingChange ? null : currentTrip?.routeId ?? null,
     status: shouldAutoCancel ? 'Cancelled' : (currentTrip?.status || importedTrip?.status),
     safeRideStatus: shouldAutoCancel ? 'Canceled by SafeRide' : getPreferredImportedValue(false, currentTrip?.safeRideStatus, importedTrip?.safeRideStatus),
     cancellationReason: shouldAutoCancel ? 'Canceled by SafeRide' : (localOverrides.localCancellation ? currentTrip?.cancellationReason : getPreferredImportedValue(false, currentTrip?.cancellationReason, importedTrip?.cancellationReason)),
@@ -1618,6 +1650,7 @@ export const NemtProvider = ({
     const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
     const currentTripLookup = new Map();
     const importedLookupKeys = new Set();
+    const routeResetTripIds = new Set();
 
     importedTrips.forEach(importedTrip => {
       getTripLookupKeys(importedTrip).forEach(key => {
@@ -1638,6 +1671,10 @@ export const NemtProvider = ({
       if (!currentTrip) {
         return importedTrip;
       }
+      const mergedTripId = String(currentTrip?.id || importedTrip?.id || '').trim();
+      if (mergedTripId && hasImportedTripRoutingChange(currentTrip, importedTrip)) {
+        routeResetTripIds.add(mergedTripId);
+      }
       return mergeImportedTripWithCurrent(currentTrip, importedTrip);
     });
 
@@ -1654,7 +1691,12 @@ export const NemtProvider = ({
       trips: nextTrips,
       routePlans: currentState.routePlans.map(routePlan => ({
         ...routePlan,
-        tripIds: routePlan.tripIds.filter(tripId => nextTripIds.has(tripId) && !cancelledTripIds.has(String(tripId || '').trim()))
+        tripIds: routePlan.tripIds.filter(tripId => {
+          const normalizedTripId = String(tripId || '').trim();
+          return nextTripIds.has(tripId)
+            && !cancelledTripIds.has(normalizedTripId)
+            && !routeResetTripIds.has(normalizedTripId);
+        })
       })).filter(routePlan => routePlan.tripIds.length > 0),
       selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(tripId))
     };
