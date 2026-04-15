@@ -59,6 +59,24 @@ const TripDashboardMapResizer = ({ resizeKey }) => {
   return null;
 };
 
+const TripDashboardDriverMapFocus = ({ focusKey, position }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!focusKey || !Array.isArray(position) || position.length !== 2) return;
+
+    const [latitude, longitude] = position;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+    map.flyTo([latitude, longitude], map.getZoom(), {
+      animate: true,
+      duration: 0.8
+    });
+  }, [focusKey, map, position]);
+
+  return null;
+};
+
 const iconToolbarButtonStyle = {
   minWidth: 34,
   width: 34,
@@ -1076,6 +1094,7 @@ const TripDashboardWorkspace = () => {
   const showInlineMap = true;
   const [showMapPane, setShowMapPane] = useState(() => getInitialTripDashboardLayoutMode() === TRIP_DASHBOARD_LAYOUTS.normal);
   const [mapLocked, setMapLocked] = useState(false);
+  const [mapDriverFocusKey, setMapDriverFocusKey] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showRoutePrintColumnPicker, setShowRoutePrintColumnPicker] = useState(false);
@@ -3914,6 +3933,7 @@ const TripDashboardWorkspace = () => {
   const handleDriverSelectionChange = nextDriverId => {
     setSelectedDriverId(nextDriverId);
     setSelectedRouteId('');
+    setMapDriverFocusKey(nextDriverId ? `${nextDriverId}:${Date.now()}` : '');
 
     if (!nextDriverId) {
       setStatusMessage('Showing all trips again.');
@@ -4983,7 +5003,7 @@ const TripDashboardWorkspace = () => {
                   <td className="py-1 text-center fw-bold" style={{ borderRight: 'none' }}>{index + 1}</td>
                   <td className="py-1" style={{ borderLeft: 'none' }}>
                     <div className="d-flex align-items-center justify-content-center">
-                      <Form.Check className="trip-dashboard-selector" type="radio" checked={selectedDriverId === driver.id} onChange={() => setSelectedDriverId(driver.id)} />
+                      <Form.Check className="trip-dashboard-selector" type="radio" checked={selectedDriverId === driver.id} onChange={() => handleDriverSelectionChange(driver.id)} />
                     </div>
                   </td>
                 </tr>;
@@ -5135,6 +5155,7 @@ const TripDashboardWorkspace = () => {
               </div> : null}
             <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
               <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
+              <TripDashboardDriverMapFocus focusKey={selectedDriver?.hasRealLocation ? mapDriverFocusKey : ''} position={selectedDriver?.hasRealLocation ? selectedDriver.position : null} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               <ZoomControl position="bottomleft" />
               {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
