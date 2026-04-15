@@ -1454,8 +1454,6 @@ const DispatcherWorkspace = () => {
         {quickReassignDrivers.map(driver => <option key={`toolbar-${driver.id}`} value={driver.id}>{driver.name}{String(driver?.live || '').trim().toLowerCase() === 'online' ? '' : ' (offline)'}</option>)}
       </Form.Select>
       <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked || !quickReassignDriverId}>Reassign</Button>
-      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleSendConfirmationSms} disabled={mapLocked}>Confirm SMS</Button>
-      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleToggleRoutePanel}>{actionsPanelVisible ? 'Hide Route Panel' : 'Show Route Panel'}</Button>
     </div>;
 
   const renderToolbarRow1Block = blockId => {
@@ -1521,7 +1519,7 @@ const DispatcherWorkspace = () => {
             </div>
           </div>;
       case 'route-actions':
-        return renderRouteToolbarActions();
+        return null;
       default:
         return null;
     }
@@ -2476,6 +2474,7 @@ const DispatcherWorkspace = () => {
   const handleDriverSelectionChange = nextDriverId => {
     const normalizedDriverId = String(nextDriverId || '').trim();
     const preferredRouteId = getPreferredRouteIdForDriver(normalizedDriverId);
+    const driver = drivers.find(item => String(item?.id || '').trim() === normalizedDriverId) || null;
     setSelectedDriverId(normalizedDriverId || null);
     setIsManualDriverScope(Boolean(normalizedDriverId));
     setSelectedRouteId(preferredRouteId || '');
@@ -2483,14 +2482,22 @@ const DispatcherWorkspace = () => {
 
     if (!normalizedDriverId) {
       setFollowSelectedDriver(false);
+      setMapFocusRequest(null);
       setStatusMessage('Mostrando todos los trips otra vez.');
       return;
     }
 
-    const driver = drivers.find(item => item.id === normalizedDriverId);
     if (!driver) {
       setStatusMessage('Chofer no encontrado.');
       return;
+    }
+
+    setFollowSelectedDriver(false);
+    if (Array.isArray(driver?.position) && driver.position.length === 2) {
+      setMapFocusRequest({
+        key: `${normalizedDriverId}-${Date.now()}`,
+        position: driver.position
+      });
     }
 
     const assignedCount = trips.filter(trip => trip.driverId === normalizedDriverId || trip.secondaryDriverId === normalizedDriverId).length;
@@ -3623,6 +3630,9 @@ const DispatcherWorkspace = () => {
                 <div className="d-flex flex-column gap-1">
                   <strong>{selectedRoute?.name || (selectedDriver ? `Route for ${selectedDriver.name}` : 'Route details')}</strong>
                   <span className="small text-muted">{routeTrips.length} trip(s) shown</span>
+                </div>
+                <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                  {renderRouteToolbarActions()}
                 </div>
               </div>
               <div className="table-responsive flex-grow-1" style={{ minHeight: 0 }}>
