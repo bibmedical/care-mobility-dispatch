@@ -2108,22 +2108,6 @@ const TripDashboardWorkspace = () => {
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleRoutePanelReassign}>Reassign</Button>
     </div>;
 
-  const renderRoutePrintColumnsBlock = () => <div className="ms-auto" style={{ flex: '0 0 auto' }}>
-      <div className="d-flex align-items-center gap-2">
-        <Badge bg={showRoutePrintColumnPicker ? 'info' : 'secondary'} style={{ flex: '0 0 auto' }}>{routePrintColumns.length} print</Badge>
-        <Button
-          variant={showRoutePrintColumnPicker ? 'dark' : isDarkTheme ? 'outline-light' : 'outline-dark'}
-          size="sm"
-          style={{ ...toolbarButtonStyle, minWidth: 92, fontWeight: 700 }}
-          onClick={() => setShowRoutePrintColumnPicker(current => !current)}
-          title="Choose route print columns"
-          aria-label="Choose route print columns"
-        >
-          Print cols
-        </Button>
-      </div>
-    </div>;
-
   const renderTripSearchBlock = () => <Form.Control
       size="sm"
       value={tripIdSearch}
@@ -4889,9 +4873,6 @@ const TripDashboardWorkspace = () => {
           }}>
               Dispatch
             </Button>
-            <Button variant="outline-dark" size="sm" style={greenIconToolbarButtonStyle} onClick={() => changeTheme(themeMode === 'dark' ? 'light' : 'dark')} title={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'} aria-label={themeMode === 'dark' ? 'Switch to light' : 'Switch to dark'}>
-              <IconifyIcon icon={themeMode === 'dark' ? 'iconoir:sun-light' : 'iconoir:half-moon'} />
-            </Button>
             <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
             router.push('/drivers/vehicles');
             setStatusMessage('Opening Vehicles.');
@@ -4904,11 +4885,6 @@ const TripDashboardWorkspace = () => {
             setStatusMessage('Opening Drivers.');
           }}>
               Driver
-            </Button>
-            <Button variant="outline-danger" size="sm" style={greenIconToolbarButtonStyle} onClick={() => {
-            void handleTripDashboardLogoff();
-          }} title="Log off" aria-label="Log off">
-              <IconifyIcon icon="iconoir:log-out" />
             </Button>
           </div>
           <div className="d-flex gap-2 align-items-center flex-wrap">
@@ -5009,39 +4985,9 @@ const TripDashboardWorkspace = () => {
             <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver" disabled={selectedRoutePanelTripIds.length === 0}>A2</Button>
             <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={handleRoutePanelUnassign} title="Unassign selected trips" disabled={selectedRoutePanelTripIds.length === 0}>U</Button>
             {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
-            <Badge bg="dark" style={{ flex: '0 0 auto' }}>{selectedRoutePanelTripIds.length} selected</Badge>
-            {renderRoutePrintColumnsBlock()}
+            
             </div>
           </div>
-          {showRoutePrintColumnPicker ? <div
-              className="px-2 pb-2 pt-0 border-top"
-              style={{
-                backgroundColor: isDarkTheme ? 'rgba(15, 23, 42, 0.92)' : '#f8fafc'
-              }}
-            >
-              <div
-                className="small pt-2"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                  gap: '0.35rem 0.75rem',
-                  alignItems: 'start'
-                }}
-              >
-                {PRINT_COLUMN_OPTIONS.map(option => <Form.Check
-                  key={`route-print-column-${option.key}`}
-                  type="checkbox"
-                  id={`route-print-column-${option.key}`}
-                  label={option.label}
-                  checked={routePrintColumns.includes(option.key)}
-                  onChange={() => handleToggleRoutePrintColumn(option.key)}
-                  className="small mb-0"
-                />)}
-              </div>
-              <div className="d-flex justify-content-end mt-2">
-                <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleResetRoutePrintColumns}>Reset</Button>
-              </div>
-            </div> : null}
         </div>
         <div className="px-3 py-2 border-bottom d-flex align-items-start justify-content-between gap-3 flex-wrap" style={{ backgroundColor: themeMode === 'dark' ? 'rgba(15, 23, 42, 0.78)' : '#f8fafc' }}>
           <div>
