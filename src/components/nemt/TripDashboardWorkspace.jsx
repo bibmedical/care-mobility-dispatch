@@ -5884,7 +5884,13 @@ const TripDashboardWorkspace = () => {
                         <Badge bg={finding.severity === 'blocking' ? 'danger' : 'warning'}>{finding.severity === 'blocking' ? 'Blocking' : 'Warning'}</Badge>
                       </div>
                       <div className="small text-muted">{finding.detail}</div>
+                      {finding.brokerTripIds.length > 0 ? <div className="small mt-1">Trip ID(s): {finding.brokerTripIds.join(', ')}</div> : null}
                       {finding.riderNames.length > 0 ? <div className="small mt-1">Rider(s): {finding.riderNames.join(', ')}</div> : null}
+                      {finding.routes.length > 0 ? <div className="small mt-1 d-flex flex-column gap-1">
+                          {finding.routes.slice(0, 3).map((route, routeIndex) => <div key={`${finding.id}-route-${routeIndex}`}>
+                              {route.brokerTripId || route.rideId || 'Trip'}: {route.fromAddress || '-'} {'->'} {route.toAddress || '-'}
+                            </div>)}
+                        </div> : null}
                       {finding.serviceDates.length > 0 ? <div className="small text-muted">Date(s): {finding.serviceDates.join(', ')}</div> : null}
                     </div>)}
                 </div>

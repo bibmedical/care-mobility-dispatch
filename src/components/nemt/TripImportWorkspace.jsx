@@ -592,17 +592,26 @@ const TripImportWorkspace = () => {
                       <thead>
                         <tr>
                           <th>Severidad</th>
+                          <th>Trip ID</th>
                           <th>Problema</th>
                           <th>Detalle</th>
-                          <th>Viajes</th>
+                          <th>Ruta detectada</th>
                         </tr>
                       </thead>
                       <tbody>
                         {importScan.findings.slice(0, 8).map(finding => <tr key={finding.id}>
                             <td><Badge bg={finding.severity === 'blocking' ? 'danger' : 'warning'}>{finding.severity === 'blocking' ? 'Bloqueo' : 'Advertencia'}</Badge></td>
+                            <td>{finding.brokerTripIds.join(', ') || '-'}</td>
                             <td>{finding.title}</td>
                             <td>{finding.detail}</td>
-                            <td>{finding.riderNames.join(', ') || finding.tripIds.join(', ')}</td>
+                            <td>
+                              <div className="small fw-semibold">{finding.riderNames.join(', ') || finding.tripIds.join(', ')}</div>
+                              <div className="small text-muted d-flex flex-column gap-1 mt-1">
+                                {finding.routes.slice(0, 3).map((route, routeIndex) => <div key={`${finding.id}-route-${routeIndex}`}>
+                                    {route.brokerTripId || route.rideId || 'Trip'}: {route.fromAddress || '-'} {'->'} {route.toAddress || '-'}
+                                  </div>)}
+                              </div>
+                            </td>
                           </tr>)}
                       </tbody>
                     </Table>

@@ -185,9 +185,35 @@ const annotateSafeRideTrips = trips => {
 
 const normalizeScanText = value => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+const normalizeStreetSignature = value => normalizeScanText(value)
+  .replace(/,/g, ' ')
+  .replace(/\busa\b/g, ' ')
+  .replace(/\bunited states\b/g, ' ')
+  .replace(/\bfl\b/g, ' florida ')
+  .replace(/\bave\b/g, ' avenue ')
+  .replace(/\bblvd\b/g, ' boulevard ')
+  .replace(/\brd\b/g, ' road ')
+  .replace(/\bst\b/g, ' street ')
+  .replace(/\bdr\b/g, ' drive ')
+  .replace(/\bcir\b/g, ' circle ')
+  .replace(/\bhwy\b/g, ' highway ')
+  .replace(/\bapt\b/g, ' ')
+  .replace(/\bunit\b/g, ' ')
+  .replace(/\bsuite\b/g, ' ')
+  .replace(/#/g, ' ')
+  .replace(/^\d+[a-z-]*\s+/i, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
 const hasSameLocation = (leftValue, rightValue) => {
   const left = normalizeScanText(leftValue);
   const right = normalizeScanText(rightValue);
+  return Boolean(left) && Boolean(right) && left === right;
+};
+
+const hasSimilarLocation = (leftValue, rightValue) => {
+  const left = normalizeStreetSignature(leftValue);
+  const right = normalizeStreetSignature(rightValue);
   return Boolean(left) && Boolean(right) && left === right;
 };
 
@@ -201,7 +227,14 @@ const buildTripImportFinding = ({ severity, code, title, detail, trips, groupKey
   tripIds: trips.map(trip => trip.id),
   brokerTripIds: Array.from(new Set(trips.map(trip => String(trip?.brokerTripId || '').trim()).filter(Boolean))),
   riderNames: Array.from(new Set(trips.map(trip => String(trip?.rider || '').trim()).filter(Boolean))),
-  serviceDates: Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip)).filter(Boolean)))
+  serviceDates: Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))),
+  routes: trips.map(trip => ({
+    rideId: String(trip?.rideId || '').trim(),
+    brokerTripId: String(trip?.brokerTripId || '').trim(),
+    pickup: String(trip?.pickup || '').trim(),
+    fromAddress: String(trip?.address || '').trim(),
+    toAddress: String(trip?.destination || '').trim()
+  }))
 });
 
 export const analyzeImportedTrips = trips => {
@@ -278,6 +311,8 @@ export const analyzeImportedTrips = trips => {
     const reverseLooksCorrect = hasSameLocation(firstTrip?.address, lastTrip?.destination) && hasSameLocation(firstTrip?.destination, lastTrip?.address);
     const repeatedPickup = hasSameLocation(firstTrip?.address, lastTrip?.address);
     const repeatedDestination = hasSameLocation(firstTrip?.destination, lastTrip?.destination);
+    const closeReturnAddressMismatch = !hasSameLocation(firstTrip?.destination, lastTrip?.address) && hasSimilarLocation(firstTrip?.destination, lastTrip?.address);
+    const chainedRoute = sortedTrips.every((trip, index) => index === 0 || hasSameLocation(sortedTrips[index - 1]?.destination, trip?.address));
 
     if (sortedTrips.length > 2) {
       findings.push(buildTripImportFinding({
@@ -290,12 +325,36 @@ export const analyzeImportedTrips = trips => {
       }));
     }
 
+    if (closeReturnAddressMismatch) {
+      findings.push(buildTripImportFinding({
+        severity: 'warning',
+        code: 'near-match-address-change',
+        title: 'Linked legs almost match but one address changed',
+        detail: `The return leg nearly matches the outbound destination, but the exact address changed from "${firstTrip?.destination || ''}" to "${lastTrip?.address || ''}".`,
+        trips: sortedTrips,
+        groupKey
+      }));
+      return;
+    }
+
     if (repeatedPickup || repeatedDestination) {
       findings.push(buildTripImportFinding({
         severity: 'warning',
         code: 'repeated-route-endpoint',
         title: 'Repeated pickup or destination across linked legs',
         detail: `Linked legs in this SafeRide group repeat ${repeatedPickup ? 'the pickup' : 'the destination'} instead of reversing cleanly.`,
+        trips: sortedTrips,
+        groupKey
+      }));
+      return;
+    }
+
+    if (chainedRoute && !reverseLooksCorrect) {
+      findings.push(buildTripImportFinding({
+        severity: 'warning',
+        code: 'chained-route',
+        title: 'Linked legs form a chained route, not a return',
+        detail: 'This SafeRide group continues from one stop to the next, but it does not come back to the original pickup address.',
         trips: sortedTrips,
         groupKey
       }));
