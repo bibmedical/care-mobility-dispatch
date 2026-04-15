@@ -4918,6 +4918,11 @@ const TripDashboardWorkspace = () => {
           }}>
               <IconifyIcon icon="iconoir:settings" />
             </Button>
+            <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={() => {
+            void handleTripDashboardLogoff();
+          }} title="Log out" aria-label="Log out">
+              Logout
+            </Button>
             <Button variant="danger" size="sm" style={redToolbarButtonStyle} onClick={() => setShowDriversPanel(false)} title="Hide drivers panel">✕</Button>
           </div>
         </div>
