@@ -7,7 +7,8 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
-const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
+let localMigrationPromise = null;
 
 const normalizeUserRecord = user => ({
   id: user?.id || `user-${Date.now()}`,
@@ -113,6 +114,60 @@ const writeLocalUsersState = async state => {
     backupName: 'system-users-local'
   });
   return normalized;
+};
+
+const isSeedOnlyUsersState = state => {
+  const normalizedState = normalizeUsersState(state);
+  const normalizedSeedUsers = USER_SEED.map(normalizeUserRecord);
+  if (normalizedState.users.length !== normalizedSeedUsers.length) return false;
+  const normalizedUserIds = new Set(normalizedState.users.map(user => String(user?.id || '').trim()));
+  return normalizedSeedUsers.every(user => normalizedUserIds.has(String(user?.id || '').trim()));
+};
+
+const maybeMigrateLocalUsersToSql = async () => {
+  if (!hasDatabaseUrl()) return;
+  if (localMigrationPromise) return localMigrationPromise;
+
+  localMigrationPromise = (async () => {
+    const localState = await readLocalUsersState();
+    if (!Array.isArray(localState?.users) || localState.users.length === 0) return;
+
+    const result = await query(`SELECT version, protected_user_ids, users FROM system_users_state WHERE id = 'singleton'`);
+    const currentState = normalizeUsersState({
+      version: result.rows[0]?.version,
+      protectedUserIds: result.rows[0]?.protected_user_ids,
+      users: result.rows[0]?.users
+    });
+
+    const importState = normalizeUsersState(localState);
+    let nextState = currentState;
+
+    if (isSeedOnlyUsersState(currentState)) {
+      nextState = importState;
+    } else {
+      const currentUsersById = new Map(currentState.users.map(user => [String(user?.id || '').trim(), user]));
+      importState.users.forEach(user => {
+        const userId = String(user?.id || '').trim();
+        if (!userId || currentUsersById.has(userId)) return;
+        currentUsersById.set(userId, user);
+      });
+      nextState = normalizeUsersState({
+        version: 6,
+        protectedUserIds: Array.from(new Set([...(currentState.protectedUserIds || []), ...(importState.protectedUserIds || [])])),
+        users: Array.from(currentUsersById.values())
+      });
+    }
+
+    await query(
+      `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
+      [nextState.version, JSON.stringify(nextState.protectedUserIds), JSON.stringify(nextState.users)]
+    );
+  })().catch(error => {
+    localMigrationPromise = null;
+    throw error;
+  });
+
+  return localMigrationPromise;
 };
 
 const findLinkedDriverIndex = (drivers, user) => {
@@ -279,6 +334,7 @@ export const readSystemUsersState = async () => {
 
   try {
     await ensureTable();
+    await maybeMigrateLocalUsersToSql();
     const result = await query(`SELECT version, protected_user_ids, users FROM system_users_state WHERE id = 'singleton'`);
     const row = result.rows[0];
     effectiveState = normalizeUsersState({
@@ -438,6 +494,7 @@ export const writeSystemUsersState = async nextState => {
 
   try {
     await ensureTable();
+    await maybeMigrateLocalUsersToSql();
     await query(
       `UPDATE system_users_state SET version = $1, protected_user_ids = $2, users = $3, updated_at = NOW() WHERE id = 'singleton'`,
       [normalized.version, JSON.stringify(normalized.protectedUserIds), JSON.stringify(normalized.users)]

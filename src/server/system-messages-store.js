@@ -6,9 +6,10 @@ import { getStorageFilePath } from '@/server/storage-paths';
 const MEDIA_RETENTION_DAYS = 60;
 
 let tableReady = false;
+let localMigrationPromise = null;
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
-const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
 
 const getSystemMessagesStorageFile = () => getStorageFilePath('system-messages.json');
 
@@ -54,10 +55,54 @@ const writeLocalSystemMessages = async messages => {
   return messages;
 };
 
+const maybeMigrateLocalSystemMessagesToSql = async () => {
+  if (!hasDatabaseUrl()) return;
+  if (localMigrationPromise) return localMigrationPromise;
+
+  localMigrationPromise = (async () => {
+    const localMessages = await readLocalSystemMessages();
+    if (!Array.isArray(localMessages) || localMessages.length === 0) return;
+
+    for (const message of localMessages) {
+      const normalizedId = String(message?.id || '').trim();
+      if (!normalizedId) continue;
+      await query(
+        `INSERT INTO system_messages (id, driver_id, type, status, subject, body, priority, data, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET
+           driver_id = EXCLUDED.driver_id,
+           type = EXCLUDED.type,
+           status = EXCLUDED.status,
+           subject = EXCLUDED.subject,
+           body = EXCLUDED.body,
+           priority = EXCLUDED.priority,
+           data = EXCLUDED.data`,
+        [
+          normalizedId,
+          message?.driverId || null,
+          message?.type || null,
+          message?.status || 'active',
+          message?.subject || null,
+          message?.body || null,
+          message?.priority || null,
+          JSON.stringify(message),
+          message?.createdAt ? new Date(message.createdAt) : new Date()
+        ]
+      );
+    }
+  })().catch(error => {
+    localMigrationPromise = null;
+    throw error;
+  });
+
+  return localMigrationPromise;
+};
+
 export const readSystemMessages = async () => {
   let messages;
   try {
     await ensureTable();
+    await maybeMigrateLocalSystemMessagesToSql();
     const result = await query(`SELECT * FROM system_messages ORDER BY created_at DESC LIMIT 500`);
     messages = result.rows.map(row => ({
       ...row.data,
@@ -102,6 +147,7 @@ export const readActiveSystemMessagesByDriverIds = async (driverIds = [], limit 
 
   try {
     await ensureTable();
+    await maybeMigrateLocalSystemMessagesToSql();
     const result = await query(
       `SELECT * FROM system_messages
        WHERE status = 'active' AND driver_id = ANY($1::text[])
@@ -133,6 +179,7 @@ export const readActiveSystemMessagesByDriverIds = async (driverIds = [], limit 
 export const writeSystemMessages = async messages => {
   try {
     await ensureTable();
+    await maybeMigrateLocalSystemMessagesToSql();
     for (const msg of messages) {
       await upsertSystemMessage(msg);
     }
@@ -147,6 +194,7 @@ export const writeSystemMessages = async messages => {
 export const upsertSystemMessage = async newMsg => {
   try {
     await ensureTable();
+    await maybeMigrateLocalSystemMessagesToSql();
     await query(
       `INSERT INTO system_messages (id, driver_id, type, status, subject, body, priority, data, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -183,6 +231,7 @@ export const upsertSystemMessage = async newMsg => {
 export const resolveSystemMessageById = async id => {
   try {
     await ensureTable();
+    await maybeMigrateLocalSystemMessagesToSql();
     const resolvedAt = new Date().toISOString();
     await query(
       `UPDATE system_messages SET status = 'resolved', resolved_at = NOW() WHERE id = $1`,
@@ -221,6 +270,7 @@ export const resolveSystemMessageById = async id => {
 export const clearSystemMessageMediaById = async id => {
   try {
     await ensureTable();
+    await maybeMigrateLocalSystemMessagesToSql();
     const result = await query(`SELECT * FROM system_messages WHERE id = $1`, [id]);
     const row = result.rows[0];
     if (!row) return null;

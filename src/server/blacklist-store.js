@@ -4,7 +4,8 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
-const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
+let localMigrationPromise = null;
 
 const normalizeBlacklistEntry = value => ({
   id: String(value?.id ?? `bl-${Date.now()}`),
@@ -42,6 +43,40 @@ const writeLocalBlacklistState = async state => {
     backupName: 'blacklist-local'
   });
   return state;
+};
+
+const maybeMigrateLocalBlacklistToSql = async () => {
+  if (!hasDatabaseUrl()) return;
+  if (localMigrationPromise) return localMigrationPromise;
+
+  localMigrationPromise = (async () => {
+    const localState = await readLocalBlacklistState();
+    const localEntries = Array.isArray(localState?.entries) ? localState.entries : [];
+    if (localEntries.length === 0) return;
+
+    await query(
+      `INSERT INTO blacklist_entries (id, name, phone, category, status, hold_until, notes, source, created_at, updated_at)
+       SELECT 
+         e->>'id', e->>'name', e->>'phone', e->>'category', e->>'status',
+         e->>'holdUntil', e->>'notes', e->>'source', e->>'createdAt', e->>'updatedAt'
+       FROM json_array_elements($1::json) AS e
+       ON CONFLICT (id) DO UPDATE SET
+         name = COALESCE(NULLIF(EXCLUDED.name, ''), blacklist_entries.name),
+         phone = COALESCE(NULLIF(EXCLUDED.phone, ''), blacklist_entries.phone),
+         category = COALESCE(NULLIF(EXCLUDED.category, ''), blacklist_entries.category),
+         status = COALESCE(NULLIF(EXCLUDED.status, ''), blacklist_entries.status),
+         hold_until = COALESCE(NULLIF(EXCLUDED.hold_until, ''), blacklist_entries.hold_until),
+         notes = COALESCE(NULLIF(EXCLUDED.notes, ''), blacklist_entries.notes),
+         source = COALESCE(NULLIF(EXCLUDED.source, ''), blacklist_entries.source),
+         updated_at = COALESCE(NULLIF(EXCLUDED.updated_at, ''), blacklist_entries.updated_at)`,
+      [JSON.stringify(localEntries)]
+    );
+  })().catch(error => {
+    localMigrationPromise = null;
+    throw error;
+  });
+
+  return localMigrationPromise;
 };
 
 let tableReady = false;
@@ -93,6 +128,7 @@ export const readBlacklistState = async () => {
   }
 
   await ensureTable();
+  await maybeMigrateLocalBlacklistToSql();
   const result = await query(`SELECT * FROM blacklist_entries ORDER BY created_at DESC`);
   const entries = result.rows.map(r => ({
     id: r.id,
@@ -143,6 +179,7 @@ export const writeBlacklistState = async (nextState, options = {}) => {
   }
 
   await ensureTable();
+  await maybeMigrateLocalBlacklistToSql();
 
   if (allowDelete) {
     await query(`DELETE FROM blacklist_entries`);

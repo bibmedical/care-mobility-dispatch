@@ -4,9 +4,10 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
-const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
 
 let tableReady = false;
+let localMigrationPromise = null;
 
 const getDriverDisciplineStorageFile = () => getStorageFilePath('driver-discipline-events.json');
 
@@ -56,10 +57,77 @@ const writeLocalDriverDisciplineEvents = async events => {
   return events;
 };
 
+const maybeMigrateLocalDriverDisciplineEventsToSql = async () => {
+  if (!hasDatabaseUrl()) return;
+  if (localMigrationPromise) return localMigrationPromise;
+
+  localMigrationPromise = (async () => {
+    const localEvents = await readLocalDriverDisciplineEvents();
+    if (!Array.isArray(localEvents) || localEvents.length === 0) return;
+
+    for (const event of localEvents) {
+      const normalizedId = String(event?.id || '').trim();
+      const normalizedDriverId = String(event?.driverId || '').trim();
+      const normalizedEventType = String(event?.eventType || '').trim();
+      if (!normalizedId || !normalizedDriverId || !normalizedEventType) continue;
+
+      const data = event?.data && typeof event.data === 'object' ? event.data : {};
+      await query(
+        `INSERT INTO driver_discipline_events (
+          event_id,
+          driver_id,
+          trip_id,
+          event_type,
+          severity,
+          status,
+          summary,
+          body,
+          source_message_id,
+          data,
+          occurred_at,
+          resolved_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (event_id) DO UPDATE SET
+          driver_id = EXCLUDED.driver_id,
+          trip_id = EXCLUDED.trip_id,
+          event_type = EXCLUDED.event_type,
+          severity = EXCLUDED.severity,
+          status = EXCLUDED.status,
+          summary = EXCLUDED.summary,
+          body = EXCLUDED.body,
+          source_message_id = EXCLUDED.source_message_id,
+          data = EXCLUDED.data,
+          occurred_at = EXCLUDED.occurred_at,
+          resolved_at = EXCLUDED.resolved_at`,
+        [
+          normalizedId,
+          normalizedDriverId,
+          event?.tripId || null,
+          normalizedEventType,
+          event?.severity || 'normal',
+          event?.status || 'logged',
+          event?.summary || null,
+          event?.body || null,
+          event?.sourceMessageId || null,
+          JSON.stringify(data),
+          event?.occurredAt ? new Date(event.occurredAt) : new Date(),
+          event?.resolvedAt ? new Date(event.resolvedAt) : null
+        ]
+      );
+    }
+  })().catch(error => {
+    localMigrationPromise = null;
+    throw error;
+  });
+
+  return localMigrationPromise;
+};
+
 export const upsertDriverDisciplineEvent = async event => {
   const data = event?.data && typeof event.data === 'object' ? event.data : {};
   try {
     await ensureTable();
+    await maybeMigrateLocalDriverDisciplineEventsToSql();
     await query(
       `INSERT INTO driver_discipline_events (
         event_id,
@@ -118,6 +186,7 @@ export const upsertDriverDisciplineEvent = async event => {
 export const resolveDriverDisciplineEventById = async eventId => {
   try {
     await ensureTable();
+    await maybeMigrateLocalDriverDisciplineEventsToSql();
     await query(
       `UPDATE driver_discipline_events SET status = 'resolved', resolved_at = NOW() WHERE event_id = $1`,
       [eventId]
@@ -147,6 +216,7 @@ export const readDriverDisciplineEvents = async ({ driverId = '', activeOnly = f
   let result;
   try {
     await ensureTable();
+    await maybeMigrateLocalDriverDisciplineEventsToSql();
     result = await query(
       `SELECT * FROM driver_discipline_events ${whereClause} ORDER BY occurred_at DESC LIMIT $${params.length}`,
       params

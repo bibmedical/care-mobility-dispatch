@@ -5,7 +5,8 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
-const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
+let localMigrationPromise = null;
 
 const getUserPreferencesStorageFile = () => getStorageFilePath('user-preferences.json');
 
@@ -26,6 +27,31 @@ const writeLocalPreferencesState = async state => {
     backupName: 'user-preferences-local'
   });
   return state;
+};
+
+const maybeMigrateLocalPreferencesToSql = async () => {
+  if (!hasDatabaseUrl()) return;
+  if (localMigrationPromise) return localMigrationPromise;
+
+  localMigrationPromise = (async () => {
+    const localState = await readLocalPreferencesState();
+    const entries = Object.entries(localState || {}).filter(([userId]) => String(userId || '').trim());
+    if (entries.length === 0) return;
+
+    for (const [userId, preferences] of entries) {
+      await query(
+        `INSERT INTO user_ui_preferences (user_id, preferences, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (user_id) DO UPDATE SET preferences = EXCLUDED.preferences, updated_at = NOW()`,
+        [String(userId).trim(), JSON.stringify(normalizeUserPreferences(preferences))]
+      );
+    }
+  })().catch(error => {
+    localMigrationPromise = null;
+    throw error;
+  });
+
+  return localMigrationPromise;
 };
 
 const ensureTable = async () => {
@@ -54,6 +80,7 @@ export const readUserPreferences = async userId => {
   }
 
   await ensureTable();
+  await maybeMigrateLocalPreferencesToSql();
   const result = await query(`SELECT preferences FROM user_ui_preferences WHERE user_id = $1`, [normalizedUserId]);
   return normalizeUserPreferences(result.rows[0]?.preferences || null);
 };
@@ -74,6 +101,7 @@ export const writeUserPreferences = async (userId, preferences) => {
   }
 
   await ensureTable();
+  await maybeMigrateLocalPreferencesToSql();
   await query(
     `INSERT INTO user_ui_preferences (user_id, preferences, updated_at)
      VALUES ($1, $2::jsonb, NOW())

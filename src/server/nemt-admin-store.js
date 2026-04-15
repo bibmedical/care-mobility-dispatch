@@ -6,9 +6,10 @@ import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
 import { getStorageFilePath } from '@/server/storage-paths';
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
-const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
 
 let ensureAdminSchemaPromise = null;
+let localMigrationPromise = null;
 
 const ensureAdminSchema = async () => {
   if (!hasDatabaseUrl()) {
@@ -126,6 +127,63 @@ const writeLocalNemtAdminState = async state => {
   return normalized;
 };
 
+const maybeMigrateLocalNemtAdminStateToSql = async () => {
+  if (!hasDatabaseUrl()) return;
+  if (localMigrationPromise) return localMigrationPromise;
+
+  localMigrationPromise = (async () => {
+    const localState = await readLocalNemtAdminState();
+    const normalizedLocalState = normalizeState(localState);
+    const hasLocalEntities = normalizedLocalState.drivers.length > 0 || normalizedLocalState.vehicles.length > 0 || normalizedLocalState.attendants.length > 0 || normalizedLocalState.groupings.length > 0;
+    if (!hasLocalEntities) return;
+
+    const [driversRes, vehiclesRes, attendantsRes, groupingsRes] = await Promise.all([
+      query(`SELECT data FROM admin_drivers`),
+      query(`SELECT data FROM admin_vehicles`),
+      query(`SELECT data FROM admin_attendants`),
+      query(`SELECT data FROM admin_groupings`)
+    ]);
+
+    const currentState = normalizeState({
+      drivers: driversRes.rows.map(row => row.data),
+      vehicles: vehiclesRes.rows.map(row => row.data),
+      attendants: attendantsRes.rows.map(row => row.data),
+      groupings: groupingsRes.rows.map(row => row.data)
+    });
+
+    const currentIsEmpty = currentState.drivers.length === 0 && currentState.vehicles.length === 0 && currentState.attendants.length === 0 && currentState.groupings.length === 0;
+    const mergeById = (currentItems, localItems) => {
+      if (currentIsEmpty) return localItems;
+      const merged = new Map(currentItems.map(item => [String(item?.id || '').trim(), item]));
+      localItems.forEach(item => {
+        const itemId = String(item?.id || '').trim();
+        if (!itemId || merged.has(itemId)) return;
+        merged.set(itemId, item);
+      });
+      return Array.from(merged.values());
+    };
+
+    const nextState = normalizeState({
+      drivers: mergeById(currentState.drivers, normalizedLocalState.drivers),
+      vehicles: mergeById(currentState.vehicles, normalizedLocalState.vehicles),
+      attendants: mergeById(currentState.attendants, normalizedLocalState.attendants),
+      groupings: mergeById(currentState.groupings, normalizedLocalState.groupings)
+    });
+
+    await withTransaction(async client => {
+      await upsertEntities(client, 'admin_drivers', nextState.drivers);
+      await upsertEntities(client, 'admin_vehicles', nextState.vehicles);
+      await upsertEntities(client, 'admin_attendants', nextState.attendants);
+      await upsertEntities(client, 'admin_groupings', nextState.groupings);
+    });
+  })().catch(error => {
+    localMigrationPromise = null;
+    throw error;
+  });
+
+  return localMigrationPromise;
+};
+
 // ─── READ ─────────────────────────────────────────────────────────────────────
 
 export const readNemtAdminState = async () => {
@@ -138,6 +196,7 @@ export const readNemtAdminState = async () => {
 
   try {
     await ensureAdminSchema();
+    await maybeMigrateLocalNemtAdminStateToSql();
     const [driversRes, vehiclesRes, attendantsRes, groupingsRes] = await Promise.all([
       query(`SELECT data FROM admin_drivers ORDER BY updated_at DESC LIMIT 500`),
       query(`SELECT data FROM admin_vehicles ORDER BY updated_at DESC LIMIT 200`),
@@ -192,6 +251,7 @@ export const writeNemtAdminState = async nextState => {
 
   try {
     await ensureAdminSchema();
+    await maybeMigrateLocalNemtAdminStateToSql();
     await withTransaction(async client => {
       await upsertEntities(client, 'admin_drivers', normalized.drivers);
       await upsertEntities(client, 'admin_vehicles', normalized.vehicles);

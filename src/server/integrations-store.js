@@ -99,7 +99,8 @@ const DEFAULT_STATE = {
 };
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
-const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production';
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
+let localMigrationPromise = null;
 
 const getIntegrationsStorageFile = () => getStorageFilePath('integrations-state.json');
 
@@ -247,6 +248,32 @@ const writeLocalIntegrationsState = async state => {
   return state;
 };
 
+const isDefaultIntegrationsState = state => JSON.stringify(normalizeState(state)) === JSON.stringify(normalizeState(DEFAULT_STATE));
+
+const maybeMigrateLocalIntegrationsStateToSql = async () => {
+  if (!hasDatabaseUrl()) return;
+  if (localMigrationPromise) return localMigrationPromise;
+
+  localMigrationPromise = (async () => {
+    const localState = normalizeState(await readLocalIntegrationsState());
+    if (isDefaultIntegrationsState(localState)) return;
+
+    const row = await queryOne(`SELECT data FROM integrations_state WHERE id = 'singleton'`);
+    const currentState = normalizeState(row?.data || DEFAULT_STATE);
+    if (!isDefaultIntegrationsState(currentState)) return;
+
+    await query(
+      `UPDATE integrations_state SET data = $1, updated_at = NOW() WHERE id = 'singleton'`,
+      [JSON.stringify(localState)]
+    );
+  })().catch(error => {
+    localMigrationPromise = null;
+    throw error;
+  });
+
+  return localMigrationPromise;
+};
+
 let ensureTablePromise = null;
 
 const ensureTable = async () => {
@@ -283,6 +310,7 @@ export const readIntegrationsState = async () => {
   }
 
   await ensureTable();
+  await maybeMigrateLocalIntegrationsStateToSql();
   const row = await queryOne(`SELECT data FROM integrations_state WHERE id = 'singleton'`);
   return normalizeState(row?.data || DEFAULT_STATE);
 };
@@ -338,6 +366,7 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
   }
 
   await ensureTable();
+  await maybeMigrateLocalIntegrationsStateToSql();
 
   await query(
     `UPDATE integrations_state SET data=$1 WHERE id='singleton'`,
