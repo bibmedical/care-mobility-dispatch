@@ -5,6 +5,7 @@ const DEFAULT_ASSISTANT_AVATAR_IMAGE = '/fmg-login-logo.png';
 export const DEFAULT_DISPATCH_TIME_ZONE = 'America/New_York';
 
 const normalizeTextValue = value => String(value ?? '').trim();
+const EXCEL_SERIAL_TIME_PATTERN = /^\d{4,6}(?:\.\d+)?$/;
 const TRIP_MOBILITY_SOURCE_FIELDS = ['mobilityType', 'mobility', 'vehicleType', 'assistanceNeeds', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
 const TRIP_MOBILITY_EXPLICIT_SOURCE_FIELDS = ['mobilityType', 'mobility', 'vehicleType', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
 const TRIP_MOBILITY_ASSISTANCE_SOURCE_FIELDS = ['assistanceNeeds'];
@@ -208,6 +209,93 @@ export const DEFAULT_ASSISTANT_AVATAR = {
 };
 
 const getFirstNonEmptyValue = (...values) => values.map(normalizeTextValue).find(Boolean) ?? '';
+
+const looksLikeExcelSerialTime = value => EXCEL_SERIAL_TIME_PATTERN.test(normalizeTextValue(value));
+
+const normalizeTripLocalOverrides = value => ({
+  notes: Boolean(value?.notes),
+  pickupTime: Boolean(value?.pickupTime),
+  dropoffTime: Boolean(value?.dropoffTime),
+  pickupAddress: Boolean(value?.pickupAddress),
+  dropoffAddress: Boolean(value?.dropoffAddress),
+  serviceLevel: Boolean(value?.serviceLevel),
+  contact: Boolean(value?.contact),
+  localCancellation: Boolean(value?.localCancellation)
+});
+
+const normalizeTripProviderSnapshot = value => {
+  if (!value || typeof value !== 'object') return null;
+
+  const snapshot = {
+    status: normalizeTextValue(value?.status),
+    confirmationStatus: normalizeTextValue(value?.confirmationStatus),
+    pickup: normalizeTextValue(value?.pickup),
+    dropoff: normalizeTextValue(value?.dropoff),
+    scheduledPickup: normalizeTextValue(value?.scheduledPickup),
+    scheduledDropoff: normalizeTextValue(value?.scheduledDropoff),
+    address: normalizeTextValue(value?.address),
+    destination: normalizeTextValue(value?.destination),
+    fromZipcode: normalizeTextValue(value?.fromZipcode),
+    toZipcode: normalizeTextValue(value?.toZipcode),
+    patientPhoneNumber: normalizeTextValue(value?.patientPhoneNumber),
+    notes: normalizeTextValue(value?.notes),
+    vehicleType: normalizeTextValue(value?.vehicleType),
+    tripType: normalizeTextValue(value?.tripType),
+    serviceDate: normalizeTextValue(value?.serviceDate),
+    importedAt: normalizeTextValue(value?.importedAt)
+  };
+
+  return Object.values(snapshot).some(Boolean) ? snapshot : null;
+};
+
+export const getEffectiveTripTimeText = (scheduledValue, fallbackValue) => {
+  const scheduledText = normalizeTextValue(scheduledValue);
+  const fallbackText = normalizeTextValue(fallbackValue);
+  if (scheduledText && !looksLikeExcelSerialTime(scheduledText)) return scheduledText;
+  return fallbackText || scheduledText;
+};
+
+export const getEffectivePickupTimeText = trip => getEffectiveTripTimeText(trip?.scheduledPickup || trip?.rawPickupTime, trip?.pickup || trip?.rawPickupTime);
+
+export const getEffectiveDropoffTimeText = trip => getEffectiveTripTimeText(trip?.scheduledDropoff || trip?.rawDropoffTime, trip?.dropoff || trip?.rawDropoffTime);
+
+export const buildTripProviderSnapshot = trip => normalizeTripProviderSnapshot({
+  status: trip?.safeRideStatus || trip?.providerStatus || trip?.status,
+  confirmationStatus: trip?.confirmationStatus || trip?.providerConfirmationStatus,
+  pickup: trip?.pickup,
+  dropoff: trip?.dropoff,
+  scheduledPickup: trip?.scheduledPickup || trip?.rawPickupTime || trip?.pickup,
+  scheduledDropoff: trip?.scheduledDropoff || trip?.rawDropoffTime || trip?.dropoff,
+  address: trip?.address || trip?.fromAddress || trip?.pickupAddress || trip?.originAddress,
+  destination: trip?.destination || trip?.toAddress || trip?.dropoffAddress,
+  fromZipcode: trip?.fromZipcode || trip?.fromZip || trip?.pickupZipcode || trip?.pickupZip || trip?.originZip,
+  toZipcode: trip?.toZipcode || trip?.toZip || trip?.dropoffZipcode || trip?.dropoffZip || trip?.destinationZip,
+  patientPhoneNumber: trip?.patientPhoneNumber || trip?.phone || trip?.phoneNumber,
+  notes: trip?.notes || trip?.additionalNotes || trip?.otherDetails,
+  vehicleType: trip?.vehicleType || trip?.requestedVehicleType || trip?.vehicleRequired,
+  tripType: trip?.tripType || trip?.serviceType || trip?.levelOfService || trip?.serviceLevel || trip?.los,
+  serviceDate: trip?.serviceDate || trip?.dateOfService || trip?.pickupDate,
+  importedAt: trip?.providerSnapshot?.importedAt || trip?.importedAt
+});
+
+const buildTripSortValue = (trip, timeText, fallbackKey) => {
+  const parsedMinutes = parseTripClockMinutes(timeText);
+  if (parsedMinutes == null) {
+    const fallbackValue = Number(trip?.[fallbackKey]);
+    return Number.isFinite(fallbackValue) ? fallbackValue : Number.MAX_SAFE_INTEGER;
+  }
+
+  const serviceDateKey = getTripServiceDateKey(trip);
+  const [year, month, day] = String(serviceDateKey || '').split('-').map(Number);
+  if (!year || !month || !day) {
+    const fallbackValue = Number(trip?.[fallbackKey]);
+    return Number.isFinite(fallbackValue) ? fallbackValue : Number.MAX_SAFE_INTEGER;
+  }
+
+  const hours = Math.floor(parsedMinutes / 60);
+  const minutes = parsedMinutes % 60;
+  return new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
+};
 
 const getDerivedRiderName = trip => {
   const combinedPatientName = [trip?.patientFirstName, trip?.patientLastName].map(normalizeTextValue).filter(Boolean).join(' ').trim();
@@ -483,14 +571,34 @@ export const normalizeTripRecord = trip => {
   const destinationPosition = Array.isArray(trip?.destinationPosition) && trip.destinationPosition.length === 2 ? trip.destinationPosition.map(Number) : [...position];
   const rider = getDerivedRiderName(trip);
   const rideId = getDerivedRideId(trip);
-  const scheduledPickup = normalizeTextValue(trip?.scheduledPickup || trip?.rawPickupTime || trip?.pickup);
-  const scheduledDropoff = normalizeTextValue(trip?.scheduledDropoff || trip?.rawDropoffTime || trip?.dropoff);
+  const pickup = getEffectivePickupTimeText(trip);
+  const dropoff = getEffectiveDropoffTimeText(trip);
+  const scheduledPickup = pickup;
+  const scheduledDropoff = dropoff;
   const actualPickup = normalizeTextValue(trip?.actualPickup);
   const actualDropoff = normalizeTextValue(trip?.actualDropoff);
+  const address = getFirstNonEmptyValue(trip?.address, trip?.fromAddress, trip?.pickupAddress, trip?.originAddress);
+  const destination = getFirstNonEmptyValue(trip?.destination, trip?.toAddress, trip?.dropoffAddress);
+  const fromZipcode = getFirstNonEmptyValue(trip?.fromZipcode, trip?.fromZip, trip?.pickupZipcode, trip?.pickupZip, trip?.originZip);
+  const toZipcode = getFirstNonEmptyValue(trip?.toZipcode, trip?.toZip, trip?.dropoffZipcode, trip?.dropoffZip, trip?.destinationZip);
+  const patientPhoneNumber = getFirstNonEmptyValue(trip?.patientPhoneNumber, trip?.phone, trip?.phoneNumber, trip?.memberPhone);
+  const notes = getFirstNonEmptyValue(trip?.notes, trip?.additionalNotes, trip?.otherDetails);
+  const vehicleType = getFirstNonEmptyValue(trip?.vehicleType, trip?.requestedVehicleType, trip?.vehicleRequired);
+  const tripType = getFirstNonEmptyValue(trip?.tripType, trip?.serviceType, trip?.levelOfService, trip?.serviceLevel, trip?.los);
   const assistanceNeeds = normalizeTextValue(trip?.assistanceNeeds);
   const subMobilityType = normalizeTextValue(trip?.subMobilityType);
   const delay = trip?.delay ?? '';
   const avgDelay = trip?.avgDelay ?? '';
+  const localOverrides = normalizeTripLocalOverrides(trip?.localOverrides);
+  const providerSnapshot = normalizeTripProviderSnapshot(trip?.providerSnapshot || (trip?.source || trip?.importFingerprint ? buildTripProviderSnapshot(trip) : null));
+  const pickupSortValue = buildTripSortValue({
+    ...trip,
+    serviceDate: getTripServiceDateKey(trip)
+  }, scheduledPickup, 'pickupSortValue');
+  const dropoffSortValue = buildTripSortValue({
+    ...trip,
+    serviceDate: getTripServiceDateKey(trip)
+  }, scheduledDropoff, 'dropoffSortValue');
   const lateMinutes = getTripLateMinutes({
     ...trip,
     scheduledPickup,
@@ -511,21 +619,42 @@ export const normalizeTripRecord = trip => {
     rideId,
     position,
     destinationPosition,
+    pickup,
+    dropoff,
     scheduledPickup,
     scheduledDropoff,
     actualPickup,
     actualDropoff,
+    address,
+    destination,
+    fromZipcode,
+    toZipcode,
+    patientPhoneNumber,
+    notes,
+    vehicleType,
+    tripType,
     assistanceNeeds,
     subMobilityType,
     delay,
     avgDelay,
+    pickupSortValue,
+    dropoffSortValue,
     hasServiceAnimal: supportMetadata.hasServiceAnimal,
     mobilityType: supportMetadata.mobilityType,
     assistLevel: supportMetadata.assistLevel,
+    serviceLevelCode: getTripMobilityLabel({
+      ...trip,
+      vehicleType,
+      tripType,
+      assistanceNeeds,
+      subMobilityType
+    }),
     late: normalizeTripBoolean(trip?.late),
     delayed: normalizeTripBoolean(trip?.delayed),
     lateMinutes,
     onTimeStatus: normalizeTextValue(trip?.onTimeStatus || (lateMinutes == null ? 'Pending' : lateMinutes > 0 ? 'Late' : 'On Time')),
+    localOverrides,
+    providerSnapshot,
     confirmation: normalizeTripConfirmation(trip?.confirmation)
   };
 };

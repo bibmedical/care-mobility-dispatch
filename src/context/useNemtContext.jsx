@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
+import { buildTripProviderSnapshot, getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import { normalizeUserPreferences } from '@/helpers/user-preferences';
 import { hasMapboxConfigured } from '@/utils/map-tiles';
@@ -96,9 +96,56 @@ const isSafeRideCancelledImport = importedTrip => {
   return isCancelledLikeStatus(importedTrip?.status) || isCancelledLikeStatus(importedTrip?.safeRideStatus) || isCancelledLikeStatus(importedTrip?.confirmationStatus);
 };
 
+const LOCAL_OVERRIDE_FIELD_GROUPS = {
+  notes: ['notes'],
+  pickupTime: ['pickup', 'scheduledPickup', 'pickupSortValue'],
+  dropoffTime: ['dropoff', 'scheduledDropoff', 'dropoffSortValue'],
+  pickupAddress: ['address', 'fromAddress', 'pickupAddress', 'fromZipcode', 'fromZip', 'pickupZipcode', 'pickupZip', 'originZip'],
+  dropoffAddress: ['destination', 'toAddress', 'dropoffAddress', 'toZipcode', 'toZip', 'dropoffZipcode', 'dropoffZip', 'destinationZip'],
+  serviceLevel: ['vehicleType', 'tripType', 'mobilityType', 'assistanceNeeds', 'subMobilityType', 'assistLevel', 'serviceLevel', 'serviceLevelCode', 'los'],
+  contact: ['patientPhoneNumber', 'phone', 'phoneNumber', 'memberPhone']
+};
+
+const buildTripLocalOverrides = (trip, updates) => {
+  const nextOverrides = {
+    ...(trip?.localOverrides && typeof trip.localOverrides === 'object' ? trip.localOverrides : {})
+  };
+
+  const updateKeys = Object.keys(updates || {});
+  Object.entries(LOCAL_OVERRIDE_FIELD_GROUPS).forEach(([overrideKey, keys]) => {
+    if (keys.some(key => updateKeys.includes(key))) {
+      nextOverrides[overrideKey] = true;
+    }
+  });
+
+  if (updateKeys.includes('status')) {
+    nextOverrides.localCancellation = isCancelledLikeStatus(updates?.status);
+  }
+
+  return nextOverrides;
+};
+
+const getPreferredImportedValue = (overrideFlag, currentValue, importedValue) => {
+  if (overrideFlag) return currentValue;
+  const normalizedImported = String(importedValue ?? '').trim();
+  return normalizedImported ? importedValue : currentValue;
+};
+
+const getPreferredImportedNumericValue = (overrideFlag, currentValue, importedValue) => {
+  if (overrideFlag) return currentValue;
+  const parsedImported = Number(importedValue);
+  return Number.isFinite(parsedImported) ? parsedImported : currentValue;
+};
+
 const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
   const shouldAutoCancel = isSafeRideCancelledImport(importedTrip);
+  const localOverrides = currentTrip?.localOverrides && typeof currentTrip.localOverrides === 'object' ? currentTrip.localOverrides : {};
+  const providerSnapshot = {
+    ...buildTripProviderSnapshot(importedTrip),
+    importedAt: new Date().toISOString()
+  };
   return normalizeTripRecord({
+    ...currentTrip,
     ...importedTrip,
     id: String(currentTrip?.id || importedTrip?.id || '').trim(),
     importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
@@ -106,12 +153,32 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
     secondaryDriverId: shouldAutoCancel ? null : currentTrip?.secondaryDriverId ?? null,
     routeId: shouldAutoCancel ? null : currentTrip?.routeId ?? null,
     status: shouldAutoCancel ? 'Cancelled' : (currentTrip?.status || importedTrip?.status),
-    safeRideStatus: shouldAutoCancel ? 'Canceled by SafeRide' : (importedTrip?.safeRideStatus || currentTrip?.safeRideStatus),
-    cancellationReason: shouldAutoCancel ? 'Canceled by SafeRide' : String(currentTrip?.cancellationReason || '').trim(),
-    cancellationSource: shouldAutoCancel ? 'saferide-import' : String(currentTrip?.cancellationSource || '').trim(),
-    cancelledAt: shouldAutoCancel ? new Date().toISOString() : (currentTrip?.cancelledAt || null),
-    notes: String(currentTrip?.notes || '').trim() || importedTrip?.notes,
+    safeRideStatus: shouldAutoCancel ? 'Canceled by SafeRide' : getPreferredImportedValue(false, currentTrip?.safeRideStatus, importedTrip?.safeRideStatus),
+    cancellationReason: shouldAutoCancel ? 'Canceled by SafeRide' : (localOverrides.localCancellation ? currentTrip?.cancellationReason : getPreferredImportedValue(false, currentTrip?.cancellationReason, importedTrip?.cancellationReason)),
+    cancellationSource: shouldAutoCancel ? 'saferide-import' : (localOverrides.localCancellation ? currentTrip?.cancellationSource : getPreferredImportedValue(false, currentTrip?.cancellationSource, importedTrip?.cancellationSource)),
+    cancelledAt: shouldAutoCancel ? new Date().toISOString() : (localOverrides.localCancellation ? currentTrip?.cancelledAt || null : getPreferredImportedValue(false, currentTrip?.cancelledAt, importedTrip?.cancelledAt)),
+    pickup: getPreferredImportedValue(localOverrides.pickupTime, currentTrip?.pickup, importedTrip?.pickup),
+    scheduledPickup: getPreferredImportedValue(localOverrides.pickupTime, currentTrip?.scheduledPickup, importedTrip?.scheduledPickup),
+    pickupSortValue: getPreferredImportedNumericValue(localOverrides.pickupTime, currentTrip?.pickupSortValue, importedTrip?.pickupSortValue),
+    dropoff: getPreferredImportedValue(localOverrides.dropoffTime, currentTrip?.dropoff, importedTrip?.dropoff),
+    scheduledDropoff: getPreferredImportedValue(localOverrides.dropoffTime, currentTrip?.scheduledDropoff, importedTrip?.scheduledDropoff),
+    dropoffSortValue: getPreferredImportedNumericValue(localOverrides.dropoffTime, currentTrip?.dropoffSortValue, importedTrip?.dropoffSortValue),
+    address: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.address, importedTrip?.address),
+    fromAddress: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.fromAddress, importedTrip?.fromAddress),
+    fromZipcode: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.fromZipcode, importedTrip?.fromZipcode),
+    destination: getPreferredImportedValue(localOverrides.dropoffAddress, currentTrip?.destination, importedTrip?.destination),
+    toAddress: getPreferredImportedValue(localOverrides.dropoffAddress, currentTrip?.toAddress, importedTrip?.toAddress),
+    toZipcode: getPreferredImportedValue(localOverrides.dropoffAddress, currentTrip?.toZipcode, importedTrip?.toZipcode),
+    patientPhoneNumber: getPreferredImportedValue(localOverrides.contact, currentTrip?.patientPhoneNumber, importedTrip?.patientPhoneNumber),
+    notes: getPreferredImportedValue(localOverrides.notes, currentTrip?.notes, importedTrip?.notes),
+    vehicleType: getPreferredImportedValue(localOverrides.serviceLevel, currentTrip?.vehicleType, importedTrip?.vehicleType),
+    tripType: getPreferredImportedValue(localOverrides.serviceLevel, currentTrip?.tripType, importedTrip?.tripType),
+    assistanceNeeds: getPreferredImportedValue(localOverrides.serviceLevel, currentTrip?.assistanceNeeds, importedTrip?.assistanceNeeds),
+    actualPickup: currentTrip?.actualPickup || importedTrip?.actualPickup,
+    actualDropoff: currentTrip?.actualDropoff || importedTrip?.actualDropoff,
     confirmation: currentTrip?.confirmation || importedTrip?.confirmation,
+    localOverrides,
+    providerSnapshot,
     updatedAt: Number(currentTrip?.updatedAt) || Number(importedTrip?.updatedAt) || 0
   });
 };
@@ -1632,11 +1699,12 @@ export const NemtProvider = ({
     const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
-      trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? {
+      trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? normalizeTripRecord({
         ...trip,
         updatedAt,
-        notes: normalizedNotes
-      } : trip)
+        notes: normalizedNotes,
+        localOverrides: buildTripLocalOverrides(trip, { notes: normalizedNotes })
+      }) : trip)
     };
   }, {
     markDispatchDirty: true,
@@ -1658,7 +1726,8 @@ export const NemtProvider = ({
       trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? normalizeTripRecord({
         ...trip,
         updatedAt,
-        ...(updates || {})
+        ...(updates || {}),
+        localOverrides: buildTripLocalOverrides(trip, updates || {})
       }) : trip)
     };
   }, {
