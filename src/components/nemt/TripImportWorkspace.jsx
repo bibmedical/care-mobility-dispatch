@@ -3,6 +3,7 @@
 import PageTitle from '@/components/PageTitle';
 import { useNemtContext } from '@/context/useNemtContext';
 import { getTripLateMinutes, getTripPunctualityLabel, getTripServiceDateKey } from '@/helpers/nemt-dispatch-state';
+import { analyzeImportedTrips } from '@/helpers/nemt-trip-import';
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
@@ -357,6 +358,7 @@ const TripImportWorkspace = () => {
   const [selectedFileName, setSelectedFileName] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [selectedAuditDate, setSelectedAuditDate] = useState(() => toLocalDateKey(new Date()));
+  const [importScan, setImportScan] = useState(null);
 
   const requireTypedDeleteConfirmation = warningLabel => {
     const typedValue = String(window.prompt(`Safety check: type BORRAR to continue.\n\n${warningLabel}`) || '').trim();
@@ -479,6 +481,7 @@ const TripImportWorkspace = () => {
     clearTrips();
     setPendingTrips([]);
     setSelectedFileName('');
+    setImportScan(null);
     setMessage('Todos los viajes y rutas guardadas fueron eliminados.');
   };
 
@@ -502,16 +505,21 @@ const TripImportWorkspace = () => {
 
       if (!Array.isArray(rows) || rows.length === 0) {
         setPendingTrips([]);
+        setImportScan(null);
         setMessage('El archivo no tiene filas para importar.');
         return;
       }
 
       const importedTrips = annotateSafeRideTrips(rows.map(mapRowToTrip).filter(trip => trip.id && trip.rider && trip.address));
+      const nextImportScan = analyzeImportedTrips(importedTrips);
       setPendingTrips(importedTrips);
+      setImportScan(nextImportScan);
       const dayCount = Array.from(new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).length;
-      setMessage(`${importedTrips.length} viajes SafeRide listos para importar. Se actualizaran ${dayCount} dia${dayCount === 1 ? '' : 's'} segun el archivo.`);
+      const scanSuffix = nextImportScan.findingCount > 0 ? ` Scanner: ${nextImportScan.blockingCount} bloqueo(s), ${nextImportScan.warningCount} advertencia(s).` : ' Scanner: no se detectaron problemas obvios.';
+      setMessage(`${importedTrips.length} viajes SafeRide listos para importar. Se actualizaran ${dayCount} dia${dayCount === 1 ? '' : 's'} segun el archivo.${scanSuffix}`);
     } catch {
       setPendingTrips([]);
+      setImportScan(null);
       setMessage('No se pudo leer el archivo. Usa Excel .xlsx, .xls o CSV con encabezados.');
     } finally {
       setIsParsing(false);
@@ -576,6 +584,31 @@ const TripImportWorkspace = () => {
               <div className="small text-muted mb-3">{selectedFileName ? `Archivo seleccionado: ${selectedFileName}` : 'No hay archivo seleccionado.'}</div>
               <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Dias detectados en archivo: ${importedServiceDateKeys.join(', ')}` : 'Dias detectados en archivo: -'}</div>
               <div className="small text-muted mb-3">{message}</div>
+              {importScan?.findingCount > 0 ? <Alert variant={importScan.blockingCount > 0 ? 'danger' : 'warning'} className="small mb-3">
+                  <div className="fw-semibold mb-1">Escaner del archivo</div>
+                  <div className="mb-2">Se detectaron {importScan.findingCount} hallazgo(s): {importScan.blockingCount} bloqueo(s) y {importScan.warningCount} advertencia(s).</div>
+                  <div className="table-responsive">
+                    <Table size="sm" className="mb-0 align-middle">
+                      <thead>
+                        <tr>
+                          <th>Severidad</th>
+                          <th>Problema</th>
+                          <th>Detalle</th>
+                          <th>Viajes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importScan.findings.slice(0, 8).map(finding => <tr key={finding.id}>
+                            <td><Badge bg={finding.severity === 'blocking' ? 'danger' : 'warning'}>{finding.severity === 'blocking' ? 'Bloqueo' : 'Advertencia'}</Badge></td>
+                            <td>{finding.title}</td>
+                            <td>{finding.detail}</td>
+                            <td>{finding.riderNames.join(', ') || finding.tripIds.join(', ')}</td>
+                          </tr>)}
+                      </tbody>
+                    </Table>
+                  </div>
+                  {importScan.findings.length > 8 ? <div className="mt-2">Mostrando los primeros 8 hallazgos.</div> : null}
+                </Alert> : null}
               <Alert variant="secondary" className="small mb-3">
                 <div className="fw-semibold mb-2">Resumen diario de cancelados</div>
                 <div className="d-flex flex-wrap align-items-end gap-3">

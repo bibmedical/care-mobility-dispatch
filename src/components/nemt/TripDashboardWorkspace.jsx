@@ -1114,6 +1114,7 @@ const TripDashboardWorkspace = () => {
   const [importPendingTrips, setImportPendingTrips] = useState([]);
   const [importedServiceDateKeys, setImportedServiceDateKeys] = useState([]);
   const [selectedImportFileName, setSelectedImportFileName] = useState('');
+  const [importScan, setImportScan] = useState(null);
   const [isImportParsing, setIsImportParsing] = useState(false);
   const [localImportPath, setLocalImportPath] = useState('');
   const [isRouteImporting, setIsRouteImporting] = useState(false);
@@ -1218,15 +1219,18 @@ const TripDashboardWorkspace = () => {
       const parsedImport = await parseTripImportFile(file);
       setImportPendingTrips(parsedImport.trips);
       setImportedServiceDateKeys(parsedImport.serviceDateKeys);
+      setImportScan(parsedImport.scan || null);
       if (parsedImport.trips.length === 0) {
         setStatusMessage('The selected file does not contain trips to import.');
         showNotification({ message: 'The selected file does not contain trips to import.', variant: 'warning' });
         return;
       }
-      setStatusMessage(`${parsedImport.trips.length} trip(s) ready to import from ${file.name}.`);
+      const scanSuffix = parsedImport.scan?.findingCount ? ` Scanner found ${parsedImport.scan.blockingCount} blocking issue(s) and ${parsedImport.scan.warningCount} warning(s).` : '';
+      setStatusMessage(`${parsedImport.trips.length} trip(s) ready to import from ${file.name}.${scanSuffix}`);
     } catch {
       setImportPendingTrips([]);
       setImportedServiceDateKeys([]);
+      setImportScan(null);
       setStatusMessage('Could not read the file. Use .xlsx, .xls, or .csv with SafeRide headers.');
       showNotification({ message: 'Could not read the file. Use .xlsx, .xls, or .csv with SafeRide headers.', variant: 'danger' });
     } finally {
@@ -1267,6 +1271,7 @@ const TripDashboardWorkspace = () => {
 
       setImportPendingTrips(Array.isArray(payload?.trips) ? payload.trips : []);
       setImportedServiceDateKeys(Array.isArray(payload?.serviceDateKeys) ? payload.serviceDateKeys : []);
+      setImportScan(payload?.scan || null);
 
       if (!Array.isArray(payload?.trips) || payload.trips.length === 0) {
         const message = 'The selected local file does not contain trips to import.';
@@ -1275,10 +1280,12 @@ const TripDashboardWorkspace = () => {
         return;
       }
 
-      setStatusMessage(`${payload.trips.length} trip(s) ready to import from ${trimmedPath}.`);
+      const scanSuffix = payload?.scan?.findingCount ? ` Scanner found ${payload.scan.blockingCount} blocking issue(s) and ${payload.scan.warningCount} warning(s).` : '';
+      setStatusMessage(`${payload.trips.length} trip(s) ready to import from ${trimmedPath}.${scanSuffix}`);
     } catch (error) {
       setImportPendingTrips([]);
       setImportedServiceDateKeys([]);
+      setImportScan(null);
       const message = error?.message || 'Could not read the local file path.';
       setStatusMessage(message);
       showNotification({ message, variant: 'danger' });
@@ -1300,6 +1307,7 @@ const TripDashboardWorkspace = () => {
     setImportPendingTrips([]);
     setImportedServiceDateKeys([]);
     setSelectedImportFileName('');
+    setImportScan(null);
     setRouteImportAssignments({});
   };
 
@@ -5866,6 +5874,22 @@ const TripDashboardWorkspace = () => {
             <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
             <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
             <div className="small text-muted mb-3">{importPendingTrips.length > 0 ? `${importPendingTrips.length} trip(s) ready to import.` : 'Choose a SafeRide file to load trips here.'}</div>
+            {importScan?.findingCount > 0 ? <Alert variant={importScan.blockingCount > 0 ? 'danger' : 'warning'} className="mb-3">
+                <div className="fw-semibold mb-1">File scanner findings</div>
+                <div className="small mb-2">Found {importScan.findingCount} issue(s): {importScan.blockingCount} blocking and {importScan.warningCount} warning.</div>
+                <div className="d-flex flex-column gap-2" style={{ maxHeight: 220, overflowY: 'auto' }}>
+                  {importScan.findings.slice(0, 6).map(finding => <div key={finding.id} className="rounded-3 border bg-white p-2">
+                      <div className="d-flex flex-wrap justify-content-between gap-2 mb-1">
+                        <div className="fw-semibold">{finding.title}</div>
+                        <Badge bg={finding.severity === 'blocking' ? 'danger' : 'warning'}>{finding.severity === 'blocking' ? 'Blocking' : 'Warning'}</Badge>
+                      </div>
+                      <div className="small text-muted">{finding.detail}</div>
+                      {finding.riderNames.length > 0 ? <div className="small mt-1">Rider(s): {finding.riderNames.join(', ')}</div> : null}
+                      {finding.serviceDates.length > 0 ? <div className="small text-muted">Date(s): {finding.serviceDates.join(', ')}</div> : null}
+                    </div>)}
+                </div>
+                {importScan.findings.length > 6 ? <div className="small mt-2">Showing the first 6 findings.</div> : null}
+              </Alert> : null}
             {importedRouteDriverSummary.usableGroups.length > 0 ? <Alert variant="info" className="mb-3">
                 <div className="fw-semibold mb-1">Routes found in file</div>
                 <div className="small mb-2">Found {importedRouteDriverSummary.usableGroups.length} route name(s) in the file. Match each route to one of your drivers before pressing Load Route.</div>

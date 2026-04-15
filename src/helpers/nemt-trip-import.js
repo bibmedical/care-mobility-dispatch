@@ -183,6 +183,153 @@ const annotateSafeRideTrips = trips => {
   });
 };
 
+const normalizeScanText = value => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+const hasSameLocation = (leftValue, rightValue) => {
+  const left = normalizeScanText(leftValue);
+  const right = normalizeScanText(rightValue);
+  return Boolean(left) && Boolean(right) && left === right;
+};
+
+const buildTripImportFinding = ({ severity, code, title, detail, trips, groupKey }) => ({
+  id: `${code}:${groupKey || trips.map(trip => trip.id).join('|')}`,
+  severity,
+  code,
+  title,
+  detail,
+  groupKey: groupKey || '',
+  tripIds: trips.map(trip => trip.id),
+  brokerTripIds: Array.from(new Set(trips.map(trip => String(trip?.brokerTripId || '').trim()).filter(Boolean))),
+  riderNames: Array.from(new Set(trips.map(trip => String(trip?.rider || '').trim()).filter(Boolean))),
+  serviceDates: Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip)).filter(Boolean)))
+});
+
+export const analyzeImportedTrips = trips => {
+  if (!Array.isArray(trips) || trips.length === 0) {
+    return {
+      totalTrips: 0,
+      findingCount: 0,
+      warningCount: 0,
+      blockingCount: 0,
+      findings: []
+    };
+  }
+
+  const findings = [];
+  const exactTripGroups = new Map();
+  const groupedTrips = new Map();
+
+  trips.forEach(trip => {
+    const duplicateKey = [
+      getTripServiceDateKey(trip),
+      normalizeScanText(trip?.rider),
+      normalizeScanText(trip?.pickup),
+      normalizeScanText(trip?.address),
+      normalizeScanText(trip?.destination)
+    ].filter(Boolean).join('|');
+    if (duplicateKey) {
+      exactTripGroups.set(duplicateKey, [...(exactTripGroups.get(duplicateKey) ?? []), trip]);
+    }
+
+    const groupKey = String(trip?.brokerTripId || trip?.id || '').trim();
+    groupedTrips.set(groupKey, [...(groupedTrips.get(groupKey) ?? []), trip]);
+
+    if (hasSameLocation(trip?.address, trip?.destination)) {
+      findings.push(buildTripImportFinding({
+        severity: 'blocking',
+        code: 'same-location-leg',
+        title: 'Same pickup and destination on one leg',
+        detail: `${trip.rider || 'This rider'} has the same pickup and destination address on the same imported leg.`,
+        trips: [trip],
+        groupKey
+      }));
+    }
+
+    if (!String(trip?.destination || '').trim()) {
+      findings.push(buildTripImportFinding({
+        severity: 'warning',
+        code: 'missing-destination',
+        title: 'Trip is missing a destination',
+        detail: `${trip.rider || 'This rider'} is missing a destination address in the import file.`,
+        trips: [trip],
+        groupKey
+      }));
+    }
+  });
+
+  exactTripGroups.forEach((groupTrips, groupKey) => {
+    if (groupTrips.length < 2) return;
+    findings.push(buildTripImportFinding({
+      severity: 'warning',
+      code: 'duplicate-trip-rows',
+      title: 'Possible duplicate trip rows',
+      detail: `${groupTrips.length} imported rows share the same rider, pickup time, pickup, and destination.`,
+      trips: groupTrips,
+      groupKey
+    }));
+  });
+
+  groupedTrips.forEach((groupTrips, groupKey) => {
+    if (groupTrips.length < 2) return;
+
+    const sortedTrips = [...groupTrips].sort((leftTrip, rightTrip) => leftTrip.pickupSortValue - rightTrip.pickupSortValue || leftTrip.id.localeCompare(rightTrip.id));
+    const firstTrip = sortedTrips[0];
+    const lastTrip = sortedTrips[sortedTrips.length - 1];
+    const reverseLooksCorrect = hasSameLocation(firstTrip?.address, lastTrip?.destination) && hasSameLocation(firstTrip?.destination, lastTrip?.address);
+    const repeatedPickup = hasSameLocation(firstTrip?.address, lastTrip?.address);
+    const repeatedDestination = hasSameLocation(firstTrip?.destination, lastTrip?.destination);
+
+    if (sortedTrips.length > 2) {
+      findings.push(buildTripImportFinding({
+        severity: 'warning',
+        code: 'multi-leg-group',
+        title: 'Trip group has more than two legs',
+        detail: `${sortedTrips.length} rows share the same SafeRide trip group and should be reviewed before import.`,
+        trips: sortedTrips,
+        groupKey
+      }));
+    }
+
+    if (repeatedPickup || repeatedDestination) {
+      findings.push(buildTripImportFinding({
+        severity: 'warning',
+        code: 'repeated-route-endpoint',
+        title: 'Repeated pickup or destination across linked legs',
+        detail: `Linked legs in this SafeRide group repeat ${repeatedPickup ? 'the pickup' : 'the destination'} instead of reversing cleanly.`,
+        trips: sortedTrips,
+        groupKey
+      }));
+      return;
+    }
+
+    if (!reverseLooksCorrect) {
+      findings.push(buildTripImportFinding({
+        severity: 'warning',
+        code: 'route-mismatch',
+        title: 'Linked legs do not reverse cleanly',
+        detail: 'This SafeRide trip group does not look like a clean outbound/return pair and should be reviewed before import.',
+        trips: sortedTrips,
+        groupKey
+      }));
+    }
+  });
+
+  const severityOrder = { blocking: 0, warning: 1 };
+  const orderedFindings = findings.sort((leftFinding, rightFinding) => {
+    const severityDifference = (severityOrder[leftFinding.severity] ?? 99) - (severityOrder[rightFinding.severity] ?? 99);
+    if (severityDifference !== 0) return severityDifference;
+    return leftFinding.title.localeCompare(rightFinding.title);
+  });
+
+  return {
+    totalTrips: trips.length,
+    findingCount: orderedFindings.length,
+    warningCount: orderedFindings.filter(finding => finding.severity === 'warning').length,
+    blockingCount: orderedFindings.filter(finding => finding.severity === 'blocking').length,
+    findings: orderedFindings
+  };
+};
+
 const mapRowToTrip = (row, index) => {
   const rawPickupTime = getValueByAliases(row, COLUMN_ALIASES.pickupTime) || getValueByAliases(row, COLUMN_ALIASES.pickup);
   const rawDropoffTime = getValueByAliases(row, COLUMN_ALIASES.appointmentTime) || getValueByAliases(row, COLUMN_ALIASES.dropoff);
@@ -280,12 +427,17 @@ export const parseTripImportBuffer = arrayBuffer => {
   const worksheet = workbook.Sheets[firstSheetName];
   const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
   if (!Array.isArray(rows) || rows.length === 0) {
-    return { trips: [], serviceDateKeys: [] };
+    return {
+      trips: [],
+      serviceDateKeys: [],
+      scan: analyzeImportedTrips([])
+    };
   }
   const trips = annotateSafeRideTrips(rows.map(mapRowToTrip).filter(trip => trip.id && trip.rider && trip.address));
   return {
     trips,
-    serviceDateKeys: Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).sort()
+    serviceDateKeys: Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).sort(),
+    scan: analyzeImportedTrips(trips)
   };
 };
 
