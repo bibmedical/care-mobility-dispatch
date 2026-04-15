@@ -4887,8 +4887,9 @@ const TripDashboardWorkspace = () => {
               Driver
             </Button>
             <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-            router.push('/administrators');
-            setStatusMessage('Opening Administrators.');
+            refreshDrivers();
+            router.push('/drivers');
+            setStatusMessage('Opening Users workspace.');
           }}>
               Admin
             </Button>
