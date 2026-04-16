@@ -5755,14 +5755,7 @@ const TripDashboardWorkspace = () => {
                               <Button variant="outline-secondary" size="sm" onClick={() => handleCloneTrip(row.trip)} title="Clone trip" style={compactTripActionButtonStyle}>
                                 C
                               </Button>
-                              {row.trip.clonedFromTripId ? <Button variant="outline-danger" size="sm" onClick={() => {
-                            if (window.confirm(`DELETE COPY ${row.trip.id}\nOriginal: ${row.trip.clonedFromTripId}\nRider: ${row.trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
-                              deleteTripRecord(row.trip.id);
-                              setStatusMessage(`Cloned trip ${row.trip.id} deleted.`);
-                            }
-                          }} title={`Delete cloned copy ${row.trip.id}`} style={compactTripActionButtonStyle}>
-                                  D
-                                </Button> : <span style={{ width: 26, flex: '0 0 26px' }} />}
+                              <span style={{ width: 26, flex: '0 0 26px' }} />
                               <Button size="sm" style={{ ...compactTripActionLabelButtonStyle, backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff' }} onClick={() => void handleToggleTripBlock(row.trip)} title={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Remove from black list' : 'Add to black list'}>
                                 {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'RM' : 'BL'}
                               </Button>
