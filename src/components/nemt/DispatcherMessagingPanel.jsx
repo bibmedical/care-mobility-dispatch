@@ -249,8 +249,16 @@ const mergeThreads = (threads, drivers) => {
   });
 };
 
+const getDriverLocationLabel = driver => {
+  const checkpoint = String(driver?.checkpoint || '').trim();
+  if (checkpoint && !COORDINATE_LIKE_TEXT.test(checkpoint)) return checkpoint;
+  if (Array.isArray(driver?.position) && driver.position.length === 2) return 'Live location';
+  return 'No GPS location';
+};
+
 const DispatcherMessagingPanel = ({
   drivers,
+  driverSequencePreviewById,
   selectedDriverId,
   setSelectedDriverId,
   onLocateDriver,
@@ -388,6 +396,12 @@ const DispatcherMessagingPanel = ({
     return normalizeDriverId(visibleThreads[0]?.driverId) || null;
   }, [selectedDriverId, visibleThreads]);
   const activeThread = normalizedThreads.find(thread => normalizeDriverId(thread?.driverId) === activeDriverId) ?? null;
+  const activeAlertCounts = useMemo(() => driverAlerts.reduce((accumulator, alert) => {
+    const driverId = normalizeDriverId(alert?.driverId);
+    if (!driverId || alert?.status === 'resolved') return accumulator;
+    accumulator[driverId] = (accumulator[driverId] || 0) + 1;
+    return accumulator;
+  }, {}), [driverAlerts]);
   const unreadCount = visibleThreads.reduce((total, thread) => total + thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length, 0);
   const activeDriverAlerts = useMemo(() => driverAlerts.filter(alert => normalizeDriverId(alert?.driverId) === activeDriverId && alert.status !== 'resolved'), [activeDriverId, driverAlerts]);
   const dispatcherSenderName = String(session?.user?.name || session?.user?.email || 'Dispatch').trim() || 'Dispatch';
@@ -1203,9 +1217,10 @@ const DispatcherMessagingPanel = ({
               const driver = allDriversById.get(threadDriverId) ?? null;
               const isDaily = driver?._isDaily === true;
               const hasGps = Boolean(driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2 && driver.position.every(value => Number.isFinite(Number(value)))));
-              const isConnected = String(driver?.live || '').trim().toLowerCase() === 'online';
-              const threadMessageCount = Array.isArray(thread?.messages) ? thread.messages.length : 0;
-              const threadUnreadCount = Array.isArray(thread?.messages) ? thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length : 0;
+              const sequencePreview = driverSequencePreviewById?.get?.(threadDriverId) ?? null;
+              const lastMessage = thread.messages[thread.messages.length - 1];
+              const threadUnreadCount = thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length;
+              const threadAlertCount = activeAlertCounts[threadDriverId] || 0;
               const hasUrgentAlert = driverAlerts.some(alert => normalizeDriverId(alert?.driverId) === threadDriverId && alert.status !== 'resolved' && (alert.priority === 'high' || alert.priority === 'urgent'));
               const isActiveThread = threadDriverId === activeDriverId;
               const driverColor = getDriverColor(driver?.id || driver?.name || threadDriverId);
@@ -1230,14 +1245,61 @@ const DispatcherMessagingPanel = ({
                         className={`w-100 text-start border-0 px-1 ${isActiveThread ? 'text-white' : 'text-body'}`}
                         style={{ backgroundColor: 'transparent' }}
                       >
-                        <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
-                          <div className="fw-semibold d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
-                            <span className="rounded-circle d-inline-block flex-shrink-0" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${isActiveThread ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
-                            <span className="text-truncate" style={{ maxWidth: 170 }}>{driver?.name ?? 'Driver'}</span>
-                            <span className="rounded-circle d-inline-block flex-shrink-0" style={{ width: 10, height: 10, backgroundColor: isConnected ? '#22c55e' : '#ef4444', boxShadow: '0 0 0 2px rgba(255,255,255,0.92)' }} title={isConnected ? 'Driver connected' : 'Driver offline'} />
-                            <Badge bg={threadUnreadCount > 0 ? 'danger' : 'secondary'} pill title={threadUnreadCount > 0 ? `${threadUnreadCount} unread message${threadUnreadCount === 1 ? '' : 's'}` : `${threadMessageCount} message${threadMessageCount === 1 ? '' : 's'} in thread`}>
-                              {threadUnreadCount > 0 ? threadUnreadCount : threadMessageCount}
-                            </Badge>
+                        <div className="d-flex justify-content-between align-items-center gap-2">
+                          <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div className="fw-semibold d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: 210 }}>
+                                <span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${isActiveThread ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
+                                {driver?.name ?? 'Driver'}
+                                {hasGps ? <span className="rounded-circle bg-success d-inline-block" style={{ width: 8, height: 8 }} /> : null}
+                              </div>
+                              {sequencePreview ? <div
+                                className="small text-truncate"
+                                style={{
+                                  maxWidth: 220,
+                                  color: isActiveThread ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText,
+                                  fontWeight: 600
+                                }}
+                                title={`${sequencePreview.rider || sequencePreview.tripId || 'Current trip'} | ${sequencePreview.stageLabel} ${sequencePreview.timeLabel}`}
+                              >
+                                {sequencePreview.rider || sequencePreview.tripId || 'Current trip'}
+                              </div> : null}
+                              <span
+                                role={hasGps ? 'button' : undefined}
+                                tabIndex={hasGps ? 0 : undefined}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  if (!hasGps) return;
+                                  handleSelectDriver(threadDriverId);
+                                  onLocateDriver?.(threadDriverId);
+                                }}
+                                onKeyDown={event => {
+                                  if (!hasGps) return;
+                                  if (event.key !== 'Enter' && event.key !== ' ') return;
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleSelectDriver(threadDriverId);
+                                  onLocateDriver?.(threadDriverId);
+                                }}
+                                className="d-inline-block mt-1 text-start small"
+                                style={{
+                                  maxWidth: 220,
+                                  color: hasGps ? (isActiveThread ? '#dbeafe' : driverColor) : (isActiveThread ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText),
+                                  textDecoration: hasGps ? 'underline' : 'none',
+                                  cursor: hasGps ? 'pointer' : 'default'
+                                }}
+                                title={hasGps ? 'Center this driver on the map' : 'This driver has no live GPS yet'}
+                              >
+                                {sequencePreview ? `${sequencePreview.stageLabel} ${sequencePreview.timeLabel}${sequencePreview.targetLabel ? ` | ${sequencePreview.targetLabel}` : ''}` : getDriverLocationLabel(driver)}
+                              </span>
+                              <div className="small text-truncate" style={{ maxWidth: 220, color: isActiveThread ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
+                            </div>
+                          </div>
+                          <div className="text-end">
+                            <div className="small">{lastMessage ? formatDispatchTime(lastMessage.timestamp, uiPreferences?.timeZone) : '--:--'}</div>
+                            {hasGps ? <div className="d-flex justify-content-end mt-1"><span className="rounded-circle bg-success d-inline-block" style={{ width: 10, height: 10 }} title="GPS active" /></div> : null}
+                            {threadUnreadCount > 0 ? <Badge bg="danger">{threadUnreadCount}</Badge> : null}
+                            {threadAlertCount > 0 ? <Badge bg="warning" text="dark" className="ms-1">{threadAlertCount}</Badge> : null}
                           </div>
                         </div>
                       </button>
