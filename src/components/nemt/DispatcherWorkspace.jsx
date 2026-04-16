@@ -1763,7 +1763,7 @@ const DispatcherWorkspace = () => {
   const tripTableTrips = useMemo(() => isCancelledPanelMode ? isCancelledRoutesMode ? dayRoutesByDriverTrips : cancelledSummaryTrips : filteredTrips, [cancelledSummaryTrips, dayRoutesByDriverTrips, filteredTrips, isCancelledPanelMode, isCancelledRoutesMode]);
   const activeDispatcherContextTokens = useMemo(() => {
     const tokens = [];
-    tokens.push(isCancelledPanelMode ? isCancelledRoutesMode ? 'Mode: Cancelled by route' : 'Mode: Cancelled' : 'Mode: Normal');
+    tokens.push(isCancelledPanelMode ? isCancelledRoutesMode ? 'Mode: Day trips by driver' : 'Mode: Cancelled' : 'Mode: Normal');
     tokens.push(`Date: ${tripDateFilter === 'all' ? daySummaryMetrics.dateKey : tripDateFilter}`);
     if (tripStatusFilter !== 'all') tokens.push(`Status: ${tripStatusFilter}`);
     if (selectedDriver?.name) tokens.push(`Driver: ${selectedDriver.name}`);
@@ -3541,7 +3541,7 @@ const DispatcherWorkspace = () => {
                   {isCancelledPanelMode ? <div className="d-flex justify-content-between align-items-center gap-2 px-2 py-2 border-bottom" style={{ backgroundColor: 'rgba(127, 29, 29, 0.08)' }}>
                       <div className="d-flex align-items-center gap-3 flex-wrap">
                         <div className="d-flex flex-column gap-1">
-                          <strong>{isCancelledRoutesMode ? 'Routes By Driver' : 'Cancelled Trips'}</strong>
+                          <strong>{isCancelledRoutesMode ? 'Day Trips By Driver' : 'Cancelled Trips'}</strong>
                           <span className="small text-muted">{isCancelledRoutesMode ? `${dayRoutesByDriverTrips.length} trip(s) for ${daySummaryMetrics.dateKey}` : `${cancelledSummaryTrips.length} trip(s) for ${daySummaryMetrics.dateKey}`}</span>
                         </div>
                         <Button variant="outline-dark" size="sm" onClick={() => {
@@ -3549,7 +3549,7 @@ const DispatcherWorkspace = () => {
                       resetDispatcherSelectionScope();
                       setCancelledDetailMode(nextMode);
                       setStatusMessage(nextMode === 'routes' ? 'Mostrando viajes del dia agrupados por chofer.' : 'Mostrando cancelados ordenados por nombre.');
-                    }}>{isCancelledRoutesMode ? 'By Names' : 'By Route'}</Button>
+                    }}>{isCancelledRoutesMode ? 'By Names' : 'By Driver'}</Button>
                       </div>
                       <Button variant="outline-danger" size="sm" onClick={() => {
                     exitCancelledPanelMode();

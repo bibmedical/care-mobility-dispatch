@@ -1,7 +1,92 @@
-import { getLocalDateKey, normalizeDispatchThreadRecord, normalizePersistentDispatchState } from '@/helpers/nemt-dispatch-state';
-import { archiveDispatchState } from '@/server/dispatch-history-store';
+import { getLocalDateKey, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { archiveDispatchState, readDispatchHistoryArchive } from '@/server/dispatch-history-store';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
+
+const DEFAULT_RECENT_PAST_DAYS = 2;
+
+const mergeUniqueItems = (items, getKey, chooseNextItem) => {
+  const itemMap = new Map();
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const key = String(getKey(item) || '').trim();
+    if (!key) continue;
+    const existingItem = itemMap.get(key);
+    itemMap.set(key, existingItem ? chooseNextItem(existingItem, item) : item);
+  }
+
+  return Array.from(itemMap.values());
+};
+
+const mergeDispatchThreads = threads => {
+  const threadMap = new Map();
+
+  for (const thread of Array.isArray(threads) ? threads : []) {
+    const normalizedThread = normalizeDispatchThreadRecord(thread);
+    const driverId = String(normalizedThread?.driverId || '').trim();
+    if (!driverId) continue;
+    const existingThread = threadMap.get(driverId) || { driverId, messages: [] };
+    const messageMap = new Map((Array.isArray(existingThread.messages) ? existingThread.messages : []).map(message => [String(message?.id || '').trim(), message]));
+
+    for (const message of Array.isArray(normalizedThread.messages) ? normalizedThread.messages : []) {
+      const messageId = String(message?.id || '').trim();
+      if (!messageId) continue;
+      messageMap.set(messageId, message);
+    }
+
+    threadMap.set(driverId, {
+      driverId,
+      messages: Array.from(messageMap.values()).sort((left, right) => String(left?.timestamp || '').localeCompare(String(right?.timestamp || '')))
+    });
+  }
+
+  return Array.from(threadMap.values());
+};
+
+const mergeDispatchStatePayloads = (liveState, archivedStates = []) => {
+  const archivedPayloads = (Array.isArray(archivedStates) ? archivedStates : []).filter(Boolean);
+  if (archivedPayloads.length === 0) return liveState;
+
+  const mergedTrips = mergeUniqueItems(
+    [...archivedPayloads.flatMap(state => state?.trips || []), ...(liveState?.trips || [])],
+    trip => trip?.id,
+    (currentTrip, nextTrip) => ((Number(nextTrip?.updatedAt) || 0) >= (Number(currentTrip?.updatedAt) || 0) ? nextTrip : currentTrip)
+  );
+  const mergedRoutePlans = mergeUniqueItems(
+    [...archivedPayloads.flatMap(state => state?.routePlans || []), ...(liveState?.routePlans || [])],
+    routePlan => routePlan?.id,
+    (_, nextRoutePlan) => nextRoutePlan
+  );
+  const mergedDailyDrivers = mergeUniqueItems(
+    [...archivedPayloads.flatMap(state => state?.dailyDrivers || []), ...(liveState?.dailyDrivers || [])],
+    driver => driver?.id,
+    (_, nextDriver) => nextDriver
+  );
+  const mergedAuditLog = mergeUniqueItems(
+    [...archivedPayloads.flatMap(state => state?.auditLog || []), ...(liveState?.auditLog || [])],
+    entry => entry?.id,
+    (_, nextEntry) => nextEntry
+  );
+
+  return normalizePersistentDispatchState({
+    ...liveState,
+    trips: mergedTrips,
+    routePlans: mergedRoutePlans,
+    dispatchThreads: mergeDispatchThreads([...archivedPayloads.flatMap(state => state?.dispatchThreads || []), ...(liveState?.dispatchThreads || [])]),
+    dailyDrivers: mergedDailyDrivers,
+    auditLog: mergedAuditLog,
+    uiPreferences: liveState?.uiPreferences || {}
+  });
+};
+
+const loadRecentArchivedDispatchStates = async (todayKey, recentPastDays) => {
+  const safeRecentPastDays = Math.max(Number(recentPastDays) || 0, 0);
+  if (!todayKey || safeRecentPastDays <= 0) return [];
+
+  const archivePromises = Array.from({ length: safeRecentPastDays }, (_, index) => readDispatchHistoryArchive(shiftTripDateKey(todayKey, -(index + 1))));
+  const archiveStates = await Promise.all(archivePromises);
+  return archiveStates.filter(Boolean);
+};
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
 
@@ -24,6 +109,7 @@ const ensureDispatchSchema = async () => {
 export const readNemtDispatchState = async (options = {}) => {
   await ensureDispatchSchema();
   const includePastDates = options?.includePastDates === true;
+  const recentPastDays = includePastDates ? 0 : Math.max(Number(options?.recentPastDays ?? DEFAULT_RECENT_PAST_DAYS) || 0, 0);
   const prefsStateRow = await queryOne(`SELECT data FROM dispatch_ui_prefs WHERE id = 'singleton'`);
   const timeZone = prefsStateRow?.data?.timeZone;
   const todayKey = getLocalDateKey(new Date(), timeZone);
@@ -65,7 +151,7 @@ export const readNemtDispatchState = async (options = {}) => {
     }
   }
 
-  return normalizePersistentDispatchState({
+  const liveState = normalizePersistentDispatchState({
     trips: tripsRes.rows.map(r => r.data),
     routePlans: routesRes.rows.map(r => r.data),
     dispatchThreads: threadsRes.rows.map(r => r.data),
@@ -73,6 +159,9 @@ export const readNemtDispatchState = async (options = {}) => {
     auditLog: auditRes.rows.map(r => r.data),
     uiPreferences: prefsRow?.data ?? {}
   });
+
+  const archivedStates = await loadRecentArchivedDispatchStates(todayKey, recentPastDays);
+  return mergeDispatchStatePayloads(liveState, archivedStates);
 };
 
 export const readNemtDispatchThreads = async () => {
