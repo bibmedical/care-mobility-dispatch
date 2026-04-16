@@ -1252,7 +1252,6 @@ const DispatcherMessagingPanel = ({
                               <div className="fw-semibold d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: 210 }}>
                                 <span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${isActiveThread ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
                                 {driver?.name ?? 'Driver'}
-                                <span className="rounded-circle d-inline-block" style={{ width: 8, height: 8, backgroundColor: isConnected ? '#22c55e' : '#ef4444' }} title={isConnected ? 'Driver connected' : 'Driver offline'} />
                               </div>
                               {sequencePreview ? <div
                                 className="small text-truncate"
