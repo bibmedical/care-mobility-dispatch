@@ -2883,12 +2883,24 @@ const TripDashboardWorkspace = () => {
   const completedRoutesCount = useMemo(() => {
     if (assignmentProgressTripIdSet.size === 0) return 0;
 
-    return routePlans.filter(routePlan => {
+    const routePlanCount = routePlans.filter(routePlan => {
       if (tripDateFilter !== 'all' && getRouteServiceDateKey(routePlan, trips) !== tripDateFilter) return false;
       const routeTripIds = Array.isArray(routePlan?.tripIds) ? routePlan.tripIds.map(normalizeTripId).filter(Boolean) : [];
       return routeTripIds.some(tripId => assignmentProgressTripIdSet.has(tripId));
     }).length;
-  }, [assignmentProgressTripIdSet, routePlans, tripDateFilter, trips]);
+
+    if (routePlanCount > 0) return routePlanCount;
+
+    const visibleAssignedTrips = assignmentProgressTrips.filter(trip => {
+      if (tripDateFilter !== 'all' && getTripTimelineDateKey(trip, routePlans, trips) !== tripDateFilter) return false;
+      return true;
+    });
+
+    const routeIds = new Set(visibleAssignedTrips.map(trip => normalizeTripId(trip?.routeId)).filter(Boolean));
+    if (routeIds.size > 0) return routeIds.size;
+
+    return new Set(visibleAssignedTrips.map(trip => normalizeDriverId(trip?.driverId)).filter(Boolean)).size;
+  }, [assignmentProgressTripIdSet, assignmentProgressTrips, routePlans, tripDateFilter, trips]);
   const selectedDriverActiveTrip = useMemo(() => {
     if (!selectedDriver) return null;
     const preferredTrip = trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id));
