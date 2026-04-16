@@ -338,15 +338,21 @@ const MANUAL_TRIP_ENTRY_2026_04_16 = [{
   detail: 'A local recovery snapshot was created before continuing this work: backup/SHEET-20260416-170133. Use it if any of the current local files need to be restored.'
 }];
 
-const DEPLOY_MEMORY_2026_04_16 = [{
-  area: 'Agent note to read first',
-  detail: 'The manual-trip work was pushed to origin/main in commit df6ef61 and Render is configured with autoDeployTrigger=commit, so that push is the deploy trigger for the web app.'
+const DIARIO_2026_04_16 = [{
+  area: 'Diario first read',
+  detail: 'Help is the operating diary. Read this section first before touching manual trip entry, dispatch persistence, SQL behavior, or local-vs-production dispatch storage again.'
+}, {
+  area: 'SQL repair of today',
+  detail: 'The production SQL path in nemt-dispatch-store was preserved as the real source of truth when DATABASE_URL exists. The repair added a development-only fallback so local Dispatcher no longer breaks or appears to lose trips just because SQL is unavailable on the machine.'
 }, {
   area: 'What was included',
   detail: 'The uploaded web change set included the shared manual-trip modal, the +Trip buttons in Dispatcher and Trip Dashboard, protected manual-trip persistence, Help documentation, the assistant dispatch lazy-load safeguard, and the development-only local fallback in nemt-dispatch-store.'
 }, {
+  area: 'Trip deletion guard',
+  detail: 'Manual trips are now marked with explicit protection flags and are preserved during import replacement and date-clear flows. This was added so trips created by dispatch do not get wiped out by later sync or intake cleanup.'
+}, {
   area: 'Local fallback meaning',
-  detail: 'The nemt-dispatch-store local fallback only activates outside production when DATABASE_URL is missing. It was kept on purpose so local Dispatcher works without breaking the production SQL path.'
+  detail: 'The nemt-dispatch-store local fallback only activates outside production when DATABASE_URL is missing. It does not replace production SQL. It exists so the same local failure pattern does not repeat when SQL is absent during development.'
 }, {
   area: 'What was not uploaded',
   detail: 'Unrelated driver-app changes and separate mobile API edits were intentionally left out of the push so this web deploy stayed isolated and safer for trips, imports, and dispatch persistence.'
@@ -497,11 +503,11 @@ const HelpPage = () => {
           <Card className="h-100 border-success-subtle">
             <CardBody>
               <div className="d-flex flex-column gap-2 mb-3">
-                <h5 className="mb-0">Agent Deploy Memory — April 16, 2026</h5>
-                <p className="text-muted mb-0">Read this first before changing manual trip entry, dispatch persistence, or local-vs-production behavior again.</p>
+                <h5 className="mb-0">Diario — April 16, 2026</h5>
+                <p className="text-muted mb-0">Operational diary for major fixes. This entry records the SQL-related repair, trip-protection guards, deploy scope, and validation from today.</p>
               </div>
               <div className="d-flex flex-column gap-2">
-                {DEPLOY_MEMORY_2026_04_16.map(item => <div key={item.area} className="border rounded p-3">
+                {DIARIO_2026_04_16.map(item => <div key={item.area} className="border rounded p-3">
                     <div className="fw-semibold mb-1">{item.area}</div>
                     <div className="small text-muted">{item.detail}</div>
                   </div>)}
@@ -641,9 +647,24 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V12</Badge>
+                <span className="fw-semibold text-dark">Diario — SQL Repair + Trip Protection Memory</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Marked Help as the operating diary for major repairs, validations, and deploy notes.</li>
+                <li>Recorded that production still uses SQL when DATABASE_URL exists and that the local fallback only runs outside production.</li>
+                <li>Documented the local failure pattern that made trips appear lost when SQL was unavailable during development.</li>
+                <li>Documented the guard that preserves manual trips during import replacement and per-date clearing flows.</li>
+                <li>Kept the deploy scope written down so future edits do not mix unrelated APK/mobile changes with web trip safety work.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V11</Badge>
                 <span className="fw-semibold text-dark">Deploy Record — Manual Trip Flow Uploaded With Safe Scope</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Pushed commit df6ef61 to origin/main after isolating only the intended web/manual-trip files.</li>
