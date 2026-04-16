@@ -165,6 +165,12 @@ const CHANGE_SAFETY_RULES = [{
   rule: 'One source of truth',
   detail: 'Routes, trips, driver assignments, confirmation state and messaging context must come from the same shared dispatch tree. Do not create parallel page-local copies.'
 }, {
+  rule: 'New controls must stay in-flow',
+  detail: 'Before adding a button, badge, panel or shortcut, identify which workspace owns that action already. Add the control inside the existing flow instead of creating a new disconnected spot that duplicates or bypasses the normal operator path.'
+}, {
+  rule: 'State consequences before building',
+  detail: 'Any new UI control must be evaluated for its impact on Dispatcher, Trip Dashboard, messaging, imports, persistence, and performance before it is added. If the consequence is unclear, scan first and document the risk before coding.'
+}, {
   rule: 'UI fix is not enough',
   detail: 'A visual fix in Dispatcher can still break Trip Dashboard later if it changes shared IDs, route links or persisted trip structure.'
 }, {
@@ -176,6 +182,23 @@ const CHANGE_SAFETY_RULES = [{
 }, {
   rule: 'Every change needs cross-screen thinking',
   detail: 'Before changing Dispatcher, check Trip Dashboard, confirmation, messaging, driver actions and SQL persistence because they depend on the same engine.'
+}];
+
+const UI_CHANGE_GUARDRAILS = [{
+  step: '1. Find the owner workspace',
+  detail: 'Decide whether the action belongs in Dispatcher, Trip Dashboard, Help, Messaging, import review, or another existing module. Do not create a second home for the same action unless there is a clear operational reason.'
+}, {
+  step: '2. Check the existing flow first',
+  detail: 'If operators already perform that action in a toolbar, panel, modal or table, extend that same flow. Random placement creates confusion and usually causes duplicate logic later.'
+}, {
+  step: '3. State the consequences up front',
+  detail: 'Before coding, list what the new button or control can affect: date scope, route links, selected trips, SQL persistence, refresh behavior, memory usage, and other screens that read the same state.'
+}, {
+  step: '4. Prefer reuse over invention',
+  detail: 'Wire the new control to existing shared context actions and existing API paths instead of creating new page-local state, extra loaders, or separate hidden behavior.'
+}, {
+  step: '5. Validate both core workspaces',
+  detail: 'A change that looks correct in one screen can still break the other. Verify Dispatcher and Trip Dashboard together before calling the UI change safe.'
 }];
 
 const HelpPage = () => {
@@ -305,6 +328,21 @@ const HelpPage = () => {
           </Card>
         </Col>
       </Row>
+
+      <Card className="mb-3">
+        <CardBody>
+          <div className="d-flex flex-column gap-2 mb-3">
+            <h5 className="mb-0">UI Change Guardrails</h5>
+            <p className="text-muted mb-0">Use this before adding any button, shortcut, panel or workflow action. The goal is to keep controls inside the correct operational flow and to state the consequences before new UI is created.</p>
+          </div>
+          <div className="d-flex flex-column gap-2">
+            {UI_CHANGE_GUARDRAILS.map(item => <div key={item.step} className="border rounded p-3">
+                <div className="fw-semibold mb-1">{item.step}</div>
+                <div className="small text-muted">{item.detail}</div>
+              </div>)}
+          </div>
+        </CardBody>
+      </Card>
 
       <Card className="mb-3">
         <CardBody>
