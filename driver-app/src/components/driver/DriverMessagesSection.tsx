@@ -12,6 +12,7 @@ type Props = {
 };
 
 export const DriverMessagesSection = ({ runtime }: Props) => {
+  const DISPATCH_THREAD_NAME = 'Dispatch';
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [selectedPhotoDataUrl, setSelectedPhotoDataUrl] = useState('');
   const [previewImageUrl, setPreviewImageUrl] = useState('');
@@ -37,21 +38,23 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
     };
   }, []);
 
+  const isOutgoing = (message: DriverMessage) => String(message.source || '').toLowerCase() === 'mobile-driver-app';
+
   const getThreadName = (message: DriverMessage) => {
+    if (!isOutgoing(message)) return DISPATCH_THREAD_NAME;
+
     const subject = String(message.subject || '');
     const taggedRecipient = subject.match(/\[(?:To|From):\s*([^\]]+)\]/i)?.[1]?.trim();
     if (taggedRecipient) return taggedRecipient;
     const senderMatch = subject.match(/from\s+([A-Za-z ]+)$/i)?.[1]?.trim();
     if (senderMatch) return senderMatch;
-    return 'Dispatch';
+    return DISPATCH_THREAD_NAME;
   };
-
-  const isOutgoing = (message: DriverMessage) => String(message.source || '').toLowerCase() === 'mobile-driver-app';
 
   const threads = useMemo(() => {
     const groups = new Map<string, DriverMessage[]>();
 
-    [...pinnedDispatchers, 'Dispatch'].forEach(name => groups.set(name, []));
+    [...pinnedDispatchers, DISPATCH_THREAD_NAME].forEach(name => groups.set(name, []));
     runtime.messages.forEach(message => {
       const key = getThreadName(message);
       const current = groups.get(key) || [];
@@ -109,7 +112,7 @@ export const DriverMessagesSection = ({ runtime }: Props) => {
     return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}>
         <View style={styles.headerRow}>
           <Text style={styles.pageTitle}>Messages</Text>
-          <Pressable style={styles.newMessageButton} onPress={() => setSelectedThread('Lexy')}>
+          <Pressable style={styles.newMessageButton} onPress={() => setSelectedThread(DISPATCH_THREAD_NAME)}>
             <Text style={styles.newMessageText}>New</Text>
           </Pressable>
         </View>
