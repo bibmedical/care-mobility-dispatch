@@ -1931,7 +1931,8 @@ const DispatcherWorkspace = () => {
     return null;
   }, [isManualDriverScope, routeTrips, selectedDriver, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
-  const tripTableColumnCount = orderedVisibleTripColumns.length + 5;
+  const showCancelledDetailControls = !isCancelledPanelMode;
+  const tripTableColumnCount = orderedVisibleTripColumns.length + (showCancelledDetailControls ? 5 : 0);
   const selectedDriverSelectedTrip = useMemo(() => {
     if (!selectedDriver) return null;
     return trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && isTripAssignedToDriver(trip, selectedDriver.id)) ?? null;
@@ -3451,11 +3452,13 @@ const DispatcherWorkspace = () => {
                 </div>}
                 <Table ref={tripTableElementRef} size="sm" hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ ...dispatcherSurfaceStyles.table, whiteSpace: 'nowrap', minWidth: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', width: groupedFilteredTripRows.length > 0 ? 'max-content' : '100%', opacity: mapLocked ? 0.6 : 1 }}>
                   <colgroup>
-                    <col style={{ width: 48, minWidth: 48, maxWidth: 48 }} />
-                    <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
-                    <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
-                    <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
-                    <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                    {showCancelledDetailControls ? <>
+                        <col style={{ width: 48, minWidth: 48, maxWidth: 48 }} />
+                        <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                        <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                        <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                        <col style={{ width: 56, minWidth: 56, maxWidth: 56 }} />
+                      </> : null}
                     {orderedVisibleTripColumns.map(columnKey => {
                     const metadata = tripColumnMeta[columnKey];
                     const fallbackWidth = columnKey === 'address' || columnKey === 'destination' ? 260 : undefined;
@@ -3469,28 +3472,30 @@ const DispatcherWorkspace = () => {
                   </colgroup>
                   <thead style={{ position: 'sticky', top: 0, ...dispatcherSurfaceStyles.tableHead }}>
                     <tr>
-                      <th style={{ width: 48 }}>
-                        <input
-                          type="checkbox"
-                          checked={allVisibleSelected}
-                          onChange={event => handleSelectAll(event.target.checked)}
-                          disabled={mapLocked}
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 4,
-                            border: '1px solid #6b7280',
-                            backgroundColor: '#6b7280',
-                            accentColor: '#8b5cf6',
-                            cursor: mapLocked ? 'not-allowed' : 'pointer',
-                            opacity: mapLocked ? 0.5 : 1
-                          }}
-                        />
-                      </th>
-                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
-                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
-                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>WC</th>
-                      <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Alert</th>
+                      {showCancelledDetailControls ? <>
+                          <th style={{ width: 48 }}>
+                            <input
+                              type="checkbox"
+                              checked={allVisibleSelected}
+                              onChange={event => handleSelectAll(event.target.checked)}
+                              disabled={mapLocked}
+                              style={{
+                              width: 16,
+                              height: 16,
+                              borderRadius: 4,
+                              border: '1px solid #6b7280',
+                              backgroundColor: '#6b7280',
+                              accentColor: '#8b5cf6',
+                              cursor: mapLocked ? 'not-allowed' : 'pointer',
+                              opacity: mapLocked ? 0.5 : 1
+                            }}
+                            />
+                          </th>
+                          <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>ACT</th>
+                          <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Notes</th>
+                          <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>WC</th>
+                          <th style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>Alert</th>
+                        </> : null}
                       {orderedVisibleTripColumns.map(columnKey => {
                     const metadata = tripColumnMeta[columnKey];
                     if (!metadata) return null;
@@ -3514,67 +3519,69 @@ const DispatcherWorkspace = () => {
                         ...(selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? dispatcherSurfaceStyles.rowSelected : isTripAssignedToSelectedDriver(row.trip) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault),
                         cursor: mapLocked ? 'not-allowed' : 'pointer'
                       }}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedTripIdSet.has(normalizeTripId(row.trip.id))}
-                            onClick={event => event.stopPropagation()}
-                            onChange={() => handleTripSelectionToggle(row.trip.id)}
-                            disabled={mapLocked}
-                            style={{
-                              width: 16,
-                              height: 16,
-                              borderRadius: 4,
-                              border: '1px solid #6b7280',
-                              backgroundColor: '#6b7280',
-                              accentColor: '#8b5cf6',
-                              cursor: mapLocked ? 'not-allowed' : 'pointer',
-                              opacity: mapLocked ? 0.5 : 1
-                            }}
-                          />
-                        </td>
-                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-                          <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
-                            <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={event => {
-                          event.stopPropagation();
-                          setSelectedTripIds([row.trip.id]);
-                          setSelectedDriverId(normalizeDriverId(row.trip.driverId ?? selectedDriverId) || null);
-                          setSelectedRouteId(normalizeRouteId(row.trip.routeId) || '');
-                          if (row.trip.driverId && !dispatcherLayout.messagingVisible) {
-                            persistDispatcherLayout({
-                              ...dispatcherLayout,
-                              messagingVisible: true,
-                              preset: 'custom'
-                            });
-                          }
-                          setStatusMessage(`Trip ${row.trip.id} activo.`);
-                        }}>ACT</Button>
-                          </div>
-                        </td>
-                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-                          <Button variant="outline-secondary" size="sm" disabled={mapLocked} onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent', opacity: mapLocked ? 0.5 : 1 }}>
-                            N
-                          </Button>
-                        </td>
-                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-                          {(getTripLegFilterKey(row.trip) !== 'AL' || getEffectiveTripStatus(row.trip) === 'WillCall') ? <Button variant={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(row.trip.id)} title={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
-                              WC
-                            </Button> : <span style={{ display: 'inline-block', minWidth: 40 }} />}
-                        </td>
-                        <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-                          {row.trip.driverId ? <Button variant="outline-info" size="sm" disabled={mapLocked} onClick={() => {
-                            sendTripNotification({
-                              driverId: row.trip.driverId,
-                              driverName: row.trip.driverName,
-                              tripId: row.trip.id,
-                              tripRiderId: row.trip.riderId,
-                              tripRiderName: row.trip.riderName
-                            });
-                            setStatusMessage(`Notification sent to driver for ${row.trip.riderName || 'trip'}`);
-                          }} title="Send notification to driver about this trip" style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
-                            🔔
-                          </Button> : <span style={{ display: 'inline-block', minWidth: 40 }} />}
-                        </td>
+                        {showCancelledDetailControls ? <>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={selectedTripIdSet.has(normalizeTripId(row.trip.id))}
+                                onClick={event => event.stopPropagation()}
+                                onChange={() => handleTripSelectionToggle(row.trip.id)}
+                                disabled={mapLocked}
+                                style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: 4,
+                                border: '1px solid #6b7280',
+                                backgroundColor: '#6b7280',
+                                accentColor: '#8b5cf6',
+                                cursor: mapLocked ? 'not-allowed' : 'pointer',
+                                opacity: mapLocked ? 0.5 : 1
+                              }}
+                              />
+                            </td>
+                            <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                              <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
+                                <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={event => {
+                              event.stopPropagation();
+                              setSelectedTripIds([row.trip.id]);
+                              setSelectedDriverId(normalizeDriverId(row.trip.driverId ?? selectedDriverId) || null);
+                              setSelectedRouteId(normalizeRouteId(row.trip.routeId) || '');
+                              if (row.trip.driverId && !dispatcherLayout.messagingVisible) {
+                                persistDispatcherLayout({
+                                  ...dispatcherLayout,
+                                  messagingVisible: true,
+                                  preset: 'custom'
+                                });
+                              }
+                              setStatusMessage(`Trip ${row.trip.id} activo.`);
+                            }}>ACT</Button>
+                              </div>
+                            </td>
+                            <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                              <Button variant="outline-secondary" size="sm" disabled={mapLocked} onClick={() => handleOpenTripNote(row.trip)} style={{ minWidth: 34, color: getTripNoteText(row.trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent', opacity: mapLocked ? 0.5 : 1 }}>
+                                N
+                              </Button>
+                            </td>
+                            <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                              {(getTripLegFilterKey(row.trip) !== 'AL' || getEffectiveTripStatus(row.trip) === 'WillCall') ? <Button variant={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(row.trip.id)} title={getEffectiveTripStatus(row.trip) === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
+                                  WC
+                                </Button> : <span style={{ display: 'inline-block', minWidth: 40 }} />}
+                            </td>
+                            <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
+                              {row.trip.driverId ? <Button variant="outline-info" size="sm" disabled={mapLocked} onClick={() => {
+                                sendTripNotification({
+                                  driverId: row.trip.driverId,
+                                  driverName: row.trip.driverName,
+                                  tripId: row.trip.id,
+                                  tripRiderId: row.trip.riderId,
+                                  tripRiderName: row.trip.riderName
+                                });
+                                setStatusMessage(`Notification sent to driver for ${row.trip.riderName || 'trip'}`);
+                              }} title="Send notification to driver about this trip" style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
+                                  🔔
+                                </Button> : <span style={{ display: 'inline-block', minWidth: 40 }} />}
+                            </td>
+                          </> : null}
                         {orderedVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
                       </tr>) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center py-4" style={{ color: dispatcherSurfaceStyles.emptyText }}>{isCancelledPanelMode ? 'No cancelled trips for the selected day.' : 'No trips loaded. Waiting for your real trips.'}</td>
