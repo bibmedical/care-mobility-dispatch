@@ -871,7 +871,7 @@ const DispatcherWorkspace = () => {
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
   const [serviceAnimalOnly, setServiceAnimalOnly] = useState(false);
-  const [tripDateFilter, setTripDateFilter] = useState(() => getLocalDateKey());
+  const [tripDateFilter, setTripDateFilter] = useState('all');
   const [selectedTripIds, setSelectedTripIds] = useState([]);
   const [isManualDriverScope, setIsManualDriverScope] = useState(false);
   const [followSelectedDriver, setFollowSelectedDriver] = useState(false);
