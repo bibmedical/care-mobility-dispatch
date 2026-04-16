@@ -3586,17 +3586,17 @@ const DispatcherWorkspace = () => {
           </Card>
         </div>
 
-        <div onMouseDown={() => hasRowSplit ? setDragMode('row') : undefined} style={{
+        <div onMouseDown={() => hasRowSplit && !isCancelledPanelMode ? setDragMode('row') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'row-resize',
         gridColumn: rightOnlySplitMode ? 3 : '1 / span 3',
         gridRow: 2,
-        display: hasRowSplit ? 'block' : 'none'
+        display: hasRowSplit && !isCancelledPanelMode ? 'block' : 'none'
       }}>
           <div className="position-absolute top-50 start-50 translate-middle rounded-pill" style={{ width: 56, height: 6, backgroundColor: '#6b7280' }} />
         </div>
 
-        <div onMouseDown={() => hasRowSplit && hasColumnSplit ? setDragMode('both') : undefined} style={{
+        <div onMouseDown={() => hasRowSplit && hasColumnSplit && !isCancelledPanelMode ? setDragMode('both') : undefined} style={{
         width: 18,
         height: 18,
         borderRadius: '50%',
@@ -3609,7 +3609,7 @@ const DispatcherWorkspace = () => {
         cursor: 'move',
         zIndex: 50,
         boxShadow: '0 0 0 2px rgba(88, 96, 122, 0.25)',
-        display: hasRowSplit && hasColumnSplit ? 'block' : 'none'
+        display: hasRowSplit && hasColumnSplit && !isCancelledPanelMode ? 'block' : 'none'
       }} />
 
         <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: dispatcherLayout.messagingVisible ? 'block' : 'none', gridColumn: 1, gridRow: messagingPanelGridRow }}>
