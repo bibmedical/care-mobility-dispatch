@@ -467,7 +467,10 @@ export async function POST(request) {
     }
   }
 
-  const timestamp = Date.now();
+  const requestedEventTimestamp = Number(body?.eventTimestamp);
+  const timestamp = Number.isFinite(requestedEventTimestamp) && requestedEventTimestamp > 0
+    ? requestedEventTimestamp
+    : Date.now();
   const actionUpdate = buildTripActionUpdate(currentTrip, action, timestamp, {
     locationSnapshot: body?.locationSnapshot,
     riderSignatureName,

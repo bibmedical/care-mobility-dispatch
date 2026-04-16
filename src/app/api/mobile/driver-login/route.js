@@ -305,7 +305,9 @@ export async function POST(request) {
           vehicleId: driver.vehicleId || '',
           passwordResetRequired: isDriverPasswordResetRequired(driver),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
-        }, deviceId)
+        }, deviceId, {
+          forceTakeover: true
+        })
       });
     } catch (error) {
       if (error?.code === 'driver-session-conflict' || error?.code === 'driver-session-bad-request') {

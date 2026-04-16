@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Linking, Platform, Vibration } from 'react-native';
 import * as Location from 'expo-location';
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { DRIVER_APP_CONFIG } from '../config/driverAppConfig';
 import { DriverNotificationMode, clearStoredDriverSession, enqueueStoredPendingTripAction, readOrCreateDriverDeviceId, readStoredDriverSession, readStoredNotificationMode, readStoredPendingTripActions, readStoredTrackingPreference, removeStoredPendingTripAction, writeStoredDriverSession, writeStoredNotificationMode, writeStoredPendingTripActions, writeStoredTrackingPreference } from '../services/driverSessionStorage';
@@ -19,6 +18,32 @@ const isLocalPasswordlessDriverLoginEnabled = __DEV__;
 const DRIVER_RENDER_API_BASE_URL = 'https://care-mobility-dispatch-web-v2.onrender.com';
 const DRIVER_ALERT_CHANNEL_ID = 'driver-alerts';
 const shouldRegisterRemotePushToken = true;
+const isExpoGoRuntime = Constants.appOwnership === 'expo'
+  || String((Constants as { executionEnvironment?: unknown }).executionEnvironment || '').toLowerCase() === 'storeclient';
+const shouldDisableNotificationsRuntime = __DEV__ || isExpoGoRuntime;
+let cachedNotificationsModule: any | null | undefined;
+
+const getNotificationsModule = () => {
+  if (shouldDisableNotificationsRuntime) return null;
+  if (cachedNotificationsModule !== undefined) return cachedNotificationsModule;
+
+  try {
+    cachedNotificationsModule = require('expo-notifications');
+    cachedNotificationsModule.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false
+      })
+    });
+  } catch {
+    cachedNotificationsModule = null;
+  }
+
+  return cachedNotificationsModule;
+};
 
 const buildLoginApiBaseCandidates = () => {
   const candidates = [DRIVER_APP_CONFIG.apiBaseUrl, DRIVER_RENDER_API_BASE_URL]
@@ -87,6 +112,11 @@ const getMobileApiErrorMessage = (response: Response, fallbackMessage: string) =
   return fallbackMessage;
 };
 
+const isDriverSessionErrorResponse = (response: Response | null | undefined, payload: any) => {
+  const code = String(payload?.code || '').trim().toLowerCase();
+  return Boolean(response && [401, 409].includes(response.status) && code.startsWith('driver-session'));
+};
+
 const getDriverAuthHeaders = (session: DriverSession | null, baseHeaders: HeadersInit = {}) => {
   const headers = {
     ...baseHeaders
@@ -102,15 +132,17 @@ const getDriverAuthHeaders = (session: DriverSession | null, baseHeaders: Header
   return headers;
 };
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false
-  })
-});
+const omitDriverAuthHeaders = (headers: HeadersInit = {}) => {
+  const nextHeaders = {
+    ...(headers as Record<string, string>)
+  };
+
+  delete nextHeaders['x-driver-device-id'];
+  delete nextHeaders['x-driver-session-token'];
+
+  return nextHeaders;
+};
+
 const EMPTY_DRIVER_DOCUMENTS: DriverDocuments = {
   profilePhoto: null,
   licenseFront: null,
@@ -230,6 +262,7 @@ export const useDriverRuntime = () => {
   const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(false);
   const [notificationError, setNotificationError] = useState('');
   const [isRegisteringPushToken, setIsRegisteringPushToken] = useState(false);
+  const requiresPasswordReset = Boolean(loggedIn && driverSession?.passwordResetRequired);
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const requestedBackgroundSettingsRef = useRef(false);
   const processingPendingTripActionsRef = useRef(false);
@@ -285,13 +318,24 @@ export const useDriverRuntime = () => {
   };
 
   const handleDriverSessionFailure = async (response: Response, payload: any, fallbackMessage: string) => {
-    const code = String(payload?.code || '').trim().toLowerCase();
-    if (![401, 409].includes(response.status) || !code.startsWith('driver-session')) {
+    if (!isDriverSessionErrorResponse(response, payload)) {
       return false;
     }
 
     await clearDriverRuntimeState(payload?.error || fallbackMessage);
     return true;
+  };
+
+  const fetchDriverMessagesWithLegacyFallback = async (input: string, init?: RequestInit) => {
+    const primaryResult = await fetchJsonWithTimeout(input, init);
+    if (!isDriverSessionErrorResponse(primaryResult.response, primaryResult.payload)) {
+      return primaryResult;
+    }
+
+    return await fetchJsonWithTimeout(input, {
+      ...init,
+      headers: omitDriverAuthHeaders(init?.headers)
+    });
   };
 
   const setTrackingEnabled = (nextValue: boolean) => {
@@ -304,6 +348,7 @@ export const useDriverRuntime = () => {
     setPendingTripActions(storedActions);
     return storedActions;
   };
+
 
   const buildOptimisticTripPatch = (action: DriverTripActionName, options: {
     cancellationReason?: string;
@@ -413,7 +458,7 @@ export const useDriverRuntime = () => {
 
     const sortedActions = [...queuedActions]
       .filter(action => action.driverId === driverSession?.driverId)
-      .sort((leftAction, rightAction) => Number(leftAction.createdAt || 0) - Number(rightAction.createdAt || 0));
+      .sort((leftAction, rightAction) => Number(leftAction.eventTimestamp || leftAction.createdAt || 0) - Number(rightAction.eventTimestamp || rightAction.createdAt || 0));
 
     if (!sortedActions.length) return trips;
 
@@ -445,7 +490,7 @@ export const useDriverRuntime = () => {
   };
 
   const reloadTrips = async () => {
-    if (!loggedIn) return false;
+    if (!loggedIn || requiresPasswordReset) return false;
 
     try {
       const lookupQuery = driverSession?.driverId ? `driverId=${encodeURIComponent(driverSession.driverId)}` : `driverCode=${encodeURIComponent(driverCode.trim())}`;
@@ -481,7 +526,7 @@ export const useDriverRuntime = () => {
   };
 
   const processPendingTripActions = async () => {
-    if (processingPendingTripActionsRef.current || !driverSession?.driverId) return false;
+    if (processingPendingTripActionsRef.current || !driverSession?.driverId || requiresPasswordReset) return false;
 
     processingPendingTripActionsRef.current = true;
     setIsProcessingPendingTripActions(true);
@@ -510,6 +555,7 @@ export const useDriverRuntime = () => {
               driverId: queuedAction.driverId,
               tripId: queuedAction.tripId,
               action: queuedAction.action,
+              eventTimestamp: queuedAction.eventTimestamp,
               riderSignatureName: String(queuedAction.riderSignatureName || '').trim() || undefined,
               riderSignatureData: queuedAction.riderSignatureData || undefined,
               cancellationReason: String(queuedAction.cancellationReason || '').trim() || undefined,
@@ -581,11 +627,11 @@ export const useDriverRuntime = () => {
   };
 
   const loadMessages = async (signalActive = true) => {
-    if (!loggedIn || !driverSession?.driverId) return;
+    if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) return;
     setIsLoadingMessages(true);
     try {
       const requestUrl = `${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages?driverId=${encodeURIComponent(driverSession.driverId)}&t=${Date.now()}`;
-      const { response, payload } = await fetchJsonWithTimeout(requestUrl, {
+      const { response, payload } = await fetchDriverMessagesWithLegacyFallback(requestUrl, {
         cache: 'no-store',
         headers: getDriverAuthHeaders(driverSession)
       });
@@ -605,7 +651,7 @@ export const useDriverRuntime = () => {
   };
 
   const loadDriverReviewSummary = async (signalActive = true) => {
-    if (!loggedIn || !driverSession?.driverId) return;
+    if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) return;
     try {
       const query = `driverId=${encodeURIComponent(driverSession.driverId)}`;
       const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-reviews?${query}`, {
@@ -692,14 +738,17 @@ export const useDriverRuntime = () => {
   }, []);
 
   useEffect(() => {
-    void Notifications.setNotificationChannelAsync(DRIVER_ALERT_CHANNEL_ID, {
+    const notifications = getNotificationsModule();
+    if (!notifications) return;
+
+    void notifications.setNotificationChannelAsync(DRIVER_ALERT_CHANNEL_ID, {
       name: 'Dispatcher Alerts',
-      importance: Notifications.AndroidImportance.MAX,
+      importance: notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 300, 120, 300],
       enableVibrate: true,
       enableLights: true,
       lightColor: '#16a34a',
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      lockscreenVisibility: notifications.AndroidNotificationVisibility.PUBLIC,
       sound: 'default',
       showBadge: true
     });
@@ -709,16 +758,26 @@ export const useDriverRuntime = () => {
     if (!shouldRegisterRemotePushToken) return;
     if (!loggedIn || !driverSession?.driverId || !notificationPermissionGranted || isRegisteringPushToken) return;
 
+    if (shouldDisableNotificationsRuntime) {
+      setNotificationError('Remote push registration is skipped in Expo Go. Use a development build or APK for live push notifications.');
+      return;
+    }
+
     let active = true;
     const registerPushToken = async () => {
       try {
         setIsRegisteringPushToken(true);
+        const notifications = getNotificationsModule();
+        if (!notifications) {
+          throw new Error('Push notifications require a development build or APK, not Expo Go.');
+        }
+
         const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
         if (!projectId) {
           throw new Error('Missing EAS project ID for push registration.');
         }
 
-        const tokenPayload = await Notifications.getExpoPushTokenAsync({ projectId });
+        const tokenPayload = await notifications.getExpoPushTokenAsync({ projectId });
         const pushToken = String(tokenPayload?.data || '').trim();
         if (!pushToken) {
           throw new Error('Unable to retrieve Expo push token.');
@@ -760,9 +819,17 @@ export const useDriverRuntime = () => {
     let active = true;
 
     const syncNotificationPermission = async () => {
-      const settings = await Notifications.getPermissionsAsync();
+      const notifications = getNotificationsModule();
+      if (!notifications) {
+        if (!active) return;
+        setNotificationPermissionGranted(false);
+        setNotificationError('Expo Go on Android does not support remote push notifications. Use a development build or APK for push testing.');
+        return;
+      }
+
+      const settings = await notifications.getPermissionsAsync();
       if (!active) return;
-      const granted = settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+      const granted = settings.granted || settings.ios?.status === notifications.IosAuthorizationStatus.PROVISIONAL;
       setNotificationPermissionGranted(Boolean(granted));
       if (!granted) {
         setNotificationError('Notifications are disabled. Enable notifications to receive dispatcher alerts in real time.');
@@ -781,7 +848,7 @@ export const useDriverRuntime = () => {
     let subscription: Location.LocationSubscription | null = null;
 
     const startWatching = async () => {
-      if (!trackingEnabled || !loggedIn) return;
+      if (!trackingEnabled || !loggedIn || requiresPasswordReset) return;
 
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -832,7 +899,7 @@ export const useDriverRuntime = () => {
     return () => {
       subscription?.remove();
     };
-  }, [effectiveForegroundGpsDistanceIntervalMeters, effectiveForegroundGpsTimeIntervalMs, loggedIn, trackingEnabled]);
+  }, [effectiveForegroundGpsDistanceIntervalMeters, effectiveForegroundGpsTimeIntervalMs, loggedIn, requiresPasswordReset, trackingEnabled]);
 
   useEffect(() => {
     let active = true;
@@ -864,7 +931,7 @@ export const useDriverRuntime = () => {
     let active = true;
 
     const syncBackgroundTrackingState = async () => {
-      if (!loggedIn) {
+      if (!loggedIn || requiresPasswordReset) {
         if (active) {
           setIsBackgroundTrackingEnabled(false);
           setBackgroundTrackingError('');
@@ -883,7 +950,7 @@ export const useDriverRuntime = () => {
     return () => {
       active = false;
     };
-  }, [loggedIn]);
+  }, [loggedIn, requiresPasswordReset]);
 
   useEffect(() => {
     let active = true;
@@ -898,7 +965,7 @@ export const useDriverRuntime = () => {
         return;
       }
 
-      if (!loggedIn || !driverSession?.driverId) {
+      if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) {
         await stopBackgroundLocationTracking();
         if (active) setIsBackgroundTrackingEnabled(false);
         return;
@@ -939,10 +1006,10 @@ export const useDriverRuntime = () => {
     return () => {
       active = false;
     };
-  }, [driverSession?.driverId, loggedIn, trackingEnabled]);
+  }, [driverSession?.driverId, loggedIn, requiresPasswordReset, trackingEnabled]);
 
   useEffect(() => {
-    if (!loggedIn || !trackingEnabled || !driverSession?.driverId || !DRIVER_APP_CONFIG.enableBackgroundTracking) return;
+    if (!loggedIn || !trackingEnabled || !driverSession?.driverId || !DRIVER_APP_CONFIG.enableBackgroundTracking || requiresPasswordReset) return;
 
     let active = true;
 
@@ -987,10 +1054,10 @@ export const useDriverRuntime = () => {
       subscription.remove();
       clearInterval(watchdogInterval);
     };
-  }, [driverSession?.driverId, loggedIn, trackingEnabled]);
+  }, [driverSession?.driverId, loggedIn, requiresPasswordReset, trackingEnabled]);
 
   useEffect(() => {
-    if (!loggedIn || !driverSession?.driverId) return;
+    if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) return;
 
     const subscription = AppState.addEventListener('change', nextState => {
       if (nextState === 'active') {
@@ -1005,10 +1072,10 @@ export const useDriverRuntime = () => {
     return () => {
       subscription.remove();
     };
-  }, [driverSession?.driverId, loggedIn]);
+  }, [driverSession?.driverId, loggedIn, requiresPasswordReset]);
 
   useEffect(() => {
-    if (!loggedIn) {
+    if (!loggedIn || requiresPasswordReset) {
       setAssignedTrips([]);
       setActiveTrip(null);
       setTripSyncError('');
@@ -1037,10 +1104,10 @@ export const useDriverRuntime = () => {
       active = false;
       clearInterval(intervalId);
     };
-  }, [driverCode, driverSession?.driverId, loggedIn]);
+  }, [driverCode, driverSession?.driverId, loggedIn, requiresPasswordReset]);
 
   useEffect(() => {
-    if (!loggedIn || !driverSession?.driverId) {
+    if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) {
       setMessages([]);
       setReadIncomingMessageIds([]);
       setMessagesError('');
@@ -1058,7 +1125,7 @@ export const useDriverRuntime = () => {
       active = false;
       clearInterval(intervalId);
     };
-  }, [driverSession?.driverId, loggedIn]);
+  }, [driverSession?.driverId, loggedIn, requiresPasswordReset]);
 
   useEffect(() => {
     if (!loggedIn || activeTab !== 'messages') return;
@@ -1076,7 +1143,7 @@ export const useDriverRuntime = () => {
   }, [activeTab, loggedIn, messages]);
 
   useEffect(() => {
-    if (!loggedIn || !driverSession?.driverId) {
+    if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) {
       setDriverReviewSummary(null);
       setDriverReviewError('');
       return;
@@ -1093,7 +1160,7 @@ export const useDriverRuntime = () => {
       active = false;
       clearInterval(intervalId);
     };
-  }, [driverSession?.driverId, loggedIn]);
+  }, [driverSession?.driverId, loggedIn, requiresPasswordReset]);
 
   useEffect(() => {
     if (!locationSnapshot) {
@@ -1124,7 +1191,7 @@ export const useDriverRuntime = () => {
   }, [locationSnapshot?.latitude, locationSnapshot?.longitude]);
 
   useEffect(() => {
-    if (!loggedIn || !driverSession?.driverId) {
+    if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) {
       setDriverTimeOffAppointment(null);
       setDriverTimeOffError('');
       setDriverTimeOffSuccess('');
@@ -1139,10 +1206,10 @@ export const useDriverRuntime = () => {
     return () => {
       active = false;
     };
-  }, [driverSession?.driverId, loggedIn]);
+  }, [driverSession?.driverId, loggedIn, requiresPasswordReset]);
 
   useEffect(() => {
-    if (!loggedIn || !driverSession?.driverId) {
+    if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) {
       setDriverDocuments(EMPTY_DRIVER_DOCUMENTS);
       setDocumentsError('');
       return;
@@ -1153,10 +1220,10 @@ export const useDriverRuntime = () => {
     return () => {
       active = false;
     };
-  }, [driverSession?.driverId, loggedIn]);
+  }, [driverSession?.driverId, loggedIn, requiresPasswordReset]);
 
   useEffect(() => {
-    if (!trackingEnabled || !loggedIn || !driverSession?.driverId || !locationSnapshot) return;
+    if (!trackingEnabled || !loggedIn || !driverSession?.driverId || !locationSnapshot || requiresPasswordReset) return;
 
     let cancelled = false;
 
@@ -1194,7 +1261,7 @@ export const useDriverRuntime = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentCity, driverSession?.driverId, locationSnapshot, loggedIn, trackingEnabled]);
+  }, [currentCity, driverSession?.driverId, locationSnapshot, loggedIn, requiresPasswordReset, trackingEnabled]);
 
   useEffect(() => {
     if (!loggedIn || messages.length === 0) return;
@@ -1221,7 +1288,10 @@ export const useDriverRuntime = () => {
 
       if (notificationMode === 'silent') return;
 
-      await Notifications.scheduleNotificationAsync({
+      const notifications = getNotificationsModule();
+      if (!notifications) return;
+
+      await notifications.scheduleNotificationAsync({
         content: {
           title: latest.subject || 'New dispatch message',
           body: latest.body || 'You have a new dispatcher message.',
@@ -1236,6 +1306,7 @@ export const useDriverRuntime = () => {
 
   const statusCard = useMemo(() => {
     if (!loggedIn) return 'Sign in to begin driver operations.';
+    if (requiresPasswordReset) return 'Password reset required. Driver operations stay locked until the new password is saved.';
     if (!trackingEnabled) return 'Tracking is off. Turn it on when your shift starts.';
     if (permissionStatus !== 'granted') return 'Waiting for GPS permission.';
     if (backgroundTrackingError) return backgroundTrackingError;
@@ -1244,7 +1315,7 @@ export const useDriverRuntime = () => {
     if (isSyncingLocation) return 'GPS is active and syncing to dispatch.';
     if (locationSnapshot) return 'GPS is active and ready to sync with dispatcher.';
     return 'Preparing GPS...';
-  }, [backgroundTrackingError, isBackgroundTrackingEnabled, isManagingBackgroundTracking, isSyncingLocation, locationSnapshot, loggedIn, permissionStatus, trackingEnabled]);
+  }, [backgroundTrackingError, isBackgroundTrackingEnabled, isManagingBackgroundTracking, isSyncingLocation, locationSnapshot, loggedIn, permissionStatus, requiresPasswordReset, trackingEnabled]);
 
   const lateRiskTrip = useMemo(() => {
     const candidateTrips = [activeTrip, ...assignedTrips].filter(Boolean) as DriverTrip[];
@@ -1472,8 +1543,15 @@ export const useDriverRuntime = () => {
 
   const requestNotificationPermission = async () => {
     try {
-      const settings = await Notifications.requestPermissionsAsync();
-      const granted = settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+      const notifications = getNotificationsModule();
+      if (!notifications) {
+        setNotificationPermissionGranted(false);
+        setNotificationError('Expo Go on Android does not support remote push notifications. Use a development build or APK for push testing.');
+        return false;
+      }
+
+      const settings = await notifications.requestPermissionsAsync();
+      const granted = settings.granted || settings.ios?.status === notifications.IosAuthorizationStatus.PROVISIONAL;
       setNotificationPermissionGranted(Boolean(granted));
       setNotificationError(granted ? '' : 'Notifications are still disabled. Enable them in device settings.');
       if (!granted) {
@@ -1504,7 +1582,8 @@ export const useDriverRuntime = () => {
     completionPhotoDataUrl?: string;
   } = {}) => {
     const targetTripId = String(options.tripId || activeTrip?.id || '').trim();
-    if (!driverSession?.driverId || !targetTripId) return false;
+    if (!driverSession?.driverId || !targetTripId || requiresPasswordReset) return false;
+    const eventTimestamp = Date.now();
 
     setActiveTripAction(action);
     setTripActionError('');
@@ -1520,6 +1599,7 @@ export const useDriverRuntime = () => {
       driverId: driverSession.driverId,
       tripId: targetTripId,
       action,
+      eventTimestamp,
       createdAt: Date.now(),
       attemptCount: 0,
       riderSignatureName: String(options.riderSignatureName || '').trim() || undefined,
@@ -1541,12 +1621,12 @@ export const useDriverRuntime = () => {
     const nextBody = messageDraft.trim();
     const mediaUrl = String(options?.mediaUrl || '').trim();
     const mediaType = String(options?.mediaType || '').trim();
-    if (!driverSession?.driverId || (!nextBody && !mediaUrl)) return false;
+    if (!driverSession?.driverId || (!nextBody && !mediaUrl) || requiresPasswordReset) return false;
 
     setIsSendingMessage(true);
     try {
       const recipientTag = String(recipientName || '').trim();
-      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
+      const { response, payload } = await fetchDriverMessagesWithLegacyFallback(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
         method: 'POST',
         headers: {
           ...getDriverAuthHeaders(driverSession, {
@@ -1578,7 +1658,7 @@ export const useDriverRuntime = () => {
   };
 
   const sendOutsideSmsNotice = async (trip: DriverTrip | null | undefined, riderMessage: string, phoneNumber?: string) => {
-    if (!driverSession?.driverId || !trip) return false;
+    if (!driverSession?.driverId || !trip || requiresPasswordReset) return false;
 
     const messageText = String(riderMessage || '').trim();
     if (!messageText) return false;
@@ -1589,7 +1669,7 @@ export const useDriverRuntime = () => {
 
     setIsSendingMessage(true);
     try {
-      const { response, payload } = await fetchJsonWithTimeout(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
+      const { response, payload } = await fetchDriverMessagesWithLegacyFallback(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages`, {
         method: 'POST',
         headers: {
           ...getDriverAuthHeaders(driverSession, {
@@ -1620,7 +1700,8 @@ export const useDriverRuntime = () => {
   };
 
   const sendPresetDriverAlert = async (mode: 'delay' | 'backup-driver' | 'request-uber') => {
-    if (!driverSession?.driverId || !activeTrip) return false;
+    if (!driverSession?.driverId || !activeTrip || requiresPasswordReset) return false;
+    const createdAt = new Date().toISOString();
 
     const lateMinutes = activeTrip.lateMinutes || '-';
     const tripReference = activeTrip.rideId || activeTrip.id;
@@ -1659,6 +1740,7 @@ export const useDriverRuntime = () => {
           tripId: String(activeTrip.id || '').trim(),
           body,
           subject,
+          createdAt,
           type: mode === 'delay' ? 'delay-alert' : mode === 'backup-driver' ? 'backup-driver-request' : 'uber-request',
           priority: 'high',
           deliveryMethod: 'in-app'
@@ -2127,7 +2209,7 @@ export const useDriverRuntime = () => {
     profileError,
     isChangingPassword,
     passwordChangeError,
-    requiresPasswordReset: Boolean(loggedIn && driverSession?.passwordResetRequired),
+    requiresPasswordReset,
     driverDocuments,
     isLoadingDocuments,
     isUploadingDocument,

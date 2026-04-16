@@ -7,25 +7,49 @@ export const BACKGROUND_LOCATION_TASK = 'care-mobility-driver-background-locatio
 
 const postLocationUpdate = async (driverId: string, location: Location.LocationObject) => {
   const session = await readStoredDriverSession();
-  if (!session?.sessionToken || !session?.deviceId) return;
-
-  await fetch(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-location`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-driver-device-id': session.deviceId,
-      'x-driver-session-token': session.sessionToken
-    },
-    body: JSON.stringify({
-      driverId,
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-      accuracy: location.coords.accuracy ?? null,
-      speed: location.coords.speed ?? null,
-      heading: location.coords.heading ?? null,
-      timestamp: location.timestamp
-    })
+  const requestBody = JSON.stringify({
+    driverId,
+    latitude: location.coords.latitude,
+    longitude: location.coords.longitude,
+    accuracy: location.coords.accuracy ?? null,
+    speed: location.coords.speed ?? null,
+    heading: location.coords.heading ?? null,
+    timestamp: location.timestamp
   });
+
+  const sendLocationUpdate = async (headers: Record<string, string> = {}) => {
+    return await fetch(`${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-location`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers
+      },
+      body: requestBody
+    });
+  };
+
+  if (!session?.sessionToken || !session?.deviceId) {
+    const fallbackResponse = await sendLocationUpdate();
+    if (!fallbackResponse.ok) {
+      throw new Error(`Background GPS sync failed (${fallbackResponse.status}).`);
+    }
+    return;
+  }
+
+  const response = await sendLocationUpdate({
+    'x-driver-device-id': session.deviceId,
+    'x-driver-session-token': session.sessionToken
+  });
+
+  if (response.ok) return;
+
+  if (response.status === 401 || response.status === 409) {
+    const fallbackResponse = await sendLocationUpdate();
+    if (fallbackResponse.ok) return;
+    throw new Error(`Background GPS sync failed (${fallbackResponse.status}).`);
+  }
+
+  throw new Error(`Background GPS sync failed (${response.status}).`);
 };
 
 if (!TaskManager.isTaskDefined(BACKGROUND_LOCATION_TASK)) {

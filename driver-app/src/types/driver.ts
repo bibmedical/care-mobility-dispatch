@@ -14,6 +14,7 @@ export type DriverPendingTripAction = {
   driverId: string;
   tripId: string;
   action: DriverTripActionName;
+  eventTimestamp: number;
   createdAt: number;
   lastAttemptAt?: number | null;
   attemptCount: number;
