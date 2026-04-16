@@ -1295,9 +1295,11 @@ const DispatcherMessagingPanel = ({
                               <div className="small text-truncate" style={{ maxWidth: 220, color: isActiveThread ? selectedChatTheme.activeThreadSubtle : messagingSurfaceStyles.secondaryText }}>{isDaily ? 'Daily Driver' : driver?.vehicle || 'Pending vehicle'}</div>
                             </div>
                           </div>
-                          <div className="text-end">
-                            <div className="small">{lastMessage ? formatDispatchTime(lastMessage.timestamp, uiPreferences?.timeZone) : '--:--'}</div>
-                            <div className="d-flex justify-content-end mt-1"><span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: isConnected ? '#22c55e' : '#ef4444' }} title={isConnected ? 'Driver connected' : 'Driver offline'} /></div>
+                          <div className="text-end" style={{ minWidth: 54 }}>
+                            <div className="d-flex align-items-center justify-content-end gap-2">
+                              <div className="small">{lastMessage ? formatDispatchTime(lastMessage.timestamp, uiPreferences?.timeZone) : '--:--'}</div>
+                              <span className="rounded-circle d-inline-block flex-shrink-0" style={{ width: 10, height: 10, backgroundColor: isConnected ? '#22c55e' : '#ef4444', boxShadow: '0 0 0 2px rgba(255,255,255,0.92)' }} title={isConnected ? 'Driver connected' : 'Driver offline'} />
+                            </div>
                             {threadUnreadCount > 0 ? <Badge bg="danger">{threadUnreadCount}</Badge> : null}
                             {threadAlertCount > 0 ? <Badge bg="warning" text="dark" className="ms-1">{threadAlertCount}</Badge> : null}
                           </div>
