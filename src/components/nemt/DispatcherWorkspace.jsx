@@ -2183,11 +2183,12 @@ const DispatcherWorkspace = () => {
     handleCancelInlineTripEdit();
   };
 
-  const renderInlineEditableTripCell = ({ trip, columnKey, displayValue, cellStyle, displayStyle, inputType = 'text', placeholder = '' }) => {
+  const renderInlineEditableTripCell = ({ trip, columnKey, displayValue, cellStyle, displayStyle, inputType = 'text', placeholder = '', textColor }) => {
     const isEditing = isInlineTripCellEditing(trip.id, columnKey);
     return <td
       style={{
         ...cellStyle,
+        color: textColor,
         cursor: mapLocked ? 'not-allowed' : 'text',
         opacity: mapLocked ? 0.5 : 1
       }}
@@ -2219,9 +2220,18 @@ const DispatcherWorkspace = () => {
       /> : <span style={{
         borderBottom: '1px dashed rgba(107, 114, 128, 0.5)',
         display: 'inline-block',
+        color: textColor,
         ...displayStyle
       }}>{displayValue || '-'}</span>}
     </td>;
+  };
+
+  const getCancelledRoutesTripTextColor = trip => {
+    if (!isCancelledRoutesMode) return undefined;
+    const status = getEffectiveTripStatus(trip);
+    if (status === 'Cancelled') return '#b91c1c';
+    if (status === 'Completed') return '#15803d';
+    return undefined;
   };
 
   const handleToggleTripColumn = columnKey => {
@@ -2260,16 +2270,17 @@ const DispatcherWorkspace = () => {
   };
 
   const renderTripDataCell = trip => columnKey => {
+    const textColor = getCancelledRoutesTripTextColor(trip);
     switch (columnKey) {
       case 'trip':
-        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
             <div className="fw-semibold">{getDisplayTripId(trip)}</div>
             {getLegBadge(trip) ? <Badge bg={getLegBadge(trip).variant} className="mt-1 me-1">{getLegBadge(trip).label}</Badge> : null}
             {trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
             {!orderedVisibleTripColumns.includes('mobility') && trip.mobilityType ? <Badge bg="light" text="dark" className="mt-1 border">{trip.mobilityType}</Badge> : null}
           </td>;
       case 'status':
-        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
             <Badge bg={isTripAssignedToSelectedDriver(trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(trip))}>{isTripAssignedToSelectedDriver(trip) ? 'Assigned Here' : getEffectiveTripStatus(trip)}</Badge>
             {trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
             {trip.safeRideStatus && getEffectiveTripStatus(trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{trip.safeRideStatus}</div> : null}
@@ -2277,12 +2288,12 @@ const DispatcherWorkspace = () => {
       case 'confirmation': {
         const blockingState = tripBlockingMap.get(trip.id);
         const confirmationLabel = getDispatcherConfirmationLabel(trip, blockingState);
-        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
             <Badge bg={getConfirmationBadgeVariant(confirmationLabel === 'Unconfirmed' ? 'Not Sent' : confirmationLabel)}>{confirmationLabel}</Badge>
           </td>;
       }
       case 'driver':
-        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
             <div>{getTripDriverDisplay(trip)}</div>
             {trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
           </td>;
@@ -2294,6 +2305,7 @@ const DispatcherWorkspace = () => {
           cellStyle: {
             whiteSpace: 'nowrap'
           },
+          textColor,
           placeholder: '07:40 AM'
         });
       case 'dropoff':
@@ -2304,6 +2316,7 @@ const DispatcherWorkspace = () => {
           cellStyle: {
             whiteSpace: 'nowrap'
           },
+          textColor,
           placeholder: '08:15 AM'
         });
       case 'miles':
@@ -2314,6 +2327,7 @@ const DispatcherWorkspace = () => {
           cellStyle: {
             whiteSpace: 'nowrap'
           },
+          textColor,
           placeholder: '12.5'
         });
       case 'rider':
@@ -2331,6 +2345,7 @@ const DispatcherWorkspace = () => {
             whiteSpace: 'normal'
           },
           displayStyle: riderNameStackStyle,
+          textColor,
           placeholder: 'Nombre del paciente'
         });
       case 'address':
@@ -2340,6 +2355,7 @@ const DispatcherWorkspace = () => {
           displayValue: trip.address,
           cellStyle: {},
           displayStyle: addressClampStyle,
+          textColor,
           placeholder: 'Pickup address'
         });
       case 'puZip':
@@ -2350,6 +2366,7 @@ const DispatcherWorkspace = () => {
           cellStyle: {
             whiteSpace: 'nowrap'
           },
+          textColor,
           placeholder: '32808'
         });
       case 'destination':
@@ -2359,6 +2376,7 @@ const DispatcherWorkspace = () => {
           displayValue: trip.destination || '-',
           cellStyle: {},
           displayStyle: addressClampStyle,
+          textColor,
           placeholder: 'Dropoff address'
         });
       case 'doZip':
@@ -2369,6 +2387,7 @@ const DispatcherWorkspace = () => {
           cellStyle: {
             whiteSpace: 'nowrap'
           },
+          textColor,
           placeholder: '32714'
         });
       case 'phone':
@@ -2379,6 +2398,7 @@ const DispatcherWorkspace = () => {
           cellStyle: {
             whiteSpace: 'nowrap'
           },
+          textColor,
           placeholder: '(407) 555-0000'
         });
       case 'vehicle':
@@ -2389,22 +2409,23 @@ const DispatcherWorkspace = () => {
           cellStyle: {
             whiteSpace: 'nowrap'
           },
+          textColor,
           placeholder: 'Ambulatory'
         });
       case 'mobility':
-        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>{trip.mobilityType || '-'}</td>;
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>{trip.mobilityType || '-'}</td>;
       case 'assistLevel':
-        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>{trip.assistLevel || '-'}</td>;
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>{trip.assistLevel || '-'}</td>;
       case 'serviceAnimal':
         return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>{trip.hasServiceAnimal ? <Badge bg="warning" text="dark">🐕 Yes</Badge> : '-'}</td>;
       case 'notes':
-        return <td key={columnKey} style={{ minWidth: 220, maxWidth: 320, whiteSpace: 'normal' }}>{getTripNoteText(trip) || '-'}</td>;
+        return <td key={columnKey} style={{ minWidth: 220, maxWidth: 320, whiteSpace: 'normal', color: textColor }}>{getTripNoteText(trip) || '-'}</td>;
       case 'leg':
-        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>{getLegBadge(trip) ? <Badge bg={getLegBadge(trip).variant}>{getLegBadge(trip).label}</Badge> : '-'}</td>;
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>{getLegBadge(trip) ? <Badge bg={getLegBadge(trip).variant}>{getLegBadge(trip).label}</Badge> : '-'}</td>;
       case 'punctuality':
         return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(trip)}>{getTripPunctualityLabel(trip)}</Badge></td>;
       case 'lateMinutes':
-        return <td key={columnKey} style={{ whiteSpace: 'nowrap' }}>{getTripLateMinutesDisplay(trip)}</td>;
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>{getTripLateMinutesDisplay(trip)}</td>;
       default:
         return null;
     }
