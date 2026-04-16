@@ -1016,6 +1016,18 @@ const DispatcherWorkspace = () => {
   }, [routePlans, todayDateKey, tripDateFilter, trips]);
   const cancelledSummaryTrips = useMemo(() => trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === daySummaryMetrics.dateKey && getEffectiveTripStatus(trip) === 'Cancelled'), [daySummaryMetrics.dateKey, routePlans, trips]);
   const dayRoutesByDriverTrips = useMemo(() => trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === daySummaryMetrics.dateKey && (normalizeDriverId(trip?.driverId) || normalizeDriverId(trip?.secondaryDriverId))), [daySummaryMetrics.dateKey, routePlans, trips]);
+  const resetDispatcherSelectionScope = () => {
+    setSelectedTripIds([]);
+    setSelectedRouteId('');
+    setSelectedDriverId(null);
+    setIsManualDriverScope(false);
+  };
+  const exitCancelledPanelMode = (message = 'Vista normal de viajes restaurada.') => {
+    setRightPanelMode('default');
+    setCancelledDetailMode('names');
+    resetDispatcherSelectionScope();
+    setStatusMessage(message);
+  };
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
 
   useEffect(() => {
@@ -1531,10 +1543,14 @@ const DispatcherWorkspace = () => {
                 type="button"
                 onClick={() => {
                   const nextMode = isCancelledPanelMode ? 'default' : 'cancelled';
-                  setRightPanelMode(nextMode);
-                  setSelectedTripIds([]);
-                  setSelectedRouteId('');
-                  setStatusMessage(nextMode === 'cancelled' ? `Mostrando ${daySummaryMetrics.cancelled} trip(s) cancelados en el panel derecho.` : 'Vista normal de viajes restaurada.');
+                  if (nextMode === 'cancelled') {
+                    resetDispatcherSelectionScope();
+                    setRightPanelMode('cancelled');
+                    setCancelledDetailMode('names');
+                    setStatusMessage(`Mostrando ${daySummaryMetrics.cancelled} trip(s) cancelados en el panel derecho.`);
+                    return;
+                  }
+                  exitCancelledPanelMode();
                 }}
                 className="px-2 py-1 border-start text-start"
                 style={{ backgroundColor: isCancelledPanelMode ? '#fecaca' : '#fee2e2', minWidth: 94, border: 'none', color: '#08131a', boxShadow: isCancelledPanelMode ? 'inset 0 0 0 2px rgba(127,29,29,0.18)' : 'none' }}
@@ -1685,7 +1701,7 @@ const DispatcherWorkspace = () => {
     const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(effectiveStatus) || hasActiveHospitalRehab;
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
     const confirmationLabel = getDispatcherConfirmationLabel(trip, blockingState);
-    const matchesStatus = tripStatusFilter === 'all' ? !isNonOperationalTrip : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationLabel === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationLabel === 'Not Sent' || confirmationLabel === 'Unconfirmed' : effectiveStatus === tripStatusFilter;
+    const matchesStatus = tripStatusFilter === 'all' ? true : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationLabel === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationLabel === 'Not Sent' || confirmationLabel === 'Unconfirmed' : effectiveStatus === tripStatusFilter;
     if (!matchesStatus) return false;
     if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) return false;
     return true;
@@ -1745,6 +1761,17 @@ const DispatcherWorkspace = () => {
   const isCancelledPanelMode = rightPanelMode === 'cancelled';
   const isCancelledRoutesMode = isCancelledPanelMode && cancelledDetailMode === 'routes';
   const tripTableTrips = useMemo(() => isCancelledPanelMode ? isCancelledRoutesMode ? dayRoutesByDriverTrips : cancelledSummaryTrips : filteredTrips, [cancelledSummaryTrips, dayRoutesByDriverTrips, filteredTrips, isCancelledPanelMode, isCancelledRoutesMode]);
+  const activeDispatcherContextTokens = useMemo(() => {
+    const tokens = [];
+    tokens.push(isCancelledPanelMode ? isCancelledRoutesMode ? 'Mode: Cancelled by route' : 'Mode: Cancelled' : 'Mode: Normal');
+    tokens.push(`Date: ${tripDateFilter === 'all' ? daySummaryMetrics.dateKey : tripDateFilter}`);
+    if (tripStatusFilter !== 'all') tokens.push(`Status: ${tripStatusFilter}`);
+    if (selectedDriver?.name) tokens.push(`Driver: ${selectedDriver.name}`);
+    if (selectedRoute?.name) tokens.push(`Route: ${selectedRoute.name}`);
+    if (selectedTripIds.length > 0) tokens.push(`Selected: ${selectedTripIds.length}`);
+    return tokens;
+  }, [daySummaryMetrics.dateKey, isCancelledPanelMode, isCancelledRoutesMode, selectedDriver?.name, selectedRoute?.name, selectedTripIds.length, tripDateFilter, tripStatusFilter]);
+  const hasScopedDispatcherContext = isCancelledPanelMode || tripStatusFilter !== 'all' || Boolean(selectedDriverId) || Boolean(selectedRouteId) || selectedTripIds.length > 0;
   const mapQuickCityOptions = useMemo(() => {
     const citySet = new Set();
     for (const trip of cityOptionTrips) {
@@ -3497,6 +3524,20 @@ const DispatcherWorkspace = () => {
                     </div>)}
                 </div>
               </div>
+                  <div className="d-flex justify-content-between align-items-center gap-2 px-2 py-2 border-bottom flex-wrap" style={{
+                  backgroundColor: isCancelledPanelMode ? 'rgba(127, 29, 29, 0.08)' : 'rgba(15, 23, 42, 0.05)'
+                }}>
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      {activeDispatcherContextTokens.map(token => <Badge key={token} bg={isCancelledPanelMode ? 'danger' : 'secondary'}>{token}</Badge>)}
+                    </div>
+                    {hasScopedDispatcherContext ? <Button variant="outline-dark" size="sm" onClick={() => {
+                  exitCancelledPanelMode('Vista limpiada y restaurada.');
+                  setTripStatusFilter('all');
+                  setTripDateFilter(todayDateKey);
+                }}>
+                        Reset view
+                      </Button> : null}
+                  </div>
                   {isCancelledPanelMode ? <div className="d-flex justify-content-between align-items-center gap-2 px-2 py-2 border-bottom" style={{ backgroundColor: 'rgba(127, 29, 29, 0.08)' }}>
                       <div className="d-flex align-items-center gap-3 flex-wrap">
                         <div className="d-flex flex-column gap-1">
@@ -3505,14 +3546,13 @@ const DispatcherWorkspace = () => {
                         </div>
                         <Button variant="outline-dark" size="sm" onClick={() => {
                       const nextMode = isCancelledRoutesMode ? 'names' : 'routes';
+                      resetDispatcherSelectionScope();
                       setCancelledDetailMode(nextMode);
                       setStatusMessage(nextMode === 'routes' ? 'Mostrando viajes del dia agrupados por chofer.' : 'Mostrando cancelados ordenados por nombre.');
                     }}>{isCancelledRoutesMode ? 'By Names' : 'By Route'}</Button>
                       </div>
                       <Button variant="outline-danger" size="sm" onClick={() => {
-                    setRightPanelMode('default');
-                    setCancelledDetailMode('names');
-                    setStatusMessage('Vista normal de viajes restaurada.');
+                    exitCancelledPanelMode();
                   }}>Back to trips</Button>
                     </div> : null}
                   {tripTableTrips.length > 0 ? <div ref={tripTableTopScrollerRef} style={{ width: '100%', marginBottom: 4, padding: '2px 0 4px', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
@@ -3707,6 +3747,10 @@ const DispatcherWorkspace = () => {
             <CardBody className="p-0 h-100">
               <DispatcherMessagingPanel hideThreadList drivers={filteredDrivers} driverSequencePreviewById={driverSequencePreviewById} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
               const normalizedDriverId = String(nextDriverId || '').trim();
+              if (rightPanelMode === 'cancelled') {
+                setRightPanelMode('default');
+                setCancelledDetailMode('names');
+              }
               setIsManualDriverScope(false);
               setSelectedDriverId(normalizedDriverId || null);
               setSelectedRouteId(getPreferredRouteIdForDriver(normalizedDriverId) || '');
@@ -3714,6 +3758,10 @@ const DispatcherWorkspace = () => {
             }} onLocateDriver={driverId => {
               const normalizedDriverId = String(driverId || '').trim();
               const driver = drivers.find(item => String(item?.id || '').trim() === normalizedDriverId) || null;
+              if (rightPanelMode === 'cancelled') {
+                setRightPanelMode('default');
+                setCancelledDetailMode('names');
+              }
               setIsManualDriverScope(false);
               setSelectedDriverId(normalizedDriverId || null);
               setSelectedRouteId(getPreferredRouteIdForDriver(normalizedDriverId) || '');
