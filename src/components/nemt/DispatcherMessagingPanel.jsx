@@ -606,7 +606,7 @@ const DispatcherMessagingPanel = ({
     try {
       setIsSendingMessage(true);
       setSmsStatus('Sending message...');
-      upsertDispatchThreadMessage({ driverId: activeDriverId, message: optimisticMessage });
+      upsertDispatchThreadMessage({ driverId: activeDriverId, message: optimisticMessage, markDispatchDirty: false });
 
       const response = await fetch('/api/system-messages', {
         method: 'POST',
@@ -637,7 +637,8 @@ const DispatcherMessagingPanel = ({
         timestamp: payload?.message?.createdAt || optimisticMessage.timestamp,
         status: 'sent'
       };
-      upsertDispatchThreadMessage({ driverId: activeDriverId, message: outgoingMessage });
+      upsertDispatchThreadMessage({ driverId: activeDriverId, message: outgoingMessage, markDispatchDirty: false });
+      await refreshDispatchState({ forceServer: true });
       setDraftMessage('');
       setSmsStatus('');
       return true;
@@ -645,7 +646,7 @@ const DispatcherMessagingPanel = ({
       upsertDispatchThreadMessage({ driverId: activeDriverId, message: {
         ...optimisticMessage,
         status: 'failed'
-      } });
+      }, markDispatchDirty: false });
       setSmsStatus(error?.message || 'Unable to send dispatch message.');
       return false;
     } finally {
