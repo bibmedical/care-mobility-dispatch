@@ -1,14 +1,23 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
+import { getLocalDateKey } from '@/helpers/nemt-dispatch-state';
 import { isAdminRole } from '@/helpers/system-users';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 
 const internalError = error => NextResponse.json({ error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const payload = await readNemtDispatchState({ recentPastDays: 30 });
+    const { searchParams } = new URL(request.url);
+    const requestedDateKey = String(searchParams.get('date') || '').trim() || getLocalDateKey(new Date());
+    const windowPastDays = Math.max(Number(searchParams.get('windowPastDays') ?? 1) || 0, 0);
+    const windowFutureDays = Math.max(Number(searchParams.get('windowFutureDays') ?? 1) || 0, 0);
+    const payload = await readNemtDispatchState({
+      dateKey: requestedDateKey,
+      windowPastDays,
+      windowFutureDays
+    });
     return NextResponse.json(payload);
   } catch (error) {
     return internalError(error);

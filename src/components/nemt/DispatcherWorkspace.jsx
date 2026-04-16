@@ -1009,6 +1009,20 @@ const DispatcherWorkspace = () => {
   }, [routePlans, selectedRouteId]);
   const dispatchTimeZone = uiPreferences?.timeZone;
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), dispatchTimeZone), [dispatchTimeZone]);
+  const serverScopedDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
+  const serverScopedPastDays = tripDateFilter === 'all' ? 1 : 0;
+  const serverScopedFutureDays = tripDateFilter === 'all' ? 1 : 0;
+
+  useEffect(() => {
+    if (!serverScopedDateKey) return;
+    void refreshDispatchState({
+      forceServer: true,
+      dateKey: serverScopedDateKey,
+      windowPastDays: serverScopedPastDays,
+      windowFutureDays: serverScopedFutureDays
+    });
+  }, [refreshDispatchState, serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
+
   const daySummaryMetrics = useMemo(() => {
     const targetDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
     const dayTrips = trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === targetDateKey);

@@ -417,6 +417,9 @@ export const NemtProvider = ({
   const pendingAllowTripShrinkRef = useRef(false);
   const allowTripShrinkReasonNextPersistRef = useRef('');
   const pendingAllowTripShrinkReasonRef = useRef('');
+  const dispatchQueryDateKeyRef = useRef('');
+  const dispatchWindowPastDaysRef = useRef(1);
+  const dispatchWindowFutureDaysRef = useRef(1);
   const userUiPreferencesSnapshotRef = useRef(JSON.stringify(normalizeNemtUiPreferences(null)));
   const userUiPreferencesPersistPromiseRef = useRef(null);
   const userUiPreferencesPersistSnapshotRef = useRef('');
@@ -671,8 +674,22 @@ export const NemtProvider = ({
 
   const syncDispatchFromServer = async (options = {}) => {
     const forceServer = options.forceServer ?? false;
+    const nextDateKey = String(options?.dateKey || dispatchQueryDateKeyRef.current || '').trim();
+    const nextWindowPastDays = Math.max(Number(options?.windowPastDays ?? dispatchWindowPastDaysRef.current) || 0, 0);
+    const nextWindowFutureDays = Math.max(Number(options?.windowFutureDays ?? dispatchWindowFutureDaysRef.current) || 0, 0);
+
+    if (nextDateKey) {
+      dispatchQueryDateKeyRef.current = nextDateKey;
+    }
+    dispatchWindowPastDaysRef.current = nextWindowPastDays;
+    dispatchWindowFutureDaysRef.current = nextWindowFutureDays;
+
     try {
-      const response = await fetch('/api/nemt/dispatch', {
+      const searchParams = new URLSearchParams();
+      if (dispatchQueryDateKeyRef.current) searchParams.set('date', dispatchQueryDateKeyRef.current);
+      searchParams.set('windowPastDays', String(dispatchWindowPastDaysRef.current));
+      searchParams.set('windowFutureDays', String(dispatchWindowFutureDaysRef.current));
+      const response = await fetch(`/api/nemt/dispatch?${searchParams.toString()}`, {
         cache: 'no-store'
       });
       if (!response.ok) throw new Error('Unable to load dispatch state');

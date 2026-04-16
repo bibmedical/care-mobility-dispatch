@@ -1845,6 +1845,20 @@ const TripDashboardWorkspace = () => {
   const isActiveRouteClosed = Boolean(activeClosedRouteState?.closed);
   const availableTripDateKeys = useMemo(() => Array.from(new Set(trips.map(getTripTimelineDateKey).filter(Boolean).concat(routePlans.map(routePlan => getRouteServiceDateKey(routePlan, trips)).filter(Boolean)))).sort(), [routePlans, trips]);
   const activeTripDateLabel = useMemo(() => formatTripDateLabel(tripDateFilter), [tripDateFilter]);
+  const serverScopedDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
+  const serverScopedPastDays = tripDateFilter === 'all' ? 1 : 0;
+  const serverScopedFutureDays = tripDateFilter === 'all' ? 1 : 0;
+
+  useEffect(() => {
+    if (!serverScopedDateKey) return;
+    void refreshDispatchState({
+      forceServer: true,
+      dateKey: serverScopedDateKey,
+      windowPastDays: serverScopedPastDays,
+      windowFutureDays: serverScopedFutureDays
+    });
+  }, [refreshDispatchState, serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
+
   const tripDashboardPreferenceState = useMemo(() => ({
     storageVersion: 1,
     layoutMode,

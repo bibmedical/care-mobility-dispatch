@@ -5,6 +5,17 @@ import { runMigrations } from '@/server/db-schema';
 
 const DEFAULT_RECENT_PAST_DAYS = 30;
 
+const normalizeDateKey = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim()) ? String(value || '').trim() : '';
+
+const buildDispatchWindowDateKeys = (centerDateKey, pastDays = 0, futureDays = 0) => {
+  const normalizedCenterDateKey = normalizeDateKey(centerDateKey);
+  if (!normalizedCenterDateKey) return [];
+
+  const safePastDays = Math.max(Number(pastDays) || 0, 0);
+  const safeFutureDays = Math.max(Number(futureDays) || 0, 0);
+  return Array.from({ length: safePastDays + safeFutureDays + 1 }, (_, index) => shiftTripDateKey(normalizedCenterDateKey, index - safePastDays)).filter(Boolean);
+};
+
 const mergeUniqueItems = (items, getKey, chooseNextItem) => {
   const itemMap = new Map();
 
@@ -88,6 +99,14 @@ const loadRecentArchivedDispatchStates = async (todayKey, recentPastDays) => {
   return archiveStates.filter(Boolean);
 };
 
+const loadDispatchWindowArchivedStates = async dateKeys => {
+  const normalizedDateKeys = Array.from(new Set((Array.isArray(dateKeys) ? dateKeys : []).map(normalizeDateKey).filter(Boolean)));
+  if (normalizedDateKeys.length === 0) return [];
+
+  const archiveStates = await Promise.all(normalizedDateKeys.map(dateKey => readDispatchHistoryArchive(dateKey)));
+  return archiveStates.filter(Boolean);
+};
+
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
 
 let ensureDispatchSchemaPromise = null;
@@ -113,13 +132,22 @@ export const readNemtDispatchState = async (options = {}) => {
   const prefsStateRow = await queryOne(`SELECT data FROM dispatch_ui_prefs WHERE id = 'singleton'`);
   const timeZone = prefsStateRow?.data?.timeZone;
   const todayKey = getLocalDateKey(new Date(), timeZone);
+  const requestedDateKey = normalizeDateKey(options?.dateKey);
+  const hasScopedWindow = !includePastDates && (Boolean(requestedDateKey) || options?.windowPastDays != null || options?.windowFutureDays != null);
+  const scopedDateKeys = hasScopedWindow
+    ? buildDispatchWindowDateKeys(requestedDateKey || todayKey, Number(options?.windowPastDays ?? 0), Number(options?.windowFutureDays ?? 0))
+    : [];
   let [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
     includePastDates
       ? query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`)
-      : query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`),
+      : hasScopedWindow
+        ? query(`SELECT data FROM dispatch_trips WHERE service_date = ANY($1::text[]) OR COALESCE(service_date, '') = '' ORDER BY updated_at DESC`, [scopedDateKeys])
+        : query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`),
     includePastDates
       ? query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`)
-      : query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`),
+      : hasScopedWindow
+        ? query(`SELECT data FROM dispatch_route_plans WHERE service_date = ANY($1::text[]) OR COALESCE(service_date, '') = '' ORDER BY updated_at DESC`, [scopedDateKeys])
+        : query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`),
     includePastDates
       ? query(`SELECT data FROM dispatch_threads ORDER BY driver_id`)
       : query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 100`),
@@ -132,7 +160,7 @@ export const readNemtDispatchState = async (options = {}) => {
     Promise.resolve(prefsStateRow)
   ]);
 
-  if (!includePastDates && tripsRes.rows.length === 0 && routesRes.rows.length === 0) {
+  if (!includePastDates && !hasScopedWindow && tripsRes.rows.length === 0 && routesRes.rows.length === 0) {
     const latestServiceDateRow = await queryOne(
       `SELECT MAX(service_date) AS service_date
        FROM (
@@ -160,7 +188,9 @@ export const readNemtDispatchState = async (options = {}) => {
     uiPreferences: prefsRow?.data ?? {}
   });
 
-  const archivedStates = await loadRecentArchivedDispatchStates(todayKey, recentPastDays);
+  const archivedStates = hasScopedWindow
+    ? await loadDispatchWindowArchivedStates(scopedDateKeys)
+    : await loadRecentArchivedDispatchStates(todayKey, recentPastDays);
   return mergeDispatchStatePayloads(liveState, archivedStates);
 };
 
