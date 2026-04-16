@@ -3,7 +3,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import { useNemtContext } from '@/context/useNemtContext';
 import { usePathname } from 'next/navigation';
-import { formatDispatchTime } from '@/helpers/nemt-dispatch-state';
 import { getDriverColor, withDriverAlpha } from '@/helpers/nemt-driver-colors';
 
 const SIDEBAR_EXPANDED_WIDTH = 240;
@@ -124,7 +123,8 @@ const LeftSideBar = () => {
                 const driver = dispatcherDrivers.find(item => item.id === thread.driverId);
                 const isSelected = String(selectedDriverId || '').trim() === String(thread.driverId || '').trim();
                 const driverColor = getDriverColor(driver?.id || driver?.name || thread.driverId);
-                const lastMessage = thread.messages[thread.messages.length - 1];
+                const isConnected = String(driver?.live || '').trim().toLowerCase() === 'online';
+                const messageCount = Array.isArray(thread?.messages) ? thread.messages.length : 0;
                 const unreadCount = thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length;
 
                 return <button
@@ -138,27 +138,17 @@ const LeftSideBar = () => {
                   ...listButtonBaseStyle,
                   borderLeft: `4px solid ${driverColor}`,
                   background: isSelected ? withDriverAlpha(driverColor, 0.18) : '#f8fafc',
-                  padding: '0.6rem 0.75rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 4
+                  padding: '0.75rem'
                 }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={{ minWidth: 0, fontSize: '0.92rem', color: '#0f172a', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <div style={{ minWidth: 0, fontSize: '0.92rem', color: '#0f172a', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto' }}>
                         {driver?.name || 'Driver'}
                       </div>
-                      {unreadCount > 0 ? <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                          <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, backgroundColor: '#ef4444', color: '#ffffff', fontSize: '0.7rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{unreadCount}</span>
-                        </div> : null}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <div style={{ fontSize: '0.72rem', color: '#1d4ed8', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {lastMessage?.text || 'No messages yet'}
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: '#64748b', flexShrink: 0 }}>
-                        {lastMessage ? formatDispatchTime(lastMessage.timestamp) : '--:--'}
-                      </div>
+                      <span style={{ width: 10, height: 10, borderRadius: 999, backgroundColor: isConnected ? '#22c55e' : '#ef4444', boxShadow: '0 0 0 2px rgba(255,255,255,0.92)', flex: '0 0 auto' }} title={isConnected ? 'Driver connected' : 'Driver offline'} />
+                      <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, backgroundColor: unreadCount > 0 ? '#ef4444' : '#cbd5e1', color: unreadCount > 0 ? '#ffffff' : '#475569', fontSize: '0.7rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }} title={unreadCount > 0 ? `${unreadCount} unread message${unreadCount === 1 ? '' : 's'}` : `${messageCount} message${messageCount === 1 ? '' : 's'}`}>
+                        {unreadCount > 0 ? unreadCount : messageCount}
+                      </span>
                     </div>
                   </button>;
               }) : <div className="text-muted" style={{ padding: '1rem' }}>No driver threads available.</div>}
