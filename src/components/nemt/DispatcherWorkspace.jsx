@@ -1843,7 +1843,10 @@ const DispatcherWorkspace = () => {
         const groupDriverName = primaryDriverId ? getDriverName(primaryDriverId) : secondaryDriverId ? getDriverName(secondaryDriverId) : '';
         const groupLabel = String(groupDriverName || trip?.driverName || trip?.secondaryDriverName || 'Unassigned').trim() || 'Unassigned';
         const groupKey = String(groupDriverId || groupLabel).trim().toLowerCase();
-        if (!map.has(groupKey)) map.set(groupKey, { label: groupLabel, trips: [] });
+        if (!map.has(groupKey)) map.set(groupKey, {
+          label: groupLabel,
+          trips: []
+        });
         map.get(groupKey).trips.push(trip);
         return map;
       }, new Map());
@@ -3483,7 +3486,7 @@ const DispatcherWorkspace = () => {
                       const nextMode = isCancelledRoutesMode ? 'names' : 'routes';
                       setCancelledDetailMode(nextMode);
                       setStatusMessage(nextMode === 'routes' ? 'Mostrando viajes del dia agrupados por chofer.' : 'Mostrando cancelados ordenados por nombre.');
-                    }}>{isCancelledRoutesMode ? 'By names' : 'By routes'}</Button>
+                    }}>{isCancelledRoutesMode ? 'By Names' : 'By Route'}</Button>
                       </div>
                       <Button variant="outline-danger" size="sm" onClick={() => {
                     setRightPanelMode('default');
@@ -3567,7 +3570,7 @@ const DispatcherWorkspace = () => {
                   </thead>
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={dispatcherSurfaceStyles.groupRow}>
-                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: dispatcherSurfaceStyles.groupLabelColor }}>{row.label}</td>
+                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#374151' }}>{row.label}</td>
                       </tr> : <tr key={row.trip.id} onClick={() => {
                         if (mapLocked) return;
                         setSelectedTripIds([row.trip.id]);
@@ -3575,6 +3578,7 @@ const DispatcherWorkspace = () => {
                         setStatusMessage(`Trip ${row.trip.id} seleccionado.`);
                       }} style={{
                         ...(selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? dispatcherSurfaceStyles.rowSelected : isTripAssignedToSelectedDriver(row.trip) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault),
+                        color: isCancelledRoutesMode ? (getEffectiveTripStatus(row.trip) === 'Cancelled' ? '#b91c1c' : getEffectiveTripStatus(row.trip) === 'Completed' ? '#15803d' : undefined) : undefined,
                         cursor: mapLocked ? 'not-allowed' : 'pointer'
                       }}>
                         {showCancelledDetailControls ? <>
