@@ -9,7 +9,7 @@ import {
   reactivateMessagesByDriverId,
   upsertSystemMessage
 } from '@/server/system-messages-store';
-import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
+import { readNemtDispatchState, upsertDispatchThreadMessageByDriver, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { readNemtAdminState } from '@/server/nemt-admin-store';
 import { normalizeAuthValue } from '@/helpers/system-users';
 
@@ -275,6 +275,22 @@ export async function POST(request) {
     };
 
     const saved = await upsertSystemMessage(msg);
+    if (saved?.type === 'dispatch-message' && saved?.driverId) {
+      await upsertDispatchThreadMessageByDriver(String(saved.driverId || '').trim(), {
+        id: saved.id,
+        direction: 'outgoing',
+        text: saved.body,
+        timestamp: saved.createdAt,
+        status: 'sent',
+        attachments: saved.mediaUrl ? [{
+          id: `${saved.id}-media`,
+          kind: String(saved.mediaType || '').toLowerCase().includes('image') ? 'photo' : 'document',
+          name: String(saved.mediaType || '').toLowerCase().includes('image') ? 'Dispatch photo' : 'Dispatch attachment',
+          mimeType: String(saved.mediaType || '').trim(),
+          dataUrl: String(saved.mediaUrl || '').trim()
+        }] : []
+      });
+    }
     const driverPushTokens = await readDriverPushTokens(saved.driverId, saved.driverName);
     await sendExpoPush(driverPushTokens, saved);
     return NextResponse.json({ message: saved });

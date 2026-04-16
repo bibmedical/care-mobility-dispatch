@@ -51,6 +51,7 @@ const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
+const DISPATCH_STATE_SYNC_ACTIVE_POLL_MS = 2500;
 const DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS = 5000;
 const TRIP_DASHBOARD_DRIVERS_SYNC_ACTIVE_POLL_MS = 15000;
 
@@ -410,6 +411,7 @@ export const NemtProvider = ({
   const lastPersistedSnapshotRef = useRef('');
   const hasLocalDispatchChangesRef = useRef(false);
   const persistInFlightRef = useRef(false);
+  const dispatchStateSyncInFlightRef = useRef(false);
   const liveSyncInFlightRef = useRef(false);
   const driverSyncInFlightRef = useRef(false);
   const pendingPersistSnapshotRef = useRef('');
@@ -914,6 +916,76 @@ export const NemtProvider = ({
       window.removeEventListener('nemt-admin-updated', handleAdminUpdate);
     };
   }, [syncEnabled]);
+
+  useEffect(() => {
+    if (!syncEnabled || !isDispatchLoaded) return;
+
+    let active = true;
+    let intervalId = null;
+
+    const getActiveDispatchSyncPollMs = () => {
+      if (typeof window === 'undefined' || typeof document === 'undefined') return null;
+      const path = String(window.location?.pathname || '').toLowerCase();
+      if (document.visibilityState !== 'visible') return null;
+      if (path.includes('/dispatch')) return DISPATCH_STATE_SYNC_ACTIVE_POLL_MS;
+      if (path.includes('/trip-dashboard')) return DISPATCH_STATE_SYNC_ACTIVE_POLL_MS;
+      return null;
+    };
+
+    const syncLiveDispatchState = async () => {
+      if (!active || dispatchStateSyncInFlightRef.current) return;
+      if (getActiveDispatchSyncPollMs() == null) return;
+      dispatchStateSyncInFlightRef.current = true;
+      try {
+        await syncDispatchFromServer();
+      } finally {
+        dispatchStateSyncInFlightRef.current = false;
+      }
+    };
+
+    const startPolling = pollMs => {
+      if (intervalId != null) return;
+      intervalId = window.setInterval(() => {
+        void syncLiveDispatchState();
+      }, pollMs);
+    };
+
+    const stopPolling = () => {
+      if (intervalId == null) return;
+      window.clearInterval(intervalId);
+      intervalId = null;
+    };
+
+    const syncPollingState = () => {
+      if (!active) return;
+      const pollMs = getActiveDispatchSyncPollMs();
+      if (pollMs != null) {
+        stopPolling();
+        startPolling(pollMs);
+        void syncLiveDispatchState();
+        return;
+      }
+      stopPolling();
+    };
+
+    const handleVisibilityOrFocus = () => {
+      syncPollingState();
+    };
+
+    syncPollingState();
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    window.addEventListener('blur', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      active = false;
+      stopPolling();
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      window.removeEventListener('blur', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [isDispatchLoaded, syncEnabled]);
 
   useEffect(() => {
     if (!syncEnabled || !isDispatchLoaded) return;

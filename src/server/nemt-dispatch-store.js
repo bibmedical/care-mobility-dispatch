@@ -210,6 +210,42 @@ export const readNemtDispatchThreadByDriverId = async driverId => {
   return thread ? normalizeDispatchThreadRecord(thread) : null;
 };
 
+export const upsertDispatchThreadMessageByDriver = async (driverId, message) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  if (!normalizedDriverId) throw new Error('driverId is required');
+
+  const normalizedMessage = normalizeDispatchMessageRecord(message);
+  if (!normalizedMessage.text && normalizedMessage.attachments.length === 0) {
+    throw new Error('message text or attachments are required');
+  }
+
+  await ensureDispatchSchema();
+  return withTransaction(async client => {
+    const res = await client.query(
+      `SELECT data FROM dispatch_threads WHERE driver_id = $1 FOR UPDATE`,
+      [normalizedDriverId]
+    );
+    const existing = res.rows[0]?.data ?? { driverId: normalizedDriverId, messages: [] };
+    const existingMessages = Array.isArray(existing.messages) ? existing.messages : [];
+    const existingIndex = existingMessages.findIndex(currentMessage => String(currentMessage?.id || '').trim() === normalizedMessage.id);
+    const nextMessages = existingIndex >= 0
+      ? existingMessages.map((currentMessage, index) => index === existingIndex ? normalizedMessage : currentMessage)
+      : [...existingMessages, normalizedMessage];
+    const nextThread = normalizeDispatchThreadRecord({
+      ...existing,
+      driverId: normalizedDriverId,
+      messages: nextMessages
+    });
+
+    await client.query(
+      `INSERT INTO dispatch_threads (driver_id, data, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (driver_id) DO UPDATE SET data=$2, updated_at=NOW()`,
+      [normalizedDriverId, nextThread]
+    );
+    return nextThread;
+  });
+};
+
 export const readAssignedTripsForDriverByServiceDates = async ({ driverId, serviceDateKeys = [] }) => {
   const normalizedDriverId = String(driverId || '').trim();
   const normalizedServiceDateKeys = Array.from(new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean)));
@@ -374,28 +410,14 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
 // ─── DRIVER THREAD UPSERT (atomic — mobile incoming message) ─────────────────
 
 export const upsertIncomingDriverThreadMessage = async (driverId, message) => {
-  const normalizedDriverId = String(driverId || '').trim();
-  if (!normalizedDriverId) throw new Error('driverId is required');
-  await ensureDispatchSchema();
-  return withTransaction(async client => {
-    const res = await client.query(
-      `SELECT data FROM dispatch_threads WHERE driver_id = $1 FOR UPDATE`,
-      [normalizedDriverId]
-    );
-    const existing = res.rows[0]?.data ?? { driverId: normalizedDriverId, messages: [] };
-    const existingMessages = Array.isArray(existing.messages) ? existing.messages : [];
-    const messageId = String(message?.id || '').trim();
-    if (messageId && existingMessages.some(m => String(m?.id || '').trim() === messageId)) {
-      return { ok: true, duplicate: true };
-    }
-    const nextThread = { ...existing, messages: [...existingMessages, message] };
-    await client.query(
-      `INSERT INTO dispatch_threads (driver_id, data, updated_at) VALUES ($1, $2, NOW())
-       ON CONFLICT (driver_id) DO UPDATE SET data=$2, updated_at=NOW()`,
-      [normalizedDriverId, nextThread]
-    );
-    return { ok: true, duplicate: false };
-  });
+  const messageId = String(message?.id || '').trim();
+  const existingThread = messageId ? await readNemtDispatchThreadByDriverId(driverId) : null;
+  const existingMessages = Array.isArray(existingThread?.messages) ? existingThread.messages : [];
+  if (messageId && existingMessages.some(currentMessage => String(currentMessage?.id || '').trim() === messageId)) {
+    return { ok: true, duplicate: true };
+  }
+  await upsertDispatchThreadMessageByDriver(driverId, message);
+  return { ok: true, duplicate: false };
 };
 
 // ─── DRIVER TRIP UPDATE (mobile) ──────────────────────────────────────────────
