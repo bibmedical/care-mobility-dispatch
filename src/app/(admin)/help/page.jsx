@@ -371,6 +371,9 @@ const DIARIO_2026_04_16 = [{
 }, {
   area: 'Scanner ZIP rule',
   detail: 'Scanner/import law: ZIP codes embedded inside address text are not trusted as trip ZIP values. The scanner strips those ZIP codes out of the address display, but only the dedicated ZIP columns remain valid for fromZipcode and toZipcode.'
+}, {
+  area: 'Render deploy record after scanner fix',
+  detail: 'After validating local imports, a real Render deploy was pushed with the scanner ZIP rule, the dispatcher scroll-loop repair, the dispatch-thread message import fix, and the web manifest/icon block. During local verification the page first appeared blank because a stale dev .next output served 404 client assets, then Dispatcher showed a Maximum update depth error from the trip-table scroll effect. Both local blockers were repaired before the deploy push a4f1cab.'
 }];
 
 const HelpPage = () => {
@@ -656,9 +659,24 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V16</Badge>
+                <span className="fw-semibold text-dark">Render Deploy — Scanner Fix + Dispatcher Stability</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Pushed real deploy commit a4f1cab to origin/main after validating the scanner ZIP rule locally.</li>
+                <li>Confirmed the imported trips no longer showed ZIP duplicated inside the address text after the scanner/import cleanup.</li>
+                <li>Local verification hit two separate blockers before deploy: stale .next client assets returning 404 and a Dispatcher Maximum update depth loop in the trip-table scroll effect.</li>
+                <li>Fixed the Dispatcher loop by preventing redundant scroll-state updates and removing the self-triggering ResizeObserver on the scroll container.</li>
+                <li>Kept unrelated driver-app changes out of the deploy so Render only received the web fixes that were validated.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V15</Badge>
                 <span className="fw-semibold text-dark">Scanner ZIP Law — Ignore ZIP Inside Address</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Made the scanner rule permanent: ZIP codes found inside address text are no longer treated as trusted trip ZIP data.</li>
