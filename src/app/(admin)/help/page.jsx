@@ -201,6 +201,92 @@ const UI_CHANGE_GUARDRAILS = [{
   detail: 'A change that looks correct in one screen can still break the other. Verify Dispatcher and Trip Dashboard together before calling the UI change safe.'
 }];
 
+const CHANGE_REQUEST_PROTOCOL = [{
+  part: 'Part 1. Understand the real request',
+  detail: 'Do not start by drawing UI. First identify the operational goal: is the user asking for a new action, a shortcut to an existing action, a visibility fix, a filter, a date-scope change, or a persistence change? Many requests that sound like a button request are actually route, date, memory, or shared-state problems.'
+}, {
+  part: 'Part 2. Name the owner before coding',
+  detail: 'Every new control must have one owner workspace. Dispatcher owns live day execution and closing control. Trip Dashboard owns visual trip filtering, route shaping, and map-oriented planning. Help owns explanation and navigation. Import pages own intake/review. Do not place an operational control in Help or a documentation shortcut inside a destructive import flow.'
+}, {
+  part: 'Part 3. Reuse existing flow first',
+  detail: 'Before creating a new button, check whether the same action already exists in a toolbar, panel, modal, route card, context action, or menu. If it exists, extend that flow instead of creating a second disconnected entry point. Duplicate entry points create duplicate state, duplicate expectations, and broken operator habits.'
+}, {
+  part: 'Part 4. State consequences before implementation',
+  detail: 'The person making the change should explain the likely consequences before coding: what trips, routes, selected-trip state, driver assignments, SQL persistence, refresh behavior, memory use, and cross-screen visibility could be affected. If the consequences are unknown, scan first. Do not guess.'
+}, {
+  part: 'Part 5. Prefer the shared tree',
+  detail: 'If a change needs data or actions, wire it to the shared dispatch tree and existing context actions when possible. Do not create a page-local mini-engine, a shadow import path, or a one-off state shape that only one screen understands.'
+}, {
+  part: 'Part 6. Keep date loading intentional',
+  detail: 'Operational screens should load the selected day or a small operational window, not all history at once. If a request changes date behavior, explain what should load for all, for a selected date, and for yesterday/today/tomorrow before coding.'
+}, {
+  part: 'Part 7. Validate in both directions',
+  detail: 'After a change, verify that Dispatcher did not break Trip Dashboard and that Trip Dashboard did not break Dispatcher. Also verify imports, persistence, and route visibility if the change touches trips, routes, dates, or filters.'
+}, {
+  part: 'Part 8. Deploy only after local proof',
+  detail: 'The safe order is local scan, minimal code change, error validation, local behavior verification, then push/deploy. Do not rely on Render to tell you the architecture was wrong after the fact.'
+}];
+
+const BUTTON_PLACEMENT_RULES = [{
+  rule: 'If the button triggers an existing action, place it near that action.',
+  consequence: 'Putting it elsewhere creates a second mental model and usually leads to duplicate logic or missing side effects.'
+}, {
+  rule: 'If the button changes shared trip or route state, it belongs in an operational workspace, not in a decorative or documentation area.',
+  consequence: 'A disconnected placement hides real side effects and makes later debugging harder.'
+}, {
+  rule: 'If the button is only a shortcut to documentation, it should point into Help and not duplicate operational behavior.',
+  consequence: 'Help should explain the engine; it should not become a second dispatcher.'
+}, {
+  rule: 'If the button needs selected trips, selected route, selected driver, or current date scope, it must live where that context already exists.',
+  consequence: 'Rebuilding selection context in a second place usually causes stale state and cross-screen drift.'
+}, {
+  rule: 'If placement feels convenient but not owned, stop and explain the tradeoff first.',
+  consequence: 'Convenience-only placement is one of the fastest ways to create flow damage.'
+}];
+
+const CONSEQUENCE_SCAN_CHECKLIST = [{
+  area: 'Flow ownership',
+  check: 'Which existing workspace owns this action today?'
+}, {
+  area: 'Shared state',
+  check: 'Will this touch trips, routes, drivers, selected-trip state, messages, or UI preferences?'
+}, {
+  area: 'Persistence',
+  check: 'Could this clear, overwrite, shrink, or desync SQL-backed dispatch state?'
+}, {
+  area: 'Date scope',
+  check: 'Does this change what days load, what days stay visible, or what all means?'
+}, {
+  area: 'Performance',
+  check: 'Does this add polling, repeated refreshes, large payload merges, or expensive derived filters?'
+}, {
+  area: 'Cross-screen behavior',
+  check: 'Could this look correct in one screen but break another screen later?'
+}, {
+  area: 'Operator expectation',
+  check: 'Will an operator know where to find this action again tomorrow without learning a second workflow?'
+}];
+
+const DEPLOY_DISCIPLINE = [{
+  step: '1. Scan first',
+  detail: 'Read the current flow, owner workspace, and existing action path before editing.'
+}, {
+  step: '2. Explain the consequence',
+  detail: 'Write or state what can be affected before creating the new UI or behavior.'
+}, {
+  step: '3. Make the smallest correct change',
+  detail: 'Prefer wiring into existing controls, state, and APIs over inventing new paths.'
+}, {
+  step: '4. Validate locally',
+  detail: 'Check for errors and verify the affected workflows in both core workspaces.'
+}, {
+  step: '5. Push only the relevant files',
+  detail: 'Do not stage unrelated files when shipping a targeted fix or feature.'
+}, {
+  step: '6. Deploy after proof',
+  detail: 'Render should receive a verified change, not be used as the first architecture test.'
+}];
+
 const HelpPage = () => {
   return <>
       <PageTitle title="Help" subName="Operations" />
@@ -337,6 +423,65 @@ const HelpPage = () => {
           </div>
           <div className="d-flex flex-column gap-2">
             {UI_CHANGE_GUARDRAILS.map(item => <div key={item.step} className="border rounded p-3">
+                <div className="fw-semibold mb-1">{item.step}</div>
+                <div className="small text-muted">{item.detail}</div>
+              </div>)}
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card className="mb-3">
+        <CardBody>
+          <div className="d-flex flex-column gap-2 mb-3">
+            <h5 className="mb-0">Full Change Protocol</h5>
+            <p className="text-muted mb-0">This is the written procedure for future requests. Follow it in order before creating buttons, panels, shortcuts, filters, loaders, or workflow changes.</p>
+          </div>
+          <div className="d-flex flex-column gap-2">
+            {CHANGE_REQUEST_PROTOCOL.map(item => <div key={item.part} className="border rounded p-3">
+                <div className="fw-semibold mb-1">{item.part}</div>
+                <div className="small text-muted">{item.detail}</div>
+              </div>)}
+          </div>
+        </CardBody>
+      </Card>
+
+      <Row className="g-3 mb-3">
+        <Col xl={6}>
+          <Card className="h-100">
+            <CardBody>
+              <h5 className="mb-3">Button Placement Rules</h5>
+              <div className="d-flex flex-column gap-2">
+                {BUTTON_PLACEMENT_RULES.map(item => <div key={item.rule} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.rule}</div>
+                    <div className="small text-muted">Consequence: {item.consequence}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col xl={6}>
+          <Card className="h-100">
+            <CardBody>
+              <h5 className="mb-3">Consequence Scan Checklist</h5>
+              <div className="d-flex flex-column gap-2">
+                {CONSEQUENCE_SCAN_CHECKLIST.map(item => <div key={item.area} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.area}</div>
+                    <div className="small text-muted">{item.check}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      <Card className="mb-3">
+        <CardBody>
+          <div className="d-flex flex-column gap-2 mb-3">
+            <h5 className="mb-0">Deploy Discipline</h5>
+            <p className="text-muted mb-0">This is the required order for safe delivery. The system works best when changes are scanned, explained, validated, and only then deployed.</p>
+          </div>
+          <div className="d-flex flex-column gap-2">
+            {DEPLOY_DISCIPLINE.map(item => <div key={item.step} className="border rounded p-3">
                 <div className="fw-semibold mb-1">{item.step}</div>
                 <div className="small text-muted">{item.detail}</div>
               </div>)}
