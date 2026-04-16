@@ -287,6 +287,37 @@ const DEPLOY_DISCIPLINE = [{
   detail: 'Render should receive a verified change, not be used as the first architecture test.'
 }];
 
+const WEB_RECOVERY_2026_04_16 = [{
+  area: 'Trip visibility recovery',
+  detail: 'Dispatcher and Trip Dashboard were corrected so selected operational dates show the intended live trips again instead of hiding valid day records behind date/load scope mistakes.'
+}, {
+  area: 'Route preservation',
+  detail: 'Route links were preserved across trip reimports so existing route work would not disappear just because a new file merge arrived.'
+}, {
+  area: 'Route counting fallback',
+  detail: 'Trip Dashboard was updated to derive visible route counts from visible trips when route-plan-only counting was not sufficient.'
+}, {
+  area: 'Dispatch load scoping',
+  detail: 'Dispatch loading was limited to the active operational date window and refresh loops were reduced so the UI stopped fighting its own state.'
+}, {
+  area: 'Shared dispatch sync',
+  detail: 'Shared dispatch state and driver thread sync were tightened so Dispatcher and Trip Dashboard stay closer to the same operational tree.'
+}];
+
+const SAFE_DEPLOY_NOTE = [{
+  step: 'Safe deploy type',
+  detail: 'A Help-page-only deploy is the safest deploy because it documents the system without touching trips, routes, imports, assignments, or SQL dispatch state.'
+}, {
+  step: 'Unsafe deploy type',
+  detail: 'A deploy that changes dispatch import, route assignment, trip merge, pruning, or shared dispatch persistence can move or hide trips if it is not fully validated first.'
+}, {
+  step: 'Required order',
+  detail: 'For operational fixes, the safe order is backup, local review, minimal code change, error check, workflow verification, then manual deploy only after proof.'
+}, {
+  step: 'Trip safety rule',
+  detail: 'Do not ship route/import/persistence changes together with unrelated messaging or UI adjustments. Isolate the smallest fix so trips do not move unexpectedly.'
+}];
+
 const HelpPage = () => {
   return <>
       <PageTitle title="Help" subName="Operations" />
@@ -489,6 +520,41 @@ const HelpPage = () => {
         </CardBody>
       </Card>
 
+      <Row className="g-3 mb-3">
+        <Col xl={6}>
+          <Card className="h-100">
+            <CardBody>
+              <div className="d-flex flex-column gap-2 mb-3">
+                <h5 className="mb-0">Web Recovery Notes — April 16, 2026</h5>
+                <p className="text-muted mb-0">Web-only summary of the dispatch recovery work completed today. This section excludes APK/mobile-only changes on purpose.</p>
+              </div>
+              <div className="d-flex flex-column gap-2">
+                {WEB_RECOVERY_2026_04_16.map(item => <div key={item.area} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.area}</div>
+                    <div className="small text-muted">{item.detail}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col xl={6}>
+          <Card className="h-100">
+            <CardBody>
+              <div className="d-flex flex-column gap-2 mb-3">
+                <h5 className="mb-0">Safe Deploy Note</h5>
+                <p className="text-muted mb-0">Use this before any manual web deploy when trip safety matters more than speed.</p>
+              </div>
+              <div className="d-flex flex-column gap-2">
+                {SAFE_DEPLOY_NOTE.map(item => <div key={item.step} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.step}</div>
+                    <div className="small text-muted">{item.detail}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
       <Card className="mb-3">
         <CardBody>
           <h5 className="mb-3">Changelog — Version History</h5>
@@ -496,9 +562,25 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V9</Badge>
+                <span className="fw-semibold text-dark">Dispatch Recovery — Date Scope, Route Preservation, Shared Sync</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Restored correct trip visibility for operational dates in Dispatcher and Trip Dashboard.</li>
+                <li>Preserved routes across trip reimports so valid route work would not disappear during intake updates.</li>
+                <li>Added route-count fallback from visible trips when route-plan-only counts were insufficient.</li>
+                <li>Scoped dispatch loading to the active operational window and reduced refresh-loop damage.</li>
+                <li>Improved shared dispatch state and driver-thread sync so connected screens remain aligned more reliably.</li>
+                <li>Expanded Help guidance to document engine flow, change protocol, and deploy discipline before future edits.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="warning" text="dark" className="fs-6 px-3 py-2">V8</Badge>
                 <span className="fw-semibold text-dark">Dispatcher &amp; Trip Dashboard — Workflow Separation + Custom Toolbar Builder</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 1, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 1, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Fixed local-vs-server sync race: local dispatch mutations (delete route, unassign, etc.) now persist correctly without being reverted by stale server snapshots.</li>
