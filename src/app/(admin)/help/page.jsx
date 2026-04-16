@@ -376,7 +376,7 @@ const DIARIO_2026_04_16 = [{
   detail: 'After validating local imports, a real Render deploy was pushed with the scanner ZIP rule, the dispatcher scroll-loop repair, the dispatch-thread message import fix, and the web manifest/icon block. During local verification the page first appeared blank because a stale dev .next output served 404 client assets, then Dispatcher showed a Maximum update depth error from the trip-table scroll effect. Both local blockers were repaired before the deploy push a4f1cab.'
 }, {
   area: 'APK receive visibility rule',
-  detail: 'The next messaging law is permanent: driver-app incoming web messages must not be split into separate threads by dispatcher name. That name-based split hid messages between Dispatch and the driver, so one side could think nothing arrived while the message was sitting under Carlos or another name. Incoming dispatcher-web messages now belong in one stable Dispatch thread so both sides see the same conversation history.'
+  detail: 'The next messaging law is permanent: driver-app incoming web messages must not be split into separate threads by dispatcher name. That name-based split is where this problem started: the driver could stop seeing what arrived under Carlos, and Carlos could stop seeing the driver reply in the same shared conversation. Incoming dispatcher-web messages now belong in one stable Dispatch thread so both sides see the same history.'
 }];
 
 const HelpPage = () => {
@@ -668,7 +668,7 @@ const HelpPage = () => {
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Documented the real visibility problem in driver-app messaging: incoming web messages were being split into separate threads by dispatcher name instead of one stable Dispatch conversation.</li>
-                <li>That split is what started the confusion where dispatch could not easily see the driver reply in the same thread and the driver could miss inbound web messages because they were hidden under names like Carlos.</li>
+                <li>That split is what started the problem: the driver did not always see what arrived under Carlos, and Carlos did not always see the driver reply in the same thread.</li>
                 <li>The rule is now explicit: incoming dispatcher-web messages must be grouped under Dispatch, not under each sender name.</li>
                 <li>This keeps the APK inbox aligned with the operational expectation that driver-to-dispatch messaging is one shared conversation, not many hidden name-based threads.</li>
               </ul>
