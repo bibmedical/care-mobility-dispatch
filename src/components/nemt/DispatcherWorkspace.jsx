@@ -893,6 +893,7 @@ const DispatcherWorkspace = () => {
   const [toolbarBlockVisibility, setToolbarBlockVisibility] = useState(() => Object.fromEntries(ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => [blockId, true])));
   const [dispatcherLayout, setDispatcherLayout] = useState(DEFAULT_DISPATCHER_LAYOUT);
   const [dispatcherTableViewMode, setDispatcherTableViewMode] = useState('default');
+  const [rightPanelMode, setRightPanelMode] = useState('default');
   const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
   const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
@@ -1012,6 +1013,7 @@ const DispatcherWorkspace = () => {
       completedByDrivers
     };
   }, [routePlans, todayDateKey, tripDateFilter, trips]);
+  const cancelledSummaryTrips = useMemo(() => trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === daySummaryMetrics.dateKey && getEffectiveTripStatus(trip) === 'Cancelled'), [daySummaryMetrics.dateKey, routePlans, trips]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
 
   useEffect(() => {
@@ -1523,10 +1525,21 @@ const DispatcherWorkspace = () => {
                 <div className="small text-muted" style={{ lineHeight: 1 }}>Total</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.total}</div>
               </div>
-              <div className="px-2 py-1 border-start" style={{ backgroundColor: '#fee2e2', minWidth: 94 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextMode = isCancelledPanelMode ? 'default' : 'cancelled';
+                  setRightPanelMode(nextMode);
+                  setSelectedTripIds([]);
+                  setSelectedRouteId('');
+                  setStatusMessage(nextMode === 'cancelled' ? `Mostrando ${daySummaryMetrics.cancelled} trip(s) cancelados en el panel derecho.` : 'Vista normal de viajes restaurada.');
+                }}
+                className="px-2 py-1 border-start text-start"
+                style={{ backgroundColor: isCancelledPanelMode ? '#fecaca' : '#fee2e2', minWidth: 94, border: 'none', color: '#08131a', boxShadow: isCancelledPanelMode ? 'inset 0 0 0 2px rgba(127,29,29,0.18)' : 'none' }}
+              >
                 <div className="small text-muted" style={{ lineHeight: 1 }}>Cancelled</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.cancelled}</div>
-              </div>
+              </button>
               <div className="px-2 py-1 border-start" style={{ backgroundColor: '#dcfce7', minWidth: 104 }}>
                 <div className="small text-muted" style={{ lineHeight: 1 }}>Completed</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completedByDrivers}</div>
@@ -1727,6 +1740,8 @@ const DispatcherWorkspace = () => {
     if (!dropoffCityValue) return true;
     return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
+  const isCancelledPanelMode = rightPanelMode === 'cancelled';
+  const tripTableTrips = useMemo(() => isCancelledPanelMode ? cancelledSummaryTrips : filteredTrips, [cancelledSummaryTrips, filteredTrips, isCancelledPanelMode]);
   const mapQuickCityOptions = useMemo(() => {
     const citySet = new Set();
     for (const trip of cityOptionTrips) {
@@ -1766,7 +1781,7 @@ const DispatcherWorkspace = () => {
     });
   }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
   const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
-  const visibleTripIds = filteredTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean);
+  const visibleTripIds = tripTableTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean);
   const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const tripColumnMeta = useMemo(() => DISPATCH_TRIP_COLUMN_OPTIONS.reduce((accumulator, option) => {
     accumulator[option.key] = option;
@@ -1807,7 +1822,7 @@ const DispatcherWorkspace = () => {
       return String(leftTrip.id).localeCompare(String(rightTrip.id));
     };
 
-    const groups = filteredTrips.reduce((map, trip) => {
+    const groups = tripTableTrips.reduce((map, trip) => {
       const pickupMinutes = parseTripClockMinutes(getEffectivePickupTimeText(trip));
       const hasTime = Number.isFinite(pickupMinutes);
       const bucketHour = hasTime ? Math.floor(pickupMinutes / 60) : null;
@@ -1830,7 +1845,7 @@ const DispatcherWorkspace = () => {
       groupKey: group.groupKey,
       trip
     }))]);
-  }, [filteredTrips, getDriverName, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key]);
+  }, [getDriverName, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key, tripTableTrips]);
 
   const routeTrips = useMemo(() => {
     const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
@@ -3093,7 +3108,7 @@ const DispatcherWorkspace = () => {
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
   const inlineMapVisible = dispatcherLayout.mapVisible && showInlineMap;
-  const actionsPanelVisible = dispatcherLayout.actionsVisible && !isRoutePanelCollapsed;
+  const actionsPanelVisible = dispatcherLayout.actionsVisible && !isRoutePanelCollapsed && !isCancelledPanelMode;
   const hasLeftColumn = inlineMapVisible || dispatcherLayout.messagingVisible;
   const hasRightColumn = dispatcherLayout.tripsVisible || actionsPanelVisible;
   const hasTopRow = inlineMapVisible || dispatcherLayout.tripsVisible;
@@ -3407,7 +3422,17 @@ const DispatcherWorkspace = () => {
                     </div>)}
                 </div>
               </div>
-                  {filteredTrips.length > 0 ? <div ref={tripTableTopScrollerRef} style={{ width: '100%', marginBottom: 4, padding: '2px 0 4px', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
+                  {isCancelledPanelMode ? <div className="d-flex justify-content-between align-items-center gap-2 px-2 py-2 border-bottom" style={{ backgroundColor: 'rgba(127, 29, 29, 0.08)' }}>
+                      <div className="d-flex flex-column gap-1">
+                        <strong>Cancelled Trips</strong>
+                        <span className="small text-muted">{cancelledSummaryTrips.length} trip(s) for {daySummaryMetrics.dateKey}</span>
+                      </div>
+                      <Button variant="outline-danger" size="sm" onClick={() => {
+                    setRightPanelMode('default');
+                    setStatusMessage('Vista normal de viajes restaurada.');
+                  }}>Back to trips</Button>
+                    </div> : null}
+                  {tripTableTrips.length > 0 ? <div ref={tripTableTopScrollerRef} style={{ width: '100%', marginBottom: 4, padding: '2px 0 4px', borderTop: '1px solid rgba(148, 163, 184, 0.25)', borderBottom: '1px solid rgba(148, 163, 184, 0.25)', backgroundColor: 'rgba(15, 23, 42, 0.35)' }}>
                     <input type="range" min={0} max={Math.max(1, tripTableMaxScrollLeft)} value={Math.min(tripTableScrollLeft, Math.max(1, tripTableMaxScrollLeft))} onChange={event => {
                     const nextLeft = Number(event.target.value) || 0;
                     const bottomNode = tripTableBottomScrollerRef.current;
@@ -3552,7 +3577,7 @@ const DispatcherWorkspace = () => {
                         </td>
                         {orderedVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
                       </tr>) : <tr>
-                        <td colSpan={tripTableColumnCount} className="text-center py-4" style={{ color: dispatcherSurfaceStyles.emptyText }}>No trips loaded. Waiting for your real trips.</td>
+                        <td colSpan={tripTableColumnCount} className="text-center py-4" style={{ color: dispatcherSurfaceStyles.emptyText }}>{isCancelledPanelMode ? 'No cancelled trips for the selected day.' : 'No trips loaded. Waiting for your real trips.'}</td>
                       </tr>}
                   </tbody>
                 </Table>
