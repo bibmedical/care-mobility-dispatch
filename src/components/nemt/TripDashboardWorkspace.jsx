@@ -2098,6 +2098,20 @@ const TripDashboardWorkspace = () => {
       H
     </Button>;
 
+  const renderHelpButton = () => <Button
+      variant="outline-dark"
+      size="sm"
+      style={{ ...toolbarButtonStyle, minWidth: 58, fontWeight: 700 }}
+      onClick={() => {
+        setStatusMessage('Opening Help workspace.');
+        router.push('/help');
+      }}
+      title="Help"
+      aria-label="Open Help"
+    >
+      Help
+    </Button>;
+
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">P</Button>
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handleShareRouteWhatsapp} title="WhatsApp" aria-label="WhatsApp">W</Button>
@@ -5387,6 +5401,7 @@ const TripDashboardWorkspace = () => {
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
                 })}
+                  {renderHelpButton()}
                 </div>
                 
                 {/* Bottom toolbar line */}
@@ -5462,6 +5477,7 @@ const TripDashboardWorkspace = () => {
                   </button>
                   {renderStatusFilterBlock()}
                   {renderDispatchHistoryButton()}
+                  {renderHelpButton()}
                   {renderColumnsButton()}
                   {renderSecondaryToolbarActionBlocks()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>

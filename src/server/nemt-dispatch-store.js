@@ -3,7 +3,7 @@ import { archiveDispatchState, readDispatchHistoryArchive } from '@/server/dispa
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
 
-const DEFAULT_RECENT_PAST_DAYS = 2;
+const DEFAULT_RECENT_PAST_DAYS = 30;
 
 const mergeUniqueItems = (items, getKey, chooseNextItem) => {
   const itemMap = new Map();
@@ -116,10 +116,10 @@ export const readNemtDispatchState = async (options = {}) => {
   let [tripsRes, routesRes, threadsRes, ddRes, auditRes, prefsRow] = await Promise.all([
     includePastDates
       ? query(`SELECT data FROM dispatch_trips ORDER BY updated_at DESC`)
-      : query(`SELECT data FROM dispatch_trips WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 500`, [todayKey]),
+      : query(`SELECT data FROM dispatch_trips WHERE service_date >= $1 OR COALESCE(service_date, '') = '' ORDER BY updated_at DESC`, [todayKey]),
     includePastDates
       ? query(`SELECT data FROM dispatch_route_plans ORDER BY updated_at DESC`)
-      : query(`SELECT data FROM dispatch_route_plans WHERE service_date >= $1 ORDER BY updated_at DESC LIMIT 100`, [todayKey]),
+      : query(`SELECT data FROM dispatch_route_plans WHERE service_date >= $1 OR COALESCE(service_date, '') = '' ORDER BY updated_at DESC`, [todayKey]),
     includePastDates
       ? query(`SELECT data FROM dispatch_threads ORDER BY driver_id`)
       : query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 100`),
@@ -145,8 +145,8 @@ export const readNemtDispatchState = async (options = {}) => {
 
     if (latestServiceDate) {
       [tripsRes, routesRes] = await Promise.all([
-        query(`SELECT data FROM dispatch_trips WHERE service_date = $1 ORDER BY updated_at DESC LIMIT 500`, [latestServiceDate]),
-        query(`SELECT data FROM dispatch_route_plans WHERE service_date = $1 ORDER BY updated_at DESC LIMIT 100`, [latestServiceDate])
+        query(`SELECT data FROM dispatch_trips WHERE service_date = $1 OR COALESCE(service_date, '') = '' ORDER BY updated_at DESC`, [latestServiceDate]),
+        query(`SELECT data FROM dispatch_route_plans WHERE service_date = $1 OR COALESCE(service_date, '') = '' ORDER BY updated_at DESC`, [latestServiceDate])
       ]);
     }
   }

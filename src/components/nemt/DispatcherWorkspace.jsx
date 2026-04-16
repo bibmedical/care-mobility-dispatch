@@ -53,6 +53,13 @@ const DISPATCHER_TOOLBAR_BLOCK_LABELS = {
   'metric-duration': 'Duration metric'
 };
 
+const buildDispatcherHelpButton = (router, setStatusMessage, buttonStyle) => <Button variant="outline-dark" size="sm" style={buttonStyle} onClick={() => {
+  setStatusMessage('Opening Help workspace.');
+  router.push('/help');
+}}>
+    Help
+  </Button>;
+
 const DISPATCHER_TABLE_VIEW_MODES = [{
   value: 'default',
   label: 'Default'
@@ -1630,6 +1637,8 @@ const DispatcherWorkspace = () => {
         return null;
     }
   };
+
+  const renderHelpButton = () => buildDispatcherHelpButton(router, setStatusMessage, greenToolbarButtonStyle);
 
   const renderToolbarRow3Block = blockId => {
     switch (canonicalizeToolbarBlockId(blockId)) {
@@ -3482,6 +3491,9 @@ const DispatcherWorkspace = () => {
                   >
                       {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
+                  <div>
+                    {renderHelpButton()}
+                  </div>
                 </div>
                 
                 {/* Row 3: Leg/Type filters and misc buttons */}

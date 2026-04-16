@@ -3,7 +3,7 @@
 import PageTitle from '@/components/PageTitle';
 import { useNemtContext } from '@/context/useNemtContext';
 import { getTripLateMinutes, getTripPunctualityLabel, getTripServiceDateKey } from '@/helpers/nemt-dispatch-state';
-import { analyzeImportedTrips } from '@/helpers/nemt-trip-import';
+import { analyzeImportedTrips, parseTripImportFile } from '@/helpers/nemt-trip-import';
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
@@ -513,17 +513,9 @@ const TripImportWorkspace = () => {
     setSelectedFileName(file.name);
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, {
-        type: 'array'
-      });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      const rows = XLSX.utils.sheet_to_json(worksheet, {
-        defval: ''
-      });
+      const parsedImport = await parseTripImportFile(file);
 
-      if (!Array.isArray(rows) || rows.length === 0) {
+      if (!Array.isArray(parsedImport?.trips) || parsedImport.trips.length === 0) {
         setPendingTrips([]);
         setImportScan(null);
         setPreviewSearch('');
@@ -531,12 +523,14 @@ const TripImportWorkspace = () => {
         return;
       }
 
-      const importedTrips = annotateSafeRideTrips(rows.map(mapRowToTrip).filter(trip => trip.id && trip.rider && trip.address));
-      const nextImportScan = analyzeImportedTrips(importedTrips);
+      const importedTrips = Array.isArray(parsedImport?.trips) ? parsedImport.trips : [];
+      const nextImportScan = parsedImport?.scan || analyzeImportedTrips(importedTrips);
       setPendingTrips(importedTrips);
       setImportScan(nextImportScan);
       setPreviewSearch('');
-      const dayCount = Array.from(new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).length;
+      const dayCount = Array.isArray(parsedImport?.serviceDateKeys) && parsedImport.serviceDateKeys.length > 0
+        ? parsedImport.serviceDateKeys.length
+        : Array.from(new Set(importedTrips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))).length;
       const scanSuffix = nextImportScan.findingCount > 0 ? ` Scanner: ${nextImportScan.blockingCount} bloqueo(s), ${nextImportScan.warningCount} advertencia(s).` : ' Scanner: no se detectaron problemas obvios.';
       setMessage(`${importedTrips.length} viajes SafeRide listos para importar. Se actualizaran ${dayCount} dia${dayCount === 1 ? '' : 's'} segun el archivo.${scanSuffix}`);
     } catch {

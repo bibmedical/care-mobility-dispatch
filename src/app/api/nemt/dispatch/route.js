@@ -8,7 +8,7 @@ const internalError = error => NextResponse.json({ error: 'Internal server error
 
 export async function GET() {
   try {
-    const payload = await readNemtDispatchState({ recentPastDays: 2 });
+    const payload = await readNemtDispatchState({ recentPastDays: 30 });
     return NextResponse.json(payload);
   } catch (error) {
     return internalError(error);
