@@ -1797,6 +1797,16 @@ const DispatcherWorkspace = () => {
   }, [selectedDriverId, trips]);
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
+      if (isCancelledPanelMode) {
+        const leftRider = String(leftTrip?.rider || '').trim().toLowerCase();
+        const rightRider = String(rightTrip?.rider || '').trim().toLowerCase();
+        if (leftRider !== rightRider) return leftRider.localeCompare(rightRider);
+        const leftTime = leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
+        const rightTime = rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
+        if (leftTime !== rightTime) return leftTime - rightTime;
+        return String(leftTrip.id || '').localeCompare(String(rightTrip.id || ''));
+      }
+
       const leftAssignedToSelectedDriver = isTripAssignedToDriver(leftTrip, selectedDriverId) ? 1 : 0;
       const rightAssignedToSelectedDriver = isTripAssignedToDriver(rightTrip, selectedDriverId) ? 1 : 0;
       if (leftAssignedToSelectedDriver !== rightAssignedToSelectedDriver) return rightAssignedToSelectedDriver - leftAssignedToSelectedDriver;
@@ -1822,6 +1832,14 @@ const DispatcherWorkspace = () => {
       return String(leftTrip.id).localeCompare(String(rightTrip.id));
     };
 
+    if (isCancelledPanelMode) {
+      return [...tripTableTrips].sort(compareTrips).map(trip => ({
+        type: 'trip',
+        groupKey: 'cancelled',
+        trip
+      }));
+    }
+
     const groups = tripTableTrips.reduce((map, trip) => {
       const pickupMinutes = parseTripClockMinutes(getEffectivePickupTimeText(trip));
       const hasTime = Number.isFinite(pickupMinutes);
@@ -1845,7 +1863,7 @@ const DispatcherWorkspace = () => {
       groupKey: group.groupKey,
       trip
     }))]);
-  }, [getDriverName, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key, tripTableTrips]);
+  }, [getDriverName, isCancelledPanelMode, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key, tripTableTrips]);
 
   const routeTrips = useMemo(() => {
     const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
