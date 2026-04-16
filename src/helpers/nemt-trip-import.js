@@ -1,4 +1,4 @@
-import { getTripLateMinutes, getTripPunctualityLabel, getTripServiceDateKey } from '@/helpers/nemt-dispatch-state';
+import { getTripLateMinutes, getTripPunctualityLabel, getTripServiceDateKey, splitAddressAndZipcode } from '@/helpers/nemt-dispatch-state';
 import * as XLSX from 'xlsx';
 
 const COLUMN_ALIASES = {
@@ -395,8 +395,16 @@ const mapRowToTrip = (row, index) => {
   const rider = getRiderName(row, index);
   const pickup = formatSafeRideTime(rawPickupTime);
   const dropoff = formatSafeRideTime(rawDropoffTime);
-  const address = getValueByAliases(row, COLUMN_ALIASES.fromAddress) || getValueByAliases(row, COLUMN_ALIASES.address) || 'Address pending';
-  const destination = getValueByAliases(row, COLUMN_ALIASES.toAddress) || getValueByAliases(row, COLUMN_ALIASES.destination) || '';
+  const rawAddress = getValueByAliases(row, COLUMN_ALIASES.fromAddress) || getValueByAliases(row, COLUMN_ALIASES.address) || 'Address pending';
+  const rawDestination = getValueByAliases(row, COLUMN_ALIASES.toAddress) || getValueByAliases(row, COLUMN_ALIASES.destination) || '';
+  const {
+    address,
+    zipcode: fromZipcode
+  } = splitAddressAndZipcode(rawAddress, getValueByAliases(row, COLUMN_ALIASES.fromZipcode));
+  const {
+    address: destination,
+    zipcode: toZipcode
+  } = splitAddressAndZipcode(rawDestination, getValueByAliases(row, COLUMN_ALIASES.toZipcode));
   const rideId = getValueByAliases(row, COLUMN_ALIASES.id) || `RIDE-${Date.now()}-${index + 1}`;
   const tripId = getValueByAliases(row, COLUMN_ALIASES.brokerTripId);
   const status = getValueByAliases(row, COLUMN_ALIASES.status) || 'Scheduled';
@@ -446,8 +454,8 @@ const mapRowToTrip = (row, index) => {
     dropoff,
     address,
     destination,
-    fromZipcode: getValueByAliases(row, COLUMN_ALIASES.fromZipcode),
-    toZipcode: getValueByAliases(row, COLUMN_ALIASES.toZipcode),
+    fromZipcode,
+    toZipcode,
     patientPhoneNumber: getValueByAliases(row, COLUMN_ALIASES.patientPhoneNumber),
     assistanceNeeds: getValueByAliases(row, COLUMN_ALIASES.assistanceNeeds),
     notes: getValueByAliases(row, COLUMN_ALIASES.notes),

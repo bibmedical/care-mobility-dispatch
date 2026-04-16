@@ -5,6 +5,7 @@ const DEFAULT_ASSISTANT_AVATAR_IMAGE = '/fmg-login-logo.png';
 export const DEFAULT_DISPATCH_TIME_ZONE = 'America/New_York';
 
 const normalizeTextValue = value => String(value ?? '').trim();
+const ZIPCODE_PATTERN = /\b\d{5}(?:-\d{4})?\b/;
 const EXCEL_SERIAL_TIME_PATTERN = /^\d{4,6}(?:\.\d+)?$/;
 const TRIP_MOBILITY_SOURCE_FIELDS = ['mobilityType', 'mobility', 'vehicleType', 'assistanceNeeds', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
 const TRIP_MOBILITY_EXPLICIT_SOURCE_FIELDS = ['mobilityType', 'mobility', 'vehicleType', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
@@ -209,6 +210,64 @@ export const DEFAULT_ASSISTANT_AVATAR = {
 };
 
 const getFirstNonEmptyValue = (...values) => values.map(normalizeTextValue).find(Boolean) ?? '';
+
+const escapeRegExp = value => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export const normalizeZipcodeValue = value => {
+  const normalized = normalizeTextValue(value);
+  if (!normalized) return '';
+  const match = normalized.match(ZIPCODE_PATTERN);
+  return match ? match[0] : normalized;
+};
+
+const cleanupLocationAddress = value => normalizeTextValue(value)
+  .replace(/\s+,/g, ',')
+  .replace(/,\s*,+/g, ', ')
+  .replace(/\s{2,}/g, ' ')
+  .replace(/,\s*$/g, '')
+  .trim();
+
+const getTrailingZipcodeFromAddress = value => {
+  const normalized = normalizeTextValue(value);
+  if (!normalized) return '';
+  const matches = normalized.match(/\b\d{5}(?:-\d{4})?\b/g);
+  return Array.isArray(matches) && matches.length > 0 ? matches[matches.length - 1] : '';
+};
+
+export const splitAddressAndZipcode = (addressValue, zipcodeValue) => {
+  const normalizedAddress = normalizeTextValue(addressValue);
+  const normalizedZipcode = normalizeZipcodeValue(zipcodeValue);
+  const trailingZipcode = getTrailingZipcodeFromAddress(normalizedAddress);
+  // Scanner rule: only trust the dedicated ZIP column. If a ZIP appears inside
+  // the address text, strip it from the address but do not promote it to the
+  // trip ZIP unless the file also provided that ZIP explicitly.
+  const zipcodeToRemoveFromAddress = normalizedZipcode || trailingZipcode;
+  if (!normalizedAddress) {
+    return {
+      address: '',
+      zipcode: normalizedZipcode
+    };
+  }
+
+  if (!zipcodeToRemoveFromAddress) {
+    return {
+      address: cleanupLocationAddress(normalizedAddress),
+      zipcode: normalizedZipcode
+    };
+  }
+
+  const escapedZipcode = escapeRegExp(zipcodeToRemoveFromAddress);
+  const withoutZipcode = normalizedAddress
+    .replace(new RegExp(`,\\s*${escapedZipcode}(?=\\s*(?:,\\s*(?:United States|USA))?\\s*$)`, 'i'), '')
+    .replace(new RegExp(`\\s+${escapedZipcode}(?=\\s*(?:,\\s*(?:United States|USA))?\\s*$)`, 'i'), '')
+    .replace(new RegExp(`,\\s*${escapedZipcode}\\s*,`, 'i'), ', ')
+    .replace(new RegExp(`\\s+${escapedZipcode}\\s*,`, 'i'), ', ');
+
+  return {
+    address: cleanupLocationAddress(withoutZipcode),
+    zipcode: normalizedZipcode
+  };
+};
 
 const looksLikeExcelSerialTime = value => EXCEL_SERIAL_TIME_PATTERN.test(normalizeTextValue(value));
 
@@ -577,10 +636,12 @@ export const normalizeTripRecord = trip => {
   const scheduledDropoff = dropoff;
   const actualPickup = normalizeTextValue(trip?.actualPickup);
   const actualDropoff = normalizeTextValue(trip?.actualDropoff);
-  const address = getFirstNonEmptyValue(trip?.address, trip?.fromAddress, trip?.pickupAddress, trip?.originAddress);
-  const destination = getFirstNonEmptyValue(trip?.destination, trip?.toAddress, trip?.dropoffAddress);
-  const fromZipcode = getFirstNonEmptyValue(trip?.fromZipcode, trip?.fromZip, trip?.pickupZipcode, trip?.pickupZip, trip?.originZip);
-  const toZipcode = getFirstNonEmptyValue(trip?.toZipcode, trip?.toZip, trip?.dropoffZipcode, trip?.dropoffZip, trip?.destinationZip);
+  const rawAddress = getFirstNonEmptyValue(trip?.address, trip?.fromAddress, trip?.pickupAddress, trip?.originAddress);
+  const rawDestination = getFirstNonEmptyValue(trip?.destination, trip?.toAddress, trip?.dropoffAddress);
+  const rawFromZipcode = getFirstNonEmptyValue(trip?.fromZipcode, trip?.fromZip, trip?.pickupZipcode, trip?.pickupZip, trip?.originZip);
+  const rawToZipcode = getFirstNonEmptyValue(trip?.toZipcode, trip?.toZip, trip?.dropoffZipcode, trip?.dropoffZip, trip?.destinationZip);
+  const { address, zipcode: fromZipcode } = splitAddressAndZipcode(rawAddress, rawFromZipcode);
+  const { address: destination, zipcode: toZipcode } = splitAddressAndZipcode(rawDestination, rawToZipcode);
   const patientPhoneNumber = getFirstNonEmptyValue(trip?.patientPhoneNumber, trip?.phone, trip?.phoneNumber, trip?.memberPhone);
   const notes = getFirstNonEmptyValue(trip?.notes, trip?.additionalNotes, trip?.otherDetails);
   const vehicleType = getFirstNonEmptyValue(trip?.vehicleType, trip?.requestedVehicleType, trip?.vehicleRequired);

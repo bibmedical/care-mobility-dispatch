@@ -362,6 +362,15 @@ const DIARIO_2026_04_16 = [{
 }, {
   area: 'Backup and safety',
   detail: 'Backup folder backup/SHEET-20260416-170133 exists as the local recovery point created before the manual-trip and dispatch-recovery changes continued.'
+}, {
+  area: 'Local shortcut icon',
+  detail: 'The web app now exposes a manifest and app icon so localhost can be saved as a website shortcut with an icon. Use the browser menu on http://localhost:3000 to install or create the shortcut.'
+}, {
+  area: 'APK message pipeline repair',
+  detail: 'A missing normalizeDispatchMessageRecord import in nemt-dispatch-store caused /api/mobile/driver-messages POST to fail after saving the system message, so Web V2 did not receive the dispatch-thread update. The fix restores the thread write path used by Dispatcher messaging.'
+}, {
+  area: 'Scanner ZIP rule',
+  detail: 'Scanner/import law: ZIP codes embedded inside address text are not trusted as trip ZIP values. The scanner strips those ZIP codes out of the address display, but only the dedicated ZIP columns remain valid for fromZipcode and toZipcode.'
 }];
 
 const HelpPage = () => {
@@ -647,9 +656,51 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V15</Badge>
+                <span className="fw-semibold text-dark">Scanner ZIP Law — Ignore ZIP Inside Address</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Made the scanner rule permanent: ZIP codes found inside address text are no longer treated as trusted trip ZIP data.</li>
+                <li>The import flow now strips embedded ZIP codes from address text to avoid duplicate ZIP display in the trip table.</li>
+                <li>Only explicit ZIP columns from the file remain valid for fromZipcode and toZipcode.</li>
+                <li>This prevents address-plus-ZIP duplication from polluting scanner results, imports, and later trip rendering.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V14</Badge>
+                <span className="fw-semibold text-dark">APK Messages To Web V2 — Dispatch Thread Fix</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Found the real break in the APK-to-web message path: /api/mobile/driver-messages POST was returning 500 after the system message save.</li>
+                <li>Root cause was a missing normalizeDispatchMessageRecord import in nemt-dispatch-store during dispatch-thread persistence.</li>
+                <li>After the import fix, the local POST returned 200 and the message appeared in /api/nemt/dispatch/threads.</li>
+                <li>This matters because Web V2 reads the driver thread update path, not just the raw system message row.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V13</Badge>
+                <span className="fw-semibold text-dark">Local Shortcut Icon — Manifest Ready</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Added a web manifest so the local dispatch site can be saved as a website shortcut with app-style name and icon.</li>
+                <li>Connected the existing FMG icon as the app, shortcut, and Apple touch icon in the root metadata.</li>
+                <li>The shortcut opens to Dispatcher by default through the manifest start URL.</li>
+                <li>Use the browser menu on localhost:3000 to create or install the shortcut during local testing.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V12</Badge>
                 <span className="fw-semibold text-dark">Diario — SQL Repair + Trip Protection Memory</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Marked Help as the operating diary for major repairs, validations, and deploy notes.</li>

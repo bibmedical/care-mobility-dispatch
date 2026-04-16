@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { getLocalDateKey, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { getLocalDateKey, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState, readDispatchHistoryArchive } from '@/server/dispatch-history-store';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';

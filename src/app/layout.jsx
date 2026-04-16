@@ -10,7 +10,22 @@ export const metadata = {
     template: '%s | Florida Mobility Group Dispatch',
     default: DEFAULT_PAGE_TITLE
   },
-  description: 'NEMT Operations Panel — trips, drivers, and dispatch management'
+  description: 'NEMT Operations Panel — trips, drivers, and dispatch management',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/fmg-app-icon.png', type: 'image/png' }
+    ],
+    apple: [
+      { url: '/fmg-app-icon.png', type: 'image/png' }
+    ],
+    shortcut: ['/fmg-app-icon.png']
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'FMG Dispatch',
+    statusBarStyle: 'default'
+  }
 };
 export default function RootLayout({
   children

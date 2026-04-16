@@ -3281,10 +3281,12 @@ const DispatcherWorkspace = () => {
       const tableNode = tripTableElementRef.current;
       const containerWidth = scrollContainer?.scrollWidth || 0;
       const tableWidth = tableNode?.scrollWidth || 0;
-      setTripTableScrollWidth(Math.max(containerWidth, tableWidth));
+      const nextScrollWidth = Math.max(containerWidth, tableWidth);
       const maxScrollLeft = Math.max(0, (scrollContainer?.scrollWidth || 0) - (scrollContainer?.clientWidth || 0));
-      setTripTableMaxScrollLeft(maxScrollLeft);
-      setTripTableScrollLeft(Math.min(scrollContainer?.scrollLeft || 0, maxScrollLeft));
+      const nextScrollLeft = Math.min(scrollContainer?.scrollLeft || 0, maxScrollLeft);
+      setTripTableScrollWidth(current => current === nextScrollWidth ? current : nextScrollWidth);
+      setTripTableMaxScrollLeft(current => current === maxScrollLeft ? current : maxScrollLeft);
+      setTripTableScrollLeft(current => current === nextScrollLeft ? current : nextScrollLeft);
     };
 
     updateTripTableScrollWidth();
@@ -3296,7 +3298,6 @@ const DispatcherWorkspace = () => {
       resizeObserver = new window.ResizeObserver(() => {
         updateTripTableScrollWidth();
       });
-      if (tripTableBottomScrollerRef.current) resizeObserver.observe(tripTableBottomScrollerRef.current);
       if (tripTableElementRef.current) resizeObserver.observe(tripTableElementRef.current);
     }
 
