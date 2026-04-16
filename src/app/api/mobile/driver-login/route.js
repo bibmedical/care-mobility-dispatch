@@ -108,11 +108,12 @@ const findDriverFromDirectCredentials = (drivers, state, identifier, password) =
   }) || null;
 };
 
-const buildDriverSessionPayload = async (driver, baseSession, deviceId) => {
+const buildDriverSessionPayload = async (driver, baseSession, deviceId, options = {}) => {
   const claimedSession = await claimDriverMobileSession({
     driverId: driver.id,
     driverName: getFullName(driver),
-    deviceId
+    deviceId,
+    forceTakeover: Boolean(options?.forceTakeover)
   });
 
   return {
@@ -225,7 +226,9 @@ export async function POST(request) {
           vehicleId: driver.vehicleId || '',
           passwordResetRequired: isDriverPasswordResetRequired(driver),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
-        }, deviceId)
+        }, deviceId, {
+          forceTakeover: true
+        })
       });
     } catch (error) {
       const sessionError = error?.code ? error : buildDriverSessionError('Unable to create driver session.', 500, 'driver-session-create-failed');
@@ -354,7 +357,9 @@ export async function POST(request) {
         vehicleId: driver.vehicleId || '',
         passwordResetRequired: isDriverPasswordResetRequired(driver),
         gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
-      }, deviceId)
+      }, deviceId, {
+        forceTakeover: true
+      })
     });
   } catch (error) {
     const sessionError = error?.code ? error : buildDriverSessionError('Unable to create driver session.', 500, 'driver-session-create-failed');

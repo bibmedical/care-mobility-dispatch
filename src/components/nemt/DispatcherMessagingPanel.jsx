@@ -194,11 +194,18 @@ const getAlertLabel = alert => {
 const getAlertDisplayBody = alert => {
   const rawBody = String(alert?.body || '').trim();
   if (!rawBody) return '';
-  if (alert?.type !== 'delay-alert') return rawBody;
+  const tripMatch = String(alert?.subject || '').match(/trip\s+([^\s]+)/i);
+  const lateMinutesMatch = rawBody.match(/late by about\s+([^\s.]+)\s+minutes?/i);
+  const riderMatch = rawBody.match(/for\s+(.+?)\s+is\s+(?:running\s+)?late/i);
+  const tripLabel = tripMatch?.[1] ? `Trip ${tripMatch[1]}` : 'Trip alert';
+  const riderLabel = riderMatch?.[1] ? ` | ${riderMatch[1].trim()}` : '';
+  const lateLabel = lateMinutesMatch?.[1] ? ` late by ~${lateMinutesMatch[1]} min` : ' running late';
 
-  return rawBody
-    .replace(/another driver or uber is needed\.?/i, 'backup help is needed.')
-    .replace(/driver or uber/i, 'backup help');
+  if (alert?.type === 'delay-alert') return `${tripLabel}${lateLabel}${riderLabel}`;
+  if (alert?.type === 'backup-driver-request') return `${tripLabel} needs backup driver${riderLabel}`;
+  if (alert?.type === 'uber-request') return `${tripLabel} may need Uber coverage${riderLabel}`;
+
+  return rawBody.length > 120 ? `${rawBody.slice(0, 117).trim()}...` : rawBody;
 };
 
 const logSystemActivity = async (eventLabel, target = '', metadata = null) => {

@@ -58,7 +58,7 @@ const deleteSessionRow = async driverId => {
   await query(`DELETE FROM driver_mobile_sessions WHERE driver_id = $1`, [String(driverId || '').trim()]);
 };
 
-export const claimDriverMobileSession = async ({ driverId, driverName = '', deviceId }) => {
+export const claimDriverMobileSession = async ({ driverId, driverName = '', deviceId, forceTakeover = false }) => {
   const normalizedDriverId = String(driverId || '').trim();
   const normalizedDeviceId = String(deviceId || '').trim();
 
@@ -74,7 +74,9 @@ export const claimDriverMobileSession = async ({ driverId, driverName = '', devi
 
     const activeSession = existing && !isSessionExpired(existing) ? existing : null;
     if (activeSession && String(activeSession.device_id || '').trim() !== normalizedDeviceId) {
-      if (!canOverrideDriverSessionInLocalDev()) {
+      if (forceTakeover) {
+        await deleteSessionRow(normalizedDriverId);
+      } else if (!canOverrideDriverSessionInLocalDev()) {
         throw buildDriverSessionError('This driver account is already active on another device.', 409, 'driver-session-conflict');
       }
     }
@@ -106,7 +108,9 @@ export const claimDriverMobileSession = async ({ driverId, driverName = '', devi
     const existing = _memSessions.get(normalizedDriverId);
     const isExpired = !existing || isSessionExpired(existing);
     if (!isExpired && String(existing.device_id || '').trim() !== normalizedDeviceId) {
-      if (!canOverrideDriverSessionInLocalDev()) {
+      if (forceTakeover) {
+        _memSessions.delete(normalizedDriverId);
+      } else if (!canOverrideDriverSessionInLocalDev()) {
         throw buildDriverSessionError('This driver account is already active on another device.', 409, 'driver-session-conflict');
       }
     }
