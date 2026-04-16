@@ -1012,16 +1012,25 @@ const DispatcherWorkspace = () => {
   const serverScopedDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
   const serverScopedPastDays = tripDateFilter === 'all' ? 1 : 0;
   const serverScopedFutureDays = tripDateFilter === 'all' ? 1 : 0;
+  const refreshDispatchStateRef = useRef(refreshDispatchState);
+  const lastServerScopeKeyRef = useRef('');
+
+  useEffect(() => {
+    refreshDispatchStateRef.current = refreshDispatchState;
+  }, [refreshDispatchState]);
 
   useEffect(() => {
     if (!serverScopedDateKey) return;
-    void refreshDispatchState({
+    const scopeKey = [serverScopedDateKey, serverScopedPastDays, serverScopedFutureDays].join('|');
+    if (lastServerScopeKeyRef.current === scopeKey) return;
+    lastServerScopeKeyRef.current = scopeKey;
+    void refreshDispatchStateRef.current({
       forceServer: true,
       dateKey: serverScopedDateKey,
       windowPastDays: serverScopedPastDays,
       windowFutureDays: serverScopedFutureDays
     });
-  }, [refreshDispatchState, serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
+  }, [serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
 
   const daySummaryMetrics = useMemo(() => {
     const targetDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
