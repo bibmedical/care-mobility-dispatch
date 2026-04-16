@@ -1,6 +1,7 @@
 'use client';
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import ManualTripModal from '@/components/nemt/ManualTripModal';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { buildStableDriverId, createBlankDriver, GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
 import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
@@ -1029,6 +1030,7 @@ const TripDashboardWorkspace = () => {
     refreshDrivers,
     refreshDispatchState,
     getDriverName,
+    createManualTripRecord,
     updateTripNotes,
     updateTripRecord,
     cloneTripRecord,
@@ -1067,6 +1069,7 @@ const TripDashboardWorkspace = () => {
   const [routeSearch, setRouteSearch] = useState('');
   const [showBlacklistModal, setShowBlacklistModal] = useState(false);
   const [showTripImportModal, setShowTripImportModal] = useState(false);
+  const [showManualTripModal, setShowManualTripModal] = useState(false);
   const [blacklistSearch, setBlacklistSearch] = useState('');
   const [blacklistDraft, setBlacklistDraft] = useState(createEmptyBlacklistEntryDraft());
   const [blacklistDraftTrip, setBlacklistDraftTrip] = useState(null);
@@ -2154,6 +2157,7 @@ const TripDashboardWorkspace = () => {
     />;
 
   const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <div className="d-flex align-items-center gap-1 flex-nowrap">
+      <Button variant="success" size="sm" onClick={() => setShowManualTripModal(true)} title="Create manual trip">+Trip</Button>
       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
       <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
@@ -2370,6 +2374,21 @@ const TripDashboardWorkspace = () => {
       default:
         return null;
     }
+  };
+
+  const handleCreateManualTrip = async draft => {
+    const createdTrip = createManualTripRecord({
+      ...draft,
+      manualEntrySource: 'trip-dashboard'
+    });
+    setTripDateFilter(createdTrip.serviceDate || draft.serviceDate);
+    setTripStatusFilter('all');
+    setSelectedRouteId(null);
+    setSelectedTripIds([createdTrip.id]);
+    setShowManualTripModal(false);
+    const message = `Manual trip ${createdTrip.brokerTripId || createdTrip.id} created for ${createdTrip.rider}.`;
+    setStatusMessage(message);
+    showNotification({ message, variant: 'success' });
   };
   const cityOptionTrips = useMemo(() => trips.filter(trip => {
     const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
@@ -5853,6 +5872,14 @@ const TripDashboardWorkspace = () => {
                 </div>
               </> : null}
           </div> : null}
+
+        <ManualTripModal
+          show={showManualTripModal}
+          onHide={() => setShowManualTripModal(false)}
+          onSave={handleCreateManualTrip}
+          initialServiceDate={tripDateFilter === 'all' ? getLocalDateKey() : tripDateFilter}
+          sourceLabel="Trip Dashboard"
+        />
 
         <Modal show={showTripImportModal} onHide={() => setShowTripImportModal(false)} size="lg" centered>
           <Modal.Header closeButton>

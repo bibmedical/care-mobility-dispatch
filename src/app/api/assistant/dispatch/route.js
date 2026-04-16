@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth';
 import { MENU_ITEMS } from '@/assets/data/menu-items';
 import { options as authOptions } from '@/app/api/auth/[...nextauth]/options';
 import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
-import { readAssistantKnowledgeOverview, searchAssistantKnowledge } from '@/server/assistant-knowledge-store';
 import { readBlacklistState } from '@/server/blacklist-store';
 import { readAssistantConversation, readAssistantFacts, mergeAssistantFact, writeAssistantConversation } from '@/server/assistant-memory-store';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
@@ -1166,6 +1165,31 @@ const readSnapshotSource = async (label, reader) => {
   }
 };
 
+const readAssistantKnowledgeOverviewSafe = async () => {
+  try {
+    const module = await import('@/server/assistant-knowledge-store');
+    return await module.readAssistantKnowledgeOverview();
+  } catch {
+    return {
+      documents: [],
+      totals: {
+        documents: 0,
+        chunks: 0,
+        characters: 0
+      }
+    };
+  }
+};
+
+const searchAssistantKnowledgeSafe = async (message, options = {}) => {
+  try {
+    const module = await import('@/server/assistant-knowledge-store');
+    return await module.searchAssistantKnowledge(message, options);
+  } catch {
+    return [];
+  }
+};
+
 const buildDispatchSnapshot = async session => {
   const [adminPayload, dispatchState, integrationsState, systemUsersPayload, blacklistState, persistedFacts, knowledgeOverview] = await Promise.all([
     readSnapshotSource('nemt-admin', () => readNemtAdminPayload()),
@@ -1174,7 +1198,7 @@ const buildDispatchSnapshot = async session => {
     readSnapshotSource('system-users', () => readSystemUsersPayload()),
     readSnapshotSource('blacklist', () => readBlacklistState()),
     readSnapshotSource('assistant-facts', () => readAssistantFacts()),
-    readSnapshotSource('assistant-knowledge', () => readAssistantKnowledgeOverview())
+    readSnapshotSource('assistant-knowledge', () => readAssistantKnowledgeOverviewSafe())
   ]);
   const drivers = Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : [];
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
@@ -1724,7 +1748,7 @@ export async function POST(request) {
 
     const snapshot = await buildDispatchSnapshot(session);
     const integrationsState = await readIntegrationsState();
-    const knowledgeMatches = await searchAssistantKnowledge(message, { limit: 4 });
+    const knowledgeMatches = await searchAssistantKnowledgeSafe(message, { limit: 4 });
     const result = await callOpenAI({ message, history, snapshot: {
       ...snapshot,
       knowledgeMatches

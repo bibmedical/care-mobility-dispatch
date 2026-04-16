@@ -318,6 +318,26 @@ const SAFE_DEPLOY_NOTE = [{
   detail: 'Do not ship route/import/persistence changes together with unrelated messaging or UI adjustments. Isolate the smallest fix so trips do not move unexpectedly.'
 }];
 
+const MANUAL_TRIP_ENTRY_2026_04_16 = [{
+  area: 'Shared creation path',
+  detail: 'Trip Dashboard and Dispatcher now open the same manual-trip modal and both write through one shared context mutation instead of inventing separate local flows.'
+}, {
+  area: 'Toolbar buttons',
+  detail: 'A new +Trip button was added in the main action toolbar of Trip Dashboard and Dispatcher so operators can create the manual trip from either workspace using the same entry point.'
+}, {
+  area: 'SafeRide-style vehicle choice',
+  detail: 'The manual-trip form now lets dispatch choose the service/car type with the same supported mobility codes the system already reads from SafeRide imports, including A, W, WXL, EW, Walker, and STR.'
+}, {
+  area: 'Import protection',
+  detail: 'Manual trips are stamped with explicit protection flags so common import replace and date-clear flows do not wipe them out during later intake updates.'
+}, {
+  area: 'Operator placement',
+  detail: 'The New Trip action lives in the main toolbar action area on both workspaces so dispatch can create a trip from either screen without hunting through row-level menus.'
+}, {
+  area: 'Local backup',
+  detail: 'A local recovery snapshot was created before continuing this work: backup/SHEET-20260416-170133. Use it if any of the current local files need to be restored.'
+}];
+
 const HelpPage = () => {
   return <>
       <PageTitle title="Help" subName="Operations" />
@@ -416,6 +436,41 @@ const HelpPage = () => {
           </div>
         </CardBody>
       </Card>
+
+      <Row className="g-3 mb-3">
+        <Col xl={6}>
+          <Card className="h-100">
+            <CardBody>
+              <div className="d-flex flex-column gap-2 mb-3">
+                <h5 className="mb-0">Manual Trip Entry — April 16, 2026</h5>
+                <p className="text-muted mb-0">Shared notes for the new manual trip flow added to Dispatcher and Trip Dashboard.</p>
+              </div>
+              <div className="d-flex flex-column gap-2">
+                {MANUAL_TRIP_ENTRY_2026_04_16.map(item => <div key={item.area} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.area}</div>
+                    <div className="small text-muted">{item.detail}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col xl={6}>
+          <Card className="h-100">
+            <CardBody>
+              <div className="d-flex flex-column gap-2 mb-3">
+                <h5 className="mb-0">Safe Deploy Note</h5>
+                <p className="text-muted mb-0">Use this before any manual web deploy when trip safety matters more than speed.</p>
+              </div>
+              <div className="d-flex flex-column gap-2">
+                {SAFE_DEPLOY_NOTE.map(item => <div key={item.step} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.step}</div>
+                    <div className="small text-muted">{item.detail}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
 
       <Row className="g-3 mb-3">
         <Col xl={6}>
@@ -537,22 +592,7 @@ const HelpPage = () => {
             </CardBody>
           </Card>
         </Col>
-        <Col xl={6}>
-          <Card className="h-100">
-            <CardBody>
-              <div className="d-flex flex-column gap-2 mb-3">
-                <h5 className="mb-0">Safe Deploy Note</h5>
-                <p className="text-muted mb-0">Use this before any manual web deploy when trip safety matters more than speed.</p>
-              </div>
-              <div className="d-flex flex-column gap-2">
-                {SAFE_DEPLOY_NOTE.map(item => <div key={item.step} className="border rounded p-3">
-                    <div className="fw-semibold mb-1">{item.step}</div>
-                    <div className="small text-muted">{item.detail}</div>
-                  </div>)}
-              </div>
-            </CardBody>
-          </Card>
-        </Col>
+        <Col xl={6} />
       </Row>
 
       <Card className="mb-3">
@@ -562,9 +602,25 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V10</Badge>
+                <span className="fw-semibold text-dark">Manual Trip Entry — Shared Modal + Protected Manual Records</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Created a local recovery backup before continuing: backup/SHEET-20260416-170133.</li>
+                <li>Added a shared manual-trip modal that opens from Trip Dashboard and Dispatcher.</li>
+                <li>Added a new +Trip button in the main action toolbar of both workspaces.</li>
+                <li>Both screens now create manual trips through one central shared-context mutation instead of separate local code paths.</li>
+                <li>Manual trips are marked with protection flags so normal import replacement and per-date clearing flows do not wipe them out.</li>
+                <li>The New Trip action was placed in the main toolbar action area on both workspaces so operators can find it in the same place later.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V9</Badge>
                 <span className="fw-semibold text-dark">Dispatch Recovery — Date Scope, Route Preservation, Shared Sync</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Restored correct trip visibility for operational dates in Dispatcher and Trip Dashboard.</li>

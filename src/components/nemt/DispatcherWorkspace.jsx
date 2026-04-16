@@ -2,6 +2,7 @@
 
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel';
+import ManualTripModal from '@/components/nemt/ManualTripModal';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { getDriverColor } from '@/helpers/nemt-driver-colors';
@@ -877,6 +878,7 @@ const DispatcherWorkspace = () => {
     unassignTrips,
     cancelTrips,
     reinstateTrips,
+    createManualTripRecord,
     refreshDrivers,
     refreshDispatchState,
     getDriverName,
@@ -892,6 +894,7 @@ const DispatcherWorkspace = () => {
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
   const [serviceAnimalOnly, setServiceAnimalOnly] = useState(false);
   const [tripDateFilter, setTripDateFilter] = useState('all');
+  const [showManualTripModal, setShowManualTripModal] = useState(false);
   const [selectedTripIds, setSelectedTripIds] = useState([]);
   const [isManualDriverScope, setIsManualDriverScope] = useState(false);
   const [followSelectedDriver, setFollowSelectedDriver] = useState(false);
@@ -1627,6 +1630,15 @@ const DispatcherWorkspace = () => {
       case 'actions':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <Button
+              variant="success"
+              size="sm"
+              onClick={() => setShowManualTripModal(true)}
+              disabled={mapLocked}
+              title="Create manual trip"
+            >
+              +Trip
+            </Button>
+            <Button
               variant="primary"
               size="sm"
               onClick={() => handleAssign(selectedDriverId)}
@@ -1682,6 +1694,19 @@ const DispatcherWorkspace = () => {
   };
 
   const renderHelpButton = () => buildDispatcherHelpButton(router, setStatusMessage, greenToolbarButtonStyle);
+
+  const handleCreateManualTrip = async draft => {
+    const createdTrip = createManualTripRecord({
+      ...draft,
+      manualEntrySource: 'dispatcher'
+    });
+    setTripDateFilter(createdTrip.serviceDate || draft.serviceDate);
+    setTripStatusFilter('all');
+    setSelectedRouteId(null);
+    setSelectedTripIds([createdTrip.id]);
+    setShowManualTripModal(false);
+    setStatusMessage(`Manual trip ${createdTrip.brokerTripId || createdTrip.id} created for ${createdTrip.rider}.`);
+  };
 
   const renderToolbarRow3Block = blockId => {
     switch (canonicalizeToolbarBlockId(blockId)) {
@@ -3445,6 +3470,14 @@ const DispatcherWorkspace = () => {
     </Card>;
 
   return <>
+      <ManualTripModal
+        show={showManualTripModal}
+        onHide={() => setShowManualTripModal(false)}
+        onSave={handleCreateManualTrip}
+        initialServiceDate={tripDateFilter === 'all' ? todayDateKey : tripDateFilter}
+        sourceLabel="Dispatcher"
+      />
+
       {hasHiddenDispatcherPanels ? <div style={{
       position: 'fixed',
       top: 54,

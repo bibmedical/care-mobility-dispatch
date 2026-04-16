@@ -1,9 +1,13 @@
+import { readFile } from 'fs/promises';
 import { getLocalDateKey, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState, readDispatchHistoryArchive } from '@/server/dispatch-history-store';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
+import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
+import { getStorageFilePath } from '@/server/storage-paths';
 
 const DEFAULT_RECENT_PAST_DAYS = 30;
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
 
 const normalizeDateKey = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim()) ? String(value || '').trim() : '';
 
@@ -109,6 +113,27 @@ const loadDispatchWindowArchivedStates = async dateKeys => {
 
 const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
 
+const getNemtDispatchStorageFile = () => getStorageFilePath('nemt-dispatch.json');
+
+const readLocalNemtDispatchState = async () => {
+  try {
+    const raw = await readFile(getNemtDispatchStorageFile(), 'utf8');
+    return normalizePersistentDispatchState(JSON.parse(raw));
+  } catch {
+    return normalizePersistentDispatchState({});
+  }
+};
+
+const writeLocalNemtDispatchState = async nextState => {
+  const normalized = normalizePersistentDispatchState(nextState);
+  await writeJsonFileWithSnapshots({
+    filePath: getNemtDispatchStorageFile(),
+    nextValue: normalized,
+    backupName: 'nemt-dispatch-local'
+  });
+  return normalized;
+};
+
 let ensureDispatchSchemaPromise = null;
 
 const ensureDispatchSchema = async () => {
@@ -126,6 +151,13 @@ const ensureDispatchSchema = async () => {
 // ─── READ ─────────────────────────────────────────────────────────────────────
 
 export const readNemtDispatchState = async (options = {}) => {
+  if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for dispatch store access.');
+    }
+    return await readLocalNemtDispatchState();
+  }
+
   await ensureDispatchSchema();
   const includePastDates = options?.includePastDates === true;
   const recentPastDays = includePastDates ? 0 : Math.max(Number(options?.recentPastDays ?? DEFAULT_RECENT_PAST_DAYS) || 0, 0);
@@ -195,6 +227,11 @@ export const readNemtDispatchState = async (options = {}) => {
 };
 
 export const readNemtDispatchThreads = async () => {
+  if (!hasDatabaseUrl()) {
+    const state = await readLocalNemtDispatchState();
+    return (Array.isArray(state?.dispatchThreads) ? state.dispatchThreads : []).map(normalizeDispatchThreadRecord);
+  }
+
   await ensureDispatchSchema();
   const res = await query(`SELECT data FROM dispatch_threads ORDER BY driver_id LIMIT 500`);
   return res.rows.map(r => r.data).map(normalizeDispatchThreadRecord);
@@ -203,6 +240,12 @@ export const readNemtDispatchThreads = async () => {
 export const readNemtDispatchThreadByDriverId = async driverId => {
   const normalizedDriverId = String(driverId || '').trim();
   if (!normalizedDriverId) return null;
+
+  if (!hasDatabaseUrl()) {
+    const state = await readLocalNemtDispatchState();
+    const thread = (Array.isArray(state?.dispatchThreads) ? state.dispatchThreads : []).find(item => String(item?.driverId || '').trim() === normalizedDriverId);
+    return thread ? normalizeDispatchThreadRecord(thread) : null;
+  }
 
   await ensureDispatchSchema();
   const res = await query(`SELECT data FROM dispatch_threads WHERE driver_id = $1 LIMIT 1`, [normalizedDriverId]);
@@ -217,6 +260,30 @@ export const upsertDispatchThreadMessageByDriver = async (driverId, message) => 
   const normalizedMessage = normalizeDispatchMessageRecord(message);
   if (!normalizedMessage.text && normalizedMessage.attachments.length === 0) {
     throw new Error('message text or attachments are required');
+  }
+
+  if (!hasDatabaseUrl()) {
+    const state = await readLocalNemtDispatchState();
+    const existingThreads = Array.isArray(state?.dispatchThreads) ? state.dispatchThreads : [];
+    const existingThread = existingThreads.find(thread => String(thread?.driverId || '').trim() === normalizedDriverId) || { driverId: normalizedDriverId, messages: [] };
+    const existingMessages = Array.isArray(existingThread.messages) ? existingThread.messages : [];
+    const existingIndex = existingMessages.findIndex(currentMessage => String(currentMessage?.id || '').trim() === normalizedMessage.id);
+    const nextMessages = existingIndex >= 0
+      ? existingMessages.map((currentMessage, index) => index === existingIndex ? normalizedMessage : currentMessage)
+      : [...existingMessages, normalizedMessage];
+    const nextThread = normalizeDispatchThreadRecord({
+      ...existingThread,
+      driverId: normalizedDriverId,
+      messages: nextMessages
+    });
+    const nextState = normalizePersistentDispatchState({
+      ...state,
+      dispatchThreads: existingThreads.some(thread => String(thread?.driverId || '').trim() === normalizedDriverId)
+        ? existingThreads.map(thread => String(thread?.driverId || '').trim() === normalizedDriverId ? nextThread : thread)
+        : [...existingThreads, nextThread]
+    });
+    await writeLocalNemtDispatchState(nextState);
+    return nextThread;
   }
 
   await ensureDispatchSchema();
@@ -269,6 +336,13 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
   const normalized = normalizePersistentDispatchState(nextState);
   const allowPrune = options?.allowPrune === true || options?.allowTripShrink === true;
   const allowDestructiveEmptyPrune = options?.allowDestructiveEmptyPrune === true;
+
+  if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for dispatch store access.');
+    }
+    return await writeLocalNemtDispatchState(normalized);
+  }
 
   await ensureDispatchSchema();
 
@@ -423,6 +497,26 @@ export const upsertIncomingDriverThreadMessage = async (driverId, message) => {
 // ─── DRIVER TRIP UPDATE (mobile) ──────────────────────────────────────────────
 
 export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => {
+  if (!hasDatabaseUrl()) {
+    const normalizedDriverId = String(driverId || '').trim();
+    const normalizedTripId = String(tripId || '').trim();
+    const state = await readLocalNemtDispatchState();
+    const currentTrips = Array.isArray(state?.trips) ? state.trips : [];
+    const existingTrip = currentTrips.find(trip => String(trip?.id || '').trim() === normalizedTripId);
+    if (!existingTrip) return { ok: false, reason: 'not-found' };
+    const tripDriverId = String(existingTrip?.driverId || '').trim();
+    const tripSecondaryDriverId = String(existingTrip?.secondaryDriverId || '').trim();
+    if (tripDriverId !== normalizedDriverId && tripSecondaryDriverId !== normalizedDriverId) {
+      return { ok: false, reason: 'forbidden' };
+    }
+    const nextState = normalizePersistentDispatchState({
+      ...state,
+      trips: currentTrips.map(trip => String(trip?.id || '').trim() === normalizedTripId ? { ...trip, ...patch } : trip)
+    });
+    await writeLocalNemtDispatchState(nextState);
+    return { ok: true };
+  }
+
   await ensureDispatchSchema();
   return withTransaction(async client => {
     const result = await client.query(`SELECT data FROM dispatch_trips WHERE id = $1 FOR UPDATE`, [String(tripId || '').trim()]);

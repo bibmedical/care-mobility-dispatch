@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { buildTripProviderSnapshot, getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
+import { buildTripProviderSnapshot, getLocalDateKey, getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import { normalizeUserPreferences } from '@/helpers/user-preferences';
 import { hasMapboxConfigured } from '@/utils/map-tiles';
@@ -49,6 +49,7 @@ const createPersistedSnapshot = state => normalizePersistentDispatchState({
 const routeColors = ['#2563eb', '#16a34a', '#7c3aed', '#ea580c', '#dc2626', '#0891b2'];
 const NemtContext = createContext(undefined);
 const getMutationTimestamp = () => Date.now();
+const MANUAL_TRIP_SOURCE = 'manual-dispatch';
 const MAX_AUDIT_LOG_ENTRIES = 500;
 const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
 const DISPATCH_STATE_SYNC_ACTIVE_POLL_MS = 2500;
@@ -96,6 +97,13 @@ const isCancelledLikeStatus = value => {
 const isSafeRideCancelledImport = importedTrip => {
   return isCancelledLikeStatus(importedTrip?.status) || isCancelledLikeStatus(importedTrip?.safeRideStatus) || isCancelledLikeStatus(importedTrip?.confirmationStatus);
 };
+
+const isProtectedManualTrip = trip => {
+  const source = String(trip?.source || '').trim().toLowerCase();
+  return Boolean(trip?.createdManually) || Boolean(trip?.protectedFromImportPrune) || source === MANUAL_TRIP_SOURCE;
+};
+
+const buildManualTripId = timestamp => `manual-${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
 
 const LOCAL_OVERRIDE_FIELD_GROUPS = {
   notes: ['notes'],
@@ -1717,14 +1725,24 @@ export const NemtProvider = ({
     };
   });
 
-  const replaceTrips = trips => updateState(currentState => ({
-    ...currentState,
-    trips: normalizeTripRecords(trips),
-    routePlans: [],
-    selectedTripIds: [],
-    selectedRouteId: null,
-    selectedDriverId: null
-  }), {
+  const replaceTrips = trips => updateState(currentState => {
+    const protectedTrips = normalizeTripRecords(currentState.trips.filter(isProtectedManualTrip));
+    const incomingTrips = normalizeTripRecords(trips);
+    const protectedIds = new Set(incomingTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
+    const nextTrips = normalizeTripRecords([
+      ...protectedTrips.filter(trip => !protectedIds.has(String(trip?.id || '').trim())),
+      ...incomingTrips
+    ]);
+    const nextTripIds = new Set(nextTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
+    return {
+      ...currentState,
+      trips: nextTrips,
+      routePlans: [],
+      selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(String(tripId || '').trim())),
+      selectedRouteId: null,
+      selectedDriverId: null
+    };
+  }, {
     markDispatchDirty: true,
     allowTripShrink: true,
     allowTripShrinkReason: 'replace-trips'
@@ -1785,7 +1803,7 @@ export const NemtProvider = ({
     const targetDateKeys = new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean));
     if (targetDateKeys.size === 0) return currentState;
 
-    const nextTrips = currentState.trips.filter(trip => !targetDateKeys.has(getTripServiceDateKey(trip)));
+    const nextTrips = currentState.trips.filter(trip => isProtectedManualTrip(trip) || !targetDateKeys.has(getTripServiceDateKey(trip)));
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
 
     return {
@@ -1800,6 +1818,60 @@ export const NemtProvider = ({
     allowTripShrink: true,
     allowTripShrinkReason: 'clear-trips-by-service-date'
   });
+
+  const createManualTripRecord = payload => {
+    const updatedAt = getMutationTimestamp();
+    const serviceDate = getTripServiceDateKey(payload) || getLocalDateKey(new Date());
+    const tripId = buildManualTripId(updatedAt);
+    const manualTripCode = `MANUAL-${String(updatedAt).slice(-6)}`;
+    const selectedServiceCode = String(payload?.vehicleType || '').trim();
+    const nextTrip = normalizeTripRecord({
+      id: tripId,
+      brokerTripId: manualTripCode,
+      source: MANUAL_TRIP_SOURCE,
+      createdManually: true,
+      protectedFromImportPrune: true,
+      manualEntrySource: String(payload?.manualEntrySource || '').trim() || 'dispatch-workspace',
+      status: 'Unassigned',
+      serviceDate,
+      rider: String(payload?.rider || '').trim() || 'Manual Trip',
+      patientPhoneNumber: String(payload?.patientPhoneNumber || '').trim(),
+      pickup: String(payload?.pickup || '').trim(),
+      dropoff: String(payload?.dropoff || '').trim(),
+      address: String(payload?.address || '').trim(),
+      fromZipcode: String(payload?.fromZipcode || '').trim(),
+      destination: String(payload?.destination || '').trim(),
+      toZipcode: String(payload?.toZipcode || '').trim(),
+      position: Array.isArray(payload?.position) ? payload.position.map(Number) : undefined,
+      destinationPosition: Array.isArray(payload?.destinationPosition) ? payload.destinationPosition.map(Number) : undefined,
+      miles: String(payload?.miles || '').trim(),
+      durationMinutes: String(payload?.durationMinutes || '').trim(),
+      vehicleType: selectedServiceCode,
+      tripType: String(payload?.tripType || '').trim() || selectedServiceCode,
+      mobilityType: selectedServiceCode,
+      serviceLevel: selectedServiceCode,
+      los: selectedServiceCode,
+      notes: String(payload?.notes || '').trim(),
+      createdAt: updatedAt,
+      updatedAt
+    });
+
+    updateState(currentState => ({
+      ...currentState,
+      trips: normalizeTripRecords([nextTrip, ...currentState.trips])
+    }), {
+      markDispatchDirty: true,
+      buildAuditEntry: () => ({
+        action: 'manual-trip-create',
+        entityType: 'trip',
+        entityId: tripId,
+        source: 'dispatcher',
+        summary: `Created manual trip ${manualTripCode} for ${nextTrip.rider}`
+      })
+    });
+
+    return nextTrip;
+  };
 
   const clearTrips = () => updateState(currentState => ({
     ...currentState,
@@ -2035,6 +2107,7 @@ export const NemtProvider = ({
     upsertImportedTrips,
     clearTripsByServiceDates,
     clearTrips,
+    createManualTripRecord,
     updateTripNotes,
     updateTripRecord,
     cloneTripRecord,
