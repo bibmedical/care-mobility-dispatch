@@ -894,6 +894,7 @@ const DispatcherWorkspace = () => {
   const [dispatcherLayout, setDispatcherLayout] = useState(DEFAULT_DISPATCHER_LAYOUT);
   const [dispatcherTableViewMode, setDispatcherTableViewMode] = useState('default');
   const [rightPanelMode, setRightPanelMode] = useState('default');
+  const [cancelledDetailMode, setCancelledDetailMode] = useState('names');
   const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
   const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
@@ -1014,6 +1015,7 @@ const DispatcherWorkspace = () => {
     };
   }, [routePlans, todayDateKey, tripDateFilter, trips]);
   const cancelledSummaryTrips = useMemo(() => trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === daySummaryMetrics.dateKey && getEffectiveTripStatus(trip) === 'Cancelled'), [daySummaryMetrics.dateKey, routePlans, trips]);
+  const dayRoutesByDriverTrips = useMemo(() => trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === daySummaryMetrics.dateKey && (normalizeDriverId(trip?.driverId) || normalizeDriverId(trip?.secondaryDriverId))), [daySummaryMetrics.dateKey, routePlans, trips]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
 
   useEffect(() => {
@@ -1741,7 +1743,8 @@ const DispatcherWorkspace = () => {
     return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
   const isCancelledPanelMode = rightPanelMode === 'cancelled';
-  const tripTableTrips = useMemo(() => isCancelledPanelMode ? cancelledSummaryTrips : filteredTrips, [cancelledSummaryTrips, filteredTrips, isCancelledPanelMode]);
+  const isCancelledRoutesMode = isCancelledPanelMode && cancelledDetailMode === 'routes';
+  const tripTableTrips = useMemo(() => isCancelledPanelMode ? isCancelledRoutesMode ? dayRoutesByDriverTrips : cancelledSummaryTrips : filteredTrips, [cancelledSummaryTrips, dayRoutesByDriverTrips, filteredTrips, isCancelledPanelMode, isCancelledRoutesMode]);
   const mapQuickCityOptions = useMemo(() => {
     const citySet = new Set();
     for (const trip of cityOptionTrips) {
@@ -1797,7 +1800,7 @@ const DispatcherWorkspace = () => {
   }, [selectedDriverId, trips]);
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
-      if (isCancelledPanelMode) {
+      if (isCancelledPanelMode && !isCancelledRoutesMode) {
         const leftRider = String(leftTrip?.rider || '').trim().toLowerCase();
         const rightRider = String(rightTrip?.rider || '').trim().toLowerCase();
         if (leftRider !== rightRider) return leftRider.localeCompare(rightRider);
@@ -1832,6 +1835,35 @@ const DispatcherWorkspace = () => {
       return String(leftTrip.id).localeCompare(String(rightTrip.id));
     };
 
+    if (isCancelledRoutesMode) {
+      const groups = tripTableTrips.reduce((map, trip) => {
+        const primaryDriverId = normalizeDriverId(trip?.driverId);
+        const secondaryDriverId = normalizeDriverId(trip?.secondaryDriverId);
+        const groupDriverId = primaryDriverId || secondaryDriverId;
+        const groupDriverName = primaryDriverId ? getDriverName(primaryDriverId) : secondaryDriverId ? getDriverName(secondaryDriverId) : '';
+        const groupLabel = String(groupDriverName || trip?.driverName || trip?.secondaryDriverName || 'Unassigned').trim() || 'Unassigned';
+        const groupKey = String(groupDriverId || groupLabel).trim().toLowerCase();
+        if (!map.has(groupKey)) map.set(groupKey, { label: groupLabel, trips: [] });
+        map.get(groupKey).trips.push(trip);
+        return map;
+      }, new Map());
+
+      return Array.from(groups.entries()).map(([groupKey, groupValue]) => ({
+        groupKey,
+        label: groupValue.label,
+        trips: sortTripsByPickupTime(groupValue.trips)
+      })).sort((leftGroup, rightGroup) => leftGroup.label.localeCompare(rightGroup.label)).flatMap(group => [{
+        type: 'group',
+        groupKey: group.groupKey,
+        ridesCount: group.trips.length,
+        label: group.trips.length > 1 ? `${group.label} • ${group.trips.length} rides` : `${group.label} • 1 ride`
+      }, ...group.trips.map(trip => ({
+        type: 'trip',
+        groupKey: group.groupKey,
+        trip
+      }))]);
+    }
+
     if (isCancelledPanelMode) {
       return [...tripTableTrips].sort(compareTrips).map(trip => ({
         type: 'trip',
@@ -1863,7 +1895,7 @@ const DispatcherWorkspace = () => {
       groupKey: group.groupKey,
       trip
     }))]);
-  }, [getDriverName, isCancelledPanelMode, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key, tripTableTrips]);
+  }, [getDriverName, isCancelledPanelMode, isCancelledRoutesMode, selectedDriverId, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key, tripTableTrips]);
 
   const routeTrips = useMemo(() => {
     const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
@@ -3442,12 +3474,20 @@ const DispatcherWorkspace = () => {
                 </div>
               </div>
                   {isCancelledPanelMode ? <div className="d-flex justify-content-between align-items-center gap-2 px-2 py-2 border-bottom" style={{ backgroundColor: 'rgba(127, 29, 29, 0.08)' }}>
-                      <div className="d-flex flex-column gap-1">
-                        <strong>Cancelled Trips</strong>
-                        <span className="small text-muted">{cancelledSummaryTrips.length} trip(s) for {daySummaryMetrics.dateKey}</span>
+                      <div className="d-flex align-items-center gap-3 flex-wrap">
+                        <div className="d-flex flex-column gap-1">
+                          <strong>{isCancelledRoutesMode ? 'Routes By Driver' : 'Cancelled Trips'}</strong>
+                          <span className="small text-muted">{isCancelledRoutesMode ? `${dayRoutesByDriverTrips.length} trip(s) for ${daySummaryMetrics.dateKey}` : `${cancelledSummaryTrips.length} trip(s) for ${daySummaryMetrics.dateKey}`}</span>
+                        </div>
+                        <Button variant="outline-dark" size="sm" onClick={() => {
+                      const nextMode = isCancelledRoutesMode ? 'names' : 'routes';
+                      setCancelledDetailMode(nextMode);
+                      setStatusMessage(nextMode === 'routes' ? 'Mostrando viajes del dia agrupados por chofer.' : 'Mostrando cancelados ordenados por nombre.');
+                    }}>{isCancelledRoutesMode ? 'By names' : 'By routes'}</Button>
                       </div>
                       <Button variant="outline-danger" size="sm" onClick={() => {
                     setRightPanelMode('default');
+                    setCancelledDetailMode('names');
                     setStatusMessage('Vista normal de viajes restaurada.');
                   }}>Back to trips</Button>
                     </div> : null}
