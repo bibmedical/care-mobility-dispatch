@@ -177,9 +177,9 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
     ...importedTrip,
     id: String(currentTrip?.id || importedTrip?.id || '').trim(),
     importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
-    driverId: shouldAutoCancel || hasRoutingChange ? null : currentTrip?.driverId ?? null,
-    secondaryDriverId: shouldAutoCancel || hasRoutingChange ? null : currentTrip?.secondaryDriverId ?? null,
-    routeId: shouldAutoCancel || hasRoutingChange ? null : currentTrip?.routeId ?? null,
+    driverId: shouldAutoCancel ? null : currentTrip?.driverId ?? null,
+    secondaryDriverId: shouldAutoCancel ? null : currentTrip?.secondaryDriverId ?? null,
+    routeId: shouldAutoCancel ? null : currentTrip?.routeId ?? null,
     status: shouldAutoCancel ? 'Cancelled' : (currentTrip?.status || importedTrip?.status),
     safeRideStatus: shouldAutoCancel ? 'Canceled by SafeRide' : getPreferredImportedValue(false, currentTrip?.safeRideStatus, importedTrip?.safeRideStatus),
     cancellationReason: shouldAutoCancel ? 'Canceled by SafeRide' : (localOverrides.localCancellation ? currentTrip?.cancellationReason : getPreferredImportedValue(false, currentTrip?.cancellationReason, importedTrip?.cancellationReason)),
@@ -1646,7 +1646,6 @@ export const NemtProvider = ({
     const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
     const currentTripLookup = new Map();
     const importedLookupKeys = new Set();
-    const routeResetTripIds = new Set();
 
     importedTrips.forEach(importedTrip => {
       getTripLookupKeys(importedTrip).forEach(key => {
@@ -1667,10 +1666,6 @@ export const NemtProvider = ({
       if (!currentTrip) {
         return importedTrip;
       }
-      const mergedTripId = String(currentTrip?.id || importedTrip?.id || '').trim();
-      if (mergedTripId && hasImportedTripRoutingChange(currentTrip, importedTrip)) {
-        routeResetTripIds.add(mergedTripId);
-      }
       return mergeImportedTripWithCurrent(currentTrip, importedTrip);
     });
 
@@ -1690,8 +1685,7 @@ export const NemtProvider = ({
         tripIds: routePlan.tripIds.filter(tripId => {
           const normalizedTripId = String(tripId || '').trim();
           return nextTripIds.has(tripId)
-            && !cancelledTripIds.has(normalizedTripId)
-            && !routeResetTripIds.has(normalizedTripId);
+            && !cancelledTripIds.has(normalizedTripId);
         })
       })).filter(routePlan => routePlan.tripIds.length > 0),
       selectedTripIds: currentState.selectedTripIds.filter(tripId => nextTripIds.has(tripId))

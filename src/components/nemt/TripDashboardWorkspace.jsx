@@ -1349,11 +1349,6 @@ const TripDashboardWorkspace = () => {
 
     (Array.isArray(pendingTrips) ? pendingTrips : []).forEach(trip => {
       const importedDriverName = String(trip?.importedDriverName || '').trim();
-      if (!isImportedDriverUsable(importedDriverName)) {
-        skippedTripCount += 1;
-        return;
-      }
-
       if (String(trip?.status || '').trim().toLowerCase() === 'cancelled') {
         skippedTripCount += 1;
         return;
@@ -1361,25 +1356,34 @@ const TripDashboardWorkspace = () => {
 
       const importedDriverKey = normalizeImportedDriverLookup(importedDriverName);
       const selectedAssignment = String(assignments?.[importedDriverKey] || '').trim();
-      const matchedDriver = selectedAssignment.startsWith(ROUTE_IMPORT_ADD_PREFIX)
+      const matchedDriver = importedDriverKey && !selectedAssignment.startsWith(ROUTE_IMPORT_ADD_PREFIX)
         ? null
         : driverById.get(selectedAssignment) || driverByLookup.get(importedDriverKey);
+      const hasUsableImportedDriver = isImportedDriverUsable(importedDriverName);
       if (!matchedDriver) {
-        if (!missingDriverSet.has(importedDriverName)) {
+        if (hasUsableImportedDriver && !missingDriverSet.has(importedDriverName)) {
           missingDriverSet.add(importedDriverName);
           missingDriverNames.push(importedDriverName);
         }
-        skippedTripCount += 1;
-        return;
       }
 
       const serviceDateKey = String(trip?.serviceDate || '').trim() || getLocalDateKey();
-      const routeKey = `${serviceDateKey}::${matchedDriver.id}`;
+      const routeKey = matchedDriver
+        ? `${serviceDateKey}::${matchedDriver.id}`
+        : `${serviceDateKey}::unassigned::${importedDriverKey || 'no-driver'}`;
       const currentSpec = routePlanMap.get(routeKey) || {
-        name: `${matchedDriver.name} Route`,
-        driverId: matchedDriver.id,
+        name: matchedDriver
+          ? `${matchedDriver.name} Route`
+          : hasUsableImportedDriver
+            ? `${importedDriverName} Route (Unassigned)`
+            : 'Imported Route (Unassigned)',
+        driverId: matchedDriver?.id || '',
         tripIds: [],
-        notes: `Loaded from Excel by driver name (${matchedDriver.name})`,
+        notes: matchedDriver
+          ? `Loaded from Excel by driver name (${matchedDriver.name})`
+          : hasUsableImportedDriver
+            ? `Loaded from Excel without driver match (${importedDriverName})`
+            : 'Loaded from Excel without a usable driver name',
         serviceDate: serviceDateKey
       };
       currentSpec.tripIds.push(String(trip?.id || '').trim());
@@ -1428,18 +1432,6 @@ const TripDashboardWorkspace = () => {
     try {
       let availableDrivers = [...drivers];
       const effectiveAssignments = { ...routeImportAssignments };
-      const unresolvedImportedGroups = importedRouteDriverSummary.usableGroups.filter(group => {
-        const selectedAssignment = String(effectiveAssignments[group.key] || '').trim();
-        return !selectedAssignment && !findImportedDriverExactMatch(group.label, availableDrivers);
-      });
-
-      if (unresolvedImportedGroups.length > 0) {
-        const message = `Match these route names first: ${unresolvedImportedGroups.map(group => group.label).join(', ')}`;
-        setStatusMessage(message);
-        showNotification({ message, variant: 'warning' });
-        return;
-      }
-
       const namesMarkedToAdd = importedRouteDriverSummary.usableGroups
         .filter(group => String(effectiveAssignments[group.key] || '').startsWith(ROUTE_IMPORT_ADD_PREFIX))
         .map(group => group.label);
@@ -1484,6 +1476,11 @@ const TripDashboardWorkspace = () => {
 
       if (routePlan.routeSpecs.length > 0) {
         setPendingRouteImportPlan(routePlan.routeSpecs);
+        if (routePlan.missingDriverNames.length > 0) {
+          const message = `${routePlan.matchedTripCount} trip(s) imported. Some routes were left unassigned because these driver names did not match: ${routePlan.missingDriverNames.join(', ')}`;
+          setStatusMessage(message);
+          showNotification({ message, variant: 'warning' });
+        }
       } else {
         const message = routePlan.missingDriverNames.length > 0
           ? `Trips were imported, but these route names still need a driver match: ${routePlan.missingDriverNames.join(', ')}`
@@ -1520,7 +1517,10 @@ const TripDashboardWorkspace = () => {
     });
 
     const tripCount = nextRouteSpecs.reduce((total, routeSpec) => total + routeSpec.tripIds.length, 0);
-    const successMessage = `${tripCount} trip(s) imported and ${nextRouteSpecs.length} route(s) loaded by driver name.`;
+    const unassignedRouteCount = nextRouteSpecs.filter(routeSpec => !String(routeSpec?.driverId || '').trim()).length;
+    const successMessage = unassignedRouteCount > 0
+      ? `${tripCount} trip(s) imported and ${nextRouteSpecs.length} route(s) loaded. ${unassignedRouteCount} route(s) remain unassigned.`
+      : `${tripCount} trip(s) imported and ${nextRouteSpecs.length} route(s) loaded by driver name.`;
     setStatusMessage(successMessage);
     showNotification({ message: successMessage, variant: 'success' });
   }, [createRoute, pendingRouteImportPlan, showNotification, trips]);
