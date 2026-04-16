@@ -4914,6 +4914,12 @@ const TripDashboardWorkspace = () => {
           }}>
               Admin
             </Button>
+            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            setStatusMessage('Opening Help workspace.');
+            router.push('/help');
+          }}>
+              Help
+            </Button>
           </div>
           <div className="d-flex gap-2 align-items-center flex-wrap">
             <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {

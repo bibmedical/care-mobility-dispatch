@@ -103,6 +103,81 @@ const QUICK_FLOW = [{
   detail: 'Check internal alerts and operational notifications in System Messages.'
 }];
 
+const ENGINE_FLOW = [{
+  stage: '1. SafeRide / Excel intake',
+  detail: 'Trips enter through Excel Loader or the Trip Dashboard import workflow. The file is parsed first and service dates are detected before anything is merged into operations.'
+}, {
+  stage: '2. Inconsistency scan',
+  detail: 'The import review step identifies duplicates, missing driver names, bad dates, cancelled records and other mismatches before the trips are accepted.'
+}, {
+  stage: '3. Shared dispatch tree update',
+  detail: 'Accepted trips are merged into the same shared dispatch tree used by Dispatcher, Trip Dashboard, Messaging, confirmation tools and driver-facing workflows.'
+}, {
+  stage: '4. Confirmation + rider changes',
+  detail: 'Confirmation responses, call results, schedule changes, notes, will-call changes and cancellations update the same trip records instead of creating separate copies.'
+}, {
+  stage: '5. Route building',
+  detail: 'Dispatcher and Trip Dashboard create or edit routes by linking tripIds, routeId, driverId and secondaryDriverId inside the same operational tree.'
+}, {
+  stage: '6. Live operations',
+  detail: 'Dispatcher monitors live drivers, messages, route progress and trip status while Trip Dashboard focuses on trip selection, route shaping and visual control.'
+}, {
+  stage: '7. Driver execution',
+  detail: 'Driver actions in the field feed completion, enroute, onboard, arrival, cancellation and messaging updates back into the same dispatch tree.'
+}, {
+  stage: '8. SQL persistence',
+  detail: 'The shared dispatch tree is persisted to SQL as the main operational state. Trips, route plans, threads, daily drivers and audit data all depend on that shared state.'
+}, {
+  stage: '9. Archive + history',
+  detail: 'Older days can be archived into dispatch history so the current live state stays operational while past days remain recoverable.'
+}, {
+  stage: '10. Cross-screen consumption',
+  detail: 'Dispatcher, Trip Dashboard, driver tools, AI assistant, system messages, reports and confirmation tools all read from connected data. A bad unlink in one place can affect other modules later.'
+}];
+
+const SHARED_TREE_MAP = [{
+  area: 'Excel Loader / Import',
+  role: 'Creates or updates trip records that later feed Dispatcher and Trip Dashboard.'
+}, {
+  area: 'Dispatcher',
+  role: 'Runs the live shift: assignments, driver focus, route monitoring, cancellations, trip messaging and end-of-day control.'
+}, {
+  area: 'Trip Dashboard',
+  role: 'Works on the same trips and routes, but optimized for trip filtering, route shaping, map work and focused route planning.'
+}, {
+  area: 'Confirmation tools',
+  role: 'Writes confirmation status, notes, response codes, trip updates and cancellation outcomes back into shared trips.'
+}, {
+  area: 'Messaging / Driver communications',
+  role: 'Uses the same trip and driver context so route notes, will-calls, updates and operational messages stay connected.'
+}, {
+  area: 'Driver app / mobile actions',
+  role: 'Reports what happened in the field and changes trip progress on the same operational tree.'
+}, {
+  area: 'AI / Assistant',
+  role: 'Reads the shared dispatch tree to plan routes, focus drivers, answer questions and trigger connected actions.'
+}, {
+  area: 'SQL dispatch store',
+  role: 'Persists the operational tree. If the tree is overwritten or pruned incorrectly, multiple modules can break together.'
+}];
+
+const CHANGE_SAFETY_RULES = [{
+  rule: 'One source of truth',
+  detail: 'Routes, trips, driver assignments, confirmation state and messaging context must come from the same shared dispatch tree. Do not create parallel page-local copies.'
+}, {
+  rule: 'UI fix is not enough',
+  detail: 'A visual fix in Dispatcher can still break Trip Dashboard later if it changes shared IDs, route links or persisted trip structure.'
+}, {
+  rule: 'Imports must merge, not destroy',
+  detail: 'Reimport should preserve valid route and driver relationships unless there is an explicit admin operation to clear or delete them.'
+}, {
+  rule: 'Route integrity matters',
+  detail: 'If tripIds, routeId, driverId or secondaryDriverId are cleared or mismatched, Trip Dashboard, Dispatcher and driver workflows can all drift apart.'
+}, {
+  rule: 'Every change needs cross-screen thinking',
+  detail: 'Before changing Dispatcher, check Trip Dashboard, confirmation, messaging, driver actions and SQL persistence because they depend on the same engine.'
+}];
+
 const HelpPage = () => {
   return <>
       <PageTitle title="Help" subName="Operations" />
@@ -181,6 +256,50 @@ const HelpPage = () => {
                 <Badge bg="dark">Route = construir secuencia</Badge>
                 <Badge bg="warning" text="dark">Clear = limpiar seleccion</Badge>
                 <Badge bg="success">Selected trips = conteo actual</Badge>
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      <Card className="mb-3">
+        <CardBody>
+          <div className="d-flex flex-column gap-2 mb-3">
+            <h5 className="mb-0">System Engine Map</h5>
+            <p className="text-muted mb-0">This is the behind-the-scenes operational flow. Use it when planning changes so a fix in one workspace does not silently break another workspace later.</p>
+          </div>
+          <div className="d-flex flex-column gap-2">
+            {ENGINE_FLOW.map(item => <div key={item.stage} className="border rounded p-3">
+                <div className="fw-semibold mb-1">{item.stage}</div>
+                <div className="small text-muted">{item.detail}</div>
+              </div>)}
+          </div>
+        </CardBody>
+      </Card>
+
+      <Row className="g-3 mb-3">
+        <Col xl={6}>
+          <Card className="h-100">
+            <CardBody>
+              <h5 className="mb-3">Shared Tree Dependencies</h5>
+              <div className="d-flex flex-column gap-2">
+                {SHARED_TREE_MAP.map(item => <div key={item.area} className="border rounded p-2">
+                    <div className="fw-semibold">{item.area}</div>
+                    <div className="small text-muted">{item.role}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+        <Col xl={6}>
+          <Card className="h-100">
+            <CardBody>
+              <h5 className="mb-3">Change Safety Rules</h5>
+              <div className="d-flex flex-column gap-2">
+                {CHANGE_SAFETY_RULES.map(item => <div key={item.rule} className="border rounded p-2">
+                    <div className="fw-semibold">{item.rule}</div>
+                    <div className="small text-muted">{item.detail}</div>
+                  </div>)}
               </div>
             </CardBody>
           </Card>
