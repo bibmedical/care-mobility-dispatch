@@ -338,6 +338,26 @@ const MANUAL_TRIP_ENTRY_2026_04_16 = [{
   detail: 'A local recovery snapshot was created before continuing this work: backup/SHEET-20260416-170133. Use it if any of the current local files need to be restored.'
 }];
 
+const DEPLOY_MEMORY_2026_04_16 = [{
+  area: 'Agent note to read first',
+  detail: 'The manual-trip work was pushed to origin/main in commit df6ef61 and Render is configured with autoDeployTrigger=commit, so that push is the deploy trigger for the web app.'
+}, {
+  area: 'What was included',
+  detail: 'The uploaded web change set included the shared manual-trip modal, the +Trip buttons in Dispatcher and Trip Dashboard, protected manual-trip persistence, Help documentation, the assistant dispatch lazy-load safeguard, and the development-only local fallback in nemt-dispatch-store.'
+}, {
+  area: 'Local fallback meaning',
+  detail: 'The nemt-dispatch-store local fallback only activates outside production when DATABASE_URL is missing. It was kept on purpose so local Dispatcher works without breaking the production SQL path.'
+}, {
+  area: 'What was not uploaded',
+  detail: 'Unrelated driver-app changes and separate mobile API edits were intentionally left out of the push so this web deploy stayed isolated and safer for trips, imports, and dispatch persistence.'
+}, {
+  area: 'Checks completed',
+  detail: 'Validated local runtime and build before upload: localhost root 200, /dispatcher 200, /api/nemt/dispatch 200 after fallback fix, and npm run build completed successfully.'
+}, {
+  area: 'Backup and safety',
+  detail: 'Backup folder backup/SHEET-20260416-170133 exists as the local recovery point created before the manual-trip and dispatch-recovery changes continued.'
+}];
+
 const HelpPage = () => {
   return <>
       <PageTitle title="Help" subName="Operations" />
@@ -464,6 +484,25 @@ const HelpPage = () => {
               <div className="d-flex flex-column gap-2">
                 {SAFE_DEPLOY_NOTE.map(item => <div key={item.step} className="border rounded p-3">
                     <div className="fw-semibold mb-1">{item.step}</div>
+                    <div className="small text-muted">{item.detail}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="g-3 mb-3">
+        <Col xl={12}>
+          <Card className="h-100 border-success-subtle">
+            <CardBody>
+              <div className="d-flex flex-column gap-2 mb-3">
+                <h5 className="mb-0">Agent Deploy Memory — April 16, 2026</h5>
+                <p className="text-muted mb-0">Read this first before changing manual trip entry, dispatch persistence, or local-vs-production behavior again.</p>
+              </div>
+              <div className="d-flex flex-column gap-2">
+                {DEPLOY_MEMORY_2026_04_16.map(item => <div key={item.area} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.area}</div>
                     <div className="small text-muted">{item.detail}</div>
                   </div>)}
               </div>
@@ -602,9 +641,25 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V11</Badge>
+                <span className="fw-semibold text-dark">Deploy Record — Manual Trip Flow Uploaded With Safe Scope</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Pushed commit df6ef61 to origin/main after isolating only the intended web/manual-trip files.</li>
+                <li>Render web service is configured to auto deploy on commit, so the push is the deploy trigger.</li>
+                <li>Kept the local fallback in nemt-dispatch-store because it only activates outside production when DATABASE_URL is missing.</li>
+                <li>Confirmed local checks before upload: localhost root 200, /dispatcher 200, /api/nemt/dispatch 200, and npm run build passed.</li>
+                <li>Left unrelated driver-app and separate mobile API edits out of the push to reduce operational risk.</li>
+                <li>Stored this note in Help so future changes can see exactly what was deployed and why.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V10</Badge>
                 <span className="fw-semibold text-dark">Manual Trip Entry — Shared Modal + Protected Manual Records</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Created a local recovery backup before continuing: backup/SHEET-20260416-170133.</li>
