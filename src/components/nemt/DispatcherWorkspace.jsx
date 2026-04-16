@@ -760,6 +760,26 @@ const isTripEnRoute = trip => {
   return travelState === 'enroute' || travelState === 'inprogress';
 };
 
+const getDriverTripProgressLabel = trip => {
+  const travelState = getTripTravelState(trip);
+  if (travelState === 'accepted') return 'Accepted';
+  if (travelState === 'enroute') return 'To Pickup';
+  if (travelState === 'arrived' || travelState === 'arrivedpickup') return 'At Pickup';
+  if (travelState === 'patientonboard' || travelState === 'starttrip' || travelState === 'todestination' || travelState === 'inprogress') return 'To Dropoff';
+  if (travelState === 'arriveddestination') return 'At Dropoff';
+  if (travelState === 'completed') return 'Completed';
+  return getEffectiveTripStatus(trip);
+};
+
+const getDriverTripProgressVariant = trip => {
+  const travelState = getTripTravelState(trip);
+  if (travelState === 'completed') return 'success';
+  if (travelState === 'arriveddestination' || travelState === 'arrivedpickup') return 'warning';
+  if (travelState === 'patientonboard' || travelState === 'todestination' || travelState === 'inprogress') return 'primary';
+  if (travelState === 'enroute' || travelState === 'accepted') return 'info';
+  return getStatusBadge(getEffectiveTripStatus(trip));
+};
+
 const getSelectedDriverEtaTarget = trip => {
   const travelState = getTripTravelState(trip);
 
@@ -2330,6 +2350,12 @@ const DispatcherWorkspace = () => {
 
   const renderTripDataCell = trip => columnKey => {
     const textColor = getCancelledRoutesTripTextColor(trip);
+    const scheduledPickup = String(trip?.scheduledPickup || trip?.pickup || '').trim();
+    const actualPickup = String(trip?.actualPickup || '').trim();
+    const scheduledDropoff = String(trip?.scheduledDropoff || trip?.dropoff || '').trim();
+    const actualDropoff = String(trip?.actualDropoff || '').trim();
+    const punctualityLabel = getTripPunctualityLabel(trip);
+    const lateMinutesDisplay = getTripLateMinutesDisplay(trip);
     switch (columnKey) {
       case 'trip':
         return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
@@ -2340,9 +2366,13 @@ const DispatcherWorkspace = () => {
           </td>;
       case 'status':
         return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
-            <Badge bg={isTripAssignedToSelectedDriver(trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(trip))}>{isTripAssignedToSelectedDriver(trip) ? 'Assigned Here' : getEffectiveTripStatus(trip)}</Badge>
+            <Badge bg={isCancelledRoutesMode ? getDriverTripProgressVariant(trip) : isTripAssignedToSelectedDriver(trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(trip))}>{isCancelledRoutesMode ? getDriverTripProgressLabel(trip) : isTripAssignedToSelectedDriver(trip) ? 'Assigned Here' : getEffectiveTripStatus(trip)}</Badge>
             {trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
             {trip.safeRideStatus && getEffectiveTripStatus(trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{trip.safeRideStatus}</div> : null}
+            {isCancelledRoutesMode ? <div className="mt-1 d-flex align-items-center gap-1 flex-wrap">
+                <Badge bg={getTripPunctualityVariant(trip)}>{punctualityLabel}</Badge>
+                {lateMinutesDisplay !== '-' ? <Badge bg={Number(lateMinutesDisplay) > 0 ? 'danger' : 'success'}>{lateMinutesDisplay} min</Badge> : null}
+              </div> : null}
           </td>;
       case 'confirmation': {
         const blockingState = tripBlockingMap.get(trip.id);
@@ -2357,6 +2387,16 @@ const DispatcherWorkspace = () => {
             {trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
           </td>;
       case 'pickup':
+        if (isCancelledRoutesMode) {
+          return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
+              <div className="fw-semibold">{scheduledPickup || '-'}</div>
+              <div className="small text-muted mt-1">Sched</div>
+              {actualPickup ? <div className="mt-2">
+                  <div className="fw-semibold" style={{ color: '#db2777' }}>{actualPickup}</div>
+                  <div className="small text-muted">Real</div>
+                </div> : <div className="small text-muted mt-2">Waiting real PU</div>}
+            </td>;
+        }
         return renderInlineEditableTripCell({
           trip,
           columnKey,
@@ -2368,6 +2408,16 @@ const DispatcherWorkspace = () => {
           placeholder: '07:40 AM'
         });
       case 'dropoff':
+        if (isCancelledRoutesMode) {
+          return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
+              <div className="fw-semibold">{scheduledDropoff || '-'}</div>
+              <div className="small text-muted mt-1">Sched</div>
+              {actualDropoff ? <div className="mt-2">
+                  <div className="fw-semibold" style={{ color: '#db2777' }}>{actualDropoff}</div>
+                  <div className="small text-muted">Real</div>
+                </div> : <div className="small text-muted mt-2">Waiting real DO</div>}
+            </td>;
+        }
         return renderInlineEditableTripCell({
           trip,
           columnKey,
