@@ -1204,6 +1204,8 @@ const DispatcherMessagingPanel = ({
               const isDaily = driver?._isDaily === true;
               const hasGps = Boolean(driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2 && driver.position.every(value => Number.isFinite(Number(value)))));
               const isConnected = String(driver?.live || '').trim().toLowerCase() === 'online';
+              const threadMessageCount = Array.isArray(thread?.messages) ? thread.messages.length : 0;
+              const threadUnreadCount = Array.isArray(thread?.messages) ? thread.messages.filter(message => message.direction === 'incoming' && message.status !== 'read').length : 0;
               const hasUrgentAlert = driverAlerts.some(alert => normalizeDriverId(alert?.driverId) === threadDriverId && alert.status !== 'resolved' && (alert.priority === 'high' || alert.priority === 'urgent'));
               const isActiveThread = threadDriverId === activeDriverId;
               const driverColor = getDriverColor(driver?.id || driver?.name || threadDriverId);
@@ -1228,17 +1230,14 @@ const DispatcherMessagingPanel = ({
                         className={`w-100 text-start border-0 px-1 ${isActiveThread ? 'text-white' : 'text-body'}`}
                         style={{ backgroundColor: 'transparent' }}
                       >
-                        <div className="d-flex justify-content-between align-items-center gap-2">
-                          <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div className="fw-semibold d-flex align-items-center gap-2 text-truncate" style={{ maxWidth: 210 }}>
-                                <span className="rounded-circle d-inline-block" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${isActiveThread ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
-                                {driver?.name ?? 'Driver'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-end" style={{ minWidth: 54 }}>
+                        <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+                          <div className="fw-semibold d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
+                            <span className="rounded-circle d-inline-block flex-shrink-0" style={{ width: 10, height: 10, backgroundColor: driverColor, boxShadow: `0 0 0 2px ${isActiveThread ? 'rgba(255,255,255,0.35)' : withDriverAlpha(driverColor, 0.18)}` }} />
+                            <span className="text-truncate" style={{ maxWidth: 170 }}>{driver?.name ?? 'Driver'}</span>
                             <span className="rounded-circle d-inline-block flex-shrink-0" style={{ width: 10, height: 10, backgroundColor: isConnected ? '#22c55e' : '#ef4444', boxShadow: '0 0 0 2px rgba(255,255,255,0.92)' }} title={isConnected ? 'Driver connected' : 'Driver offline'} />
+                            <Badge bg={threadUnreadCount > 0 ? 'danger' : 'secondary'} pill title={threadUnreadCount > 0 ? `${threadUnreadCount} unread message${threadUnreadCount === 1 ? '' : 's'}` : `${threadMessageCount} message${threadMessageCount === 1 ? '' : 's'} in thread`}>
+                              {threadUnreadCount > 0 ? threadUnreadCount : threadMessageCount}
+                            </Badge>
                           </div>
                         </div>
                       </button>
