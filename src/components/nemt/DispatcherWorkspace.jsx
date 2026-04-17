@@ -2836,6 +2836,35 @@ const DispatcherWorkspace = () => {
     setStatusMessage(preferredRouteId ? `Viendo ${driver.name}: ${assignedCount} asignados, ${openCount} pendientes y ruta cargada.${appointmentNote}` : `Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.${appointmentNote}`);
   };
 
+  const handleOpenLateTrip = trip => {
+    const normalizedTripId = normalizeTripId(trip?.id);
+    if (!normalizedTripId) return;
+
+    const normalizedDriverId = normalizeDriverId(trip?.driverId || trip?.secondaryDriverId || '');
+    const normalizedRouteId = normalizeRouteId(trip?.routeId) || '';
+
+    setShowLateTripsModal(false);
+    setRightPanelMode('default');
+    setCancelledDetailMode('names');
+    setSelectedTripIds([normalizedTripId]);
+    if (normalizedDriverId) {
+      setSelectedDriverId(normalizedDriverId);
+      setIsManualDriverScope(true);
+    }
+    setSelectedRouteId(normalizedRouteId);
+    setIsRoutePanelCollapsed(false);
+    setStatusMessage(`Trip ${normalizedTripId} seleccionado desde Late Trips.`);
+
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        const row = document.getElementById(`dispatcher-trip-row-${normalizedTripId}`);
+        if (row && typeof row.scrollIntoView === 'function') {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+    }
+  };
+
   const handleUnassign = () => {
     const targetTripIds = [...selectedTripIds];
     if (targetTripIds.length === 0) {
@@ -3886,7 +3915,7 @@ const DispatcherWorkspace = () => {
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={dispatcherSurfaceStyles.groupRow}>
                         <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#374151' }}>{row.label}</td>
-                      </tr> : <tr key={row.trip.id} onClick={() => {
+                      </tr> : <tr id={`dispatcher-trip-row-${normalizeTripId(row.trip.id)}`} key={row.trip.id} onClick={() => {
                         if (mapLocked) return;
                         setSelectedTripIds([row.trip.id]);
                         setSelectedRouteId(normalizeRouteId(row.trip.routeId) || '');
@@ -4153,7 +4182,7 @@ const DispatcherWorkspace = () => {
                 {lateTripsInCurrentView.map(trip => {
               const driverName = String(trip?.driverName || '').trim() || String(trip?.driverId || '').trim() || String(trip?.secondaryDriverName || '').trim() || String(trip?.secondaryDriverId || '').trim() || 'Unassigned';
               const lateMinutesDisplay = String(getCurrentLateMinutesForTrip(trip) || 0);
-              return <div key={`late-trip-${trip.id}`} className="rounded border p-2" style={{ backgroundColor: '#fff1f2', borderColor: '#fda4af' }}>
+              return <button key={`late-trip-${trip.id}`} type="button" className="rounded border p-2 text-start w-100" onClick={() => handleOpenLateTrip(trip)} style={{ backgroundColor: '#fff1f2', borderColor: '#fda4af', cursor: 'pointer' }}>
                         <div className="d-flex align-items-start justify-content-between gap-2">
                           <div>
                             <div className="fw-semibold">{getDisplayTripId(trip)} - {trip.rider || 'Unknown rider'}</div>
@@ -4164,7 +4193,7 @@ const DispatcherWorkspace = () => {
                         <div className="small mt-2">Pickup: {trip.scheduledPickup || trip.pickup || 'TBD'}</div>
                         <div className="small text-muted mt-1">{trip.address || 'No pickup address'}</div>
                         <div className="small text-muted">{trip.destination || 'No dropoff address'}</div>
-                      </div>;
+                      </button>;
             })}
               </div> : <Alert variant="success" className="mb-0">No late trips found in the current Dispatcher view.</Alert>}
           </Modal.Body>
