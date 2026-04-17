@@ -301,6 +301,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18
   },
+  returnButton: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    backgroundColor: '#166534'
+  },
+  returnButtonText: {
+    color: '#ffffff',
+    fontWeight: '800'
+  },
   formCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,

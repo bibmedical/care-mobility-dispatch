@@ -679,7 +679,7 @@ const HelpPage = () => {
                 <li>Trip Dashboard no longer shows the extra left-side Help shortcut; the remaining visible shortcut now reads Diarie and still routes to /help.</li>
                 <li>The /help page title and browser label now show Diarie so the operating diary matches the user-facing name without changing the route.</li>
                 <li>Dispatcher now includes a real web review path for active Day Off requests so dispatch can open the driver, deny the request, or cancel it from web and clear the matching active alert.</li>
-                <li>The APK local polish in this same deploy removes the veh-1 label under the driver name and hides the already-submitted Time Off proof photo unless the driver selects a replacement.</li>
+                <li>The APK local polish in this same deploy removes the veh-1 label under the driver name, hides the already-submitted Time Off proof photo unless the driver selects a replacement, and restores the return-action styles so the Android bundle exports cleanly again.</li>
               </ul>
             </div>
 
