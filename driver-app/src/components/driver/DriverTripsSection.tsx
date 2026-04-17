@@ -193,8 +193,8 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   }, [focusTrip, openTrips]);
 
   useEffect(() => {
-    if (!hasPersistedInProgressTrip || queueMode === 'in-progress') return;
-    setQueueMode('in-progress');
+    if (hasPersistedInProgressTrip || queueMode !== 'in-progress') return;
+    setQueueMode('scheduled');
   }, [hasPersistedInProgressTrip, queueMode]);
 
   useEffect(() => {
@@ -545,11 +545,16 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   };
 
   const submitCompleteTrip = async () => {
+    if (!displayedFocusTrip?.id) {
+      Alert.alert('Complete trip', 'No active trip is selected.');
+      return;
+    }
     if (!completionPhotoDataUrl) {
       Alert.alert('Complete trip', 'Take a photo before closing the trip.');
       return;
     }
     const ok = await runtime.submitTripAction('complete', {
+      tripId: displayedFocusTrip.id,
       completionPhotoDataUrl
     });
     if (ok) {
@@ -815,31 +820,31 @@ export const DriverTripsSection = ({ runtime }: Props) => {
           <View style={styles.actionRow}>
             {showAcceptAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canAcceptTrip || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => {
                 setQueueMode('in-progress');
-                void runtime.submitTripAction('accept');
+                void runtime.submitTripAction('accept', { tripId: displayedFocusTrip.id });
               }} disabled={!canAcceptTrip || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'accept' ? 'Sending...' : 'Accept'}</Text>
               </Pressable> : null}
 
             {showStartRouteAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canStartRoute || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => {
-                void runtime.submitTripAction('en-route');
+                void runtime.submitTripAction('en-route', { tripId: displayedFocusTrip.id });
                 void openDirectionsToPickup(displayedFocusTrip);
               }} disabled={!canStartRoute || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'en-route' ? 'Sending...' : 'Start Route'}</Text>
               </Pressable> : null}
 
-            {showArrivedPickupAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canArrivePickup || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived')} disabled={!canArrivePickup || runtime.activeTripAction.length > 0}>
+            {showArrivedPickupAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canArrivePickup || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived', { tripId: displayedFocusTrip.id })} disabled={!canArrivePickup || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'arrived' ? 'Sending...' : 'Arrived Pickup'}</Text>
               </Pressable> : null}
 
-            {showPatientOnboardAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canMarkPatientOnboard || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('patient-onboard')} disabled={!canMarkPatientOnboard || runtime.activeTripAction.length > 0}>
+            {showPatientOnboardAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canMarkPatientOnboard || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('patient-onboard', { tripId: displayedFocusTrip.id })} disabled={!canMarkPatientOnboard || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'patient-onboard' ? 'Sending...' : 'Patient Onboard'}</Text>
               </Pressable> : null}
 
-            {showStartTripAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canStartTripToDestination || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('start-trip')} disabled={!canStartTripToDestination || runtime.activeTripAction.length > 0}>
+            {showStartTripAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canStartTripToDestination || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('start-trip', { tripId: displayedFocusTrip.id })} disabled={!canStartTripToDestination || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'start-trip' ? 'Sending...' : 'Start Trip'}</Text>
               </Pressable> : null}
 
-            {showArrivedDestinationAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canArriveDestination || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived-destination')} disabled={!canArriveDestination || runtime.activeTripAction.length > 0}>
+            {showArrivedDestinationAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canArriveDestination || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived-destination', { tripId: displayedFocusTrip.id })} disabled={!canArriveDestination || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'arrived-destination' ? 'Sending...' : 'Arrived Destination'}</Text>
               </Pressable> : null}
 
