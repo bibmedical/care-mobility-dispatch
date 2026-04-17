@@ -126,6 +126,8 @@ export type DriverTrip = {
   punctualityVariant?: 'success' | 'danger' | 'secondary';
   lateMinutes?: string;
   isWillCall?: boolean;
+  willCallActivatedAt?: string | null;
+  willCallPickupDeadlineAt?: string | null;
   isNextDayTrip?: boolean;
   enRouteAt?: number | null;
   arrivedAt?: number | null;

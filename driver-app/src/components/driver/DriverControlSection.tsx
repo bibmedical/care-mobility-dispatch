@@ -45,7 +45,7 @@ export const DriverControlSection = ({ runtime }: Props) => {
 
       <Text style={[styles.groupTitle, { color: driverAccent }]}>More Options</Text>
       <View style={styles.groupCard}>
-        <SettingSwitchRow label="Newsletter" value={runtime.trackingEnabled} onValueChange={runtime.setTrackingEnabled} />
+        <SettingSwitchRow label="GPS Tracking" value={runtime.trackingEnabled} onValueChange={runtime.setTrackingEnabled} />
         <SettingSwitchRow label="Text Message" value={textMessagesEnabled} onValueChange={enabled => runtime.setDriverNotificationMode(enabled ? 'vibrate' : 'silent')} />
         <SettingSwitchRow label="Phone Call" value={phoneCallAlertsEnabled} onValueChange={enabled => runtime.setDriverNotificationMode(enabled ? 'sound' : 'vibrate')} />
         <SettingRow label="Language" value="English" onPress={() => runtime.setActiveTab('help')} />

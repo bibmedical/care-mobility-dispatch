@@ -22,9 +22,13 @@ export const DriverActiveTripSection = ({ runtime }: Props) => {
   const activeTrip = runtime.activeTrip;
 
   const renderSupportBadges = () => {
-    if (!activeTrip || (!activeTrip.hasServiceAnimal && !activeTrip.mobilityType && !activeTrip.assistLevel)) return null;
+    const isWillCall = Boolean(activeTrip?.isWillCall) || String(activeTrip?.status || '').trim().toLowerCase() === 'willcall';
+    if (!activeTrip || (!isWillCall && !activeTrip.hasServiceAnimal && !activeTrip.mobilityType && !activeTrip.assistLevel)) return null;
 
     return <View style={styles.supportBadgeRow}>
+        {isWillCall ? <View style={[styles.supportBadge, styles.supportBadgeWillCall]}>
+            <Text style={styles.supportBadgeWillCallText}>WILLCALL</Text>
+          </View> : null}
         {activeTrip.hasServiceAnimal ? <View style={[styles.supportBadge, styles.supportBadgeAnimal]}>
             <Text style={styles.supportBadgeAnimalText}>🐕 Service Animal</Text>
           </View> : null}
@@ -197,10 +201,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff2cc',
     borderColor: '#f3d26b'
   },
+  supportBadgeWillCall: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#dc2626'
+  },
   supportBadgeText: {
     color: '#334a59',
     fontSize: 11,
     fontWeight: '700'
+  },
+  supportBadgeWillCallText: {
+    color: '#b91c1c',
+    fontSize: 11,
+    fontWeight: '800'
   },
   supportBadgeAnimalText: {
     color: '#6f4e00',

@@ -596,6 +596,11 @@ const buildInlineTripTimeSortValue = (trip, timeText, routePlans, trips, fallbac
   return new Date(year, month - 1, day, hours, minutes, 0, 0).getTime();
 };
 
+const formatWillCallDeadlineLabel = date => date.toLocaleTimeString([], {
+  hour: 'numeric',
+  minute: '2-digit'
+});
+
 const buildInlineTripUpdatePayload = ({ trip, columnKey, value, routePlans, trips }) => {
   const nextValue = String(value ?? '').trim();
   switch (columnKey) {
@@ -2889,13 +2894,37 @@ const DispatcherWorkspace = () => {
 
     const currentStatus = getEffectiveTripStatus(trip);
     const isAutoWillCallCandidate = getTripLegFilterKey(trip) !== 'AL' && hasMissingTripTime(trip);
-    const updatePayload = currentStatus === 'WillCall' ? {
-      status: 'Unassigned',
-      willCallOverride: isAutoWillCallCandidate ? 'off' : null
-    } : {
-      status: 'WillCall',
-      willCallOverride: 'manual'
+    const buildWillCallActivationPayload = () => {
+      const activationTime = new Date();
+      const pickupDeadline = new Date(activationTime.getTime() + 60 * 60 * 1000);
+      const pickupDeadlineLabel = formatWillCallDeadlineLabel(pickupDeadline);
+      return {
+        status: 'WillCall',
+        willCallOverride: 'manual',
+        scheduledPickup: pickupDeadlineLabel,
+        pickup: pickupDeadlineLabel,
+        pickupSortValue: buildInlineTripTimeSortValue(trip, pickupDeadlineLabel, routePlans, trips, 'pickupSortValue'),
+        willCallActivatedAt: activationTime.toISOString(),
+        willCallPickupDeadlineAt: pickupDeadline.toISOString(),
+        willCallOriginalScheduledPickup: String(trip?.willCallOriginalScheduledPickup || trip?.scheduledPickup || '').trim(),
+        willCallOriginalPickup: String(trip?.willCallOriginalPickup || trip?.pickup || '').trim()
+      };
     };
+    const buildWillCallRemovalPayload = () => {
+      const restoredPickup = String(trip?.willCallOriginalScheduledPickup || trip?.willCallOriginalPickup || trip?.scheduledPickup || trip?.pickup || '').trim();
+      return {
+        status: 'Unassigned',
+        willCallOverride: isAutoWillCallCandidate ? 'off' : null,
+        scheduledPickup: restoredPickup,
+        pickup: restoredPickup,
+        pickupSortValue: buildInlineTripTimeSortValue(trip, restoredPickup, routePlans, trips, 'pickupSortValue'),
+        willCallActivatedAt: null,
+        willCallPickupDeadlineAt: null,
+        willCallOriginalScheduledPickup: null,
+        willCallOriginalPickup: null
+      };
+    };
+    const updatePayload = currentStatus === 'WillCall' ? buildWillCallRemovalPayload() : buildWillCallActivationPayload();
     updateTripRecord(tripId, updatePayload);
     const nextActionLabel = updatePayload.status === 'WillCall' ? 'Marked trip as WillCall' : 'Removed trip from WillCall';
     void logSystemActivity(nextActionLabel, `Trip ${tripId}`, {
@@ -2906,7 +2935,7 @@ const DispatcherWorkspace = () => {
     });
 
     if (updatePayload.status === 'WillCall') {
-      setStatusMessage(`Trip ${tripId} marcado como WillCall - Notificación enviada al chofer.`);
+      setStatusMessage(`Trip ${tripId} marcado como WillCall hasta ${updatePayload.scheduledPickup} - Notificación enviada al chofer.`);
       // Send notification to driver via app
       if (trip.driverId) {
         const driver = drivers.find(d => d.id === trip.driverId);

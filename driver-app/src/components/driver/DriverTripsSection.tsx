@@ -11,6 +11,7 @@ type Props = {
 };
 
 type QueueMode = 'scheduled' | 'in-progress';
+type CancelComposerMode = 'quick' | 'full';
 
 const toDateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 
@@ -54,10 +55,15 @@ const getCleanTripReference = (trip: { rideId?: string; brokerTripId?: string; i
 export const DriverTripsSection = ({ runtime }: Props) => {
   const OUTSIDE_SMS_TEMPLATE = 'Hi this is Care Mobility. Your driver is outside waiting for you.';
   const isAndroidDevice = Platform.OS === 'android';
-  const [queueMode, setQueueMode] = useState<QueueMode>('scheduled');
-  const [elapsedSecs, setElapsedSecs] = useState(0);
-  const [destinationElapsedSecs, setDestinationElapsedSecs] = useState(0);
+  const hasPersistedInProgressTrip = runtime.assignedTrips.some(trip => {
+    const normalized = String(trip.status || '').toLowerCase();
+    return normalized.includes('en-route') || normalized.includes('arrived') || normalized.includes('progress') || normalized.includes('destination');
+  });
+  const [queueMode, setQueueMode] = useState<QueueMode>(() => hasPersistedInProgressTrip ? 'in-progress' : 'scheduled');
+  const [clockNow, setClockNow] = useState(() => Date.now());
   const [showCancelComposer, setShowCancelComposer] = useState(false);
+  const [cancelComposerMode, setCancelComposerMode] = useState<CancelComposerMode>('full');
+  const [cancelTargetTrip, setCancelTargetTrip] = useState<DriverRuntime['activeTrip'] | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelPhotoDataUrl, setCancelPhotoDataUrl] = useState('');
   const [completionPhotoDataUrl, setCompletionPhotoDataUrl] = useState('');
@@ -100,14 +106,34 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   }, [focusTrip, openTrips]);
 
   useEffect(() => {
+    const interval = setInterval(() => {
+      setClockNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     setCancelReason('');
     setCancelPhotoDataUrl('');
   }, [focusTrip?.id]);
 
-  const openCancelComposer = (trip?: typeof openTrips[number] | null) => {
-    if (trip) {
+  const closeCancelComposer = () => {
+    setShowCancelComposer(false);
+    setCancelComposerMode('full');
+    setCancelTargetTrip(null);
+    setCancelReason('');
+    setCancelPhotoDataUrl('');
+  };
+
+  const openCancelComposer = (trip?: typeof openTrips[number] | null, mode: CancelComposerMode = 'full') => {
+    const targetTrip = trip || displayedFocusTrip || runtime.activeTrip || null;
+    if (!targetTrip) return;
+    if (trip && mode === 'full') {
       runtime.setActiveTrip(trip);
     }
+    setCancelComposerMode(mode);
+    setCancelTargetTrip(targetTrip);
     setCancelReason('');
     setCancelPhotoDataUrl('');
     setShowCancelComposer(true);
@@ -172,15 +198,22 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     ? Number(workflow?.departureToPickupAt || workflow?.departureAt || displayedFocusTrip?.enRouteAt || 0)
     : 0;
 
+  const destinationStartedAt = hasStartedTripToDestination && !hasArrivedDestination
+    ? Number(workflow?.startTripAt || workflow?.destinationDepartureAt || displayedFocusTrip?.startTripAt || 0)
+    : 0;
+
+  const elapsedSecs = routeStartedAt
+    ? Math.max(0, Math.floor((clockNow - routeStartedAt) / 1000))
+    : 0;
+
+  const destinationElapsedSecs = destinationStartedAt
+    ? Math.max(0, Math.floor((clockNow - destinationStartedAt) / 1000))
+    : 0;
+
   useEffect(() => {
-    if (!routeStartedAt || !displayedFocusTrip) {
-      setElapsedSecs(0);
-      return;
-    }
+    if (!routeStartedAt || !displayedFocusTrip) return;
 
     const interval = setInterval(() => {
-      const secs = Math.floor((Date.now() - routeStartedAt) / 1000);
-      setElapsedSecs(secs);
       const scheduled = parseScheduledPickup(displayedFocusTrip.scheduledPickup);
       const lateKey = `${displayedFocusTrip.id}:${displayedFocusTrip.scheduledPickup || ''}`;
       if (scheduled && Date.now() > scheduled.getTime() && lateAlertSentRef.current !== lateKey) {
@@ -192,24 +225,6 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     return () => clearInterval(interval);
   }, [routeStartedAt, displayedFocusTrip?.id, displayedFocusTrip?.scheduledPickup]);
 
-  const destinationStartedAt = hasStartedTripToDestination && !hasArrivedDestination
-    ? Number(workflow?.startTripAt || workflow?.destinationDepartureAt || displayedFocusTrip?.startTripAt || 0)
-    : 0;
-
-  useEffect(() => {
-    if (!destinationStartedAt || !displayedFocusTrip) {
-      setDestinationElapsedSecs(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      const secs = Math.floor((Date.now() - destinationStartedAt) / 1000);
-      setDestinationElapsedSecs(secs);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [destinationStartedAt, focusTrip?.id]);
-
   const elapsedLabel = routeStartedAt
     ? `${String(Math.floor(elapsedSecs / 60)).padStart(2, '0')}:${String(elapsedSecs % 60).padStart(2, '0')}`
     : null;
@@ -218,9 +233,9 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     : null;
 
   const scheduledPickupDate = parseScheduledPickup(displayedFocusTrip?.scheduledPickup);
-  const isLateToPickup = Boolean(routeStartedAt && scheduledPickupDate && Date.now() > scheduledPickupDate.getTime());
+  const isLateToPickup = Boolean(routeStartedAt && scheduledPickupDate && clockNow > scheduledPickupDate.getTime());
   const scheduledDropoffDate = parseScheduledDropoff(displayedFocusTrip?.scheduledDropoff || displayedFocusTrip?.dropoff);
-  const isLateToDestination = Boolean(destinationStartedAt && scheduledDropoffDate && Date.now() > scheduledDropoffDate.getTime());
+  const isLateToDestination = Boolean(destinationStartedAt && scheduledDropoffDate && clockNow > scheduledDropoffDate.getTime());
   const driverNotes = String(displayedFocusTrip?.notes || '').trim();
   const providerNotes = String(displayedFocusTrip?.providerNotes || '').trim();
   const showDispatcherNotesCard = Boolean(driverNotes);
@@ -333,6 +348,10 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       Alert.alert('Cancellation', 'Write why the rider cancelled.');
       return;
     }
+    if (!cancelTargetTrip?.id) {
+      Alert.alert('Cancellation', 'No trip selected for cancellation.');
+      return;
+    }
     const confirmed = await new Promise<boolean>(resolve => {
       Alert.alert('Submit cancellation', `Reason: ${cancelReason.trim()}`, [
         { text: 'Back', style: 'cancel', onPress: () => resolve(false) },
@@ -342,13 +361,12 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     if (!confirmed) return;
 
     const ok = await runtime.submitTripAction('cancel', {
+      tripId: cancelTargetTrip.id,
       cancellationReason: cancelReason.trim(),
-      cancellationPhotoDataUrl: cancelPhotoDataUrl || undefined
+      cancellationPhotoDataUrl: cancelComposerMode === 'full' ? cancelPhotoDataUrl || undefined : undefined
     });
     if (ok) {
-      setShowCancelComposer(false);
-      setCancelReason('');
-      setCancelPhotoDataUrl('');
+      closeCancelComposer();
     }
   };
 
@@ -445,8 +463,12 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     const isXL = Boolean(trip.wheelChairIsXL) || /(\bxl\b|extra\s*large)/.test(wheelText);
     const isFoldable = Boolean(trip.wheelChairFoldable) || /(fold|foldable)/.test(wheelText);
     const confirmed = String(trip.confirmationStatus || '').toLowerCase().includes('confirm');
+    const isWillCall = Boolean(trip.isWillCall) || String(trip.status || '').trim().toLowerCase() === 'willcall';
 
     return <View style={styles.supportBadgeRow}>
+        {isWillCall ? <View style={[styles.supportBadge, styles.supportBadgeWillCall]}>
+            <Text style={styles.supportBadgeWillCallText}>WILLCALL</Text>
+          </View> : null}
         <View style={styles.supportBadge}>
           <Text style={styles.supportBadgeText}>Animal: {trip.hasServiceAnimal ? 'Yes' : 'No'}</Text>
         </View>
@@ -566,7 +588,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                 <Pressable style={[styles.smsBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void sendOutsideSms(trip)}>
                   <Text style={styles.smsBadgeText}>{isAndroidDevice ? 'Message' : 'SMS'}</Text>
                 </Pressable>
-                <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(trip)}>
+                <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(trip, 'quick')}>
                   <Text style={styles.cancelBadgeText}>Cancel</Text>
                 </Pressable>
               </View>
@@ -600,7 +622,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                 <Pressable style={[styles.smsBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void sendOutsideSms(displayedFocusTrip)}>
                   <Text style={styles.smsBadgeText}>{isAndroidDevice ? 'Message' : 'SMS'}</Text>
                 </Pressable>
-                <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(displayedFocusTrip)}>
+                <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(displayedFocusTrip, 'full')}>
                   <Text style={styles.cancelBadgeText}>Cancel</Text>
                 </Pressable>
               </View>
@@ -691,7 +713,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                 <Text style={driverSharedStyles.secondaryButtonText}>Directions</Text>
               </Pressable> : null}
 
-            {!hasPatientOnboard && !hasStartedTripToDestination ? <Pressable style={[styles.prominentCancelButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => openCancelComposer(displayedFocusTrip)} disabled={runtime.activeTripAction.length > 0}>
+            {!hasPatientOnboard && !hasStartedTripToDestination ? <Pressable style={[styles.prominentCancelButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => openCancelComposer(displayedFocusTrip, 'full')} disabled={runtime.activeTripAction.length > 0}>
                 <Text style={styles.prominentCancelButtonText}>Cancel</Text>
               </Pressable> : null}
 
@@ -712,28 +734,30 @@ export const DriverTripsSection = ({ runtime }: Props) => {
           {runtime.tripActionError ? <Text style={driverSharedStyles.warningText}>{runtime.tripActionError}</Text> : null}
         </View> : null}
 
-      {displayedFocusTrip && showCancelComposer ? <Modal transparent animationType="slide" visible={showCancelComposer} onRequestClose={() => setShowCancelComposer(false)}>
+      {cancelTargetTrip && showCancelComposer ? <Modal transparent animationType="slide" visible={showCancelComposer} onRequestClose={closeCancelComposer}>
           <View style={styles.cancelModalOverlay}>
             <View style={styles.cancelModalCard}>
-              <Text style={styles.cancelTitle}>Cancel trip now</Text>
-              <Text style={styles.cancelHelpText}>Write the reason below. The driver does not have to wait for the server. The app queues the cancel first and sends it after.</Text>
-              <Text style={styles.cancelTripName}>{displayedFocusTrip.rider || 'Patient'}</Text>
+              <Text style={styles.cancelTitle}>{cancelComposerMode === 'quick' ? 'Quick cancel trip' : 'Cancel trip now'}</Text>
+              <Text style={styles.cancelHelpText}>{cancelComposerMode === 'quick' ? 'This quick cancel is for a trip the driver has not started yet. Write the reason and submit immediately.' : 'Write the reason below. The driver does not have to wait for the server. The app queues the cancel first and sends it after.'}</Text>
+              <Text style={styles.cancelTripName}>{cancelTargetTrip.rider || 'Patient'}</Text>
               <TextInput value={cancelReason} onChangeText={setCancelReason} placeholder="Reason for cancellation" placeholderTextColor="#6b7280" multiline autoFocus style={styles.cancelInput} />
-              {cancelPhotoDataUrl ? <Image source={{ uri: cancelPhotoDataUrl }} style={styles.cancelPhotoPreview} resizeMode="cover" /> : null}
-              <View style={styles.cancelButtonsRow}>
-                <Pressable style={styles.cancelCallButton} onPress={() => void openPhoneCall(displayedFocusTrip.patientPhoneNumber)}>
-                  <Text style={styles.cancelCallButtonText}>Call</Text>
-                </Pressable>
-                <Pressable style={[styles.cancelAttachButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void pickCancelPhoto()} disabled={runtime.activeTripAction.length > 0}>
-                  <Text style={styles.cancelAttachButtonText}>{cancelPhotoDataUrl ? 'Change Photo' : 'Photo Optional'}</Text>
-                </Pressable>
-              </View>
+              {cancelComposerMode === 'full' ? <>
+                  {cancelPhotoDataUrl ? <Image source={{ uri: cancelPhotoDataUrl }} style={styles.cancelPhotoPreview} resizeMode="cover" /> : null}
+                  <View style={styles.cancelButtonsRow}>
+                    <Pressable style={styles.cancelCallButton} onPress={() => void openPhoneCall(cancelTargetTrip.patientPhoneNumber)}>
+                      <Text style={styles.cancelCallButtonText}>Call</Text>
+                    </Pressable>
+                    <Pressable style={[styles.cancelAttachButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void pickCancelPhoto()} disabled={runtime.activeTripAction.length > 0}>
+                      <Text style={styles.cancelAttachButtonText}>{cancelPhotoDataUrl ? 'Change Photo' : 'Photo Optional'}</Text>
+                    </Pressable>
+                  </View>
+                </> : null}
               <View style={styles.cancelFooterRow}>
-                <Pressable style={styles.cancelDismissButton} onPress={() => setShowCancelComposer(false)}>
+                <Pressable style={styles.cancelDismissButton} onPress={closeCancelComposer}>
                   <Text style={styles.cancelDismissButtonText}>Close</Text>
                 </Pressable>
                 <Pressable style={[styles.cancelSubmitButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void submitCancelTrip()} disabled={runtime.activeTripAction.length > 0}>
-                  <Text style={styles.cancelSubmitButtonText}>{runtime.activeTripAction === 'cancel' ? 'Queueing...' : 'Submit Cancel'}</Text>
+                  <Text style={styles.cancelSubmitButtonText}>{runtime.activeTripAction === 'cancel' ? 'Queueing...' : cancelComposerMode === 'quick' ? 'Quick Cancel' : 'Submit Cancel'}</Text>
                 </Pressable>
               </View>
             </View>
@@ -940,10 +964,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#fef3c7',
     borderColor: '#f59e0b'
   },
+  supportBadgeWillCall: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#dc2626'
+  },
   supportBadgeText: {
     color: '#334a59',
     fontSize: 11,
     fontWeight: '700'
+  },
+  supportBadgeWillCallText: {
+    color: '#b91c1c',
+    fontSize: 11,
+    fontWeight: '800'
   },
   supportBadgeNextDayText: {
     color: '#92400e',

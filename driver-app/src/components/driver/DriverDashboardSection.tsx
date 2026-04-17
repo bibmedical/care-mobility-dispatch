@@ -74,6 +74,22 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
   const profilePhotoUrl = String(runtime.driverSession?.profilePhotoUrl || '').trim();
   const vehicleLabel = String(reviewSummary?.vehicle || runtime.driverSession?.vehicleId || '').trim() || 'Vehicle pending';
   const ratingText = totalReviews > 0 ? `${averageRating.toFixed(1)}★` : 'New';
+  const gpsStatusOn = runtime.isBackgroundTrackingEnabled;
+  const gpsStatusPending = runtime.isManagingBackgroundTracking;
+  const gpsBadgeBackground = gpsStatusPending ? '#fef3c7' : gpsStatusOn ? '#dcfce7' : '#fee2e2';
+  const gpsBadgeBorder = gpsStatusPending ? '#f59e0b' : gpsStatusOn ? '#16a34a' : '#dc2626';
+  const gpsBadgeText = gpsStatusPending ? '#92400e' : gpsStatusOn ? '#166534' : '#991b1b';
+  const gpsBadgeLabel = gpsStatusPending ? 'GPS STARTING' : gpsStatusOn ? 'GPS ON' : 'GPS OFF';
+
+  const handleGpsBadgePress = () => {
+    if (runtime.isBackgroundTrackingEnabled || runtime.trackingEnabled) {
+      runtime.setTrackingEnabled(false);
+      return;
+    }
+
+    runtime.setTrackingEnabled(true);
+    void runtime.requestLocationPermission();
+  };
 
   return <View style={styles.screen}>
       <View style={styles.profileHeroCard}>
@@ -83,7 +99,17 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
             : <View style={[styles.profileHeroPhoto, styles.profileHeroPhotoFallback]}>
                 <Image source={require('../../../assets/iconnew-cropped.png')} style={styles.profileHeroLogoFallback} resizeMode="contain" />
               </View>}
-          <Text style={styles.profileHeroName}>{driverName}</Text>
+          <View style={styles.profileHeroNameRow}>
+            <Text style={styles.profileHeroName}>{driverName}</Text>
+            <Pressable style={[styles.gpsStatusBadge, {
+            backgroundColor: gpsBadgeBackground,
+            borderColor: gpsBadgeBorder
+          }]} onPress={handleGpsBadgePress}>
+              <Text style={[styles.gpsStatusBadgeText, {
+              color: gpsBadgeText
+            }]}>{gpsBadgeLabel}</Text>
+            </Pressable>
+          </View>
           <Text style={styles.profileHeroVehicle}>{vehicleLabel}</Text>
         </View>
 
@@ -189,6 +215,27 @@ const styles = StyleSheet.create({
     color: '#f9fafb',
     fontSize: 36,
     fontWeight: '500'
+  },
+  profileHeroNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    paddingHorizontal: 12
+  },
+  gpsStatusBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    minWidth: 88,
+    alignItems: 'center'
+  },
+  gpsStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5
   },
   profileHeroVehicle: {
     color: '#cbd5e1',

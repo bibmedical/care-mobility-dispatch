@@ -221,6 +221,8 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
     cancellationReason: String(normalizedTrip.cancellationReason || '').trim(),
     cancellationPhotoDataUrl: String(normalizedTrip.cancellationPhotoDataUrl || '').trim(),
     completionPhotoDataUrl: String(normalizedTrip.completionPhotoDataUrl || '').trim(),
+    willCallActivatedAt: normalizedTrip.willCallActivatedAt || null,
+    willCallPickupDeadlineAt: normalizedTrip.willCallPickupDeadlineAt || null,
     driverWorkflow: buildDriverWorkflowState(normalizedTrip, workflowEvents)
   };
 };
