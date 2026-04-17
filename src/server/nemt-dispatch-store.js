@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { getLocalDateKey, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { getLocalDateKey, getTripServiceDateKey, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState, readDispatchHistoryArchive } from '@/server/dispatch-history-store';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
@@ -318,16 +318,29 @@ export const readAssignedTripsForDriverByServiceDates = async ({ driverId, servi
   const normalizedServiceDateKeys = Array.from(new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean)));
   if (!normalizedDriverId || normalizedServiceDateKeys.length === 0) return [];
 
+  if (!hasDatabaseUrl()) {
+    if (!shouldUseLocalFallback()) {
+      throw new Error('DATABASE_URL is required for dispatch store access.');
+    }
+
+    const state = await readLocalNemtDispatchState();
+    return (Array.isArray(state?.trips) ? state.trips : []).filter(trip => {
+      const serviceDate = String(trip?.serviceDate || trip?.rawServiceDate || '').trim();
+      return normalizedServiceDateKeys.includes(serviceDate)
+        && (String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId);
+    });
+  }
+
   await ensureDispatchSchema();
   const res = await query(
     `SELECT data
      FROM dispatch_trips
-     WHERE service_date = ANY($1::text[])
+     WHERE (service_date = ANY($1::text[]) OR COALESCE(service_date, '') = '')
        AND ((data->>'driverId') = $2 OR (data->>'secondaryDriverId') = $2)
      ORDER BY updated_at DESC`,
     [normalizedServiceDateKeys, normalizedDriverId]
   );
-  return res.rows.map(row => row.data);
+  return res.rows.map(row => row.data).filter(trip => normalizedServiceDateKeys.includes(getTripServiceDateKey(trip)));
 };
 
 // ─── WRITE ────────────────────────────────────────────────────────────────────
