@@ -4458,6 +4458,11 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
+    // Drop the previous driver's path immediately so the map never keeps a stale route
+    // while the next geometry request is loading.
+    setRouteGeometry([]);
+    setRouteMetrics(null);
+
     const abortController = new AbortController();
     const coordinates = routeStops.map(stop => `${stop.position[0]},${stop.position[1]}`).join(';');
 
