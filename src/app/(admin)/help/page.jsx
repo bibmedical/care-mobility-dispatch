@@ -671,9 +671,24 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V19</Badge>
+                <span className="fw-semibold text-dark">Driver Workflow + Applications + Dispatcher Push</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Pushed commit c15ff7e to origin/main so Render can deploy the full April 17 driver workflow, dispatcher, and applications update instead of the older day-off-only commit.</li>
+                <li>Dispatcher now includes the latest operational controls from this session, including Late Trips review, Reinstate actions, safer selection clearing, and direct Applications access.</li>
+                <li>The web Applications page now reads real app submissions, and the mobile application intake now sends the larger English employment form into system messages.</li>
+                <li>Driver trip flow was aligned across APK and backend so in-progress detection, WillCall activation, cancellation evidence, and post-completion queue behavior stay consistent.</li>
+                <li>Started a fresh EAS Android preview build from the updated source so the APK side can be tested with the same code that was just pushed.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V18</Badge>
                 <span className="fw-semibold text-dark">App Time Off Visibility + Driver Appointment Safety</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Time Off in the app now enforces 2-day notice, no longer requires a photo, stays visibly submitted, and lets the driver reactivate with an I\'M BACK action.</li>
