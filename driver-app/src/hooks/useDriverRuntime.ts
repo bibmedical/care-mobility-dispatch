@@ -351,21 +351,38 @@ export const useDriverRuntime = () => {
 
 
   const buildOptimisticTripPatch = (action: DriverTripActionName, options: {
+    eventTimestamp?: number;
     cancellationReason?: string;
     cancellationPhotoDataUrl?: string;
     completionPhotoDataUrl?: string;
   } = {}) => {
-    const now = Date.now();
+    const requestedTimestamp = Number(options.eventTimestamp);
+    const now = Number.isFinite(requestedTimestamp) && requestedTimestamp > 0
+      ? requestedTimestamp
+      : Date.now();
     const workflow: NonNullable<DriverTrip['driverWorkflow']> = {
       status: action
     };
     const patch: Partial<DriverTrip> = {
-      status: action === 'complete' ? 'Completed' : action === 'cancel' ? 'Cancelled' : action === 'arrived' || action === 'arrived-destination' ? 'Arrived' : 'In Progress'
+      status: action === 'complete'
+        ? 'Completed'
+        : action === 'cancel'
+          ? 'Cancelled'
+          : action === 'activate-willcall'
+            ? 'WillCall'
+            : action === 'arrived' || action === 'arrived-destination'
+              ? 'Arrived'
+              : 'In Progress'
     };
 
     if (action === 'accept') {
       workflow.acceptedAt = now;
       workflow.acceptedTimeLabel = formatDateTime(now);
+    }
+    if (action === 'activate-willcall') {
+      patch.willCallActivatedAt = new Date(now).toISOString();
+      workflow.willCallActivatedAt = now;
+      workflow.willCallActivatedTimeLabel = formatDateTime(now);
     }
     if (action === 'en-route') {
       patch.enRouteAt = now;
@@ -386,6 +403,8 @@ export const useDriverRuntime = () => {
       patch.startTripAt = now;
       workflow.startTripAt = now;
       workflow.startTripTimeLabel = formatDateTime(now);
+      workflow.destinationDepartureAt = now;
+      workflow.destinationDepartureTimeLabel = formatDateTime(now);
     }
     if (action === 'arrived-destination') {
       patch.arrivedDestinationAt = now;
@@ -410,6 +429,7 @@ export const useDriverRuntime = () => {
   };
 
   const applyOptimisticTripAction = (tripId: string, action: DriverTripActionName, options: {
+    eventTimestamp?: number;
     cancellationReason?: string;
     cancellationPhotoDataUrl?: string;
     completionPhotoDataUrl?: string;
@@ -472,6 +492,7 @@ export const useDriverRuntime = () => {
         }
 
         const optimisticPatch = buildOptimisticTripPatch(queuedAction.action, {
+          eventTimestamp: queuedAction.eventTimestamp,
           cancellationReason: queuedAction.cancellationReason,
           cancellationPhotoDataUrl: queuedAction.cancellationPhotoDataUrl,
           completionPhotoDataUrl: queuedAction.completionPhotoDataUrl
@@ -759,7 +780,7 @@ export const useDriverRuntime = () => {
     if (!loggedIn || !driverSession?.driverId || !notificationPermissionGranted || isRegisteringPushToken) return;
 
     if (shouldDisableNotificationsRuntime) {
-      setNotificationError('Remote push registration is skipped in Expo Go. Use a development build or APK for live push notifications.');
+      setNotificationError('Remote push registration is skipped in Expo Go. Use a development build or app build for live push notifications.');
       return;
     }
 
@@ -769,7 +790,7 @@ export const useDriverRuntime = () => {
         setIsRegisteringPushToken(true);
         const notifications = getNotificationsModule();
         if (!notifications) {
-          throw new Error('Push notifications require a development build or APK, not Expo Go.');
+          throw new Error('Push notifications require a development build or app build, not Expo Go.');
         }
 
         const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
@@ -823,7 +844,7 @@ export const useDriverRuntime = () => {
       if (!notifications) {
         if (!active) return;
         setNotificationPermissionGranted(false);
-        setNotificationError('Expo Go on Android does not support remote push notifications. Use a development build or APK for push testing.');
+        setNotificationError('Expo Go on Android does not support remote push notifications. Use a development build or app build for push testing.');
         return;
       }
 
@@ -1546,7 +1567,7 @@ export const useDriverRuntime = () => {
       const notifications = getNotificationsModule();
       if (!notifications) {
         setNotificationPermissionGranted(false);
-        setNotificationError('Expo Go on Android does not support remote push notifications. Use a development build or APK for push testing.');
+        setNotificationError('Expo Go on Android does not support remote push notifications. Use a development build or app build for push testing.');
         return false;
       }
 
@@ -1589,6 +1610,7 @@ export const useDriverRuntime = () => {
     setTripActionError('');
 
     applyOptimisticTripAction(targetTripId, action, {
+      eventTimestamp,
       cancellationReason: options.cancellationReason,
       cancellationPhotoDataUrl: options.cancellationPhotoDataUrl,
       completionPhotoDataUrl: options.completionPhotoDataUrl

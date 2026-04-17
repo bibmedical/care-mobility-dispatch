@@ -2,6 +2,7 @@ import { ActivityIndicator, Alert, Image, Linking, Modal, Platform, Pressable, S
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
+import type { DriverTrip } from '../../types/driver';
 import { driverSharedStyles, driverTheme } from './driverTheme';
 import { getTripTone, getTripWindow } from './driverUtils';
 import { compressImageToJpegDataUrl } from '../../utils/imageCompression';
@@ -71,19 +72,85 @@ const formatActionPhone = (phoneNumber?: string) => {
   if (digits.length === 11 && digits.startsWith('1')) {
     return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
   }
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
   return String(phoneNumber || '').trim();
+};
+
+const formatWillCallActivatedLabel = (value?: string | null) => {
+  const timestamp = new Date(value || '').getTime();
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
+  return new Date(timestamp).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+};
+
+const isTripActivatedForCancellation = (trip?: DriverRuntime['activeTrip'] | null) => {
+  if (!trip) return false;
+  const normalizedStatus = String(trip.status || '').trim().toLowerCase();
+  return Boolean(
+    trip.driverWorkflow?.acceptedAt
+    || trip.enRouteAt
+    || trip.arrivedAt
+    || trip.patientOnboardAt
+    || trip.startTripAt
+    || trip.arrivedDestinationAt
+    || normalizedStatus === 'accepted'
+    || normalizedStatus.includes('progress')
+    || normalizedStatus.includes('route')
+    || normalizedStatus.includes('arrived')
+    || normalizedStatus.includes('destination')
+  );
+};
+
+const isInProgressTrip = (trip?: DriverTrip | null) => {
+  if (!trip) return false;
+  const normalizedStatus = String(trip.status || '').trim().toLowerCase();
+  const workflowStatus = String(trip.driverWorkflow?.status || '').trim().toLowerCase();
+  if (
+    normalizedStatus.includes('completed')
+    || normalizedStatus.includes('cancelled')
+    || normalizedStatus.includes('canceled')
+    || workflowStatus === 'complete'
+    || workflowStatus === 'completed'
+    || workflowStatus === 'cancel'
+    || workflowStatus === 'cancelled'
+    || workflowStatus === 'canceled'
+  ) {
+    return false;
+  }
+  return Boolean(
+    trip.driverWorkflow?.acceptedAt
+    || trip.driverWorkflow?.departureAt
+    || trip.driverWorkflow?.departureToPickupAt
+    || trip.driverWorkflow?.arrivalAt
+    || trip.driverWorkflow?.arrivedPickupAt
+    || trip.driverWorkflow?.patientOnboardAt
+    || trip.driverWorkflow?.startTripAt
+    || trip.driverWorkflow?.destinationDepartureAt
+    || trip.driverWorkflow?.arrivedDestinationAt
+    || trip.enRouteAt
+    || trip.arrivedAt
+    || trip.patientOnboardAt
+    || trip.startTripAt
+    || trip.arrivedDestinationAt
+    || normalizedStatus === 'accepted'
+    || normalizedStatus.includes('en-route')
+    || normalizedStatus.includes('arrived')
+    || normalizedStatus.includes('progress')
+    || normalizedStatus.includes('destination')
+    || workflowStatus === 'accepted'
+    || workflowStatus === 'en-route'
+    || workflowStatus === 'arrived-pickup'
+    || workflowStatus === 'patient-onboard'
+    || workflowStatus === 'to-destination'
+    || workflowStatus === 'arrived-destination'
+  );
 };
 
 export const DriverTripsSection = ({ runtime }: Props) => {
   const OUTSIDE_SMS_TEMPLATE = 'Hi this is Care Mobility. Your driver is outside waiting for you.';
   const isAndroidDevice = Platform.OS === 'android';
-  const hasPersistedInProgressTrip = runtime.assignedTrips.some(trip => {
-    const normalized = String(trip.status || '').toLowerCase();
-    return normalized.includes('en-route') || normalized.includes('arrived') || normalized.includes('progress') || normalized.includes('destination');
-  });
+  const hasPersistedInProgressTrip = runtime.assignedTrips.some(trip => isInProgressTrip(trip));
   const [queueMode, setQueueMode] = useState<QueueMode>(() => hasPersistedInProgressTrip ? 'in-progress' : 'scheduled');
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [showCancelComposer, setShowCancelComposer] = useState(false);
@@ -97,11 +164,6 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const isClosedTrip = (status?: string) => {
     const normalized = String(status || '').toLowerCase();
     return normalized.includes('completed') || normalized.includes('cancelled') || normalized.includes('canceled');
-  };
-
-  const isInProgressTrip = (status?: string) => {
-    const normalized = String(status || '').toLowerCase();
-    return normalized.includes('en-route') || normalized.includes('arrived') || normalized.includes('progress') || normalized.includes('destination');
   };
 
   const openTrips = useMemo(() => runtime.assignedTrips.filter(trip => !isClosedTrip(trip.status)), [runtime.assignedTrips]);
@@ -124,11 +186,16 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   };
   const blockingTrip = useMemo(() => openTrips.find(trip => isDriverLockedIntoTrip(trip)) || null, [openTrips]);
   const inProgressFocusTrip = useMemo(() => {
-    if (focusTrip && isInProgressTrip(focusTrip.status)) {
+    if (focusTrip && isInProgressTrip(focusTrip)) {
       return focusTrip;
     }
-    return openTrips.find(trip => isInProgressTrip(trip.status)) || null;
+    return openTrips.find(trip => isInProgressTrip(trip)) || null;
   }, [focusTrip, openTrips]);
+
+  useEffect(() => {
+    if (!hasPersistedInProgressTrip || queueMode === 'in-progress') return;
+    setQueueMode('in-progress');
+  }, [hasPersistedInProgressTrip, queueMode]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -179,10 +246,10 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     };
 
     if (queueMode === 'in-progress') {
-      return openTrips.filter(trip => isInProgressTrip(trip.status)).filter(matchesDateFilter);
+      return openTrips.filter(trip => isInProgressTrip(trip)).filter(matchesDateFilter);
     }
 
-    return openTrips.filter(trip => !isInProgressTrip(trip.status)).filter(matchesDateFilter);
+    return openTrips.filter(trip => !isInProgressTrip(trip)).filter(matchesDateFilter);
   }, [openTrips, queueMode, runtime.tripDateFilter]);
 
   const displayedScheduledTrips = queueMode === 'scheduled' ? filteredTrips : [];
@@ -199,7 +266,14 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const hasStartedRouteToPickup = Boolean(displayedFocusTrip?.enRouteAt || workflow?.departureToPickupAt || workflow?.departureAt);
   const hasArrivedPickup = Boolean(displayedFocusTrip?.arrivedAt || workflow?.arrivedPickupAt || workflow?.arrivalAt);
   const hasPatientOnboard = Boolean(displayedFocusTrip?.patientOnboardAt || workflow?.patientOnboardAt || displayedFocusTrip?.actualPickup);
-  const hasStartedTripToDestination = Boolean(displayedFocusTrip?.startTripAt || workflow?.startTripAt || workflow?.destinationDepartureAt);
+  const hasStartedTripToDestination = Boolean(
+    displayedFocusTrip?.startTripAt
+    || workflow?.startTripAt
+    || workflow?.destinationDepartureAt
+    || workflow?.startTripTimeLabel
+    || workflow?.destinationDepartureTimeLabel
+    || String(workflow?.status || '').toLowerCase() === 'to-destination'
+  );
   const hasArrivedDestination = Boolean(displayedFocusTrip?.arrivedDestinationAt || workflow?.arrivedDestinationAt || workflow?.destinationArrivalAt);
 
   const canAcceptTrip = !hasAcceptedState;
@@ -261,9 +335,6 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const isLateToPickup = Boolean(routeStartedAt && scheduledPickupDate && clockNow > scheduledPickupDate.getTime());
   const scheduledDropoffDate = parseScheduledDropoff(displayedFocusTrip?.scheduledDropoff || displayedFocusTrip?.dropoff);
   const isLateToDestination = Boolean(destinationStartedAt && scheduledDropoffDate && clockNow > scheduledDropoffDate.getTime());
-  const driverNotes = String(displayedFocusTrip?.notes || '').trim();
-  const providerNotes = String(displayedFocusTrip?.providerNotes || '').trim();
-  const showDispatcherNotesCard = Boolean(driverNotes);
   const showPickupTimeChange = Boolean(displayedFocusTrip?.hasPickupTimeOverride && displayedFocusTrip?.providerScheduledPickup && displayedFocusTrip?.scheduledPickup);
   const showDropoffTimeChange = Boolean(displayedFocusTrip?.hasDropoffTimeOverride && displayedFocusTrip?.providerScheduledDropoff && displayedFocusTrip?.scheduledDropoff);
 
@@ -377,6 +448,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       Alert.alert('Cancellation', 'No trip selected for cancellation.');
       return;
     }
+    const requiresCancellationPhoto = isTripActivatedForCancellation(cancelTargetTrip);
+    if (requiresCancellationPhoto && !cancelPhotoDataUrl.trim()) {
+      Alert.alert('Cancellation', 'Take or attach a cancellation photo because this trip is already in progress.');
+      return;
+    }
     const confirmed = await new Promise<boolean>(resolve => {
       Alert.alert('Submit cancellation', `Reason: ${cancelReason.trim()}`, [
         { text: 'Back', style: 'cancel', onPress: () => resolve(false) },
@@ -388,7 +464,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     const ok = await runtime.submitTripAction('cancel', {
       tripId: cancelTargetTrip.id,
       cancellationReason: cancelReason.trim(),
-      cancellationPhotoDataUrl: cancelComposerMode === 'full' ? cancelPhotoDataUrl || undefined : undefined
+      cancellationPhotoDataUrl: cancelPhotoDataUrl || undefined
     });
     if (ok) {
       closeCancelComposer();
@@ -481,6 +557,28 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     }
   };
 
+  const activateWillCallTrip = async (trip: typeof openTrips[number]) => {
+    const activationTime = formatWillCallActivatedLabel(trip.willCallActivatedAt);
+    if (activationTime) {
+      Alert.alert('WillCall already active', `This trip was activated at ${activationTime}.`);
+      return;
+    }
+
+    Alert.alert(
+      'Activate WillCall?',
+      `${trip.rider || 'Patient'}\n${trip.address || ''}${trip.scheduledPickup ? `\nPickup: ${trip.scheduledPickup}` : ''}`,
+      [
+        { text: 'Back', style: 'cancel' },
+        {
+          text: 'Activate',
+          onPress: () => {
+            void runtime.submitTripAction('activate-willcall', { tripId: trip.id });
+          }
+        }
+      ]
+    );
+  };
+
   const renderSupportBadges = (trip?: DriverRuntime['activeTrip']) => {
     if (!trip) return null;
     const wheelText = `${trip.mobilityType || ''} ${trip.vehicleType || ''} ${trip.subMobilityType || ''} ${trip.notes || ''}`.toLowerCase();
@@ -517,6 +615,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
   const handleTripCardPress = (trip: typeof openTrips[number]) => {
     const tripStatus = String(trip.status || '').toLowerCase();
+    const isWillCall = Boolean(trip.isWillCall) || tripStatus.trim() === 'willcall';
     const tripHasAccepted = Boolean(
       trip.driverWorkflow?.acceptedAt
       || tripStatus.includes('progress')
@@ -525,6 +624,17 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       || tripStatus.includes('arrived')
     );
     const hasOtherBlockingTrip = blockingTrip && String(blockingTrip.id || '').trim() !== String(trip.id || '').trim();
+
+    if (isWillCall && !tripHasAccepted) {
+      Alert.alert(
+        'WillCall trip',
+        trip.willCallActivatedAt
+          ? `WillCall was already activated at ${formatWillCallActivatedLabel(trip.willCallActivatedAt)}.`
+          : 'Use the Activate WillCall button below to record the driver activation time without interrupting the current route.'
+      );
+      return;
+    }
+
     if (!tripHasAccepted) {
       if (hasOtherBlockingTrip) {
         Alert.alert(
@@ -564,9 +674,6 @@ export const DriverTripsSection = ({ runtime }: Props) => {
             <Text style={[styles.queueChipText, queueMode === 'in-progress' ? styles.queueChipTextActive : null]}>In Progress</Text>
           </Pressable>
         </View>
-        {isAndroidDevice ? <View style={styles.androidPatchBanner}>
-            <Text style={styles.androidPatchBannerText}>Android local patch active: Cancel + queued send + GPS checks</Text>
-          </View> : null}
       </View>
 
       {runtime.isLoadingTrips && runtime.assignedTrips.length === 0 ? <ActivityIndicator color={driverTheme.colors.primary} /> : null}
@@ -581,7 +688,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
           <Text style={driverSharedStyles.emptyText}>No trips in this queue.</Text>
         </View> : null}
 
-      {displayedScheduledTrips.map(trip => <View key={trip.id} style={[styles.routeCard, runtime.activeTrip?.id === trip.id ? styles.routeCardActive : null]}>
+      {displayedScheduledTrips.map(trip => {
+        const isWillCallTrip = Boolean(trip.isWillCall) || String(trip.status || '').trim().toLowerCase() === 'willcall';
+        const willCallActivatedLabel = formatWillCallActivatedLabel(trip.willCallActivatedAt);
+
+        return <View key={trip.id} style={[styles.routeCard, runtime.activeTrip?.id === trip.id ? styles.routeCardActive : null]}>
               <Pressable onPress={() => handleTripCardPress(trip)}>
               <View style={styles.routeCardTop}>
                 <View style={styles.routeTopHeaderRow}>
@@ -613,11 +724,15 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                 <Pressable style={[styles.smsBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void sendOutsideSms(trip)}>
                   <Text style={styles.smsBadgeText}>{getTripPatientPhone(trip) ? `${isAndroidDevice ? 'Text' : 'SMS'} ${formatActionPhone(getTripPatientPhone(trip))}` : (isAndroidDevice ? 'Text' : 'SMS')}</Text>
                 </Pressable>
+                {isWillCallTrip ? <Pressable style={[styles.willCallBadge, isAndroidDevice ? styles.androidQuickActionButton : null, runtime.activeTripAction ? styles.actionDisabled : null, willCallActivatedLabel ? styles.willCallBadgeActive : null]} onPress={() => void activateWillCallTrip(trip)} disabled={runtime.activeTripAction.length > 0}>
+                    <Text style={styles.willCallBadgeText}>{runtime.activeTripAction === 'activate-willcall' && runtime.activeTrip?.id === trip.id ? 'Sending...' : willCallActivatedLabel ? `Activated ${willCallActivatedLabel}` : 'Activate WillCall'}</Text>
+                  </Pressable> : null}
                 <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(trip, 'quick')}>
                   <Text style={styles.cancelBadgeText}>Cancel</Text>
                 </Pressable>
               </View>
-            </View>)}
+            </View>;
+          })}
 
       {displayedFocusTrip ? <View style={driverSharedStyles.card}>
           <View style={driverSharedStyles.rowBetween}>
@@ -658,12 +773,6 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               <Text style={styles.focusRequirementsRightSub}>{displayedFocusTrip.vehicleType || 'Vehicle'}</Text>
             </View>
           </View>
-
-          {showDispatcherNotesCard ? <View style={styles.dispatchNoteCard}>
-              <Text style={styles.dispatchNoteTitle}>Dispatcher Notes</Text>
-              <Text style={styles.dispatchNoteBody}>{driverNotes}</Text>
-              {displayedFocusTrip.hasNotesOverride && providerNotes ? <Text style={styles.dispatchNoteMeta}>Updated from web dispatch notes.</Text> : null}
-            </View> : null}
 
           {showPickupTimeChange || showDropoffTimeChange ? <View style={styles.timeChangeCard}>
               <Text style={styles.timeChangeTitle}>Time Update</Text>
@@ -762,18 +871,18 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       {cancelTargetTrip && showCancelComposer ? <Modal transparent animationType="slide" visible={showCancelComposer} onRequestClose={closeCancelComposer}>
           <View style={styles.cancelModalOverlay}>
             <View style={styles.cancelModalCard}>
+              {(() => {
+                const requiresCancellationPhoto = isTripActivatedForCancellation(cancelTargetTrip);
+                return <>
               <Text style={styles.cancelTitle}>{cancelComposerMode === 'quick' ? 'Quick cancel trip' : 'Cancel trip now'}</Text>
-              <Text style={styles.cancelHelpText}>{cancelComposerMode === 'quick' ? 'This quick cancel is for a trip the driver has not started yet. Write the reason and submit immediately.' : 'Write the reason below. The driver does not have to wait for the server. The app queues the cancel first and sends it after.'}</Text>
+              <Text style={styles.cancelHelpText}>{cancelComposerMode === 'quick' ? 'This quick cancel is for a trip the driver has not started yet. Write the reason and submit immediately.' : requiresCancellationPhoto ? 'Write the reason below and attach a photo. Since the trip is already in progress, the photo is required before sending the cancel.' : 'Write the reason below. Since the trip has not been activated yet, the driver can cancel it without a photo.'}</Text>
               <Text style={styles.cancelTripName}>{cancelTargetTrip.rider || 'Patient'}</Text>
               <TextInput value={cancelReason} onChangeText={setCancelReason} placeholder="Reason for cancellation" placeholderTextColor="#6b7280" multiline autoFocus style={styles.cancelInput} />
               {cancelComposerMode === 'full' ? <>
                   {cancelPhotoDataUrl ? <Image source={{ uri: cancelPhotoDataUrl }} style={styles.cancelPhotoPreview} resizeMode="cover" /> : null}
                   <View style={styles.cancelButtonsRow}>
-                    <Pressable style={styles.cancelCallButton} onPress={() => void openPhoneCall(getTripPatientPhone(cancelTargetTrip))}>
-                      <Text style={styles.cancelCallButtonText}>{getTripPatientPhone(cancelTargetTrip) ? `Call ${formatActionPhone(getTripPatientPhone(cancelTargetTrip))}` : 'Call'}</Text>
-                    </Pressable>
                     <Pressable style={[styles.cancelAttachButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void pickCancelPhoto()} disabled={runtime.activeTripAction.length > 0}>
-                      <Text style={styles.cancelAttachButtonText}>{cancelPhotoDataUrl ? 'Change Photo' : 'Photo Optional'}</Text>
+                      <Text style={styles.cancelAttachButtonText}>{cancelPhotoDataUrl ? 'Change Photo' : requiresCancellationPhoto ? 'Photo Required' : 'Photo Optional'}</Text>
                     </Pressable>
                   </View>
                 </> : null}
@@ -785,6 +894,8 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                   <Text style={styles.cancelSubmitButtonText}>{runtime.activeTripAction === 'cancel' ? 'Queueing...' : cancelComposerMode === 'quick' ? 'Quick Cancel' : 'Submit Cancel'}</Text>
                 </Pressable>
               </View>
+                </>;
+              })()}
             </View>
           </View>
         </Modal> : null}
@@ -918,6 +1029,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
+  willCallBadge: {
+    minWidth: 118,
+    height: 34,
+    borderRadius: driverTheme.radius.sm,
+    backgroundColor: '#7c2d12',
+    borderWidth: 1,
+    borderColor: '#9a3412',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10
+  },
+  willCallBadgeActive: {
+    backgroundColor: '#14532d',
+    borderColor: '#166534'
+  },
   cancelBadge: {
     minWidth: 72,
     height: 34,
@@ -938,6 +1064,11 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 9,
     fontWeight: '800'
+  },
+  willCallBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '900'
   },
   cancelBadgeText: {
     color: '#ffffff',

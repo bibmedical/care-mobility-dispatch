@@ -1,6 +1,8 @@
 import { query, queryOne } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
 
+let localAssistantMemoryState = null;
+
 const normalizeFact = value => ({
   id: String(value?.id ?? `fact-${Date.now()}`),
   subject: String(value?.subject ?? '').trim(),
@@ -28,23 +30,47 @@ const normalizeState = value => ({
   facts: Array.isArray(value?.facts) ? value.facts.map(normalizeFact).filter(f => f.subject && f.value) : []
 });
 
+const isMissingDatabaseUrlError = error => String(error?.message || '').includes('DATABASE_URL is not set');
+
+const readAssistantMemoryStateFromLocalFallback = () => {
+  if (!localAssistantMemoryState) {
+    localAssistantMemoryState = normalizeState();
+  }
+  return normalizeState(localAssistantMemoryState);
+};
+
+const writeAssistantMemoryStateToLocalFallback = nextState => {
+  localAssistantMemoryState = normalizeState(nextState);
+  return normalizeState(localAssistantMemoryState);
+};
+
 export const readAssistantMemoryState = async () => {
-  await runMigrations();
-  const row = await queryOne(`SELECT conversations, facts FROM assistant_memory WHERE id = 'singleton'`);
-  return normalizeState({
-    conversations: row?.conversations ?? {},
-    facts: row?.facts ?? []
-  });
+  try {
+    await runMigrations();
+    const row = await queryOne(`SELECT conversations, facts FROM assistant_memory WHERE id = 'singleton'`);
+    return normalizeState({
+      conversations: row?.conversations ?? {},
+      facts: row?.facts ?? []
+    });
+  } catch (error) {
+    if (!isMissingDatabaseUrlError(error)) throw error;
+    return readAssistantMemoryStateFromLocalFallback();
+  }
 };
 
 export const writeAssistantMemoryState = async nextState => {
-  await runMigrations();
   const normalized = normalizeState(nextState);
-  await query(
-    `UPDATE assistant_memory SET conversations = $1, facts = $2, updated_at = NOW() WHERE id = 'singleton'`,
-    [normalized.conversations, normalized.facts]
-  );
-  return normalized;
+  try {
+    await runMigrations();
+    await query(
+      `UPDATE assistant_memory SET conversations = $1, facts = $2, updated_at = NOW() WHERE id = 'singleton'`,
+      [normalized.conversations, normalized.facts]
+    );
+    return normalized;
+  } catch (error) {
+    if (!isMissingDatabaseUrlError(error)) throw error;
+    return writeAssistantMemoryStateToLocalFallback(normalized);
+  }
 };
 
 export const readAssistantConversation = async clientId => {

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
-import { getActiveMessageForDriver, resolveSystemMessageById } from '@/server/system-messages-store';
+import { getActiveMessageForDriver, resolveSystemMessageById, upsertSystemMessage } from '@/server/system-messages-store';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
 import { sendTripArrivalNotifications } from '@/server/sms-confirmation-service';
 import { sendCustomSmsRequests } from '@/server/sms-confirmation-service';
@@ -13,10 +13,67 @@ import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
 
 const buildAutoNoDepartureAlertId = (driverId, tripId) => `auto-no-departure-${driverId}-${tripId}`;
+const buildWillCallActivationMessageId = (driverId, tripId) => `driver-willcall-activation-${driverId}-${tripId}`;
 
 const generateReviewToken = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
+
+const isTripActivatedForCancellation = trip => {
+  const normalizedStatus = normalizeLookupValue(trip?.status);
+  return Boolean(
+    trip?.driverWorkflow?.acceptedAt
+    || trip?.enRouteAt
+    || trip?.arrivedAt
+    || trip?.patientOnboardAt
+    || trip?.startTripAt
+    || trip?.arrivedDestinationAt
+    || ['accepted', 'arrived'].includes(normalizedStatus)
+    || normalizedStatus.includes('progress')
+    || normalizedStatus.includes('route')
+    || normalizedStatus.includes('destination')
+  );
+};
+
+const buildWillCallActivationMessage = ({ currentDriver, currentTrip, driverId, timestamp }) => {
+  const driverName = String(currentDriver?.name || currentTrip?.driverName || '').trim() || driverId;
+  const tripReference = String(currentTrip?.rideId || currentTrip?.id || '').trim() || 'Unknown trip';
+  const riderName = String(currentTrip?.rider || '').trim() || 'Unknown rider';
+  const pickupText = String(currentTrip?.scheduledPickup || currentTrip?.pickup || '').trim() || 'TBD';
+  const activationLabel = new Date(timestamp).toLocaleString('en-US', {
+    month: 'numeric',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+
+  return {
+    id: buildWillCallActivationMessageId(driverId, String(currentTrip?.id || '').trim()),
+    type: 'driver-willcall-activation',
+    priority: 'high',
+    audience: 'Dispatcher',
+    subject: `Driver activated WillCall for trip ${tripReference}`,
+    body: `${driverName} activated WillCall for trip ${tripReference} (${riderName}) at ${activationLabel}. Pickup: ${pickupText}.`,
+    driverId,
+    driverName,
+    status: 'active',
+    createdAt: new Date(timestamp).toISOString(),
+    source: 'mobile-driver-app',
+    deliveryMethod: 'system',
+    tripId: String(currentTrip?.id || '').trim(),
+    rider: riderName,
+    scheduledPickup: pickupText,
+    willCallActivatedAt: new Date(timestamp).toISOString()
+  };
+};
+
+const parseStoredTimestamp = value => {
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue) && numericValue > 0) return numericValue;
+  const dateValue = new Date(value || 0).getTime();
+  return Number.isFinite(dateValue) && dateValue > 0 ? dateValue : 0;
+};
 
 const isTripAssignedToDriver = (trip, driverId) => {
   const normalizedDriverId = String(driverId || '').trim();
@@ -171,6 +228,50 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
   const nextWorkflow = {
     ...workflowState
   };
+
+  if (action === 'activate-willcall') {
+    const existingActivationTimestamp = parseStoredTimestamp(trip?.willCallActivatedAt) || timestamp;
+    const existingActivationIso = parseStoredTimestamp(trip?.willCallActivatedAt) > 0
+      ? new Date(parseStoredTimestamp(trip?.willCallActivatedAt)).toISOString()
+      : new Date(timestamp).toISOString();
+    const activationTimeLabel = formatClockTime(existingActivationTimestamp);
+    const activationWorkflowEvent = buildWorkflowEvent({
+      tripId: trip?.id || 'trip',
+      action,
+      timestamp: existingActivationTimestamp,
+      timeLabel: activationTimeLabel,
+      locationSnapshot,
+      riderSignatureName,
+      compliance: {
+        measured: false,
+        isLate: false,
+        lateByMinutes: null
+      }
+    });
+
+    return {
+      patch: {
+        willCallOverride: 'manual',
+        willCallActivatedAt: existingActivationIso,
+        driverTripStatus: 'WillCall Activated',
+        driverWorkflow: {
+          ...nextWorkflow,
+          willCallActivatedAt: existingActivationTimestamp,
+          willCallActivatedTimeLabel: activationTimeLabel
+        },
+        updatedAt: existingActivationTimestamp
+      },
+      workflowEvent: activationWorkflowEvent,
+      compliance: {
+        measured: false,
+        isLate: false,
+        lateByMinutes: null
+      },
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel: activationTimeLabel
+    };
+  }
 
   if (action === 'accept') {
     return {
@@ -451,26 +552,40 @@ export async function POST(request) {
   }
 
   if (action === 'cancel') {
-    const arrivedPickup = Boolean(currentTrip?.arrivedAt || currentTrip?.driverWorkflow?.arrivedPickupAt || currentTrip?.driverWorkflow?.arrivalAt);
+    const tripActivated = isTripActivatedForCancellation(currentTrip);
     const alreadyMoved = Boolean(currentTrip?.patientOnboardAt || currentTrip?.startTripAt || currentTrip?.arrivedDestinationAt || currentTrip?.completedAt || currentTrip?.driverWorkflow?.patientOnboardAt || currentTrip?.driverWorkflow?.startTripAt || currentTrip?.driverWorkflow?.arrivedDestinationAt || currentTrip?.driverWorkflow?.completedAt);
-    if (!arrivedPickup) {
-      return jsonWithMobileCors(request, { ok: false, error: 'Cancel is only allowed after Arrived Pickup.' }, { status: 400 });
-    }
     if (alreadyMoved) {
       return jsonWithMobileCors(request, { ok: false, error: 'Cancel is only allowed before Patient Onboard.' }, { status: 400 });
     }
     if (!cancellationReason) {
       return jsonWithMobileCors(request, { ok: false, error: 'Cancellation reason is required.' }, { status: 400 });
     }
-    if (!cancellationPhotoDataUrl) {
-      return jsonWithMobileCors(request, { ok: false, error: 'Cancellation photo is required.' }, { status: 400 });
+    if (tripActivated && !cancellationPhotoDataUrl) {
+      return jsonWithMobileCors(request, { ok: false, error: 'Cancellation photo is required once the trip is in progress.' }, { status: 400 });
     }
   }
 
   const requestedEventTimestamp = Number(body?.eventTimestamp);
-  const timestamp = Number.isFinite(requestedEventTimestamp) && requestedEventTimestamp > 0
+  let timestamp = Number.isFinite(requestedEventTimestamp) && requestedEventTimestamp > 0
     ? requestedEventTimestamp
     : Date.now();
+
+  if (action === 'en-route') {
+    const existingEnRouteTimestamp = parseStoredTimestamp(currentTrip?.driverWorkflow?.departureToPickupAt)
+      || parseStoredTimestamp(currentTrip?.driverWorkflow?.departureAt)
+      || parseStoredTimestamp(currentTrip?.enRouteAt);
+    if (existingEnRouteTimestamp > 0) {
+      timestamp = existingEnRouteTimestamp;
+    }
+  }
+
+  if (action === 'activate-willcall') {
+    const existingWillCallTimestamp = parseStoredTimestamp(currentTrip?.willCallActivatedAt);
+    if (existingWillCallTimestamp > 0) {
+      timestamp = existingWillCallTimestamp;
+    }
+  }
+
   const actionUpdate = buildTripActionUpdate(currentTrip, action, timestamp, {
     locationSnapshot: body?.locationSnapshot,
     riderSignatureName,
@@ -505,6 +620,12 @@ export async function POST(request) {
     patch.canceledByDriverName = String(currentDriver?.name || currentTrip?.driverName || '').trim() || driverId;
   }
 
+  let currentDriver = null;
+  if (action === 'activate-willcall') {
+    const adminPayload = await readNemtAdminPayload();
+    currentDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
+  }
+
   const nextTrips = trips.map(trip => String(trip?.id || '').trim() === tripId ? {
     ...trip,
     ...patch
@@ -533,6 +654,18 @@ export async function POST(request) {
   });
   if (disciplineEvent) {
     await upsertDriverDisciplineEvent(disciplineEvent);
+  }
+
+  if (action === 'activate-willcall') {
+    await upsertSystemMessage(buildWillCallActivationMessage({
+      currentDriver,
+      currentTrip: {
+        ...currentTrip,
+        ...patch
+      },
+      driverId,
+      timestamp
+    }));
   }
 
   let arrivalNotifications = null;

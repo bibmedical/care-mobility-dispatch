@@ -31,7 +31,7 @@ export const DriverPasswordResetScreen = ({ runtime }: Props) => {
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Password Update Required</Text>
         <Text style={styles.title}>Change your driver password</Text>
-        <Text style={styles.body}>This account must save a new password before entering the APK. Dispatch can force it manually, and passwords now expire every 90 days.</Text>
+        <Text style={styles.body}>This account must save a new password before entering the app. Dispatch can force it manually, and passwords now expire every 90 days.</Text>
         <TextInput value={newPassword} onChangeText={setNewPassword} placeholder="New password" placeholderTextColor="#7f8ca8" style={styles.input} secureTextEntry autoCapitalize="none" />
         <TextInput value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Confirm new password" placeholderTextColor="#7f8ca8" style={styles.input} secureTextEntry autoCapitalize="none" />
         {localError ? <Text style={styles.errorText}>{localError}</Text> : null}

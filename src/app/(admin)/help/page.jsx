@@ -366,7 +366,7 @@ const DIARIO_2026_04_16 = [{
   area: 'Local shortcut icon',
   detail: 'The web app now exposes a manifest and app icon so localhost can be saved as a website shortcut with an icon. Use the browser menu on http://localhost:3000 to install or create the shortcut.'
 }, {
-  area: 'APK message pipeline repair',
+  area: 'App message pipeline repair',
   detail: 'A missing normalizeDispatchMessageRecord import in nemt-dispatch-store caused /api/mobile/driver-messages POST to fail after saving the system message, so Web V2 did not receive the dispatch-thread update. The fix restores the thread write path used by Dispatcher messaging.'
 }, {
   area: 'Scanner ZIP rule',
@@ -375,11 +375,11 @@ const DIARIO_2026_04_16 = [{
   area: 'Render deploy record after scanner fix',
   detail: 'After validating local imports, a real Render deploy was pushed with the scanner ZIP rule, the dispatcher scroll-loop repair, the dispatch-thread message import fix, and the web manifest/icon block. During local verification the page first appeared blank because a stale dev .next output served 404 client assets, then Dispatcher showed a Maximum update depth error from the trip-table scroll effect. Both local blockers were repaired before the deploy push a4f1cab.'
 }, {
-  area: 'APK receive visibility rule',
+  area: 'App receive visibility rule',
   detail: 'The next messaging law is permanent: driver-app incoming web messages must not be split into separate threads by dispatcher name. That name-based split is where this problem started: the driver could stop seeing what arrived under Carlos, and Carlos could stop seeing the driver reply in the same shared conversation. Incoming dispatcher-web messages now belong in one stable Dispatch thread so both sides see the same history.'
 }, {
-  area: 'APK operations added after messaging repair',
-  detail: 'The APK now supports Time Off with 2-day notice, optional photo upload, a persistent submitted state, and an I\'M BACK reactivation action. It also restores patient phone call/text fallbacks, stronger GPS button backgrounds, and an English driver application form under login.'
+  area: 'App operations added after messaging repair',
+  detail: 'The app now supports Time Off with 2-day notice, optional photo upload, a persistent submitted state, and an I\'M BACK reactivation action. It also restores patient phone call/text fallbacks, stronger GPS button backgrounds, and an English driver application form under login.'
 }, {
   area: 'Day-off visibility law on web',
   detail: 'Drivers with active Time Off must remain visible in Dispatcher and Trip Dashboard. The safe rule is gray visibility plus appointment labeling in the existing driver selectors and route panels, not removal from the driver list and not any Excel/import mutation.'
@@ -650,7 +650,7 @@ const HelpPage = () => {
             <CardBody>
               <div className="d-flex flex-column gap-2 mb-3">
                 <h5 className="mb-0">Web Recovery Notes — April 16, 2026</h5>
-                <p className="text-muted mb-0">Web-only summary of the dispatch recovery work completed today. This section excludes APK/mobile-only changes on purpose.</p>
+                <p className="text-muted mb-0">Web-only summary of the dispatch recovery work completed today. This section excludes app/mobile-only changes on purpose.</p>
               </div>
               <div className="d-flex flex-column gap-2">
                 {WEB_RECOVERY_2026_04_16.map(item => <div key={item.area} className="border rounded p-3">
@@ -672,11 +672,11 @@ const HelpPage = () => {
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V18</Badge>
-                <span className="fw-semibold text-dark">APK Time Off Visibility + Driver Appointment Safety</span>
+                <span className="fw-semibold text-dark">App Time Off Visibility + Driver Appointment Safety</span>
                 <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026 — Latest</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
-                <li>Time Off in the APK now enforces 2-day notice, no longer requires a photo, stays visibly submitted, and lets the driver reactivate with an I\'M BACK action.</li>
+                <li>Time Off in the app now enforces 2-day notice, no longer requires a photo, stays visibly submitted, and lets the driver reactivate with an I\'M BACK action.</li>
                 <li>Dispatcher and Trip Dashboard now keep day-off drivers visible in the normal driver flows instead of making them look missing from operations.</li>
                 <li>The safe visibility rule is gray + appointment label inside the existing driver selectors, driver panel, and route header.</li>
                 <li>Safe future placement for Fuel and Day Off shortcuts is next to selected-driver controls in Dispatcher and Trip Dashboard, not in Excel Loader or a new disconnected module.</li>
@@ -686,14 +686,14 @@ const HelpPage = () => {
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V17</Badge>
-                <span className="fw-semibold text-dark">APK Receive Visibility — Single Dispatch Thread</span>
+                <span className="fw-semibold text-dark">App Receive Visibility — Single Dispatch Thread</span>
                 <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Documented the real visibility problem in driver-app messaging: incoming web messages were being split into separate threads by dispatcher name instead of one stable Dispatch conversation.</li>
                 <li>That split is what started the problem: the driver did not always see what arrived under Carlos, and Carlos did not always see the driver reply in the same thread.</li>
                 <li>The rule is now explicit: incoming dispatcher-web messages must be grouped under Dispatch, not under each sender name.</li>
-                <li>This keeps the APK inbox aligned with the operational expectation that driver-to-dispatch messaging is one shared conversation, not many hidden name-based threads.</li>
+                <li>This keeps the app inbox aligned with the operational expectation that driver-to-dispatch messaging is one shared conversation, not many hidden name-based threads.</li>
               </ul>
             </div>
 
@@ -729,11 +729,11 @@ const HelpPage = () => {
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V14</Badge>
-                <span className="fw-semibold text-dark">APK Messages To Web V2 — Dispatch Thread Fix</span>
+                <span className="fw-semibold text-dark">App Messages To Web V2 — Dispatch Thread Fix</span>
                 <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
-                <li>Found the real break in the APK-to-web message path: /api/mobile/driver-messages POST was returning 500 after the system message save.</li>
+                <li>Found the real break in the app-to-web message path: /api/mobile/driver-messages POST was returning 500 after the system message save.</li>
                 <li>Root cause was a missing normalizeDispatchMessageRecord import in nemt-dispatch-store during dispatch-thread persistence.</li>
                 <li>After the import fix, the local POST returned 200 and the message appeared in /api/nemt/dispatch/threads.</li>
                 <li>This matters because Web V2 reads the driver thread update path, not just the raw system message row.</li>
@@ -765,7 +765,7 @@ const HelpPage = () => {
                 <li>Recorded that production still uses SQL when DATABASE_URL exists and that the local fallback only runs outside production.</li>
                 <li>Documented the local failure pattern that made trips appear lost when SQL was unavailable during development.</li>
                 <li>Documented the guard that preserves manual trips during import replacement and per-date clearing flows.</li>
-                <li>Kept the deploy scope written down so future edits do not mix unrelated APK/mobile changes with web trip safety work.</li>
+                <li>Kept the deploy scope written down so future edits do not mix unrelated app/mobile changes with web trip safety work.</li>
               </ul>
             </div>
 

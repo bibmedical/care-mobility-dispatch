@@ -22,7 +22,7 @@ import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'r
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
-import { Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
+import { Alert, Badge, Button, Card, CardBody, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 
 const TRIP_COLUMN_MIN_WIDTHS = {
   pickup: 56,
@@ -891,12 +891,12 @@ const DispatcherWorkspace = () => {
   const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
   const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
   const {
-    drivers,
-    trips,
-    routePlans,
-    selectedDriverId,
+    drivers: rawDrivers,
+    trips: rawTrips,
+    routePlans: rawRoutePlans,
+    selectedDriverId: rawSelectedDriverId,
     setSelectedDriverId,
-    uiPreferences,
+    uiPreferences: rawUiPreferences,
     assignTripsToDriver,
     assignTripsToSecondaryDriver,
     unassignTrips,
@@ -912,6 +912,11 @@ const DispatcherWorkspace = () => {
     setDispatcherVisibleTripColumns,
     setMapProvider
   } = useNemtContext();
+  const drivers = Array.isArray(rawDrivers) ? rawDrivers : [];
+  const trips = Array.isArray(rawTrips) ? rawTrips : [];
+  const routePlans = Array.isArray(rawRoutePlans) ? rawRoutePlans : [];
+  const selectedDriverId = rawSelectedDriverId ?? null;
+  const uiPreferences = rawUiPreferences && typeof rawUiPreferences === 'object' ? rawUiPreferences : {};
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
@@ -938,6 +943,7 @@ const DispatcherWorkspace = () => {
   const [mapLocked, setMapLocked] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [showLateTripsModal, setShowLateTripsModal] = useState(false);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
   const [isRoutePanelCollapsed, setIsRoutePanelCollapsed] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
@@ -1656,6 +1662,21 @@ const DispatcherWorkspace = () => {
         return null;
       case 'actions':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
+            {canReinstateCancelledTrips ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked || selectedTripIds.length === 0} title="Reincorporar viajes cancelados seleccionados">
+                Reinstate
+              </Button> : null}
+            <Button
+              variant={lateTripsInCurrentView.length > 0 ? 'danger' : 'outline-dark'}
+              size="sm"
+              onClick={() => {
+                setShowLateTripsModal(true);
+                setStatusMessage(lateTripsInCurrentView.length > 0 ? `Mostrando ${lateTripsInCurrentView.length} trip(s) tarde en Dispatcher.` : 'No hay trips tarde en la vista actual de Dispatcher.');
+              }}
+              disabled={mapLocked}
+              title="View late trips"
+            >
+              Late Trips{lateTripsInCurrentView.length > 0 ? ` (${lateTripsInCurrentView.length})` : ''}
+            </Button>
             <Button
               variant="success"
               size="sm"
@@ -1862,8 +1883,24 @@ const DispatcherWorkspace = () => {
     if (!dropoffCityValue) return true;
     return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
+  const lateTripsInCurrentView = useMemo(() => filteredTrips.filter(trip => {
+    const effectiveStatus = String(getEffectiveTripStatus(trip)).trim().toLowerCase();
+    if (['cancelled', 'completed'].includes(effectiveStatus)) return false;
+    const lateMinutesDisplay = getTripLateMinutesDisplay(trip);
+    const lateMinutes = Number(lateMinutesDisplay);
+    return lateMinutesDisplay !== '-' && Number.isFinite(lateMinutes) && lateMinutes > 0;
+  }).sort((leftTrip, rightTrip) => {
+    const leftLateMinutes = Number(getTripLateMinutesDisplay(leftTrip)) || 0;
+    const rightLateMinutes = Number(getTripLateMinutesDisplay(rightTrip)) || 0;
+    if (leftLateMinutes !== rightLateMinutes) return rightLateMinutes - leftLateMinutes;
+    const leftPickupTime = leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
+    const rightPickupTime = rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
+    if (leftPickupTime !== rightPickupTime) return leftPickupTime - rightPickupTime;
+    return String(leftTrip.id || '').localeCompare(String(rightTrip.id || ''));
+  }), [filteredTrips]);
   const isCancelledPanelMode = rightPanelMode === 'cancelled';
   const isCancelledRoutesMode = isCancelledPanelMode && cancelledDetailMode === 'routes';
+  const canReinstateCancelledTrips = isCancelledPanelMode || tripStatusFilter === 'cancelled';
   const tripTableTrips = useMemo(() => isCancelledPanelMode ? isCancelledRoutesMode ? dayRoutesByDriverTrips : cancelledSummaryTrips : filteredTrips, [cancelledSummaryTrips, dayRoutesByDriverTrips, filteredTrips, isCancelledPanelMode, isCancelledRoutesMode]);
   const activeDispatcherContextTokens = useMemo(() => {
     const tokens = [];
@@ -2745,6 +2782,7 @@ const DispatcherWorkspace = () => {
     const normalizedDriverId = String(nextDriverId || '').trim();
     const preferredRouteId = getPreferredRouteIdForDriver(normalizedDriverId);
     const driver = drivers.find(item => String(item?.id || '').trim() === normalizedDriverId) || null;
+    setSelectedTripIds([]);
     setSelectedDriverId(normalizedDriverId || null);
     setIsManualDriverScope(Boolean(normalizedDriverId));
     setSelectedRouteId(preferredRouteId || '');
@@ -2899,12 +2937,14 @@ const DispatcherWorkspace = () => {
   };
 
   const handleConfirmCancelTrips = () => {
+    const normalizedCancelTripIds = cancelTripIds.map(id => String(id || '').trim()).filter(Boolean);
     const reason = String(cancelReasonDraft || '').trim();
-    cancelTrips(cancelTripIds, {
+    cancelTrips(normalizedCancelTripIds, {
       source: 'dispatcher-manual',
       reason
     });
-    setStatusMessage(`${cancelTripIds.length} trip(s) cancelados.`);
+    setSelectedTripIds(currentIds => currentIds.map(id => String(id || '').trim()).filter(id => id && !normalizedCancelTripIds.includes(id)));
+    setStatusMessage(`${normalizedCancelTripIds.length} trip(s) cancelados.`);
     handleCloseCancelModal();
   };
 
@@ -3351,6 +3391,7 @@ const DispatcherWorkspace = () => {
     const updateTripTableScrollWidth = () => {
       const scrollContainer = tripTableBottomScrollerRef.current;
       const tableNode = tripTableElementRef.current;
+      if (!scrollContainer && !tableNode) return;
       const containerWidth = scrollContainer?.scrollWidth || 0;
       const tableWidth = tableNode?.scrollWidth || 0;
       const nextScrollWidth = Math.max(containerWidth, tableWidth);
@@ -3362,23 +3403,14 @@ const DispatcherWorkspace = () => {
     };
 
     updateTripTableScrollWidth();
-    const timeoutId = window.setTimeout(updateTripTableScrollWidth, 0);
+    const frameId = window.requestAnimationFrame(updateTripTableScrollWidth);
     window.addEventListener('resize', updateTripTableScrollWidth);
 
-    let resizeObserver;
-    if (typeof window !== 'undefined' && 'ResizeObserver' in window) {
-      resizeObserver = new window.ResizeObserver(() => {
-        updateTripTableScrollWidth();
-      });
-      if (tripTableElementRef.current) resizeObserver.observe(tripTableElementRef.current);
-    }
-
     return () => {
-      window.clearTimeout(timeoutId);
+      window.cancelAnimationFrame(frameId);
       window.removeEventListener('resize', updateTripTableScrollWidth);
-      if (resizeObserver) resizeObserver.disconnect();
     };
-  }, [columnWidths, groupedFilteredTripRows, visibleTripColumns, dispatcherLayout.actionsVisible, dispatcherLayout.mapVisible, dispatcherLayout.messagingVisible, dispatcherLayout.tripsVisible, expanded]);
+  }, [columnWidths, orderedVisibleTripColumns, tripTableTrips.length, dispatcherLayout.actionsVisible, dispatcherLayout.mapVisible, dispatcherLayout.messagingVisible, dispatcherLayout.tripsVisible, expanded]);
 
   useEffect(() => {
     const handleAssistantAction = () => refreshDispatchState({ forceServer: true });
@@ -3444,12 +3476,20 @@ const DispatcherWorkspace = () => {
       <CardBody className="p-0">
         {showInlineMap ? <div className="position-relative h-100">
           <div className="position-absolute top-0 start-0 p-2" style={{ zIndex: 650 }}>
-            <Button variant="dark" size="sm" onClick={() => {
-            setStatusMessage('Returning to Route Planner.');
-            router.push('/trip-dashboard');
-          }}>
-              Route Planner
-            </Button>
+            <div className="d-flex align-items-center gap-2">
+              <Button variant="dark" size="sm" onClick={() => {
+              setStatusMessage('Returning to Route Planner.');
+              router.push('/trip-dashboard');
+            }}>
+                Route Planner
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => {
+              setStatusMessage('Opening Applications.');
+              router.push('/driver-applications');
+            }}>
+                Applications
+              </Button>
+            </div>
           </div>
           <MapContainer className="dispatcher-map" center={[28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapInteractionLocked} dragging={!mapInteractionLocked} doubleClickZoom={!mapInteractionLocked} touchZoom={!mapInteractionLocked} boxZoom={!mapInteractionLocked} keyboard={!mapInteractionLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%', cursor: mapInteractionLocked ? 'not-allowed' : 'grab' }}>
             <DispatcherMapResizer resizeKey={`${dispatcherLayout.mapVisible}-${dispatcherLayout.tripsVisible}-${dispatcherLayout.messagingVisible}-${dispatcherLayout.actionsVisible}-${columnSplit}-${rowSplit}-${selectedTripIds.join(',')}-inline`} />
@@ -3741,6 +3781,7 @@ const DispatcherWorkspace = () => {
                       setCancelledDetailMode(nextMode);
                       setStatusMessage(nextMode === 'routes' ? 'Mostrando viajes del dia agrupados por chofer.' : 'Mostrando cancelados ordenados por nombre.');
                     }}>{isCancelledRoutesMode ? 'By Names' : 'By Driver'}</Button>
+                        <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips} disabled={mapLocked || selectedTripIds.length === 0}>Reinstate Selected</Button>
                       </div>
                       <Button variant="outline-danger" size="sm" onClick={() => {
                     exitCancelledPanelMode();
@@ -3857,6 +3898,10 @@ const DispatcherWorkspace = () => {
                               <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
                                 <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={event => {
                               event.stopPropagation();
+                              if (getEffectiveTripStatus(row.trip) === 'Cancelled') {
+                                handleReinstateTrip(row.trip.id);
+                                return;
+                              }
                               setSelectedTripIds([row.trip.id]);
                               setSelectedDriverId(normalizeDriverId(row.trip.driverId ?? selectedDriverId) || null);
                               setSelectedRouteId(normalizeRouteId(row.trip.routeId) || '');
@@ -3868,7 +3913,7 @@ const DispatcherWorkspace = () => {
                                 });
                               }
                               setStatusMessage(`Trip ${row.trip.id} activo.`);
-                            }}>ACT</Button>
+                            }} title={getEffectiveTripStatus(row.trip) === 'Cancelled' ? 'Reinstate trip' : 'Set trip active'}>{getEffectiveTripStatus(row.trip) === 'Cancelled' ? 'I' : 'ACT'}</Button>
                               </div>
                             </td>
                             <td style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
@@ -4069,6 +4114,38 @@ const DispatcherWorkspace = () => {
           <Modal.Footer>
             <Button variant="outline-secondary" onClick={() => setShowColumnPicker(false)}>Close</Button>
           </Modal.Footer>
+        </Modal>
+
+        <Modal show={showLateTripsModal} onHide={() => setShowLateTripsModal(false)} size="sm" centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Late Trips</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="small text-muted mb-3">Dispatcher local view only. This list follows the current Dispatcher filters so you can quickly review who is running late.</div>
+            <div className="rounded border p-2 mb-3" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe4f0' }}>
+              <div className="fw-semibold">Dispatcher date</div>
+              <div className="small text-muted">{daySummaryMetrics.dateKey || 'No date selected'}</div>
+              <div className="small text-muted mt-1">Current late trips in view: {lateTripsInCurrentView.length}</div>
+            </div>
+            {lateTripsInCurrentView.length > 0 ? <div className="d-flex flex-column gap-2" style={{ maxHeight: 360, overflowY: 'auto' }}>
+                {lateTripsInCurrentView.map(trip => {
+              const driverName = String(trip?.driverName || '').trim() || String(trip?.driverId || '').trim() || String(trip?.secondaryDriverName || '').trim() || String(trip?.secondaryDriverId || '').trim() || 'Unassigned';
+              const lateMinutesDisplay = getTripLateMinutesDisplay(trip);
+              return <div key={`late-trip-${trip.id}`} className="rounded border p-2" style={{ backgroundColor: '#fff1f2', borderColor: '#fda4af' }}>
+                        <div className="d-flex align-items-start justify-content-between gap-2">
+                          <div>
+                            <div className="fw-semibold">{getDisplayTripId(trip)} - {trip.rider || 'Unknown rider'}</div>
+                            <div className="small text-muted">Driver: {driverName}</div>
+                          </div>
+                          <Badge bg="danger">{lateMinutesDisplay} min</Badge>
+                        </div>
+                        <div className="small mt-2">Pickup: {trip.scheduledPickup || trip.pickup || 'TBD'}</div>
+                        <div className="small text-muted mt-1">{trip.address || 'No pickup address'}</div>
+                        <div className="small text-muted">{trip.destination || 'No dropoff address'}</div>
+                      </div>;
+            })}
+              </div> : <Alert variant="success" className="mb-0">No late trips found in the current Dispatcher view.</Alert>}
+          </Modal.Body>
         </Modal>
 
         <Modal show={showLayoutModal} onHide={() => setShowLayoutModal(false)} centered>

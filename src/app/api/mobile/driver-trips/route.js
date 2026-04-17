@@ -126,6 +126,51 @@ const getEffectiveTripStatus = trip => {
   return normalizedStatus || 'Unassigned';
 };
 
+const isDriverTripInProgress = trip => {
+  if (!trip) return false;
+  const normalizedStatus = String(trip?.status || '').trim().toLowerCase();
+  const workflowStatus = String(trip?.driverWorkflow?.status || '').trim().toLowerCase();
+  if (
+    normalizedStatus.includes('completed')
+    || normalizedStatus.includes('cancelled')
+    || normalizedStatus.includes('canceled')
+    || workflowStatus === 'complete'
+    || workflowStatus === 'completed'
+    || workflowStatus === 'cancel'
+    || workflowStatus === 'cancelled'
+    || workflowStatus === 'canceled'
+  ) {
+    return false;
+  }
+  return Boolean(
+    trip?.driverWorkflow?.acceptedAt
+    || trip?.driverWorkflow?.departureAt
+    || trip?.driverWorkflow?.departureToPickupAt
+    || trip?.driverWorkflow?.arrivalAt
+    || trip?.driverWorkflow?.arrivedPickupAt
+    || trip?.driverWorkflow?.patientOnboardAt
+    || trip?.driverWorkflow?.startTripAt
+    || trip?.driverWorkflow?.destinationDepartureAt
+    || trip?.driverWorkflow?.arrivedDestinationAt
+    || trip?.enRouteAt
+    || trip?.arrivedAt
+    || trip?.patientOnboardAt
+    || trip?.startTripAt
+    || trip?.arrivedDestinationAt
+    || normalizedStatus === 'accepted'
+    || normalizedStatus.includes('en-route')
+    || normalizedStatus.includes('arrived')
+    || normalizedStatus.includes('progress')
+    || normalizedStatus.includes('destination')
+    || workflowStatus === 'accepted'
+    || workflowStatus === 'en-route'
+    || workflowStatus === 'arrived-pickup'
+    || workflowStatus === 'patient-onboard'
+    || workflowStatus === 'to-destination'
+    || workflowStatus === 'arrived-destination'
+  );
+};
+
 const buildDriverWorkflowState = (trip, workflowEvents = []) => {
   const existingWorkflow = trip?.driverWorkflow && typeof trip.driverWorkflow === 'object' ? trip.driverWorkflow : null;
   const fallbackAuditTrail = Array.isArray(existingWorkflow?.auditTrail) ? existingWorkflow.auditTrail : [];
@@ -301,7 +346,10 @@ export async function GET(request) {
         isNextDayTrip: mappedTrip.serviceDate === nextDayServiceDateKey
       };
     });
-    const activeTrip = trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed') || trips[0] || null;
+    const activeTrip = trips.find(trip => isDriverTripInProgress(trip))
+      || trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed')
+      || trips[0]
+      || null;
     const driverState = (Array.isArray(adminState?.drivers) ? adminState.drivers : []).find(item => String(item?.id || '').trim() === String(driver.id).trim()) || null;
 
     const now = Date.now();

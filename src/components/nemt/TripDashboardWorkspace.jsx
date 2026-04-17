@@ -1069,6 +1069,7 @@ const TripDashboardWorkspace = () => {
   const [routeSearch, setRouteSearch] = useState('');
   const [showBlacklistModal, setShowBlacklistModal] = useState(false);
   const [showTripImportModal, setShowTripImportModal] = useState(false);
+  const [showDayOffModal, setShowDayOffModal] = useState(false);
   const [showManualTripModal, setShowManualTripModal] = useState(false);
   const [blacklistSearch, setBlacklistSearch] = useState('');
   const [blacklistDraft, setBlacklistDraft] = useState(createEmptyBlacklistEntryDraft());
@@ -1836,6 +1837,7 @@ const TripDashboardWorkspace = () => {
     return String(riderProfiles?.[profileKey]?.companion || '').trim();
   };
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), uiPreferences?.timeZone), [uiPreferences?.timeZone]);
+  const activeRouteDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
   const operatorDisplayName = useMemo(() => {
     const sessionName = String(session?.user?.name || '').trim();
     const sessionUsername = String(session?.user?.username || '').trim();
@@ -2655,6 +2657,16 @@ const TripDashboardWorkspace = () => {
       return getTripServiceDateKey(trip) === appointmentDate ? total + 1 : total;
     }, 0);
   };
+  const activeTimeOffDrivers = useMemo(() => drivers.filter(driver => Boolean(getDriverTimeOffDateForUi(driver))).sort((leftDriver, rightDriver) => {
+    const leftDate = getDriverTimeOffDateForUi(leftDriver);
+    const rightDate = getDriverTimeOffDateForUi(rightDriver);
+    if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+    return String(leftDriver?.name || '').localeCompare(String(rightDriver?.name || ''), undefined, {
+      sensitivity: 'base'
+    });
+  }), [drivers]);
+  const routeDayOffDrivers = useMemo(() => activeTimeOffDrivers.filter(driver => getDriverTimeOffDateForUi(driver) === activeRouteDateKey), [activeRouteDateKey, activeTimeOffDrivers]);
+  const futureDayOffDrivers = useMemo(() => activeTimeOffDrivers.filter(driver => getDriverTimeOffDateForUi(driver) !== activeRouteDateKey), [activeRouteDateKey, activeTimeOffDrivers]);
   const filteredDrivers = useMemo(() => {
     const term = driverSearch.trim().toLowerCase();
     const capabilityFilters = Array.isArray(driverVehicleCapabilityFilters) ? driverVehicleCapabilityFilters : [];
@@ -5039,6 +5051,12 @@ const TripDashboardWorkspace = () => {
           }}>
               Excel Loader
             </Button>
+            <Button variant={routeDayOffDrivers.length > 0 ? 'danger' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            setShowDayOffModal(true);
+            setStatusMessage(routeDayOffDrivers.length > 0 ? `${routeDayOffDrivers.length} driver(s) have day off on ${activeRouteDateKey}.` : activeTimeOffDrivers.length > 0 ? `Showing ${activeTimeOffDrivers.length} active day-off appointment(s).` : 'No active day-off appointments right now.');
+          }}>
+              Day Off{routeDayOffDrivers.length > 0 ? ` (${routeDayOffDrivers.length})` : ''}
+            </Button>
             <Button variant={showConfirmationTools ? 'warning' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleToggleConfirmationTools}>
               Confirmation
             </Button>
@@ -6047,6 +6065,50 @@ const TripDashboardWorkspace = () => {
             <Button variant="success" onClick={handleImportTripsIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing}>Import Trips</Button>
             <Button variant="primary" onClick={handleLoadRoutesIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing || isRouteImporting}>{isRouteImporting ? 'Loading Route...' : 'Load Route'}</Button>
           </Modal.Footer>
+        </Modal>
+
+        <Modal show={showDayOffModal} onHide={() => setShowDayOffModal(false)} size="sm" centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Day Off List</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="small text-muted mb-3">Route-planner view only. This list helps the person building the route know who is out for the selected day. Fuel approval stays in Dispatcher.</div>
+            <div className="rounded border p-2 mb-3" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe4f0' }}>
+              <div className="fw-semibold">Route date</div>
+              <div className="small text-muted">{activeRouteDateKey || 'No date selected'}</div>
+            </div>
+            {routeDayOffDrivers.length > 0 ? <div className="mb-3">
+                <div className="fw-semibold mb-2">Out on this route date</div>
+                <div className="d-flex flex-column gap-2">
+                  {routeDayOffDrivers.map(driver => <div key={`route-dayoff-${driver.id}`} className="rounded border p-2" style={{ backgroundColor: '#fff7ed', borderColor: '#fdba74' }}>
+                      <div className="d-flex align-items-start justify-content-between gap-2">
+                        <div>
+                          <div className="fw-semibold">{driver.name}</div>
+                          <div className="small text-muted">{driver.vehicle || 'No vehicle'}{driver.attendant ? ` | Attendant: ${driver.attendant}` : ''}</div>
+                        </div>
+                        <Badge bg="warning" text="dark">{getDriverTimeOffDateForUi(driver)}</Badge>
+                      </div>
+                      <div className="small mt-2">{String(driver?.timeOffAppointment?.appointmentType || 'Appointment').trim()}</div>
+                      {String(driver?.timeOffAppointment?.note || '').trim() ? <div className="small text-muted mt-1">{String(driver.timeOffAppointment.note).trim()}</div> : null}
+                    </div>)}
+                </div>
+              </div> : <Alert variant="success" className="mb-3">No drivers have day off on {activeRouteDateKey}.</Alert>}
+            {futureDayOffDrivers.length > 0 ? <div>
+                <div className="fw-semibold mb-2">Other active appointments</div>
+                <div className="d-flex flex-column gap-2" style={{ maxHeight: 220, overflowY: 'auto' }}>
+                  {futureDayOffDrivers.map(driver => <div key={`future-dayoff-${driver.id}`} className="rounded border p-2" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe4f0' }}>
+                      <div className="d-flex align-items-start justify-content-between gap-2">
+                        <div>
+                          <div className="fw-semibold">{driver.name}</div>
+                          <div className="small text-muted">{String(driver?.timeOffAppointment?.appointmentType || 'Appointment').trim()}</div>
+                        </div>
+                        <Badge bg="secondary">{getDriverTimeOffDateForUi(driver)}</Badge>
+                      </div>
+                    </div>)}
+                </div>
+              </div> : null}
+            {activeTimeOffDrivers.length === 0 ? <Alert variant="light" className="mb-0">No active day-off appointments found.</Alert> : null}
+          </Modal.Body>
         </Modal>
 
         <Modal show={showColumnPicker} onHide={() => setShowColumnPicker(false)} size="xl" centered scrollable>

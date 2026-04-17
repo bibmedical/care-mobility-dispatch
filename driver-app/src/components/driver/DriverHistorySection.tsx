@@ -16,6 +16,7 @@ const formatTs = (ts?: number | string | null) => {
 
 const ACTION_LABELS: Record<string, string> = {
   accept: 'Accepted by driver',
+  'activate-willcall': 'WillCall activated by driver',
   'en-route': 'Driver started route to pickup',
   arrived: 'Driver arrived at pickup',
   'patient-onboard': 'Patient onboard',
@@ -58,6 +59,7 @@ export const DriverHistorySection = ({ runtime }: Props) => {
 
         const driverEvents: { label: string; time: string }[] = [];
         if (wf?.acceptedAt) driverEvents.push({ label: ACTION_LABELS['accept'], time: formatTs(wf.acceptedAt) });
+        if (wf?.willCallActivatedAt || trip.willCallActivatedAt) driverEvents.push({ label: ACTION_LABELS['activate-willcall'], time: formatTs(wf?.willCallActivatedAt || trip.willCallActivatedAt) });
         if (wf?.departureToPickupAt || wf?.departureAt) driverEvents.push({ label: ACTION_LABELS['en-route'], time: formatTs(wf.departureToPickupAt || wf.departureAt) });
         if (wf?.arrivedPickupAt || wf?.arrivalAt) driverEvents.push({ label: ACTION_LABELS['arrived'], time: formatTs(wf.arrivedPickupAt || wf.arrivalAt) });
         if (wf?.patientOnboardAt) driverEvents.push({ label: ACTION_LABELS['patient-onboard'], time: formatTs(wf.patientOnboardAt) });
