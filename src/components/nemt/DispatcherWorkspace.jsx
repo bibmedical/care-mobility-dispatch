@@ -61,14 +61,26 @@ const buildDispatcherHelpButton = (router, setStatusMessage, buttonStyle) => <Bu
     Help
   </Button>;
 
-const getDriverTimeOffDate = driver => String(driver?.timeOffAppointment?.appointmentDate || '').trim();
+const getActiveTimeOffAppointment = driver => {
+  const appointment = driver?.timeOffAppointment;
+  if (!appointment || typeof appointment !== 'object') return null;
+  if (String(appointment.status || 'active').trim().toLowerCase() !== 'active') return null;
+  if (!String(appointment.appointmentDate || '').trim()) return null;
+  return appointment;
+};
+
+const getDriverTimeOffDate = driver => String(getActiveTimeOffAppointment(driver)?.appointmentDate || '').trim();
 
 const getDriverTimeOffLabel = driver => {
   const appointmentDate = getDriverTimeOffDate(driver);
   if (!appointmentDate) return '';
-  const appointmentType = String(driver?.timeOffAppointment?.appointmentType || 'Appointment').trim();
+  const appointmentType = String(getActiveTimeOffAppointment(driver)?.appointmentType || 'Appointment').trim();
   return `DAY OFF ${appointmentDate}${appointmentType ? ` - ${appointmentType}` : ''}`;
 };
+
+const getDriverTimeOffNote = driver => String(getActiveTimeOffAppointment(driver)?.note || '').trim();
+
+const getDriverTimeOffProof = driver => String(getActiveTimeOffAppointment(driver)?.excuseImageUrl || '').trim();
 
 const countDriverBlockedTrips = (driver, tripIds = [], trips = []) => {
   const appointmentDate = getDriverTimeOffDate(driver);
@@ -886,7 +898,7 @@ const DispatcherWorkspace = () => {
   const { themeMode } = useLayoutContext();
   const isDarkMode = themeMode === 'dark';
   const dispatcherSurfaceStyles = useMemo(() => buildDispatcherSurfaceStyles(isDarkMode), [isDarkMode]);
-  const { data: adminData } = useNemtAdminApi();
+  const { data: adminData, refresh: refreshAdminData } = useNemtAdminApi();
   const { data: smsData } = useSmsIntegrationApi();
   const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
   const { data: userPreferences, loading: userPreferencesLoading, saveData: saveUserPreferences } = useUserPreferencesApi();
@@ -944,6 +956,7 @@ const DispatcherWorkspace = () => {
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [showLateTripsModal, setShowLateTripsModal] = useState(false);
+  const [showTimeOffModal, setShowTimeOffModal] = useState(false);
   const [showLayoutModal, setShowLayoutModal] = useState(false);
   const [isRoutePanelCollapsed, setIsRoutePanelCollapsed] = useState(false);
   const [isToolbarEditMode, setIsToolbarEditMode] = useState(false);
@@ -959,6 +972,7 @@ const DispatcherWorkspace = () => {
   const [draggingToolbarRow2BlockId, setDraggingToolbarRow2BlockId] = useState(null);
   const [draggingToolbarRow3BlockId, setDraggingToolbarRow3BlockId] = useState(null);
   const [statusMessage, setStatusMessage] = useState('Dispatcher listo.');
+  const [timeOffActionKey, setTimeOffActionKey] = useState('');
   const adminDriversById = useMemo(() => new Map((Array.isArray(adminData?.drivers) ? adminData.drivers : []).map(driver => [String(driver?.id || '').trim(), driver])), [adminData?.drivers]);
   const adminVehiclesById = useMemo(() => new Map((Array.isArray(adminData?.vehicles) ? adminData.vehicles : []).map(vehicle => [String(vehicle?.id || '').trim(), vehicle])), [adminData?.vehicles]);
   const [columnSplit, setColumnSplit] = useState(50);
@@ -1054,6 +1068,22 @@ const DispatcherWorkspace = () => {
     if (!normalizedSelectedDriverId) return null;
     return drivers.find(driver => normalizeDriverId(driver?.id) === normalizedSelectedDriverId) ?? null;
   }, [drivers, selectedDriverId]);
+  const selectedDriverWithAdminDetails = useMemo(() => {
+    const normalizedSelectedDriverId = normalizeDriverId(selectedDriverId);
+    if (!normalizedSelectedDriverId) return selectedDriver;
+    return adminDriversById.get(normalizedSelectedDriverId) || selectedDriver;
+  }, [adminDriversById, selectedDriver, selectedDriverId]);
+  const activeTimeOffDrivers = useMemo(() => {
+    const sourceDrivers = Array.isArray(adminData?.drivers) && adminData.drivers.length > 0 ? adminData.drivers : drivers;
+    return sourceDrivers
+      .filter(driver => getActiveTimeOffAppointment(driver))
+      .sort((left, right) => {
+        const leftDate = getDriverTimeOffDate(left);
+        const rightDate = getDriverTimeOffDate(right);
+        if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
+        return String(left?.name || left?.displayName || left?.id || '').localeCompare(String(right?.name || right?.displayName || right?.id || ''), 'en', { sensitivity: 'base' });
+      });
+  }, [adminData?.drivers, drivers]);
   const selectedDriverColor = useMemo(() => getDriverColor(selectedDriver?.id || selectedDriver?.name), [selectedDriver]);
   const selectedRoute = useMemo(() => {
     const normalizedSelectedRouteId = normalizeRouteId(selectedRouteId);
@@ -1599,9 +1629,12 @@ const DispatcherWorkspace = () => {
             {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}{getDriverTimeOffLabel(driver) ? ` (${getDriverTimeOffLabel(driver)})` : ''}</option>)}
           </Form.Select>;
       case 'driver-assigned':
-        return selectedDriver ? <div className="d-flex align-items-center gap-2 flex-nowrap">
-            <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge>
-            {getDriverTimeOffDate(selectedDriver) ? <Badge bg="secondary">{getDriverTimeOffLabel(selectedDriver)}</Badge> : null}
+        return selectedDriver || activeTimeOffDrivers.length > 0 ? <div className="d-flex align-items-center gap-2 flex-nowrap">
+            {selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null}
+            {getDriverTimeOffDate(selectedDriverWithAdminDetails) ? <Badge bg="secondary">{getDriverTimeOffLabel(selectedDriverWithAdminDetails)}</Badge> : null}
+            <Button variant={activeTimeOffDrivers.length > 0 ? 'warning' : 'outline-dark'} size="sm" onClick={() => setShowTimeOffModal(true)} disabled={mapLocked} title="Review active day off requests">
+              Day Off{activeTimeOffDrivers.length > 0 ? ` (${activeTimeOffDrivers.length})` : ''}
+            </Button>
           </div> : null;
       case 'selected-count':
         return null;
@@ -3233,6 +3266,39 @@ const DispatcherWorkspace = () => {
     setStatusMessage(`Abriendo WhatsApp en una nueva pestaña para ${targetDriver.name}.`);
   };
 
+  const handleResolveTimeOffRequest = async (driverId, action) => {
+    const normalizedDriverId = normalizeDriverId(driverId);
+    if (!normalizedDriverId) return;
+
+    const actionKey = `${normalizedDriverId}:${action}`;
+    setTimeOffActionKey(actionKey);
+    try {
+      const response = await fetch(`/api/nemt/admin/driver-time-off/${encodeURIComponent(normalizedDriverId)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({ action })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to update time off request.');
+
+      await Promise.all([
+        refreshAdminData(),
+        refreshDispatchState({ forceServer: true })
+      ]);
+
+      const resolvedDriverLabel = String(payload?.driver?.name || selectedDriverWithAdminDetails?.name || normalizedDriverId).trim() || normalizedDriverId;
+      const actionLabel = action === 'deny' ? 'denegado' : 'cancelado';
+      setStatusMessage(`Day Off de ${resolvedDriverLabel} ${actionLabel} en web.`);
+    } catch (error) {
+      setStatusMessage(error?.message || 'No se pudo actualizar el Day Off.');
+    } finally {
+      setTimeOffActionKey('');
+    }
+  };
+
   const handleColumnResizeStart = (event, columnKey) => {
     event.preventDefault();
     event.stopPropagation();
@@ -4201,6 +4267,62 @@ const DispatcherWorkspace = () => {
             })}
               </div> : <Alert variant="success" className="mb-0">No late trips found in the current Dispatcher view.</Alert>}
           </Modal.Body>
+        </Modal>
+
+        <Modal show={showTimeOffModal} onHide={() => setShowTimeOffModal(false)} size="lg" centered>
+          <Modal.Header closeButton>
+            <Modal.Title>Day Off Requests</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="small text-muted mb-3">Only active Time Off requests are listed here. Deny or cancel removes the driver block in web and resolves the active dispatch alert for that request.</div>
+            {activeTimeOffDrivers.length > 0 ? <div className="d-flex flex-column gap-3" style={{ maxHeight: 520, overflowY: 'auto' }}>
+                {activeTimeOffDrivers.map(driver => {
+              const normalizedDriverId = normalizeDriverId(driver?.id);
+              const appointment = getActiveTimeOffAppointment(driver);
+              const proofUrl = getDriverTimeOffProof(driver);
+              const denyKey = `${normalizedDriverId}:deny`;
+              const cancelKey = `${normalizedDriverId}:cancel`;
+              return <div key={`timeoff-${normalizedDriverId}`} className="rounded border p-3" style={{ backgroundColor: '#f8fafc', borderColor: '#dbe4f0' }}>
+                        <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                          <div>
+                            <div className="fw-semibold">{driver.name || driver.displayName || normalizedDriverId || 'Driver'}</div>
+                            <div className="small text-muted">{normalizedDriverId || 'No driver id'}</div>
+                          </div>
+                          <Badge bg="secondary">{getDriverTimeOffLabel(driver)}</Badge>
+                        </div>
+                        <div className="small mt-2"><strong>Type:</strong> {String(appointment?.appointmentType || 'Appointment').trim()}</div>
+                        <div className="small"><strong>Date:</strong> {String(appointment?.appointmentDate || '').trim() || '-'}</div>
+                        {getDriverTimeOffNote(driver) ? <div className="small mt-1"><strong>Note:</strong> {getDriverTimeOffNote(driver)}</div> : null}
+                        {proofUrl ? <div className="mt-3">
+                            <div className="small text-muted mb-1">Proof photo</div>
+                            <img src={proofUrl} alt={`Time off proof for ${driver.name || normalizedDriverId || 'driver'}`} style={{ width: '100%', maxHeight: 220, objectFit: 'contain', borderRadius: 10, backgroundColor: '#ffffff', border: '1px solid #dbe4f0' }} />
+                          </div> : null}
+                        <div className="d-flex align-items-center gap-2 flex-wrap mt-3">
+                          <Button variant="outline-primary" size="sm" onClick={() => {
+                        handleDriverSelectionChange(normalizedDriverId);
+                        setShowTimeOffModal(false);
+                        setStatusMessage(`Driver ${normalizedDriverId} seleccionado para revisar Day Off.`);
+                      }}>
+                            Open driver
+                          </Button>
+                          <Button variant="outline-danger" size="sm" onClick={() => {
+                        void handleResolveTimeOffRequest(normalizedDriverId, 'deny');
+                      }} disabled={timeOffActionKey === denyKey || timeOffActionKey === cancelKey}>
+                            {timeOffActionKey === denyKey ? 'Denying...' : 'Deny'}
+                          </Button>
+                          <Button variant="danger" size="sm" onClick={() => {
+                        void handleResolveTimeOffRequest(normalizedDriverId, 'cancel');
+                      }} disabled={timeOffActionKey === denyKey || timeOffActionKey === cancelKey}>
+                            {timeOffActionKey === cancelKey ? 'Cancelling...' : 'Cancel request'}
+                          </Button>
+                        </div>
+                      </div>;
+            })}
+              </div> : <Alert variant="success" className="mb-0">No active Day Off requests are pending right now.</Alert>}
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="dark" onClick={() => setShowTimeOffModal(false)}>Close</Button>
+          </Modal.Footer>
         </Modal>
 
         <Modal show={showLayoutModal} onHide={() => setShowLayoutModal(false)} centered>

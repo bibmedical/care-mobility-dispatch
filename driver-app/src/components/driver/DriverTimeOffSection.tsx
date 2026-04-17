@@ -42,6 +42,10 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
 
   const activeAppointment = runtime.driverTimeOffAppointment;
   const hasSubmittedAppointment = Boolean(activeAppointment?.id);
+  const isShowingReplacementPhoto = Boolean(
+    excuseImageUrl
+    && (!hasSubmittedAppointment || excuseImageUrl !== String(activeAppointment?.excuseImageUrl || '').trim())
+  );
   const meetsAdvanceNotice = isDateAtLeastTwoDaysAhead(appointmentDate);
   const minimumDateKey = toDateKey(getMinimumAdvanceDate());
   const canSubmit = Boolean(appointmentType.trim() && appointmentDate.trim() && note.trim() && (hasSubmittedAppointment || meetsAdvanceNotice));
@@ -174,7 +178,7 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
         />
 
         <Text style={styles.label}>Excuse Note Photo (Optional)</Text>
-        {excuseImageUrl ? (
+        {isShowingReplacementPhoto ? (
           <View style={styles.photoWrap}>
             <Image source={{ uri: excuseImageUrl }} style={styles.photo} resizeMode="cover" />
             <Pressable style={styles.removePhotoBtn} onPress={() => setExcuseImageUrl('')}>
@@ -199,7 +203,7 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
           </View>
         )}
 
-        <Text style={styles.helperText}>You can submit day off without a photo. Add one only if you want dispatch to see supporting proof.</Text>
+        <Text style={styles.helperText}>{hasSubmittedAppointment ? 'The previously submitted photo stays saved for dispatch but is hidden here to keep this page compact. Add a new one only if you want to replace it.' : 'You can submit day off without a photo. Add one only if you want dispatch to see supporting proof.'}</Text>
         {photoError ? <Text style={styles.errorText}>{photoError}</Text> : null}
         {runtime.driverTimeOffError ? <Text style={styles.errorText}>{runtime.driverTimeOffError}</Text> : null}
         {runtime.driverTimeOffSuccess ? <Text style={styles.successText}>{runtime.driverTimeOffSuccess}</Text> : null}

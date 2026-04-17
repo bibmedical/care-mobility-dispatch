@@ -72,7 +72,6 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
   const completedTrips = Number(reviewSummary?.completedTrips || 0);
   const yearsWithCompany = Number(reviewSummary?.yearsWithCompany || 0);
   const profilePhotoUrl = String(runtime.driverSession?.profilePhotoUrl || '').trim();
-  const vehicleLabel = String(reviewSummary?.vehicle || runtime.driverSession?.vehicleId || '').trim() || 'Vehicle pending';
   const ratingText = totalReviews > 0 ? `${averageRating.toFixed(1)}★` : 'New';
   const gpsStatusOn = runtime.isBackgroundTrackingEnabled;
   const gpsStatusPending = runtime.isManagingBackgroundTracking;
@@ -110,7 +109,6 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
             }]}>{gpsBadgeLabel}</Text>
             </Pressable>
           </View>
-          <Text style={styles.profileHeroVehicle}>{vehicleLabel}</Text>
         </View>
 
         <View style={styles.profileHeroStatsRow}>
@@ -241,11 +239,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.5
-  },
-  profileHeroVehicle: {
-    color: '#cbd5e1',
-    fontSize: 20,
-    fontWeight: '500'
   },
   profileHeroStatsRow: {
     flexDirection: 'row',

@@ -2131,13 +2131,13 @@ const TripDashboardWorkspace = () => {
       size="sm"
       style={{ ...toolbarButtonStyle, minWidth: 58, fontWeight: 700 }}
       onClick={() => {
-        setStatusMessage('Opening Help workspace.');
+        setStatusMessage('Opening Diarie workspace.');
         router.push('/help');
       }}
-      title="Help"
-      aria-label="Open Help"
+      title="Diarie"
+      aria-label="Open Diarie"
     >
-      Help
+      Diarie
     </Button>;
 
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
@@ -5036,12 +5036,6 @@ const TripDashboardWorkspace = () => {
             setStatusMessage('Opening Users workspace.');
           }}>
               Admin
-            </Button>
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-            setStatusMessage('Opening Help workspace.');
-            router.push('/help');
-          }}>
-              Help
             </Button>
           </div>
           <div className="d-flex gap-2 align-items-center flex-wrap">

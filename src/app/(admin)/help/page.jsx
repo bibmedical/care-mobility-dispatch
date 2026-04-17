@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Badge, Card, CardBody, Col, Row, Table } from 'react-bootstrap';
 
 export const metadata = {
-  title: 'Help'
+  title: 'Diarie'
 };
 
 const HELP_ENTRIES = [{
@@ -390,7 +390,7 @@ const DIARIO_2026_04_16 = [{
 
 const HelpPage = () => {
   return <>
-      <PageTitle title="Help" subName="Operations" />
+  <PageTitle title="Diarie" subName="Operations" />
       <Row className="g-3 mb-3">
         <Col md={6} xl={3}>
           <Card className="h-100">
@@ -671,9 +671,23 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V20</Badge>
+                <span className="fw-semibold text-dark">Diarie Rename + Trip Dashboard Cleanup + Day Off Web Review</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Trip Dashboard no longer shows the extra left-side Help shortcut; the remaining visible shortcut now reads Diarie and still routes to /help.</li>
+                <li>The /help page title and browser label now show Diarie so the operating diary matches the user-facing name without changing the route.</li>
+                <li>Dispatcher now includes a real web review path for active Day Off requests so dispatch can open the driver, deny the request, or cancel it from web and clear the matching active alert.</li>
+                <li>The APK local polish in this same deploy removes the veh-1 label under the driver name and hides the already-submitted Time Off proof photo unless the driver selects a replacement.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V19</Badge>
                 <span className="fw-semibold text-dark">Driver Workflow + Applications + Dispatcher Push</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Pushed commit c15ff7e to origin/main so Render can deploy the full April 17 driver workflow, dispatcher, and applications update instead of the older day-off-only commit.</li>
