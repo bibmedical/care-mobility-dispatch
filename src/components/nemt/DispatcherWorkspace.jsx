@@ -1883,21 +1883,43 @@ const DispatcherWorkspace = () => {
     if (!dropoffCityValue) return true;
     return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
+  const getCurrentLateMinutesForTrip = trip => {
+    const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
+    if (!tripDateKey || tripDateKey !== todayDateKey) return null;
+
+    const effectiveStatus = String(getEffectiveTripStatus(trip) || '').trim().toLowerCase();
+    if (['cancelled', 'completed', 'willcall'].includes(effectiveStatus)) return null;
+
+    const travelState = getTripTravelState(trip);
+    const hasActualPickup = Boolean(String(trip?.actualPickup || '').trim());
+    const hasActualDropoff = Boolean(String(trip?.actualDropoff || '').trim());
+    if (hasActualDropoff || travelState === 'completed') return null;
+
+    const now = Date.now();
+    const pickupTarget = Number(trip?.pickupSortValue);
+    const dropoffTarget = Number(trip?.dropoffSortValue);
+    const shouldTrackDropoff = hasActualPickup || ['patientonboard', 'starttrip', 'todestination', 'inprogress', 'arriveddestination'].includes(travelState);
+    const targetTimestamp = shouldTrackDropoff && Number.isFinite(dropoffTarget) && dropoffTarget < Number.MAX_SAFE_INTEGER
+      ? dropoffTarget
+      : Number.isFinite(pickupTarget) && pickupTarget < Number.MAX_SAFE_INTEGER
+        ? pickupTarget
+        : null;
+
+    if (!targetTimestamp || now <= targetTimestamp) return null;
+    return Math.max(1, Math.round((now - targetTimestamp) / 60000));
+  };
   const lateTripsInCurrentView = useMemo(() => filteredTrips.filter(trip => {
-    const effectiveStatus = String(getEffectiveTripStatus(trip)).trim().toLowerCase();
-    if (['cancelled', 'completed'].includes(effectiveStatus)) return false;
-    const lateMinutesDisplay = getTripLateMinutesDisplay(trip);
-    const lateMinutes = Number(lateMinutesDisplay);
-    return lateMinutesDisplay !== '-' && Number.isFinite(lateMinutes) && lateMinutes > 0;
+    const lateMinutes = getCurrentLateMinutesForTrip(trip);
+    return Number.isFinite(lateMinutes) && lateMinutes > 0;
   }).sort((leftTrip, rightTrip) => {
-    const leftLateMinutes = Number(getTripLateMinutesDisplay(leftTrip)) || 0;
-    const rightLateMinutes = Number(getTripLateMinutesDisplay(rightTrip)) || 0;
+    const leftLateMinutes = getCurrentLateMinutesForTrip(leftTrip) || 0;
+    const rightLateMinutes = getCurrentLateMinutesForTrip(rightTrip) || 0;
     if (leftLateMinutes !== rightLateMinutes) return rightLateMinutes - leftLateMinutes;
     const leftPickupTime = leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
     const rightPickupTime = rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
     if (leftPickupTime !== rightPickupTime) return leftPickupTime - rightPickupTime;
     return String(leftTrip.id || '').localeCompare(String(rightTrip.id || ''));
-  }), [filteredTrips]);
+  }), [filteredTrips, routePlans, todayDateKey, trips]);
   const isCancelledPanelMode = rightPanelMode === 'cancelled';
   const isCancelledRoutesMode = isCancelledPanelMode && cancelledDetailMode === 'routes';
   const canReinstateCancelledTrips = isCancelledPanelMode || tripStatusFilter === 'cancelled';
@@ -4130,7 +4152,7 @@ const DispatcherWorkspace = () => {
             {lateTripsInCurrentView.length > 0 ? <div className="d-flex flex-column gap-2" style={{ maxHeight: 360, overflowY: 'auto' }}>
                 {lateTripsInCurrentView.map(trip => {
               const driverName = String(trip?.driverName || '').trim() || String(trip?.driverId || '').trim() || String(trip?.secondaryDriverName || '').trim() || String(trip?.secondaryDriverId || '').trim() || 'Unassigned';
-              const lateMinutesDisplay = getTripLateMinutesDisplay(trip);
+              const lateMinutesDisplay = String(getCurrentLateMinutesForTrip(trip) || 0);
               return <div key={`late-trip-${trip.id}`} className="rounded border p-2" style={{ backgroundColor: '#fff1f2', borderColor: '#fda4af' }}>
                         <div className="d-flex align-items-start justify-content-between gap-2">
                           <div>
