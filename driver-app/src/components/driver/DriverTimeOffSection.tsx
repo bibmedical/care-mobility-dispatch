@@ -41,33 +41,35 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
 
   const activeAppointment = runtime.driverTimeOffAppointment;
+  const hasSubmittedAppointment = Boolean(activeAppointment?.id);
   const meetsAdvanceNotice = isDateAtLeastTwoDaysAhead(appointmentDate);
   const minimumDateKey = toDateKey(getMinimumAdvanceDate());
-  const canSubmit = appointmentType.trim() && appointmentDate.trim() && note.trim() && meetsAdvanceNotice;
+  const canSubmit = Boolean(appointmentType.trim() && appointmentDate.trim() && note.trim() && (hasSubmittedAppointment || meetsAdvanceNotice));
 
   useEffect(() => {
     void runtime.loadDriverTimeOff();
   }, []);
 
   useEffect(() => {
-    if (!activeAppointment) return;
-    setAppointmentType(activeAppointment.appointmentType || 'Medical Appointment');
-    setAppointmentDate(activeAppointment.appointmentDate || toDateKey(getMinimumAdvanceDate()));
-    setNote(activeAppointment.note || '');
-    setExcuseImageUrl(activeAppointment.excuseImageUrl || '');
-  }, [activeAppointment?.id]);
+    if (activeAppointment) {
+      setAppointmentType(activeAppointment.appointmentType || 'Medical Appointment');
+      setAppointmentDate(activeAppointment.appointmentDate || minimumDateKey);
+      setNote(activeAppointment.note || '');
+      setExcuseImageUrl(activeAppointment.excuseImageUrl || '');
+      return;
+    }
 
-  useEffect(() => {
-    if (activeAppointment) return;
-    setAppointmentDate(current => current.trim() ? current : minimumDateKey);
+    setAppointmentType('Medical Appointment');
+    setAppointmentDate(minimumDateKey);
+    setNote('');
+    setExcuseImageUrl('');
+    setPhotoError('');
   }, [activeAppointment?.id, minimumDateKey]);
 
   const appointmentStatusLabel = useMemo(() => {
     if (!activeAppointment) return 'No active appointment';
     return `Scheduled for ${activeAppointment.appointmentDate}`;
   }, [activeAppointment?.id, activeAppointment?.appointmentDate]);
-
-  const hasSubmittedAppointment = Boolean(activeAppointment?.id);
 
   const pickPhoto = async (source: 'camera' | 'gallery') => {
     setPhotoError('');
@@ -157,8 +159,8 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
           placeholder="2026-04-12"
           placeholderTextColor={driverTheme.colors.textMuted}
         />
-        <Text style={styles.helperText}>Requests must be submitted at least 2 full days in advance. Earliest allowed date: {minimumDateKey}.</Text>
-        {!meetsAdvanceNotice && appointmentDate.trim() ? <Text style={styles.errorText}>Time off must be requested at least 2 days ahead.</Text> : null}
+        <Text style={styles.helperText}>{hasSubmittedAppointment ? 'Active appointment is already saved. Use I\'M BACK - ACTIVATE ME AGAIN when you are ready to return to work, or update the saved appointment details below.' : `Requests must be submitted at least 2 full days in advance. Earliest allowed date: ${minimumDateKey}.`}</Text>
+        {!hasSubmittedAppointment && !meetsAdvanceNotice && appointmentDate.trim() ? <Text style={styles.errorText}>Time off must be requested at least 2 days ahead.</Text> : null}
 
         <Text style={styles.label}>Note / Reason</Text>
         <TextInput
@@ -205,7 +207,7 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
         <Pressable
           style={[styles.submitButton, { backgroundColor: accent }, runtime.isSubmittingDriverTimeOff || !canSubmit ? styles.submitButtonDisabled : null]}
           onPress={() => {
-            if (!meetsAdvanceNotice) {
+            if (!hasSubmittedAppointment && !meetsAdvanceNotice) {
               runtime.setDriverTimeOffError(`Time off must be requested at least 2 days ahead. Earliest allowed date: ${minimumDateKey}.`);
               return;
             }
