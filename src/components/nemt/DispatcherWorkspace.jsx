@@ -2836,14 +2836,15 @@ const DispatcherWorkspace = () => {
     setStatusMessage(preferredRouteId ? `Viendo ${driver.name}: ${assignedCount} asignados, ${openCount} pendientes y ruta cargada.${appointmentNote}` : `Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.${appointmentNote}`);
   };
 
-  const handleOpenLateTrip = trip => {
+  const handleOpenLateTrip = (event, trip) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
     const normalizedTripId = normalizeTripId(trip?.id);
     if (!normalizedTripId) return;
 
     const normalizedDriverId = normalizeDriverId(trip?.driverId || trip?.secondaryDriverId || '');
     const normalizedRouteId = normalizeRouteId(trip?.routeId) || '';
 
-    setShowLateTripsModal(false);
     setRightPanelMode('default');
     setCancelledDetailMode('names');
     setSelectedTripIds([normalizedTripId]);
@@ -2856,6 +2857,9 @@ const DispatcherWorkspace = () => {
     setStatusMessage(`Trip ${normalizedTripId} seleccionado desde Late Trips.`);
 
     if (typeof window !== 'undefined') {
+      window.setTimeout(() => {
+        setShowLateTripsModal(false);
+      }, 0);
       window.requestAnimationFrame(() => {
         const row = document.getElementById(`dispatcher-trip-row-${normalizedTripId}`);
         if (row && typeof row.scrollIntoView === 'function') {
@@ -4182,7 +4186,7 @@ const DispatcherWorkspace = () => {
                 {lateTripsInCurrentView.map(trip => {
               const driverName = String(trip?.driverName || '').trim() || String(trip?.driverId || '').trim() || String(trip?.secondaryDriverName || '').trim() || String(trip?.secondaryDriverId || '').trim() || 'Unassigned';
               const lateMinutesDisplay = String(getCurrentLateMinutesForTrip(trip) || 0);
-              return <button key={`late-trip-${trip.id}`} type="button" className="rounded border p-2 text-start w-100" onClick={() => handleOpenLateTrip(trip)} style={{ backgroundColor: '#fff1f2', borderColor: '#fda4af', cursor: 'pointer' }}>
+              return <button key={`late-trip-${trip.id}`} type="button" className="rounded border p-2 text-start w-100" onClick={event => handleOpenLateTrip(event, trip)} style={{ backgroundColor: '#fff1f2', borderColor: '#fda4af', cursor: 'pointer' }}>
                         <div className="d-flex align-items-start justify-content-between gap-2">
                           <div>
                             <div className="fw-semibold">{getDisplayTripId(trip)} - {trip.rider || 'Unknown rider'}</div>
