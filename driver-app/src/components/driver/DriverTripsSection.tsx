@@ -198,6 +198,12 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   }, [hasPersistedInProgressTrip, queueMode]);
 
   useEffect(() => {
+    if (queueMode !== 'in-progress' || !inProgressFocusTrip?.id) return;
+    if (String(runtime.activeTrip?.id || '').trim() === String(inProgressFocusTrip.id || '').trim()) return;
+    runtime.setActiveTrip(inProgressFocusTrip);
+  }, [inProgressFocusTrip, queueMode, runtime]);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       setClockNow(Date.now());
     }, 1000);
