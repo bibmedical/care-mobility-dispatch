@@ -377,6 +377,15 @@ const DIARIO_2026_04_16 = [{
 }, {
   area: 'APK receive visibility rule',
   detail: 'The next messaging law is permanent: driver-app incoming web messages must not be split into separate threads by dispatcher name. That name-based split is where this problem started: the driver could stop seeing what arrived under Carlos, and Carlos could stop seeing the driver reply in the same shared conversation. Incoming dispatcher-web messages now belong in one stable Dispatch thread so both sides see the same history.'
+}, {
+  area: 'APK operations added after messaging repair',
+  detail: 'The APK now supports Time Off with 2-day notice, optional photo upload, a persistent submitted state, and an I\'M BACK reactivation action. It also restores patient phone call/text fallbacks, stronger GPS button backgrounds, and an English driver application form under login.'
+}, {
+  area: 'Day-off visibility law on web',
+  detail: 'Drivers with active Time Off must remain visible in Dispatcher and Trip Dashboard. The safe rule is gray visibility plus appointment labeling in the existing driver selectors and route panels, not removal from the driver list and not any Excel/import mutation.'
+}, {
+  area: 'Fuel and Day Off shortcut placement',
+  detail: 'If web-side shortcut buttons are added later, place them next to the existing selected-driver controls in Dispatcher and Trip Dashboard. Those actions are driver-scoped and should reuse the existing tablet flow instead of creating a disconnected panel.'
 }];
 
 const HelpPage = () => {
@@ -662,9 +671,23 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V18</Badge>
+                <span className="fw-semibold text-dark">APK Time Off Visibility + Driver Appointment Safety</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Time Off in the APK now enforces 2-day notice, no longer requires a photo, stays visibly submitted, and lets the driver reactivate with an I\'M BACK action.</li>
+                <li>Dispatcher and Trip Dashboard now keep day-off drivers visible in the normal driver flows instead of making them look missing from operations.</li>
+                <li>The safe visibility rule is gray + appointment label inside the existing driver selectors, driver panel, and route header.</li>
+                <li>Safe future placement for Fuel and Day Off shortcuts is next to selected-driver controls in Dispatcher and Trip Dashboard, not in Excel Loader or a new disconnected module.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V17</Badge>
                 <span className="fw-semibold text-dark">APK Receive Visibility — Single Dispatch Thread</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 16, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Documented the real visibility problem in driver-app messaging: incoming web messages were being split into separate threads by dispatcher name instead of one stable Dispatch conversation.</li>

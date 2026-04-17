@@ -11,7 +11,7 @@ import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument, formatPrintGeneratedAt } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
@@ -60,6 +60,25 @@ const buildDispatcherHelpButton = (router, setStatusMessage, buttonStyle) => <Bu
 }}>
     Help
   </Button>;
+
+const getDriverTimeOffDate = driver => String(driver?.timeOffAppointment?.appointmentDate || '').trim();
+
+const getDriverTimeOffLabel = driver => {
+  const appointmentDate = getDriverTimeOffDate(driver);
+  if (!appointmentDate) return '';
+  const appointmentType = String(driver?.timeOffAppointment?.appointmentType || 'Appointment').trim();
+  return `DAY OFF ${appointmentDate}${appointmentType ? ` - ${appointmentType}` : ''}`;
+};
+
+const countDriverBlockedTrips = (driver, tripIds = [], trips = []) => {
+  const appointmentDate = getDriverTimeOffDate(driver);
+  if (!appointmentDate) return 0;
+  return (Array.isArray(tripIds) ? tripIds : []).reduce((total, tripId) => {
+    const trip = (Array.isArray(trips) ? trips : []).find(item => String(item?.id || '').trim() === String(tripId || '').trim());
+    if (!trip) return total;
+    return getTripServiceDateKey(trip) === appointmentDate ? total + 1 : total;
+  }, 0);
+};
 
 const DISPATCHER_TABLE_VIEW_MODES = [{
   value: 'default',
@@ -1525,7 +1544,7 @@ const DispatcherWorkspace = () => {
       <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
       <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 210 }}>
         <option value="">Reassign to driver</option>
-        {quickReassignDrivers.map(driver => <option key={`toolbar-${driver.id}`} value={driver.id}>{driver.name}{String(driver?.live || '').trim().toLowerCase() === 'online' ? '' : ' (offline)'}</option>)}
+        {quickReassignDrivers.map(driver => <option key={`toolbar-${driver.id}`} value={driver.id}>{driver.name}{getDriverTimeOffLabel(driver) ? ` (${getDriverTimeOffLabel(driver)})` : ''}{String(driver?.live || '').trim().toLowerCase() === 'online' ? '' : ' (offline)'}</option>)}
       </Form.Select>
       <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked || !quickReassignDriverId}>Reassign</Button>
     </div>;
@@ -1563,7 +1582,7 @@ const DispatcherWorkspace = () => {
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
               <option value="">Select driver</option>
-              {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}</option>)}
+              {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}{getDriverTimeOffLabel(driver) ? ` (${getDriverTimeOffLabel(driver)})` : ''}</option>)}
             </Form.Select>
             <Button variant={selectedDriverId ? 'outline-dark' : 'dark'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked} style={selectedDriverId ? greenToolbarButtonStyle : undefined}>All drivers</Button>
             {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-dark'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked} style={followSelectedDriver ? undefined : greenToolbarButtonStyle}>{followSelectedDriver ? 'Following' : 'Follow'}</Button> : null}
@@ -1571,10 +1590,13 @@ const DispatcherWorkspace = () => {
       case 'secondary-driver':
         return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
             <option value="">Second driver</option>
-            {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+            {drivers.map(driver => <option key={`secondary-${driver.id}`} value={driver.id}>{driver.name}{getDriverTimeOffLabel(driver) ? ` (${getDriverTimeOffLabel(driver)})` : ''}</option>)}
           </Form.Select>;
       case 'driver-assigned':
-        return selectedDriver ? <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge> : null;
+        return selectedDriver ? <div className="d-flex align-items-center gap-2 flex-nowrap">
+            <Badge bg="light" text="dark">{selectedDriverAssignedTripCount} assigned</Badge>
+            {getDriverTimeOffDate(selectedDriver) ? <Badge bg="secondary">{getDriverTimeOffLabel(selectedDriver)}</Badge> : null}
+          </div> : null;
       case 'selected-count':
         return null;
       case 'day-summary':
@@ -2617,6 +2639,11 @@ const DispatcherWorkspace = () => {
       setStatusMessage(compatibilityIssue.message);
       return;
     }
+    const blockedTrips = countDriverBlockedTrips(driver, targetTripIds, trips);
+    if (blockedTrips > 0) {
+      setStatusMessage(`${driver.name} has ${getDriverTimeOffLabel(driver)}. ${blockedTrips} trip(s) on that same date cannot be assigned.`);
+      return;
+    }
 
     assignTripsToDriver(driverId, targetTripIds);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
@@ -2639,6 +2666,11 @@ const DispatcherWorkspace = () => {
     const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: targetTripIds, trips, adminDriversById, adminVehiclesById });
     if (compatibilityIssue) {
       setStatusMessage(compatibilityIssue.message);
+      return;
+    }
+    const blockedTrips = countDriverBlockedTrips(driver, targetTripIds, trips);
+    if (blockedTrips > 0) {
+      setStatusMessage(`${driver.name} has ${getDriverTimeOffLabel(driver)}. ${blockedTrips} trip(s) on that same date cannot be assigned.`);
       return;
     }
 
@@ -2664,6 +2696,11 @@ const DispatcherWorkspace = () => {
       setStatusMessage(compatibilityIssue.message);
       return;
     }
+    const blockedTrips = countDriverBlockedTrips(driver, [tripId], trips);
+    if (blockedTrips > 0) {
+      setStatusMessage(`${driver.name} has ${getDriverTimeOffLabel(driver)}. Trip ${tripId} cannot be assigned on that date.`);
+      return;
+    }
 
     assignTripsToDriver(selectedDriverId, [tripId]);
     if (tripStatusFilter === 'unassigned') setTripStatusFilter('all');
@@ -2686,6 +2723,11 @@ const DispatcherWorkspace = () => {
     const compatibilityIssue = findTripAssignmentCompatibilityIssue({ driver, tripIds: selectedTripIds, trips, adminDriversById, adminVehiclesById });
     if (compatibilityIssue) {
       setStatusMessage(compatibilityIssue.message);
+      return;
+    }
+    const blockedTrips = countDriverBlockedTrips(driver, selectedTripIds, trips);
+    if (blockedTrips > 0) {
+      setStatusMessage(`${driver.name} has ${getDriverTimeOffLabel(driver)}. ${blockedTrips} selected trip(s) on that date cannot be reassigned there.`);
       return;
     }
 
@@ -2730,7 +2772,8 @@ const DispatcherWorkspace = () => {
 
     const assignedCount = trips.filter(trip => trip.driverId === normalizedDriverId || trip.secondaryDriverId === normalizedDriverId).length;
     const openCount = trips.filter(trip => !trip.driverId && !trip.secondaryDriverId).length;
-    setStatusMessage(preferredRouteId ? `Viendo ${driver.name}: ${assignedCount} asignados, ${openCount} pendientes y ruta cargada.` : `Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.`);
+    const appointmentNote = getDriverTimeOffDate(driver) ? ` ${driver.name} has ${getDriverTimeOffLabel(driver)}.` : '';
+    setStatusMessage(preferredRouteId ? `Viendo ${driver.name}: ${assignedCount} asignados, ${openCount} pendientes y ruta cargada.${appointmentNote}` : `Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.${appointmentNote}`);
   };
 
   const handleUnassign = () => {

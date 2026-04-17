@@ -144,6 +144,19 @@ const buildDriverWorkflowState = (trip, workflowEvents = []) => {
   };
 };
 
+const getTripPatientPhone = trip => {
+  return String(
+    trip?.patientPhoneNumber
+    || trip?.patientPhone
+    || trip?.phone
+    || trip?.phoneNumber
+    || trip?.memberPhone
+    || trip?.mobile
+    || trip?.riderPhone
+    || ''
+  ).trim();
+};
+
 const mapTripForDriver = (trip, workflowEvents = []) => {
   const normalizedTrip = normalizeTripRecord(trip);
   const effectiveStatus = getEffectiveTripStatus(normalizedTrip);
@@ -185,7 +198,13 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
     hasPickupTimeOverride,
     hasDropoffTimeOverride,
     hasNotesOverride,
-    patientPhoneNumber: normalizedTrip.patientPhoneNumber || '',
+    patientPhoneNumber: getTripPatientPhone(normalizedTrip),
+    patientPhone: String(normalizedTrip.patientPhone || '').trim(),
+    phone: String(normalizedTrip.phone || '').trim(),
+    phoneNumber: String(normalizedTrip.phoneNumber || '').trim(),
+    memberPhone: String(normalizedTrip.memberPhone || '').trim(),
+    riderPhone: String(normalizedTrip.riderPhone || '').trim(),
+    mobile: String(normalizedTrip.mobile || '').trim(),
     assistanceNeeds: normalizedTrip.assistanceNeeds || '',
     mobilityType: normalizedTrip.mobilityType || '',
     subMobilityType,

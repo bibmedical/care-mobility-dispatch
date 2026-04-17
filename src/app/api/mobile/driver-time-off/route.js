@@ -22,6 +22,18 @@ const normalizeDateKey = value => {
   return '';
 };
 
+const isDateAtLeastTwoDaysAhead = value => {
+  const normalized = normalizeDateKey(value);
+  if (!normalized) return false;
+  const [year, month, day] = normalized.split('-').map(Number);
+  const requestedDate = new Date(year, month - 1, day);
+  requestedDate.setHours(0, 0, 0, 0);
+  const minimumDate = new Date();
+  minimumDate.setHours(0, 0, 0, 0);
+  minimumDate.setDate(minimumDate.getDate() + 2);
+  return requestedDate.getTime() >= minimumDate.getTime();
+};
+
 const getActiveAppointment = driver => {
   const appointment = driver?.timeOffAppointment;
   if (!appointment || typeof appointment !== 'object') return null;
@@ -55,6 +67,30 @@ const mapAppointmentMessage = ({ appointment, driver }) => {
     appointmentDate,
     appointmentType,
     appointmentNote: note
+  };
+};
+
+const mapReturnMessage = ({ appointment, driver }) => {
+  const driverId = String(driver?.id || '').trim();
+  const driverName = getFullName(driver) || String(driver?.displayName || '').trim() || 'Driver';
+  const appointmentType = String(appointment?.appointmentType || 'Appointment').trim();
+  const appointmentDate = String(appointment?.appointmentDate || '').trim();
+
+  return {
+    id: `driver-timeoff-return-${driverId}-${Date.now()}`,
+    type: 'driver-time-off-return',
+    priority: 'high',
+    audience: 'Dispatch Leadership',
+    subject: `${driverName} is back from time off`,
+    body: `${driverName} marked the ${appointmentType} day off for ${appointmentDate} as finished and is available again for route assignment.`,
+    driverId,
+    driverName,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    source: 'mobile-driver-timeoff',
+    deliveryMethod: 'system',
+    appointmentDate,
+    appointmentType
   };
 };
 
@@ -102,13 +138,12 @@ export async function POST(request) {
   if (!appointmentDate) {
     return jsonWithMobileCors(request, { ok: false, error: 'appointmentDate must be YYYY-MM-DD.' }, { status: 400 });
   }
+  if (!isDateAtLeastTwoDaysAhead(appointmentDate)) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Time off must be requested at least 2 days ahead.' }, { status: 400 });
+  }
   if (!note) {
     return jsonWithMobileCors(request, { ok: false, error: 'note is required.' }, { status: 400 });
   }
-  if (!excuseImageUrl) {
-    return jsonWithMobileCors(request, { ok: false, error: 'excuseImageUrl is required.' }, { status: 400 });
-  }
-
   const authResult = await authorizeMobileDriverRequest(request, driverId);
   if (authResult.response) return withMobileCors(authResult.response, request);
 
@@ -150,6 +185,58 @@ export async function POST(request) {
   return jsonWithMobileCors(request, {
     ok: true,
     appointment
+  });
+}
+
+export async function DELETE(request) {
+  const driverId = String(request.nextUrl.searchParams.get('driverId') || '').trim();
+  if (!driverId) {
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId is required.' }, { status: 400 });
+  }
+
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  if (authResult.response) return withMobileCors(authResult.response, request);
+
+  const adminState = await readNemtAdminState();
+  const driver = findDriver(adminState.drivers, driverId);
+  if (!driver) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
+  }
+
+  const activeAppointment = getActiveAppointment(driver);
+  if (!activeAppointment) {
+    return jsonWithMobileCors(request, { ok: true, appointment: null });
+  }
+
+  const completedAppointment = {
+    ...activeAppointment,
+    status: 'completed',
+    completedAt: new Date().toISOString()
+  };
+
+  const nextDrivers = adminState.drivers.map(item => {
+    if (String(item?.id || '').trim() !== driverId) return item;
+    return {
+      ...item,
+      timeOffAppointment: completedAppointment
+    };
+  });
+
+  const nextAdminState = await writeNemtAdminState({
+    ...adminState,
+    drivers: nextDrivers
+  });
+
+  const updatedDriver = findDriver(nextAdminState.drivers, driverId);
+  await upsertSystemMessage(mapReturnMessage({
+    appointment: completedAppointment,
+    driver: updatedDriver || driver
+  }));
+
+  return jsonWithMobileCors(request, {
+    ok: true,
+    appointment: null,
+    completedAppointment
   });
 }
 

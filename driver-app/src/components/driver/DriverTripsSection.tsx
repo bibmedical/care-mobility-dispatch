@@ -52,6 +52,31 @@ const getCleanTripReference = (trip: { rideId?: string; brokerTripId?: string; i
   return candidate;
 };
 
+const getTripPatientPhone = (trip?: DriverRuntime['activeTrip'] | null) => {
+  if (!trip) return '';
+  return String(
+    trip.patientPhoneNumber
+    || trip.patientPhone
+    || trip.phone
+    || trip.phoneNumber
+    || trip.memberPhone
+    || trip.mobile
+    || trip.riderPhone
+    || ''
+  ).trim();
+};
+
+const formatActionPhone = (phoneNumber?: string) => {
+  const digits = String(phoneNumber || '').replace(/\D+/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return String(phoneNumber || '').trim();
+};
+
 export const DriverTripsSection = ({ runtime }: Props) => {
   const OUTSIDE_SMS_TEMPLATE = 'Hi this is Care Mobility. Your driver is outside waiting for you.';
   const isAndroidDevice = Platform.OS === 'android';
@@ -264,7 +289,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   };
 
   const sendOutsideSms = async (trip: NonNullable<DriverRuntime['activeTrip']>) => {
-    const digits = String(trip.patientPhoneNumber || '').replace(/\D+/g, '');
+    const digits = getTripPatientPhone(trip).replace(/\D+/g, '');
     if (!digits) return;
     const encodedText = encodeURIComponent(OUTSIDE_SMS_TEMPLATE);
     const querySeparator = Platform.OS === 'ios' ? '&' : '?';
@@ -582,11 +607,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               </View>
               </Pressable>
               <View style={styles.routeQuickActionsRow}>
-                <Pressable style={[styles.callBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void openPhoneCall(trip.patientPhoneNumber)}>
-                  <Text style={styles.callBadgeText}>Call</Text>
+                <Pressable style={[styles.callBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void openPhoneCall(getTripPatientPhone(trip))}>
+                  <Text style={styles.callBadgeText}>{getTripPatientPhone(trip) ? `Call ${formatActionPhone(getTripPatientPhone(trip))}` : 'Call'}</Text>
                 </Pressable>
                 <Pressable style={[styles.smsBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void sendOutsideSms(trip)}>
-                  <Text style={styles.smsBadgeText}>{isAndroidDevice ? 'Message' : 'SMS'}</Text>
+                  <Text style={styles.smsBadgeText}>{getTripPatientPhone(trip) ? `${isAndroidDevice ? 'Text' : 'SMS'} ${formatActionPhone(getTripPatientPhone(trip))}` : (isAndroidDevice ? 'Text' : 'SMS')}</Text>
                 </Pressable>
                 <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(trip, 'quick')}>
                   <Text style={styles.cancelBadgeText}>Cancel</Text>
@@ -616,11 +641,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
           <View style={styles.focusRequirementsRow}>
             <View style={styles.focusRequirementsLeft}>
               <View style={styles.focusQuickActionsRow}>
-                <Pressable style={[styles.callBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void openPhoneCall(displayedFocusTrip.patientPhoneNumber)}>
-                  <Text style={styles.callBadgeText}>Call</Text>
+                <Pressable style={[styles.callBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void openPhoneCall(getTripPatientPhone(displayedFocusTrip))}>
+                  <Text style={styles.callBadgeText}>{getTripPatientPhone(displayedFocusTrip) ? `Call ${formatActionPhone(getTripPatientPhone(displayedFocusTrip))}` : 'Call'}</Text>
                 </Pressable>
                 <Pressable style={[styles.smsBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => void sendOutsideSms(displayedFocusTrip)}>
-                  <Text style={styles.smsBadgeText}>{isAndroidDevice ? 'Message' : 'SMS'}</Text>
+                  <Text style={styles.smsBadgeText}>{getTripPatientPhone(displayedFocusTrip) ? `${isAndroidDevice ? 'Text' : 'SMS'} ${formatActionPhone(getTripPatientPhone(displayedFocusTrip))}` : (isAndroidDevice ? 'Text' : 'SMS')}</Text>
                 </Pressable>
                 <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(displayedFocusTrip, 'full')}>
                   <Text style={styles.cancelBadgeText}>Cancel</Text>
@@ -744,8 +769,8 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               {cancelComposerMode === 'full' ? <>
                   {cancelPhotoDataUrl ? <Image source={{ uri: cancelPhotoDataUrl }} style={styles.cancelPhotoPreview} resizeMode="cover" /> : null}
                   <View style={styles.cancelButtonsRow}>
-                    <Pressable style={styles.cancelCallButton} onPress={() => void openPhoneCall(cancelTargetTrip.patientPhoneNumber)}>
-                      <Text style={styles.cancelCallButtonText}>Call</Text>
+                    <Pressable style={styles.cancelCallButton} onPress={() => void openPhoneCall(getTripPatientPhone(cancelTargetTrip))}>
+                      <Text style={styles.cancelCallButtonText}>{getTripPatientPhone(cancelTargetTrip) ? `Call ${formatActionPhone(getTripPatientPhone(cancelTargetTrip))}` : 'Call'}</Text>
                     </Pressable>
                     <Pressable style={[styles.cancelAttachButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void pickCancelPhoto()} disabled={runtime.activeTripAction.length > 0}>
                       <Text style={styles.cancelAttachButtonText}>{cancelPhotoDataUrl ? 'Change Photo' : 'Photo Optional'}</Text>

@@ -12,6 +12,21 @@ type Props = {
 
 const toDateKey = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 
+const getMinimumAdvanceDate = () => {
+  const minimumDate = new Date();
+  minimumDate.setHours(0, 0, 0, 0);
+  minimumDate.setDate(minimumDate.getDate() + 2);
+  return minimumDate;
+};
+
+const isDateAtLeastTwoDaysAhead = (value: string) => {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const candidate = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  candidate.setHours(0, 0, 0, 0);
+  return candidate.getTime() >= getMinimumAdvanceDate().getTime();
+};
+
 export const DriverTimeOffSection = ({ runtime }: Props) => {
   const accent = getDriverAccentColor({
     id: runtime.driverSession?.driverId,
@@ -19,14 +34,16 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
   });
 
   const [appointmentType, setAppointmentType] = useState('Medical Appointment');
-  const [appointmentDate, setAppointmentDate] = useState(toDateKey(new Date()));
+  const [appointmentDate, setAppointmentDate] = useState(toDateKey(getMinimumAdvanceDate()));
   const [note, setNote] = useState('');
   const [excuseImageUrl, setExcuseImageUrl] = useState('');
   const [photoError, setPhotoError] = useState('');
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
 
   const activeAppointment = runtime.driverTimeOffAppointment;
-  const canSubmit = appointmentType.trim() && appointmentDate.trim() && note.trim() && excuseImageUrl.trim();
+  const meetsAdvanceNotice = isDateAtLeastTwoDaysAhead(appointmentDate);
+  const minimumDateKey = toDateKey(getMinimumAdvanceDate());
+  const canSubmit = appointmentType.trim() && appointmentDate.trim() && note.trim() && meetsAdvanceNotice;
 
   useEffect(() => {
     void runtime.loadDriverTimeOff();
@@ -35,15 +52,22 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
   useEffect(() => {
     if (!activeAppointment) return;
     setAppointmentType(activeAppointment.appointmentType || 'Medical Appointment');
-    setAppointmentDate(activeAppointment.appointmentDate || toDateKey(new Date()));
+    setAppointmentDate(activeAppointment.appointmentDate || toDateKey(getMinimumAdvanceDate()));
     setNote(activeAppointment.note || '');
     setExcuseImageUrl(activeAppointment.excuseImageUrl || '');
   }, [activeAppointment?.id]);
+
+  useEffect(() => {
+    if (activeAppointment) return;
+    setAppointmentDate(current => current.trim() ? current : minimumDateKey);
+  }, [activeAppointment?.id, minimumDateKey]);
 
   const appointmentStatusLabel = useMemo(() => {
     if (!activeAppointment) return 'No active appointment';
     return `Scheduled for ${activeAppointment.appointmentDate}`;
   }, [activeAppointment?.id, activeAppointment?.appointmentDate]);
+
+  const hasSubmittedAppointment = Boolean(activeAppointment?.id);
 
   const pickPhoto = async (source: 'camera' | 'gallery') => {
     setPhotoError('');
@@ -88,6 +112,30 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
         <Text style={styles.headerMeta}>{appointmentStatusLabel}</Text>
       </View>
 
+      {hasSubmittedAppointment ? <View style={styles.submittedCard}>
+          <View style={styles.submittedHeaderRow}>
+            <Text style={styles.submittedTitle}>Submitted to dispatch</Text>
+            <View style={styles.submittedBadge}>
+              <Text style={styles.submittedBadgeText}>SUBMITTED</Text>
+            </View>
+          </View>
+          <Text style={styles.submittedLine}>Type: {activeAppointment?.appointmentType || 'Appointment'}</Text>
+          <Text style={styles.submittedLine}>Date: {activeAppointment?.appointmentDate || '-'}</Text>
+          <Text style={styles.submittedLine}>Status: route assignment blocked for that date</Text>
+          {activeAppointment?.note ? <Text style={styles.submittedNote}>Note: {activeAppointment.note}</Text> : null}
+          <Pressable
+            style={[styles.returnButton, runtime.isSubmittingDriverTimeOff ? styles.submitButtonDisabled : null]}
+            onPress={() => {
+              void runtime.clearDriverTimeOff();
+            }}
+            disabled={runtime.isSubmittingDriverTimeOff}
+          >
+            {runtime.isSubmittingDriverTimeOff
+              ? <ActivityIndicator color="#ffffff" />
+              : <Text style={styles.returnButtonText}>I'M BACK - ACTIVATE ME AGAIN</Text>}
+          </Pressable>
+        </View> : null}
+
       <View style={styles.formCard}>
         <Text style={styles.label}>Appointment Type</Text>
         <TextInput
@@ -102,10 +150,15 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
         <TextInput
           style={styles.input}
           value={appointmentDate}
-          onChangeText={setAppointmentDate}
+          onChangeText={value => {
+            setAppointmentDate(value);
+            if (runtime.driverTimeOffError) runtime.setDriverTimeOffError('');
+          }}
           placeholder="2026-04-12"
           placeholderTextColor={driverTheme.colors.textMuted}
         />
+        <Text style={styles.helperText}>Requests must be submitted at least 2 full days in advance. Earliest allowed date: {minimumDateKey}.</Text>
+        {!meetsAdvanceNotice && appointmentDate.trim() ? <Text style={styles.errorText}>Time off must be requested at least 2 days ahead.</Text> : null}
 
         <Text style={styles.label}>Note / Reason</Text>
         <TextInput
@@ -118,7 +171,7 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
           textAlignVertical="top"
         />
 
-        <Text style={styles.label}>Excuse Note Photo</Text>
+        <Text style={styles.label}>Excuse Note Photo (Optional)</Text>
         {excuseImageUrl ? (
           <View style={styles.photoWrap}>
             <Image source={{ uri: excuseImageUrl }} style={styles.photo} resizeMode="cover" />
@@ -144,6 +197,7 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
           </View>
         )}
 
+        <Text style={styles.helperText}>You can submit day off without a photo. Add one only if you want dispatch to see supporting proof.</Text>
         {photoError ? <Text style={styles.errorText}>{photoError}</Text> : null}
         {runtime.driverTimeOffError ? <Text style={styles.errorText}>{runtime.driverTimeOffError}</Text> : null}
         {runtime.driverTimeOffSuccess ? <Text style={styles.successText}>{runtime.driverTimeOffSuccess}</Text> : null}
@@ -151,6 +205,10 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
         <Pressable
           style={[styles.submitButton, { backgroundColor: accent }, runtime.isSubmittingDriverTimeOff || !canSubmit ? styles.submitButtonDisabled : null]}
           onPress={() => {
+            if (!meetsAdvanceNotice) {
+              runtime.setDriverTimeOffError(`Time off must be requested at least 2 days ahead. Earliest allowed date: ${minimumDateKey}.`);
+              return;
+            }
             void runtime.submitDriverTimeOff({
               appointmentType,
               appointmentDate,
@@ -162,7 +220,7 @@ export const DriverTimeOffSection = ({ runtime }: Props) => {
         >
           {runtime.isSubmittingDriverTimeOff
             ? <ActivityIndicator color="#ffffff" />
-            : <Text style={styles.submitButtonText}>Submit Time Off</Text>}
+            : <Text style={styles.submitButtonText}>{hasSubmittedAppointment ? 'Update Time Off' : 'Submit Time Off'}</Text>}
         </Pressable>
       </View>
     </View>
@@ -195,6 +253,47 @@ const styles = StyleSheet.create({
     color: driverTheme.colors.textMuted,
     fontWeight: '700',
     fontSize: 12
+  },
+  submittedCard: {
+    backgroundColor: '#ecfdf5',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#16a34a',
+    padding: 12,
+    gap: 6
+  },
+  submittedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  submittedTitle: {
+    color: '#166534',
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  submittedBadge: {
+    backgroundColor: '#16a34a',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5
+  },
+  submittedBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.4
+  },
+  submittedLine: {
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  submittedNote: {
+    color: '#14532d',
+    fontSize: 12,
+    lineHeight: 18
   },
   formCard: {
     backgroundColor: '#ffffff',
@@ -286,6 +385,11 @@ const styles = StyleSheet.create({
     color: '#b91c1c',
     fontSize: 12,
     fontWeight: '700'
+  },
+  helperText: {
+    color: driverTheme.colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17
   },
   successText: {
     color: '#166534',

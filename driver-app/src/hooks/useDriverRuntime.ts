@@ -2116,6 +2116,44 @@ export const useDriverRuntime = () => {
     }
   };
 
+  const clearDriverTimeOff = async (): Promise<boolean> => {
+    if (!loggedIn || !driverSession?.driverId) return false;
+
+    setIsSubmittingDriverTimeOff(true);
+    setDriverTimeOffError('');
+    setDriverTimeOffSuccess('');
+
+    try {
+      const { response, payload } = await fetchJsonWithTimeout(
+        `${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-time-off?driverId=${encodeURIComponent(driverSession.driverId)}`,
+        {
+          method: 'DELETE',
+          headers: getDriverAuthHeaders(driverSession)
+        }
+      );
+
+      if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
+      if (!response.ok) {
+        throw new Error(String(payload?.error || '') || 'Unable to clear time off.');
+      }
+
+      setDriverTimeOffAppointment(null);
+      const nextSession = {
+        ...driverSession,
+        timeOffAppointment: null
+      };
+      setDriverSession(nextSession);
+      await writeStoredDriverSession(nextSession);
+      setDriverTimeOffSuccess('You are active again. Dispatch was notified and route assignment can resume.');
+      return true;
+    } catch (error) {
+      setDriverTimeOffError(error instanceof Error ? error.message : 'Unable to clear time off.');
+      return false;
+    } finally {
+      setIsSubmittingDriverTimeOff(false);
+    }
+  };
+
   const resetFuelData = async (): Promise<boolean> => {
     if (!loggedIn || !driverSession) return false;
     setIsSubmittingFuelRequest(true);
@@ -2265,6 +2303,7 @@ export const useDriverRuntime = () => {
     setDriverTimeOffSuccess,
     loadDriverTimeOff,
     submitDriverTimeOff,
+    clearDriverTimeOff,
     formatDateTime
   };
 };

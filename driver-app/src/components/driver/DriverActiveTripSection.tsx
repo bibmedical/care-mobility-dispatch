@@ -8,6 +8,31 @@ type Props = {
   runtime: DriverRuntime;
 };
 
+const getTripPatientPhone = (trip?: DriverRuntime['activeTrip'] | null) => {
+  if (!trip) return '';
+  return String(
+    trip.patientPhoneNumber
+    || trip.patientPhone
+    || trip.phone
+    || trip.phoneNumber
+    || trip.memberPhone
+    || trip.mobile
+    || trip.riderPhone
+    || ''
+  ).trim();
+};
+
+const formatActionPhone = (phoneNumber?: string) => {
+  const digits = String(phoneNumber || '').replace(/\D+/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return String(phoneNumber || '').trim();
+};
+
 const openPhoneCall = async (phoneNumber?: string) => {
   const digits = String(phoneNumber || '').replace(/\D+/g, '');
   if (!digits) return;
@@ -77,8 +102,8 @@ export const DriverActiveTripSection = ({ runtime }: Props) => {
           {renderSupportBadges()}
 
           <View style={styles.actionGrid}>
-            <Pressable style={styles.actionSoft} onPress={() => void openPhoneCall(runtime.activeTrip?.patientPhoneNumber)}>
-              <Text style={styles.actionSoftText}>Call rider</Text>
+            <Pressable style={styles.actionSoft} onPress={() => void openPhoneCall(getTripPatientPhone(runtime.activeTrip))}>
+              <Text style={styles.actionSoftText}>{getTripPatientPhone(runtime.activeTrip) ? `Call ${formatActionPhone(getTripPatientPhone(runtime.activeTrip))}` : 'Call rider'}</Text>
             </Pressable>
             <Pressable style={[styles.actionSoft, { backgroundColor: withDriverAccentAlpha(driverAccent, 0.12) }, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('en-route')} disabled={runtime.activeTripAction.length > 0}>
               <Text style={[styles.actionSoftText, { color: driverAccent }]}>{runtime.activeTripAction === 'en-route' ? 'Sending...' : 'En Route'}</Text>
@@ -96,7 +121,7 @@ export const DriverActiveTripSection = ({ runtime }: Props) => {
           <View style={styles.infoGrid}>
             <View style={styles.infoPanel}>
               <Text style={styles.infoLabel}>Patient phone</Text>
-              <Text style={styles.infoValue}>{runtime.activeTrip.patientPhoneNumber || 'No phone on file'}</Text>
+              <Text style={styles.infoValue}>{getTripPatientPhone(runtime.activeTrip) || 'No phone on file'}</Text>
             </View>
             <View style={styles.infoPanel}>
               <Text style={styles.infoLabel}>Late minutes</Text>

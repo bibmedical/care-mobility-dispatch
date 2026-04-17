@@ -105,6 +105,12 @@ export type DriverTrip = {
   hasDropoffTimeOverride?: boolean;
   hasNotesOverride?: boolean;
   patientPhoneNumber?: string;
+  patientPhone?: string;
+  phone?: string;
+  phoneNumber?: string;
+  memberPhone?: string;
+  riderPhone?: string;
+  mobile?: string;
   assistanceNeeds?: string;
   mobilityType?: string;
   subMobilityType?: string;

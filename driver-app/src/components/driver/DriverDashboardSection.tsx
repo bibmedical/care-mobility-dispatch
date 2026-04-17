@@ -76,9 +76,9 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
   const ratingText = totalReviews > 0 ? `${averageRating.toFixed(1)}★` : 'New';
   const gpsStatusOn = runtime.isBackgroundTrackingEnabled;
   const gpsStatusPending = runtime.isManagingBackgroundTracking;
-  const gpsBadgeBackground = gpsStatusPending ? '#fef3c7' : gpsStatusOn ? '#dcfce7' : '#fee2e2';
-  const gpsBadgeBorder = gpsStatusPending ? '#f59e0b' : gpsStatusOn ? '#16a34a' : '#dc2626';
-  const gpsBadgeText = gpsStatusPending ? '#92400e' : gpsStatusOn ? '#166534' : '#991b1b';
+  const gpsBadgeBackground = gpsStatusPending ? '#f59e0b' : gpsStatusOn ? '#16a34a' : '#dc2626';
+  const gpsBadgeBorder = gpsStatusPending ? '#d97706' : gpsStatusOn ? '#166534' : '#991b1b';
+  const gpsBadgeText = '#ffffff';
   const gpsBadgeLabel = gpsStatusPending ? 'GPS STARTING' : gpsStatusOn ? 'GPS ON' : 'GPS OFF';
 
   const handleGpsBadgePress = () => {
@@ -230,7 +230,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     minWidth: 88,
-    alignItems: 'center'
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.16,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3
   },
   gpsStatusBadgeText: {
     fontSize: 11,
