@@ -29,9 +29,13 @@ const ACTION_LABELS: Record<string, string> = {
 export const DriverHistorySection = ({ runtime }: Props) => {
   const entries = useMemo(() => {
     return [...runtime.assignedTrips]
+      .filter(trip => {
+        const normalizedStatus = String(trip.status || '').toLowerCase();
+        return normalizedStatus.includes('complet') || normalizedStatus.includes('cancel');
+      })
       .sort((a, b) => {
-        const aTime = Number(a.completedAt || a.arrivedDestinationAt || a.startTripAt || a.patientOnboardAt || a.arrivedAt || a.enRouteAt || 0);
-        const bTime = Number(b.completedAt || b.arrivedDestinationAt || b.startTripAt || b.patientOnboardAt || b.arrivedAt || b.enRouteAt || 0);
+        const aTime = Number(a.canceledAt || a.completedAt || a.arrivedDestinationAt || a.startTripAt || a.patientOnboardAt || a.arrivedAt || a.enRouteAt || 0);
+        const bTime = Number(b.canceledAt || b.completedAt || b.arrivedDestinationAt || b.startTripAt || b.patientOnboardAt || b.arrivedAt || b.enRouteAt || 0);
         return bTime - aTime;
       });
   }, [runtime.assignedTrips]);
@@ -40,7 +44,7 @@ export const DriverHistorySection = ({ runtime }: Props) => {
     return <View style={styles.screen}>
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>No trip history yet.</Text>
-          <Text style={styles.emptyMeta}>Accepted and completed trips will appear here.</Text>
+          <Text style={styles.emptyMeta}>Completed and cancelled trips will appear here.</Text>
         </View>
       </View>;
   }

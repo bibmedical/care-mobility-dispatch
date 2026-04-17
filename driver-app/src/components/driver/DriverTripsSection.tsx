@@ -198,12 +198,6 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   }, [hasPersistedInProgressTrip, queueMode]);
 
   useEffect(() => {
-    if (queueMode !== 'in-progress' || !inProgressFocusTrip?.id) return;
-    if (String(runtime.activeTrip?.id || '').trim() === String(inProgressFocusTrip.id || '').trim()) return;
-    runtime.setActiveTrip(inProgressFocusTrip);
-  }, [inProgressFocusTrip, queueMode, runtime]);
-
-  useEffect(() => {
     const interval = setInterval(() => {
       setClockNow(Date.now());
     }, 1000);
@@ -235,6 +229,21 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     setCancelReason('');
     setCancelPhotoDataUrl('');
     setShowCancelComposer(true);
+  };
+
+  const showScheduledQueue = () => {
+    setQueueMode('scheduled');
+  };
+
+  const showInProgressQueue = () => {
+    if (!inProgressFocusTrip?.id) {
+      if (!hasPersistedInProgressTrip) {
+        Alert.alert('In Progress', 'There is no trip in progress right now.');
+      }
+      return;
+    }
+    runtime.setActiveTrip(inProgressFocusTrip);
+    setQueueMode('in-progress');
   };
 
   const filteredTrips = useMemo(() => {
@@ -571,7 +580,8 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const activateWillCallTrip = async (trip: typeof openTrips[number]) => {
     const activationTime = formatWillCallActivatedLabel(trip.willCallActivatedAt);
     if (activationTime) {
-      Alert.alert('WillCall already active', `This trip was activated at ${activationTime}.`);
+      runtime.setActiveTrip(trip);
+      setQueueMode('in-progress');
       return;
     }
 
@@ -627,6 +637,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const handleTripCardPress = (trip: typeof openTrips[number]) => {
     const tripStatus = String(trip.status || '').toLowerCase();
     const isWillCall = Boolean(trip.isWillCall) || tripStatus.trim() === 'willcall';
+    const hasActivatedWillCall = Boolean(formatWillCallActivatedLabel(trip.willCallActivatedAt));
     const tripHasAccepted = Boolean(
       trip.driverWorkflow?.acceptedAt
       || tripStatus.includes('progress')
@@ -636,12 +647,10 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     );
     const hasOtherBlockingTrip = blockingTrip && String(blockingTrip.id || '').trim() !== String(trip.id || '').trim();
 
-    if (isWillCall && !tripHasAccepted) {
+    if (isWillCall && !tripHasAccepted && !hasActivatedWillCall) {
       Alert.alert(
         'WillCall trip',
-        trip.willCallActivatedAt
-          ? `WillCall was already activated at ${formatWillCallActivatedLabel(trip.willCallActivatedAt)}.`
-          : 'Use the Activate WillCall button below to record the driver activation time without interrupting the current route.'
+        'Use the Activate WillCall button below to record the driver activation time without interrupting the current route.'
       );
       return;
     }
@@ -678,10 +687,10 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   return <View style={styles.screen}>
       <View style={styles.routeShell}>
         <View style={styles.queueHeaderRow}>
-          <Pressable style={[styles.queueChip, queueMode === 'scheduled' ? styles.queueChipActive : null]} onPress={() => setQueueMode('scheduled')}>
+          <Pressable style={[styles.queueChip, queueMode === 'scheduled' ? styles.queueChipActive : null]} onPress={showScheduledQueue}>
             <Text style={[styles.queueChipText, queueMode === 'scheduled' ? styles.queueChipTextActive : null]}>Scheduled</Text>
           </Pressable>
-          <Pressable style={[styles.queueChip, queueMode === 'in-progress' ? styles.queueChipActive : null]} onPress={() => setQueueMode('in-progress')}>
+          <Pressable style={[styles.queueChip, queueMode === 'in-progress' ? styles.queueChipActive : null]} onPress={showInProgressQueue}>
             <Text style={[styles.queueChipText, queueMode === 'in-progress' ? styles.queueChipTextActive : null]}>In Progress</Text>
           </Pressable>
         </View>
@@ -736,7 +745,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                   <Text style={styles.smsBadgeText}>{getTripPatientPhone(trip) ? `${isAndroidDevice ? 'Text' : 'SMS'} ${formatActionPhone(getTripPatientPhone(trip))}` : (isAndroidDevice ? 'Text' : 'SMS')}</Text>
                 </Pressable>
                 {isWillCallTrip ? <Pressable style={[styles.willCallBadge, isAndroidDevice ? styles.androidQuickActionButton : null, runtime.activeTripAction ? styles.actionDisabled : null, willCallActivatedLabel ? styles.willCallBadgeActive : null]} onPress={() => void activateWillCallTrip(trip)} disabled={runtime.activeTripAction.length > 0}>
-                    <Text style={styles.willCallBadgeText}>{runtime.activeTripAction === 'activate-willcall' && runtime.activeTrip?.id === trip.id ? 'Sending...' : willCallActivatedLabel ? `Activated ${willCallActivatedLabel}` : 'Activate WillCall'}</Text>
+                  <Text style={styles.willCallBadgeText}>{runtime.activeTripAction === 'activate-willcall' && runtime.activeTrip?.id === trip.id ? 'Sending...' : willCallActivatedLabel ? `Open Trip ${willCallActivatedLabel}` : 'Activate WillCall'}</Text>
                   </Pressable> : null}
                 <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(trip, 'quick')}>
                   <Text style={styles.cancelBadgeText}>Cancel</Text>

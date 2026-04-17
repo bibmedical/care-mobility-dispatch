@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Florida Mobility Group Driver App",
+    "name": "Florida Mobility Driver Diario",
     "slug": "care-mobility-driver-app",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "orientation": "portrait",
     "icon": "./assets/iconnew-square.png",
     "userInterfaceStyle": "light",
@@ -25,7 +25,7 @@
     },
     "android": {
       "package": "com.caremobility.driverapp",
-      "versionCode": 9,
+      "versionCode": 10,
       "permissions": [
         "POST_NOTIFICATIONS",
         "ACCESS_COARSE_LOCATION",
@@ -51,8 +51,8 @@
     },
     "web": {
       "favicon": "./assets/iconnew-square.png",
-      "shortName": "FMG Driver",
-      "name": "Florida Mobility Group Driver App"
+      "shortName": "Driver Diario",
+      "name": "Florida Mobility Driver Diario"
     },
     "plugins": [
       [

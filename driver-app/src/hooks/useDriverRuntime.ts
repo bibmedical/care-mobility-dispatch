@@ -266,6 +266,7 @@ export const useDriverRuntime = () => {
   const seenMessageIdsRef = useRef<Set<string>>(new Set());
   const requestedBackgroundSettingsRef = useRef(false);
   const processingPendingTripActionsRef = useRef(false);
+  const pendingTripActionFlushRequestedRef = useRef(false);
 
   const syncLocationProviderState = async (promptToEnable = false) => {
     const servicesEnabled = await Location.hasServicesEnabledAsync();
@@ -468,7 +469,7 @@ export const useDriverRuntime = () => {
     if (action === 'arrived-destination') setShiftState('arrived');
     if (action === 'complete') setShiftState('completed');
     if (action === 'cancel') setShiftState('available');
-    if (action === 'complete' || action === 'cancel') setActiveTab('history');
+    if (action === 'complete' || action === 'cancel') setActiveTab('trips');
   };
 
   const applyPendingActionsToTrips = (trips: DriverTrip[], queuedActions: DriverPendingTripAction[]) => {
@@ -547,9 +548,14 @@ export const useDriverRuntime = () => {
   };
 
   const processPendingTripActions = async () => {
-    if (processingPendingTripActionsRef.current || !driverSession?.driverId || requiresPasswordReset) return false;
+    if (!driverSession?.driverId || requiresPasswordReset) return false;
+    if (processingPendingTripActionsRef.current) {
+      pendingTripActionFlushRequestedRef.current = true;
+      return false;
+    }
 
     processingPendingTripActionsRef.current = true;
+    pendingTripActionFlushRequestedRef.current = false;
     setIsProcessingPendingTripActions(true);
 
     try {
@@ -640,6 +646,10 @@ export const useDriverRuntime = () => {
     } finally {
       processingPendingTripActionsRef.current = false;
       setIsProcessingPendingTripActions(false);
+      if (pendingTripActionFlushRequestedRef.current) {
+        pendingTripActionFlushRequestedRef.current = false;
+        void processPendingTripActions();
+      }
     }
   };
 
