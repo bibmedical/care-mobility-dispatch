@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
-import { getActiveMessageForDriver, resolveSystemMessageById, upsertSystemMessage } from '@/server/system-messages-store';
+import { getActiveMessageForDriver, readSystemMessages, resolveSystemMessageById, upsertSystemMessage } from '@/server/system-messages-store';
 import { readNemtAdminPayload } from '@/server/nemt-admin-store';
 import { sendTripArrivalNotifications } from '@/server/sms-confirmation-service';
 import { sendCustomSmsRequests } from '@/server/sms-confirmation-service';
@@ -11,6 +11,7 @@ import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
 const AUTO_NO_DEPARTURE_ALERT_TYPE = 'no-departure-alert';
+const DRIVER_TRIP_ALERT_TYPES = new Set(['delay-alert', 'backup-driver-request', 'uber-request']);
 
 const buildAutoNoDepartureAlertId = (driverId, tripId) => `auto-no-departure-${driverId}-${tripId}`;
 const buildWillCallActivationMessageId = (driverId, tripId) => `driver-willcall-activation-${driverId}-${tripId}`;
@@ -73,6 +74,28 @@ const parseStoredTimestamp = value => {
   if (Number.isFinite(numericValue) && numericValue > 0) return numericValue;
   const dateValue = new Date(value || 0).getTime();
   return Number.isFinite(dateValue) && dateValue > 0 ? dateValue : 0;
+};
+
+const resolveActiveDriverTripAlerts = async (driverId, tripId) => {
+  const normalizedDriverId = String(driverId || '').trim();
+  const normalizedTripId = String(tripId || '').trim();
+  if (!normalizedDriverId || !normalizedTripId) return;
+
+  const messages = await readSystemMessages();
+  const alertsToResolve = messages.filter(message => {
+    const messageDriverId = String(message?.driverId || '').trim();
+    const messageTripId = String(message?.tripId || '').trim();
+    const messageType = String(message?.type || '').trim();
+    const messageStatus = String(message?.status || '').trim().toLowerCase();
+    return messageDriverId === normalizedDriverId
+      && messageTripId === normalizedTripId
+      && DRIVER_TRIP_ALERT_TYPES.has(messageType)
+      && messageStatus === 'active';
+  });
+
+  for (const message of alertsToResolve) {
+    await resolveSystemMessageById(message.id);
+  }
 };
 
 const isTripAssignedToDriver = (trip, driverId) => {
@@ -774,6 +797,10 @@ export async function POST(request) {
       await resolveSystemMessageById(activeNoDepartureAlert.id);
       await resolveDriverDisciplineEventById(activeNoDepartureAlert.id);
     }
+  }
+
+  if (['complete', 'cancel'].includes(action)) {
+    await resolveActiveDriverTripAlerts(driverId, tripId);
   }
 
   return jsonWithMobileCors(request, { ok: true, tripId, action, updatedAt: timestamp, arrivalNotifications, reviewRequest });
