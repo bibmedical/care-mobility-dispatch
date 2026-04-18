@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { DEFAULT_DISPATCH_TIME_ZONE, getLocalDateKey, getTripLateMinutesDisplay, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, normalizeTripRecord, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { readNemtAdminPayload, readNemtAdminState } from '@/server/nemt-admin-store';
-import { readAssignedTripsForDriverByServiceDates } from '@/server/nemt-dispatch-store';
+import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { getActiveMessageForDriver, resolveSystemMessageById, upsertSystemMessage } from '@/server/system-messages-store';
 import { readTripWorkflowEventsByTripIds } from '@/server/trip-workflow-store';
 import { resolveDriverDisciplineEventById, upsertDriverDisciplineEvent } from '@/server/driver-discipline-store';
@@ -330,13 +330,9 @@ export async function GET(request) {
 
     const todayServiceDateKey = getLocalDateKey(Date.now(), DEFAULT_DISPATCH_TIME_ZONE);
     const nextDayServiceDateKey = shiftTripDateKey(todayServiceDateKey, 1);
-    const assignedTrips = await readAssignedTripsForDriverByServiceDates({
-      driverId: driver.id,
-      serviceDateKeys: [todayServiceDateKey, nextDayServiceDateKey]
-    });
-    const driverTrips = (Array.isArray(assignedTrips) ? assignedTrips : []).filter(trip => {
-      const serviceDateKey = getTripServiceDateKey(trip);
-      return isTripAssignedToDriver(trip, driver.id) && [todayServiceDateKey, nextDayServiceDateKey].includes(serviceDateKey) && !isCancelledTrip(trip) && !isRehabTrip(trip);
+    const dispatchState = await readNemtDispatchState({ includePastDates: true });
+    const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => {
+      return isTripAssignedToDriver(trip, driver.id) && !isCancelledTrip(trip) && !isRehabTrip(trip);
     }).sort(sortTripsByPickupTime);
     const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(driverTrips.map(trip => trip?.id));
     const trips = driverTrips.map(trip => {
