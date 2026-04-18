@@ -20,6 +20,11 @@ const generateReviewToken = () => `${Date.now().toString(36)}${Math.random().toS
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
+const buildDriverAssignmentCandidates = ({ driverId, driverName, driverCode }) => ({
+  driverId: String(driverId || '').trim(),
+  textCandidates: new Set([driverName, driverCode].map(normalizeLookupValue).filter(Boolean))
+});
+
 const isTripActivatedForCancellation = trip => {
   const normalizedStatus = normalizeLookupValue(trip?.status);
   return Boolean(
@@ -98,10 +103,23 @@ const resolveActiveDriverTripAlerts = async (driverId, tripId) => {
   }
 };
 
-const isTripAssignedToDriver = (trip, driverId) => {
-  const normalizedDriverId = String(driverId || '').trim();
-  if (!normalizedDriverId) return false;
-  return String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId;
+const isTripAssignedToDriver = (trip, driverMatch) => {
+  const normalizedDriverId = String(driverMatch?.driverId || driverMatch || '').trim();
+  const textCandidates = driverMatch?.textCandidates instanceof Set ? driverMatch.textCandidates : new Set();
+  if (normalizedDriverId && (String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId)) {
+    return true;
+  }
+
+  const tripTextCandidates = [
+    trip?.driverName,
+    trip?.secondaryDriverName,
+    trip?.importedDriverName,
+    trip?.driver,
+    trip?.assignedDriver,
+    trip?.assignedDriverName
+  ].map(normalizeLookupValue).filter(Boolean);
+
+  return tripTextCandidates.some(value => textCandidates.has(value));
 };
 
 const formatClockTime = value => new Date(value).toLocaleTimeString('en-US', {
@@ -538,6 +556,14 @@ export async function POST(request) {
   const authResult = await authorizeMobileDriverRequest(request, driverId);
   if (authResult.response) return withMobileCors(authResult.response, request);
 
+  const adminPayload = await readNemtAdminPayload();
+  const currentDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
+  const driverMatch = buildDriverAssignmentCandidates({
+    driverId,
+    driverName: currentDriver?.name,
+    driverCode: currentDriver?.code
+  });
+
   const dispatchState = await readNemtDispatchState();
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
   const currentTrip = trips.find(trip => String(trip?.id || '').trim() === tripId);
@@ -546,7 +572,7 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Trip not found.' }, { status: 404 });
   }
 
-  if (!isTripAssignedToDriver(currentTrip, driverId)) {
+  if (!isTripAssignedToDriver(currentTrip, driverMatch)) {
     return jsonWithMobileCors(request, { ok: false, error: 'Trip is not assigned to this driver.' }, { status: 403 });
   }
 

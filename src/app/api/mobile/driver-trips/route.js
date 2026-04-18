@@ -13,10 +13,28 @@ const AUTO_NO_DEPARTURE_THRESHOLD_MINUTES = 5;
 
 const normalizeLookupValue = value => String(value ?? '').trim().toLowerCase();
 
-const isTripAssignedToDriver = (trip, driverId) => {
-  const normalizedDriverId = String(driverId || '').trim();
-  if (!normalizedDriverId) return false;
-  return String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId;
+const buildDriverAssignmentCandidates = ({ driverId, driverName, driverCode }) => ({
+  driverId: String(driverId || '').trim(),
+  textCandidates: new Set([driverName, driverCode].map(normalizeLookupValue).filter(Boolean))
+});
+
+const isTripAssignedToDriver = (trip, driverMatch) => {
+  const normalizedDriverId = String(driverMatch?.driverId || driverMatch || '').trim();
+  const textCandidates = driverMatch?.textCandidates instanceof Set ? driverMatch.textCandidates : new Set();
+  if (normalizedDriverId && (String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId)) {
+    return true;
+  }
+
+  const tripTextCandidates = [
+    trip?.driverName,
+    trip?.secondaryDriverName,
+    trip?.importedDriverName,
+    trip?.driver,
+    trip?.assignedDriver,
+    trip?.assignedDriverName
+  ].map(normalizeLookupValue).filter(Boolean);
+
+  return tripTextCandidates.some(value => textCandidates.has(value));
 };
 
 const isCancelledTrip = trip => ['cancelled', 'canceled'].includes(normalizeLookupValue(trip?.status));
@@ -317,11 +335,17 @@ export async function GET(request) {
       }, { status: 404 });
     }
 
+    const driverMatch = buildDriverAssignmentCandidates({
+      driverId: driver.id,
+      driverName: driver.name,
+      driverCode: driver.code
+    });
+
     const todayServiceDateKey = getLocalDateKey(Date.now(), DEFAULT_DISPATCH_TIME_ZONE);
     const nextDayServiceDateKey = shiftTripDateKey(todayServiceDateKey, 1);
     const dispatchState = await readNemtDispatchState({ includePastDates: true });
     const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => {
-      return isTripAssignedToDriver(trip, driver.id) && !isCancelledTrip(trip);
+      return isTripAssignedToDriver(trip, driverMatch) && !isCancelledTrip(trip);
     }).sort(sortTripsByPickupTime);
     const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(driverTrips.map(trip => trip?.id));
     const trips = driverTrips.map(trip => {

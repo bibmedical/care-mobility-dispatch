@@ -509,17 +509,41 @@ export const upsertIncomingDriverThreadMessage = async (driverId, message) => {
 
 // ─── DRIVER TRIP UPDATE (mobile) ──────────────────────────────────────────────
 
-export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => {
+const normalizeAssignmentValue = value => String(value ?? '').trim().toLowerCase();
+
+const buildDriverAssignmentCandidates = ({ driverId, driverName, driverCode }) => ({
+  driverId: String(driverId || '').trim(),
+  textCandidates: new Set([driverName, driverCode].map(normalizeAssignmentValue).filter(Boolean))
+});
+
+const tripMatchesDriverAssignment = (trip, driverMatch) => {
+  const normalizedDriverId = String(driverMatch?.driverId || '').trim();
+  const textCandidates = driverMatch?.textCandidates instanceof Set ? driverMatch.textCandidates : new Set();
+  if (normalizedDriverId && (String(trip?.driverId || '').trim() === normalizedDriverId || String(trip?.secondaryDriverId || '').trim() === normalizedDriverId)) {
+    return true;
+  }
+
+  const tripTextCandidates = [
+    trip?.driverName,
+    trip?.secondaryDriverName,
+    trip?.importedDriverName,
+    trip?.driver,
+    trip?.assignedDriver,
+    trip?.assignedDriverName
+  ].map(normalizeAssignmentValue).filter(Boolean);
+
+  return tripTextCandidates.some(value => textCandidates.has(value));
+};
+
+export const updateTripStatusForDriver = async ({ driverId, driverName = '', driverCode = '', tripId, patch }) => {
   if (!hasDatabaseUrl()) {
-    const normalizedDriverId = String(driverId || '').trim();
+    const driverMatch = buildDriverAssignmentCandidates({ driverId, driverName, driverCode });
     const normalizedTripId = String(tripId || '').trim();
     const state = await readLocalNemtDispatchState();
     const currentTrips = Array.isArray(state?.trips) ? state.trips : [];
     const existingTrip = currentTrips.find(trip => String(trip?.id || '').trim() === normalizedTripId);
     if (!existingTrip) return { ok: false, reason: 'not-found' };
-    const tripDriverId = String(existingTrip?.driverId || '').trim();
-    const tripSecondaryDriverId = String(existingTrip?.secondaryDriverId || '').trim();
-    if (tripDriverId !== normalizedDriverId && tripSecondaryDriverId !== normalizedDriverId) {
+    if (!tripMatchesDriverAssignment(existingTrip, driverMatch)) {
       return { ok: false, reason: 'forbidden' };
     }
     const nextState = normalizePersistentDispatchState({
@@ -535,10 +559,8 @@ export const updateTripStatusForDriver = async ({ driverId, tripId, patch }) => 
     const result = await client.query(`SELECT data FROM dispatch_trips WHERE id = $1 FOR UPDATE`, [String(tripId || '').trim()]);
     if (!result.rows.length) return { ok: false, reason: 'not-found' };
     const trip = result.rows[0].data;
-    const tripDriverId = String(trip?.driverId || '').trim();
-    const tripSecondaryDriverId = String(trip?.secondaryDriverId || '').trim();
-    const normalizedDriverId = String(driverId || '').trim();
-    if (tripDriverId !== normalizedDriverId && tripSecondaryDriverId !== normalizedDriverId) {
+    const driverMatch = buildDriverAssignmentCandidates({ driverId, driverName, driverCode });
+    if (!tripMatchesDriverAssignment(trip, driverMatch)) {
       return { ok: false, reason: 'forbidden' };
     }
     const updatedTrip = { ...trip, ...patch };
