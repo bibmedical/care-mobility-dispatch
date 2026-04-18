@@ -21,17 +21,6 @@ const isTripAssignedToDriver = (trip, driverId) => {
 
 const isCancelledTrip = trip => ['cancelled', 'canceled'].includes(normalizeLookupValue(trip?.status));
 
-const isRehabTrip = trip => {
-  const normalizedStatus = normalizeLookupValue(trip?.status);
-  if (['rehab', 'hospital', 'hospital-rehab'].includes(normalizedStatus)) return true;
-
-  const startDate = String(trip?.hospitalStatus?.startDate || '').trim();
-  const endDate = String(trip?.hospitalStatus?.endDate || '').trim();
-  if (!startDate || !endDate) return false;
-  const todayKey = getLocalDateKey(Date.now(), DEFAULT_DISPATCH_TIME_ZONE);
-  return todayKey >= startDate && todayKey <= endDate;
-};
-
 const sortTripsByPickupTime = (leftTrip, rightTrip) => {
   const leftTime = Number.isFinite(leftTrip?.pickupSortValue) ? leftTrip.pickupSortValue : Number.MAX_SAFE_INTEGER;
   const rightTime = Number.isFinite(rightTrip?.pickupSortValue) ? rightTrip.pickupSortValue : Number.MAX_SAFE_INTEGER;
@@ -332,7 +321,7 @@ export async function GET(request) {
     const nextDayServiceDateKey = shiftTripDateKey(todayServiceDateKey, 1);
     const dispatchState = await readNemtDispatchState({ includePastDates: true });
     const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => {
-      return isTripAssignedToDriver(trip, driver.id) && !isCancelledTrip(trip) && !isRehabTrip(trip);
+      return isTripAssignedToDriver(trip, driver.id) && !isCancelledTrip(trip);
     }).sort(sortTripsByPickupTime);
     const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(driverTrips.map(trip => trip?.id));
     const trips = driverTrips.map(trip => {
