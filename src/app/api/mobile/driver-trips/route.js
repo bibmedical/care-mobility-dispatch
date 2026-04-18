@@ -113,14 +113,6 @@ const buildAutoNoDepartureAlert = ({ driver, driverState, trip, now }) => {
   };
 };
 
-const hasWillCallPickupMarker = trip => {
-  const effectivePickupText = String(trip?.scheduledPickup || trip?.pickup || '').trim().toLowerCase();
-  if (!effectivePickupText) return false;
-  const normalizedPickup = effectivePickupText.replace(/\s+/g, '');
-  if (['11:59pm', '11:59p.m.', '11:59p'].includes(normalizedPickup)) return true;
-  return ['tbd', 'willcall', 'will call', '23', '23:'].some(marker => effectivePickupText === marker || effectivePickupText.startsWith(marker));
-};
-
 const getEffectiveTripStatus = trip => {
   const normalizedStatus = String(trip?.status || '').trim();
   const normalizedStatusToken = normalizedStatus.toLowerCase().replace(/\s+/g, '');
@@ -129,7 +121,6 @@ const getEffectiveTripStatus = trip => {
   if (normalizedOverride === 'off') return normalizedStatusToken === 'willcall' ? 'Unassigned' : normalizedStatus || 'Unassigned';
   if (normalizedOverride === 'manual') return 'WillCall';
   if (normalizedStatusToken === 'willcall') return 'WillCall';
-  if (hasWillCallPickupMarker(trip)) return 'WillCall';
   return normalizedStatus || 'Unassigned';
 };
 

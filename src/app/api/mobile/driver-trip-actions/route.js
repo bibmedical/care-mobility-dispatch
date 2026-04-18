@@ -564,7 +564,7 @@ export async function POST(request) {
     driverCode: currentDriver?.code
   });
 
-  const dispatchState = await readNemtDispatchState();
+  const dispatchState = await readNemtDispatchState({ includePastDates: true });
   const trips = Array.isArray(dispatchState?.trips) ? dispatchState.trips : [];
   const currentTrip = trips.find(trip => String(trip?.id || '').trim() === tripId);
 
@@ -646,33 +646,27 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Unsupported action.' }, { status: 400 });
   }
   const patch = actionUpdate.patch;
+  const shouldLoadDriverRecord = ['complete', 'cancel', 'activate-willcall'].includes(action);
+  const actionDriver = shouldLoadDriverRecord
+    ? (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null
+    : null;
 
   if (action === 'accept') {
     patch.riderSignatureData = riderSignatureData;
   }
 
   if (action === 'complete') {
-    const adminPayload = await readNemtAdminPayload();
-    const currentDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
     patch.reviewRequestToken = generateReviewToken();
     patch.reviewRequestStatus = 'pending';
     patch.reviewRequestSentAt = null;
     patch.completedByDriverId = driverId;
-    patch.completedByDriverName = String(currentDriver?.name || currentTrip?.driverName || '').trim() || driverId;
+    patch.completedByDriverName = String(actionDriver?.name || currentTrip?.driverName || '').trim() || driverId;
     patch.riderSignatureData = riderSignatureData;
   }
 
   if (action === 'cancel') {
-    const adminPayload = await readNemtAdminPayload();
-    const currentDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
     patch.canceledByDriverId = driverId;
-    patch.canceledByDriverName = String(currentDriver?.name || currentTrip?.driverName || '').trim() || driverId;
-  }
-
-  let currentDriver = null;
-  if (action === 'activate-willcall') {
-    const adminPayload = await readNemtAdminPayload();
-    currentDriver = (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null;
+    patch.canceledByDriverName = String(actionDriver?.name || currentTrip?.driverName || '').trim() || driverId;
   }
 
   const nextTrips = trips.map(trip => String(trip?.id || '').trim() === tripId ? {
@@ -707,7 +701,7 @@ export async function POST(request) {
 
   if (action === 'activate-willcall') {
     await upsertSystemMessage(buildWillCallActivationMessage({
-      currentDriver,
+      currentDriver: actionDriver,
       currentTrip: {
         ...currentTrip,
         ...patch
