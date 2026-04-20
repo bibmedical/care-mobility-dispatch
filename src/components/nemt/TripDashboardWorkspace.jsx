@@ -3879,10 +3879,32 @@ const TripDashboardWorkspace = () => {
       setStatusMessage(`Unable to clone ${getDisplayTripId(trip)}.`);
       return;
     }
+    setTripStatusFilter('all');
     setSelectedTripIds([clonedTripId]);
     setSelectedDriverId(null);
     setSelectedRouteId(null);
     setStatusMessage(`Trip ${getDisplayTripId(trip)} cloned as ${clonedTripId}.`);
+  };
+
+  const handleDeleteTrip = trip => {
+    if (!trip?.id) return;
+    const tripLabel = getDisplayTripId(trip);
+    const confirmed = window.confirm(`Delete trip ${tripLabel}? This will remove it from the dashboard and any route that contains it.`);
+    if (!confirmed) return;
+
+    deleteTripRecord(trip.id);
+
+    if (noteModalTripId === trip.id) {
+      handleCloseTripNote();
+    }
+
+    if (tripExcelCompareModalId === trip.id) {
+      handleCloseTripExcelCompare();
+    }
+
+    setSelectedRouteId(null);
+    setStatusMessage(`Trip ${tripLabel} deleted.`);
+    showNotification({ message: `Trip ${tripLabel} deleted.`, variant: 'success' });
   };
 
   const isInlineTripCellEditing = (tripId, columnKey) => inlineTripEditCell?.tripId === tripId && inlineTripEditCell?.columnKey === columnKey;
@@ -5381,6 +5403,15 @@ const TripDashboardWorkspace = () => {
                 style={compactTripActionButtonStyle}
               >
                 C
+              </Button>
+              <Button
+                variant="outline-danger"
+                size="sm"
+                onClick={() => handleDeleteTrip(trip)}
+                title="Delete trip"
+                style={compactTripActionButtonStyle}
+              >
+                D
               </Button>
               <Button
                 variant="outline-primary"

@@ -90,6 +90,49 @@ const getTripLookupKeys = trip => {
   return keys;
 };
 
+const getTripDeletionSuppressionKeys = trip => {
+  const keys = [];
+  const tripId = String(trip?.id || '').trim();
+  const importFingerprint = String(trip?.importFingerprint || '').trim().toLowerCase();
+
+  if (tripId) keys.push(`id:${tripId}`);
+  if (importFingerprint) keys.push(`import:${importFingerprint}`);
+
+  return Array.from(new Set(keys.filter(Boolean)));
+};
+
+const getDeletedTripSuppressionKeySet = auditLog => {
+  const suppressionKeys = new Set();
+
+  (Array.isArray(auditLog) ? auditLog : []).forEach(entry => {
+    if (String(entry?.action || '').trim() !== 'delete-trip') return;
+
+    const metadataKeys = Array.isArray(entry?.metadata?.tripSuppressionKeys)
+      ? entry.metadata.tripSuppressionKeys
+      : [];
+
+    metadataKeys.forEach(key => {
+      const normalizedKey = String(key || '').trim().toLowerCase();
+      if (normalizedKey) suppressionKeys.add(normalizedKey);
+    });
+
+    const entityId = String(entry?.entityId || '').trim();
+    if (entityId) suppressionKeys.add(`id:${entityId}`.toLowerCase());
+  });
+
+  return suppressionKeys;
+};
+
+const filterTripsByDeletionSuppression = (trips, suppressionKeySet) => {
+  if (!(suppressionKeySet instanceof Set) || suppressionKeySet.size === 0) {
+    return Array.isArray(trips) ? trips : [];
+  }
+
+  return (Array.isArray(trips) ? trips : []).filter(trip => {
+    return !getTripDeletionSuppressionKeys(trip).some(key => suppressionKeySet.has(String(key || '').trim().toLowerCase()));
+  });
+};
+
 const normalizeTripMatchText = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 const getNormalizedPhone = value => String(value || '').replace(/\D/g, '');
 
@@ -575,6 +618,7 @@ export const NemtProvider = ({
   const dispatchStateSyncInFlightRef = useRef(false);
   const liveSyncInFlightRef = useRef(false);
   const driverSyncInFlightRef = useRef(false);
+  const recentlyDeletedTripIdsRef = useRef(new Map());
   const pendingPersistSnapshotRef = useRef('');
   const allowTripShrinkNextPersistRef = useRef(false);
   const pendingAllowTripShrinkRef = useRef(false);
@@ -856,15 +900,38 @@ export const NemtProvider = ({
         cache: 'no-store'
       });
       if (!response.ok) throw new Error('Unable to load dispatch state');
-      const payload = normalizePersistentDispatchState(await response.json());
+      const deletedTripCutoff = Date.now() - 30000;
+      Array.from(recentlyDeletedTripIdsRef.current.entries()).forEach(([tripId, deletedAt]) => {
+        if ((Number(deletedAt) || 0) < deletedTripCutoff) {
+          recentlyDeletedTripIdsRef.current.delete(tripId);
+        }
+      });
+      const deletedTripIdSet = new Set(Array.from(recentlyDeletedTripIdsRef.current.keys()));
+      const rawPayload = normalizePersistentDispatchState(await response.json());
+      const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(rawPayload.auditLog);
+      const payloadTrips = filterTripsByDeletionSuppression(rawPayload.trips, deletedTripSuppressionKeySet).filter(trip => !deletedTripIdSet.has(String(trip?.id || '').trim()));
+      const payload = deletedTripIdSet.size === 0 && deletedTripSuppressionKeySet.size === 0 ? rawPayload : {
+        ...rawPayload,
+        trips: payloadTrips,
+        routePlans: rawPayload.routePlans.map(routePlan => ({
+          ...routePlan,
+          tripIds: (Array.isArray(routePlan?.tripIds) ? routePlan.tripIds : []).filter(tripId => {
+            const normalizedTripId = String(tripId || '').trim();
+            if (!normalizedTripId) return false;
+            if (deletedTripIdSet.has(normalizedTripId)) return false;
+            return payloadTrips.some(trip => String(trip?.id || '').trim() === normalizedTripId);
+          })
+        })).filter(routePlan => routePlan.tripIds.length > 0)
+      };
       startTransition(() => {
         setState(currentState => {
           const localState = buildClientState(currentState ?? createInitialState());
-          const useLocalTrips = !forceServer && hasLocalDispatchChangesRef.current;
-          const useLocalRoutes = !forceServer && hasLocalDispatchChangesRef.current;
-          const useLocalDispatchThreads = !forceServer && hasLocalDispatchChangesRef.current;
-          const useLocalDailyDrivers = !forceServer && hasLocalDispatchChangesRef.current;
-          const useLocalAuditLog = !forceServer && hasLocalDispatchChangesRef.current;
+          const hasPendingLocalDispatchChanges = hasLocalDispatchChangesRef.current || persistInFlightRef.current || Boolean(pendingPersistSnapshotRef.current);
+          const useLocalTrips = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalRoutes = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalDispatchThreads = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalDailyDrivers = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalAuditLog = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
           const localColumns = normalizeDispatcherVisibleTripColumns(localState.uiPreferences?.dispatcherVisibleTripColumns);
           const serverColumns = normalizeDispatcherVisibleTripColumns(payload.uiPreferences?.dispatcherVisibleTripColumns);
           const localMapProvider = normalizeMapProviderPreference(localState.uiPreferences?.mapProvider);
@@ -1879,8 +1946,9 @@ export const NemtProvider = ({
   });
 
   const replaceTrips = trips => updateState(currentState => {
+    const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(currentState.auditLog);
     const protectedTrips = normalizeTripRecords(currentState.trips.filter(isProtectedManualTrip));
-    const incomingTrips = normalizeTripRecords(trips);
+    const incomingTrips = normalizeTripRecords(filterTripsByDeletionSuppression(trips, deletedTripSuppressionKeySet));
     const protectedIds = new Set(incomingTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
     const nextTrips = normalizeTripRecords([
       ...protectedTrips.filter(trip => !protectedIds.has(String(trip?.id || '').trim())),
@@ -1902,8 +1970,9 @@ export const NemtProvider = ({
   });
 
   const upsertImportedTrips = (trips, options = {}) => updateState(currentState => {
+    const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(currentState.auditLog);
     const currentTrips = normalizeTripRecords(currentState.trips);
-    const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
+    const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(filterTripsByDeletionSuppression(trips, deletedTripSuppressionKeySet)));
     const importedAt = new Date().toISOString();
     const batchId = `saferide-${Date.now()}-${importedTrips.length}`;
     const applyRoutingChanges = options?.applyRoutingChanges !== false;
@@ -2188,6 +2257,7 @@ export const NemtProvider = ({
   const deleteTripRecord = (tripId) => {
     const normalizedTripId = String(tripId || '').trim();
     if (!normalizedTripId) return;
+    recentlyDeletedTripIdsRef.current.set(normalizedTripId, Date.now());
     updateState(currentState => ({
       ...currentState,
       selectedTripIds: currentState.selectedTripIds.filter(id => id !== normalizedTripId),
@@ -2200,13 +2270,19 @@ export const NemtProvider = ({
       markDispatchDirty: true,
       allowTripShrink: true,
       allowTripShrinkReason: 'manual-admin-delete',
-      buildAuditEntry: () => ({
-        action: 'delete-trip',
-        entityType: 'trip',
-        entityId: normalizedTripId,
-        source: 'confirmation',
-        summary: `Deleted trip ${normalizedTripId}`
-      })
+      buildAuditEntry: currentState => {
+        const deletedTrip = (Array.isArray(currentState?.trips) ? currentState.trips : []).find(trip => String(trip?.id || '').trim() === normalizedTripId);
+        return {
+          action: 'delete-trip',
+          entityType: 'trip',
+          entityId: normalizedTripId,
+          source: 'confirmation',
+          summary: `Deleted trip ${normalizedTripId}`,
+          metadata: {
+            tripSuppressionKeys: getTripDeletionSuppressionKeys(deletedTrip)
+          }
+        };
+      }
     });
   };
 
