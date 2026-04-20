@@ -2371,6 +2371,18 @@ const TripDashboardWorkspace = () => {
       Diarie
     </Button>;
 
+  const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+      <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={handleToggleConfirmationTools}>Confirmation</Button>
+      {showConfirmationTools ? <Button variant="light" size="sm" onClick={() => {
+      const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
+      handleOpenConfirmationMethod(selectedTripsForConfirmation);
+    }}>
+          Send Selected
+        </Button> : null}
+      {renderDispatchHistoryButton()}
+      {renderHelpButton()}
+    </div>;
+
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">P</Button>
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handleShareRouteWhatsapp} title="WhatsApp" aria-label="WhatsApp">W</Button>
@@ -5448,12 +5460,6 @@ const TripDashboardWorkspace = () => {
           }}>
               Day Off{routeDayOffDrivers.length > 0 ? ` (${routeDayOffDrivers.length})` : ''}
             </Button>
-            {showConfirmationTools ? <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-            const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
-            handleOpenConfirmationMethod(selectedTripsForConfirmation);
-          }}>
-                Send Selected
-              </Button> : null}
             {!isFocusRightLayout ? <Form.Control size="sm" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" style={{ width: 180 }} /> : null}
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} title="Manage Drivers" aria-label="Manage Drivers" onClick={() => {
             refreshDrivers();
@@ -5909,7 +5915,6 @@ const TripDashboardWorkspace = () => {
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
                 })}
-                  {renderHelpButton()}
                 </div>
                 
                 {/* Bottom toolbar line */}
@@ -5984,8 +5989,6 @@ const TripDashboardWorkspace = () => {
                     AI Route
                   </button>
                   {renderStatusFilterBlock()}
-                  {renderDispatchHistoryButton()}
-                  {renderHelpButton()}
                   {renderColumnsButton()}
                   {renderSecondaryToolbarActionBlocks()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>
@@ -6193,13 +6196,13 @@ const TripDashboardWorkspace = () => {
                       <Badge bg={liveTripScan?.blockingCount > 0 ? 'danger' : liveTripScan?.warningCount > 0 ? 'warning' : 'light'} text={liveTripScan?.blockingCount > 0 ? undefined : 'dark'}>
                         {liveTripScan?.findingCount || 0}
                       </Badge>
+                      {renderScannerConfirmationPanelButtons()}
                       <Button variant="light" size="sm" onClick={() => {
                       setShowTripImportModal(true);
                       setStatusMessage('Excel Loader with scanner opened inside Trip Dashboard. Nothing changes in the tree until you import.');
                     }}>
                         Excel Loader + Scanner
                       </Button>
-                      <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={handleToggleConfirmationTools}>Confirmation</Button>
                       <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
                       <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
                       <Button variant="light" size="sm" onClick={handleAutoRepairLiveScan}>Auto Repair</Button>
