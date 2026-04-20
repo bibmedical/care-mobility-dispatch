@@ -85,6 +85,10 @@ const normalizeTripDateInput = value => {
   return `${parsedDate.getFullYear()}-${padDatePart(parsedDate.getMonth() + 1)}-${padDatePart(parsedDate.getDate())}`;
 };
 
+const getTripSourceFieldValues = (trip, fields = []) => {
+  return fields.flatMap(field => String(trip?.[field] || '').split('|')).map(normalizeTextValue).filter(Boolean);
+};
+
 const normalizeTimestampToDateKey = value => {
   const timestamp = Number(value);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
@@ -120,7 +124,7 @@ export const getTripServiceDateKey = trip => {
   return normalizeTimestampToDateKey(trip?.pickupSortValue) || normalizeTimestampToDateKey(trip?.dropoffSortValue) || normalizeTimestampToDateKey(trip?.confirmation?.sentAt) || '';
 };
 
-const getTripMobilitySource = (trip, fields = TRIP_MOBILITY_SOURCE_FIELDS) => fields.map(field => String(trip?.[field] || '').trim()).filter(Boolean).join(' ').toLowerCase();
+const getTripMobilitySource = (trip, fields = TRIP_MOBILITY_SOURCE_FIELDS) => getTripSourceFieldValues(trip, fields).join(' ').toLowerCase();
 
 const normalizeMobilitySource = source => source.replace(/provide\s+wheelchair/gi, ' ').replace(/wheelchair\s+provided/gi, ' ').replace(/needs?\s+wheelchair/gi, ' ').replace(/wheelchair\s+needed/gi, ' ').replace(/requires?\s+wheelchair/gi, ' ').replace(/wheelchair\s+required/gi, ' ').replace(/\s+/g, ' ').trim();
 
@@ -128,8 +132,14 @@ const detectTripMobilityLabelFromSource = source => {
   const normalizedSource = normalizeMobilitySource(String(source || '').toLowerCase());
   if (!normalizedSource) return '';
   if (normalizedSource.includes('stretcher') || normalizedSource.includes('gurney') || normalizedSource.includes('str')) return 'STR';
-  if (normalizedSource.includes('wheelchair') || normalizedSource.includes('wheel chair') || normalizedSource.includes('wheel') || normalizedSource.includes('wc') || normalizedSource.includes('w/c') || normalizedSource.includes('wxl') || normalizedSource.includes('electric wheelchair') || normalizedSource.includes('power wheelchair') || normalizedSource.includes('ew')) return 'W';
+  if (normalizedSource.includes('wheelchair') || normalizedSource.includes('wheel chair') || normalizedSource.includes('wheel') || normalizedSource.includes('wc') || normalizedSource.includes('w/c') || normalizedSource.includes('wcv') || normalizedSource.includes('wxl') || normalizedSource.includes('electric wheelchair') || normalizedSource.includes('power wheelchair') || normalizedSource.includes('ew')) return 'W';
   return 'A';
+};
+
+const TRIP_SUPPORT_SOURCE_FIELDS = ['assistanceNeeds', 'subMobilityType', 'mobilityType', 'mobility', 'vehicleType', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
+
+const getTripSupportTokens = trip => {
+  return Array.from(new Set(getTripSourceFieldValues(trip, TRIP_SUPPORT_SOURCE_FIELDS)));
 };
 
 export const getTripMobilityLabel = trip => {
@@ -370,12 +380,7 @@ const getDerivedRideId = trip => {
   return firstSegment || normalizedId;
 };
 
-const getTripAssistanceTokens = trip => {
-  return Array.from(new Set([
-    ...String(trip?.assistanceNeeds || '').split('|'),
-    ...String(trip?.subMobilityType || '').split('|')
-  ].map(normalizeTextValue).filter(Boolean)));
-};
+const getTripAssistanceTokens = trip => getTripSupportTokens(trip);
 
 const findAssistanceToken = (tokens, patterns) => {
   return tokens.find(token => {
@@ -386,9 +391,9 @@ const findAssistanceToken = (tokens, patterns) => {
 
 export const getTripSupportMetadata = trip => {
   const assistanceTokens = getTripAssistanceTokens(trip);
-  const hasServiceAnimal = Boolean(findAssistanceToken(assistanceTokens, ['service animal', 'service dog']));
+  const hasServiceAnimal = Boolean(findAssistanceToken(assistanceTokens, ['service animal', 'service dog', 'sa']));
   const assistLevelToken = findAssistanceToken(assistanceTokens, ['room to door', 'door to door', 'curb to curb']);
-  const mobilityToken = findAssistanceToken(assistanceTokens, ['wheelchair-power/electric', 'power wheelchair', 'standard manual wheelchair', 'manual wheelchair', 'folding wheelchair', 'stretcher/gurney', 'stretcher', 'gurney', 'scooter', 'walker', 'cane', 'none']);
+  const mobilityToken = findAssistanceToken(assistanceTokens, ['wheelchair-power/electric', 'power wheelchair', 'electric wheelchair', 'standard manual wheelchair', 'manual wheelchair', 'folding wheelchair', 'wheelchair van', 'wcv', 'wheelchair', 'w/c', 'stretcher/gurney', 'stretcher', 'gurney', 'scooter', 'walker', 'cane', 'none']);
 
   const mobilityType = mobilityToken
     ? mobilityToken.toLowerCase().includes('wheelchair-power/electric') || mobilityToken.toLowerCase().includes('power wheelchair')

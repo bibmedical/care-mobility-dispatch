@@ -918,6 +918,18 @@ const getTripNoteText = trip => splitTripNoteSections(trip).combinedNotes;
 
 const getTripExcelLoaderSnapshot = trip => trip?.excelLoaderSnapshot && typeof trip.excelLoaderSnapshot === 'object' ? trip.excelLoaderSnapshot : null;
 
+const getTripDisplayedTypeLabel = trip => {
+  const snapshot = getTripExcelLoaderSnapshot(trip);
+  return String(
+    snapshot?.vehicleType
+    || trip?.vehicleType
+    || snapshot?.tripType
+    || trip?.tripType
+    || getTripTypeLabel(trip)
+    || '-'
+  ).trim() || '-';
+};
+
 const buildTripExcelComparisonRows = trip => {
   const snapshot = getTripExcelLoaderSnapshot(trip);
   if (!snapshot) return [];
@@ -968,8 +980,8 @@ const buildTripExcelComparisonRows = trip => {
     currentValue: trip?.confirmationStatus || '-'
   }, {
     label: 'Type',
-    excelValue: snapshot.tripType || '-',
-    currentValue: trip?.tripType || '-'
+    excelValue: snapshot.vehicleType || snapshot.tripType || '-',
+    currentValue: getTripDisplayedTypeLabel(trip)
   }, {
     label: 'Phone',
     excelValue: snapshot.patientPhoneNumber || '-',
@@ -5365,10 +5377,17 @@ const TripDashboardWorkspace = () => {
           placeholder: '(407) 555-0000'
         });
       case 'mobility': {
-        const tripTypeLabel = getTripTypeLabel(trip);
-        const badgeVariant = tripTypeLabel === 'STR' ? 'danger' : tripTypeLabel === 'W' ? 'warning' : 'success';
+        const tripTypeLabel = getTripDisplayedTypeLabel(trip);
+        const normalizedTripTypeLabel = tripTypeLabel.toUpperCase();
+        const badgeVariant = normalizedTripTypeLabel.includes('STR')
+          ? 'danger'
+          : normalizedTripTypeLabel === 'W' || normalizedTripTypeLabel.includes('WC') || normalizedTripTypeLabel.includes('WCV') || normalizedTripTypeLabel.includes('WHEEL')
+            ? 'warning'
+            : normalizedTripTypeLabel === 'SA'
+              ? 'info'
+              : 'success';
         return <td key={`${trip.id}-mobility`} style={{ whiteSpace: 'nowrap' }}>
-            <Badge bg={badgeVariant} text={tripTypeLabel === 'W' ? 'dark' : undefined}>{tripTypeLabel}</Badge>
+            <Badge bg={badgeVariant} text={badgeVariant === 'warning' || badgeVariant === 'info' ? 'dark' : undefined}>{tripTypeLabel}</Badge>
           </td>;
       }
       case 'assistLevel':
