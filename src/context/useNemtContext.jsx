@@ -884,6 +884,12 @@ export const NemtProvider = ({
     const nextDateKey = String(options?.dateKey || dispatchQueryDateKeyRef.current || '').trim();
     const nextWindowPastDays = Math.max(Number(options?.windowPastDays ?? dispatchWindowPastDaysRef.current) || 0, 0);
     const nextWindowFutureDays = Math.max(Number(options?.windowFutureDays ?? dispatchWindowFutureDaysRef.current) || 0, 0);
+    const previousDateKey = String(dispatchQueryDateKeyRef.current || '').trim();
+    const previousWindowPastDays = Math.max(Number(dispatchWindowPastDaysRef.current) || 0, 0);
+    const previousWindowFutureDays = Math.max(Number(dispatchWindowFutureDaysRef.current) || 0, 0);
+    const isSameServerScope = previousDateKey === nextDateKey
+      && previousWindowPastDays === nextWindowPastDays
+      && previousWindowFutureDays === nextWindowFutureDays;
 
     if (nextDateKey) {
       dispatchQueryDateKeyRef.current = nextDateKey;
@@ -908,9 +914,8 @@ export const NemtProvider = ({
       });
       const deletedTripIdSet = new Set(Array.from(recentlyDeletedTripIdsRef.current.keys()));
       const rawPayload = normalizePersistentDispatchState(await response.json());
-      const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(rawPayload.auditLog);
-      const payloadTrips = filterTripsByDeletionSuppression(rawPayload.trips, deletedTripSuppressionKeySet).filter(trip => !deletedTripIdSet.has(String(trip?.id || '').trim()));
-      const payload = deletedTripIdSet.size === 0 && deletedTripSuppressionKeySet.size === 0 ? rawPayload : {
+      const payloadTrips = (Array.isArray(rawPayload.trips) ? rawPayload.trips : []).filter(trip => !deletedTripIdSet.has(String(trip?.id || '').trim()));
+      const payload = deletedTripIdSet.size === 0 ? rawPayload : {
         ...rawPayload,
         trips: payloadTrips,
         routePlans: rawPayload.routePlans.map(routePlan => ({
@@ -927,11 +932,12 @@ export const NemtProvider = ({
         setState(currentState => {
           const localState = buildClientState(currentState ?? createInitialState());
           const hasPendingLocalDispatchChanges = hasLocalDispatchChangesRef.current || persistInFlightRef.current || Boolean(pendingPersistSnapshotRef.current);
-          const useLocalTrips = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
-          const useLocalRoutes = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
-          const useLocalDispatchThreads = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
-          const useLocalDailyDrivers = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
-          const useLocalAuditLog = hasPendingLocalDispatchChanges || !forceServer && hasLocalDispatchChangesRef.current;
+          const preserveLocalOnForceServer = forceServer && hasPendingLocalDispatchChanges && isSameServerScope;
+          const useLocalTrips = preserveLocalOnForceServer || !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalRoutes = preserveLocalOnForceServer || !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalDispatchThreads = preserveLocalOnForceServer || !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalDailyDrivers = preserveLocalOnForceServer || !forceServer && hasLocalDispatchChangesRef.current;
+          const useLocalAuditLog = preserveLocalOnForceServer || !forceServer && hasLocalDispatchChangesRef.current;
           const localColumns = normalizeDispatcherVisibleTripColumns(localState.uiPreferences?.dispatcherVisibleTripColumns);
           const serverColumns = normalizeDispatcherVisibleTripColumns(payload.uiPreferences?.dispatcherVisibleTripColumns);
           const localMapProvider = normalizeMapProviderPreference(localState.uiPreferences?.mapProvider);
