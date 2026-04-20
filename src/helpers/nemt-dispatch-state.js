@@ -494,7 +494,7 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
 }];
 
 const LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['notes', 'miles', 'status', 'rider', 'address', 'destination'];
-export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['rider', 'pickup', 'dropoff', 'address', 'puZip', 'destination', 'doZip', 'phone', 'miles', 'status', 'notes'];
+export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key);
 
 export const normalizeMapProviderPreference = value => {
   const normalized = String(value ?? 'auto').trim().toLowerCase();

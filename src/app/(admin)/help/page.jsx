@@ -671,9 +671,23 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V21</Badge>
+                <span className="fw-semibold text-dark">Trip Dashboard Scanner + Column Defaults Deploy</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>System Trip Scanner toolbar now includes a direct Confirmation button so visible selected trips can open the existing confirmation flow from the scanner panel.</li>
+                <li>The trip table Notes header now shows the Notes label again instead of only the icon, fixing the missing first letter in the dashboard header row.</li>
+                <li>Trip Dashboard column setup now treats all trip columns as the default setup, matching the dispatcher preference for a full table view.</li>
+                <li>The column picker now shows a real All Columns checkmark when every trip column is active, so the setup panel matches the saved visible state.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V20</Badge>
                 <span className="fw-semibold text-dark">Diarie Rename + Trip Dashboard Cleanup + Day Off Web Review</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Trip Dashboard no longer shows the extra left-side Help shortcut; the remaining visible shortcut now reads Diarie and still routes to /help.</li>
