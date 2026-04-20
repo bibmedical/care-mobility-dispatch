@@ -71,6 +71,24 @@ const getDistanceMiles = (from, to) => {
   return Number.isFinite(miles) ? miles.toFixed(1) : '';
 };
 
+const buildLocalDate = ({ year, month, day, hours = 0, minutes = 0, seconds = 0 }) => new Date(
+  Number(year),
+  Number(month) - 1,
+  Number(day),
+  Number(hours) || 0,
+  Number(minutes) || 0,
+  Number(seconds) || 0
+);
+
+const parseMeridiemHour = (hours, meridiem) => {
+  const normalizedHours = Number(hours) || 0;
+  const normalizedMeridiem = String(meridiem || '').trim().toUpperCase();
+  if (!normalizedMeridiem) return normalizedHours;
+  if (normalizedMeridiem === 'AM') return normalizedHours === 12 ? 0 : normalizedHours;
+  if (normalizedMeridiem === 'PM') return normalizedHours === 12 ? 12 : normalizedHours + 12;
+  return normalizedHours;
+};
+
 const getParsedDate = value => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
   const numericValue = Number(value);
@@ -82,6 +100,27 @@ const getParsedDate = value => {
   }
   const normalized = String(value ?? '').trim();
   if (!normalized) return null;
+
+  const isoWithoutTimezoneMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{1,2})(?::(\d{2}))?(?::(\d{2}))?)?$/);
+  if (isoWithoutTimezoneMatch) {
+    const [, year, month, day, hours = '0', minutes = '0', seconds = '0'] = isoWithoutTimezoneMatch;
+    return buildLocalDate({ year, month, day, hours, minutes, seconds });
+  }
+
+  const slashDateMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[T\s](\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(AM|PM)?)?$/i);
+  if (slashDateMatch) {
+    const [, month, day, rawYear, rawHours = '0', minutes = '0', seconds = '0', meridiem = ''] = slashDateMatch;
+    const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
+    return buildLocalDate({
+      year,
+      month,
+      day,
+      hours: parseMeridiemHour(rawHours, meridiem),
+      minutes,
+      seconds
+    });
+  }
+
   const parsedDate = new Date(normalized);
   return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
 };

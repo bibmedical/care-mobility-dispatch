@@ -542,7 +542,7 @@ const getActorIdentity = session => {
 const getTomorrowDateKey = () => {
   const now = new Date();
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  return tomorrow.toISOString().slice(0, 10);
+  return getLocalDateKey(tomorrow);
 };
 
 const mergeDispatchThreadsForSync = (localThreads, serverThreads) => {

@@ -3,7 +3,7 @@
 import PageTitle from '@/components/PageTitle';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { useNemtContext } from '@/context/useNemtContext';
-import { getTripMobilityLabel, getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
+import { getLocalDateKey, getTripMobilityLabel, getTripServiceDateKey, parseTripClockMinutes } from '@/helpers/nemt-dispatch-state';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
@@ -47,6 +47,12 @@ const buildSurfaceStyles = isLight => ({
     fontSize: '0.74rem'
   }
 });
+
+const getShiftedLocalDateKey = offsetDays => {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return getLocalDateKey(date);
+};
 
 const normalizeSignaturePayload = value => {
   if (!value || typeof value !== 'object') return null;
@@ -512,11 +518,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
   const [inlineTimeEditValue, setInlineTimeEditValue] = useState('');
   
   // New states for date, time, and manual confirmation
-  const [confirmationDate, setConfirmationDate] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().slice(0, 10);
-  });
+  const [confirmationDate, setConfirmationDate] = useState(() => getShiftedLocalDateKey(1));
   const [timeFromFilter, setTimeFromFilter] = useState('02:00');
   const [timeToFilter, setTimeToFilter] = useState('08:00');
   const [primaryFilterMode, setPrimaryFilterMode] = useState('none');
@@ -537,11 +539,9 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
   // Hospital/Rehab states
   const [hospitalRehabModal, setHospitalRehabModal] = useState(null);
   const [hospitalRehabType, setHospitalRehabType] = useState('Hospital');
-  const [hospitalRehabStartDate, setHospitalRehabStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [hospitalRehabStartDate, setHospitalRehabStartDate] = useState(() => getShiftedLocalDateKey(0));
   const [hospitalRehabEndDate, setHospitalRehabEndDate] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 7);
-    return date.toISOString().slice(0, 10);
+    return getShiftedLocalDateKey(7);
   });
   const [hospitalRehabNotes, setHospitalRehabNotes] = useState('');
   const [hospitalRehabSaving, setHospitalRehabSaving] = useState(false);
