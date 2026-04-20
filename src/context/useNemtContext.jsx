@@ -805,6 +805,9 @@ export const NemtProvider = ({
     const allowTripShrink = pendingAllowTripShrinkRef.current;
     const allowTripShrinkReason = pendingAllowTripShrinkReasonRef.current;
     const actorName = String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim();
+    const pruneDateKey = String(dispatchQueryDateKeyRef.current || '').trim();
+    const pruneWindowPastDays = String(Math.max(Number(dispatchWindowPastDaysRef.current) || 0, 0));
+    const pruneWindowFutureDays = String(Math.max(Number(dispatchWindowFutureDaysRef.current) || 0, 0));
 
     persistInFlightRef.current = true;
     pendingPersistSnapshotRef.current = '';
@@ -818,6 +821,9 @@ export const NemtProvider = ({
           'Content-Type': 'application/json',
           'x-dispatch-allow-trip-shrink': allowTripShrink ? '1' : '0',
           'x-dispatch-shrink-reason': allowTripShrink ? allowTripShrinkReason || 'manual-admin-delete' : '',
+          'x-dispatch-prune-date': allowTripShrink ? pruneDateKey : '',
+          'x-dispatch-prune-window-past-days': allowTripShrink ? pruneWindowPastDays : '0',
+          'x-dispatch-prune-window-future-days': allowTripShrink ? pruneWindowFutureDays : '0',
           'x-dispatch-actor-name': allowTripShrink ? actorName : ''
         },
         body: nextSnapshot

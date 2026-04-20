@@ -415,7 +415,15 @@ export const readAssignedTripsForDriverByServiceDates = async ({ driverId, servi
 export const writeNemtDispatchState = async (nextState, options = {}) => {
   const normalized = normalizePersistentDispatchState(nextState);
   const allowPrune = options?.allowPrune === true || options?.allowTripShrink === true;
+  const allowScopedTripShrink = options?.allowTripShrink === true;
   const allowDestructiveEmptyPrune = options?.allowDestructiveEmptyPrune === true;
+  const pruneScopeDateKeys = allowScopedTripShrink
+    ? buildDispatchWindowDateKeys(
+      normalizeDateKey(options?.pruneDateKey),
+      Number(options?.pruneWindowPastDays ?? 0),
+      Number(options?.pruneWindowFutureDays ?? 0)
+    )
+    : [];
 
   if (!hasDatabaseUrl()) {
     if (!shouldUseLocalFallback()) {
@@ -468,10 +476,21 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
       );
       if (allowPrune) {
         const tripIds = activeState.trips.map(t => t.id);
-        await client.query(`DELETE FROM dispatch_trips WHERE id != ALL($1::text[])`, [tripIds]);
+        if (allowScopedTripShrink && pruneScopeDateKeys.length > 0) {
+          await client.query(
+            `DELETE FROM dispatch_trips WHERE service_date = ANY($1::text[]) AND id != ALL($2::text[])`,
+            [pruneScopeDateKeys, tripIds]
+          );
+        } else {
+          await client.query(`DELETE FROM dispatch_trips WHERE id != ALL($1::text[])`, [tripIds]);
+        }
       }
-    } else if (allowPrune && (allowDestructiveEmptyPrune || existingTripCount === 0)) {
-      await client.query(`DELETE FROM dispatch_trips`);
+    } else if (allowPrune && (allowDestructiveEmptyPrune || existingTripCount === 0 || (allowScopedTripShrink && pruneScopeDateKeys.length > 0))) {
+      if (allowScopedTripShrink && pruneScopeDateKeys.length > 0) {
+        await client.query(`DELETE FROM dispatch_trips WHERE service_date = ANY($1::text[])`, [pruneScopeDateKeys]);
+      } else {
+        await client.query(`DELETE FROM dispatch_trips`);
+      }
     }
 
     // ── route plans: bulk upsert ───────────────────────────────────────────────
@@ -490,10 +509,21 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
       );
       if (allowPrune) {
         const planIds = activeState.routePlans.map(p => p.id);
-        await client.query(`DELETE FROM dispatch_route_plans WHERE id != ALL($1::text[])`, [planIds]);
+        if (allowScopedTripShrink && pruneScopeDateKeys.length > 0) {
+          await client.query(
+            `DELETE FROM dispatch_route_plans WHERE service_date = ANY($1::text[]) AND id != ALL($2::text[])`,
+            [pruneScopeDateKeys, planIds]
+          );
+        } else {
+          await client.query(`DELETE FROM dispatch_route_plans WHERE id != ALL($1::text[])`, [planIds]);
+        }
       }
-    } else if (allowPrune && (allowDestructiveEmptyPrune || existingRouteCount === 0)) {
-      await client.query(`DELETE FROM dispatch_route_plans`);
+    } else if (allowPrune && (allowDestructiveEmptyPrune || existingRouteCount === 0 || (allowScopedTripShrink && pruneScopeDateKeys.length > 0))) {
+      if (allowScopedTripShrink && pruneScopeDateKeys.length > 0) {
+        await client.query(`DELETE FROM dispatch_route_plans WHERE service_date = ANY($1::text[])`, [pruneScopeDateKeys]);
+      } else {
+        await client.query(`DELETE FROM dispatch_route_plans`);
+      }
     }
 
     // ── threads: upsert per driver ─────────────────────────────────────────────
@@ -505,7 +535,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
         [thread.driverId, thread]
       );
     }
-    if (allowPrune) {
+    if (allowPrune && !allowScopedTripShrink) {
       const threadDriverIds = activeState.dispatchThreads.map(thread => String(thread?.driverId || '').trim()).filter(Boolean);
       if (threadDriverIds.length > 0) {
         await client.query(`DELETE FROM dispatch_threads WHERE driver_id != ALL($1::text[])`, [threadDriverIds]);
@@ -522,7 +552,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
         [dd.id, dd]
       );
     }
-    if (allowPrune) {
+    if (allowPrune && !allowScopedTripShrink) {
       const dailyDriverIds = activeState.dailyDrivers.map(dd => String(dd?.id || '').trim()).filter(Boolean);
       if (dailyDriverIds.length > 0) {
         await client.query(`DELETE FROM dispatch_daily_drivers WHERE id != ALL($1::text[])`, [dailyDriverIds]);
@@ -540,7 +570,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
         [entry.id, entry]
       );
     }
-    if (allowPrune) {
+    if (allowPrune && !allowScopedTripShrink) {
       const auditIds = activeState.auditLog.map(entry => String(entry?.id || '').trim()).filter(Boolean);
       if (auditIds.length > 0) {
         await client.query(`DELETE FROM dispatch_audit_log WHERE id != ALL($1::text[])`, [auditIds]);

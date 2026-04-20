@@ -28,6 +28,9 @@ export async function PUT(request) {
   const body = await request.json();
   const allowTripShrink = request.headers.get('x-dispatch-allow-trip-shrink') === '1';
   const shrinkReason = String(request.headers.get('x-dispatch-shrink-reason') || '').trim();
+  const pruneDateKey = String(request.headers.get('x-dispatch-prune-date') || '').trim();
+  const pruneWindowPastDays = Math.max(Number(request.headers.get('x-dispatch-prune-window-past-days') ?? 0) || 0, 0);
+  const pruneWindowFutureDays = Math.max(Number(request.headers.get('x-dispatch-prune-window-future-days') ?? 0) || 0, 0);
   const session = await getServerSession(options);
 
   if (allowTripShrink) {
@@ -52,6 +55,9 @@ export async function PUT(request) {
     const nextState = await writeNemtDispatchState(body, {
       allowTripShrink,
       shrinkReason,
+      pruneDateKey,
+      pruneWindowPastDays,
+      pruneWindowFutureDays,
       actorId: String(session?.user?.id || ''),
       actorName: String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim(),
       actorRole: String(session?.user?.role || '').trim()
