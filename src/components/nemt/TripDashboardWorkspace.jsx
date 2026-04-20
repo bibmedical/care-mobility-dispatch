@@ -2487,12 +2487,6 @@ const TripDashboardWorkspace = () => {
     }}>
         System Trip Scanner
       </Button>
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-      setShowLiveTripScanPanel(true);
-      handleOpenLiveScanConfirmation();
-    }} disabled={selectedVisibleTrips.length === 0}>
-        Confirmation
-      </Button>
     </div> : null;
 
   const renderClosedRouteBlock = () => <Button variant={isActiveRouteClosed ? 'danger' : compactToolbarOutlineVariant} size="sm" style={isActiveRouteClosed ? undefined : toolbarButtonStyle} onClick={handleToggleClosedRoute}>
@@ -5454,9 +5448,6 @@ const TripDashboardWorkspace = () => {
           }}>
               Day Off{routeDayOffDrivers.length > 0 ? ` (${routeDayOffDrivers.length})` : ''}
             </Button>
-            <Button variant={showConfirmationTools ? 'warning' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleToggleConfirmationTools}>
-              Confirmation
-            </Button>
             {showConfirmationTools ? <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
             const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
             handleOpenConfirmationMethod(selectedTripsForConfirmation);
@@ -6208,7 +6199,7 @@ const TripDashboardWorkspace = () => {
                     }}>
                         Excel Loader + Scanner
                       </Button>
-                      <Button variant="light" size="sm" onClick={handleOpenLiveScanConfirmation} disabled={selectedVisibleTrips.length === 0}>Confirmation</Button>
+                      <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={handleToggleConfirmationTools}>Confirmation</Button>
                       <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
                       <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
                       <Button variant="light" size="sm" onClick={handleAutoRepairLiveScan}>Auto Repair</Button>
