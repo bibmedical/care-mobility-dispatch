@@ -1248,13 +1248,22 @@ const TripDashboardWorkspace = () => {
         updateTripRecord(trip.id, invertDashboardTripDirection(trip));
       });
       setSelectedTripIds(targetTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean));
-      const riderNames = targetTrips.map(trip => String(trip?.rider || '').trim()).filter(Boolean);
-      const uniqueRiderNames = Array.from(new Set(riderNames));
-      const riderSummary = uniqueRiderNames.slice(0, 3);
-      const riderSuffix = riderSummary.length > 0 ? ` Affected rider(s): ${riderSummary.join(', ')}${riderSummary.length < uniqueRiderNames.length ? ', ...' : ''}.` : '';
+      const riderSummary = Array.from(new Set(targetTrips.map(trip => String(trip?.rider || '').trim()).filter(Boolean))).slice(0, 3);
+      const riderSuffix = riderSummary.length > 0 ? ` Affected rider(s): ${riderSummary.join(', ')}${riderSummary.length < new Set(targetTrips.map(trip => String(trip?.rider || '').trim()).filter(Boolean)).size ? ', ...' : ''}.` : '';
       const repairSummary = `Scanner auto-repair inverted direction for ${targetTrips.length} visible trip(s). Pickup, dropoff, and ZIP codes were swapped together.${riderSuffix}`;
       setStatusMessage(repairSummary);
       showNotification({ message: repairSummary, variant: 'success' });
+    };
+
+    const handleOpenLiveScanConfirmation = () => {
+      if (selectedVisibleTrips.length === 0) {
+        setStatusMessage('Select at least one visible scanner trip before opening confirmation.');
+        showNotification({ message: 'Select at least one visible scanner trip before opening confirmation.', variant: 'warning' });
+        return;
+      }
+
+      handleOpenConfirmationMethod(selectedVisibleTrips, selectedVisibleTrips[0] || null);
+      setStatusMessage(`Confirmation opened for ${selectedVisibleTrips.length} visible scanner trip(s).`);
     };
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
@@ -2026,6 +2035,7 @@ const TripDashboardWorkspace = () => {
     sortable: option.key !== 'notes'
   }])), []);
   const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
+  const isAllTripColumnsSelected = orderedVisibleTripColumns.length === allTripColumnKeys.length && allTripColumnKeys.every(columnKey => orderedVisibleTripColumns.includes(columnKey));
   const hasTripNotesColumn = orderedVisibleTripColumns.includes('notes');
   const orderedVisibleTripColumnsWithoutNotes = useMemo(() => orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes'), [orderedVisibleTripColumns]);
   const activeDateTripIdSet = useMemo(() => {
@@ -6182,9 +6192,10 @@ const TripDashboardWorkspace = () => {
                     }}>
                         Excel Loader + Scanner
                       </Button>
+                      <Button variant="light" size="sm" onClick={handleOpenLiveScanConfirmation} disabled={selectedVisibleTrips.length === 0}>Confirmation</Button>
                       <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
                       <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
-                      <Button variant="light" size="sm" onClick={handleAutoRepairLiveScan} disabled={liveTripAutoRepairableFindings.length === 0}>Auto Repair</Button>
+                      <Button variant="light" size="sm" onClick={handleAutoRepairLiveScan}>Auto Repair</Button>
                       <Button variant="light" size="sm" onClick={() => setShowLiveTripScanPanel(false)}>Hide</Button>
                     </div>
                   </div>
@@ -6214,7 +6225,7 @@ const TripDashboardWorkspace = () => {
                         </div>
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
-                      {hasTripNotesColumn ? renderTripHeader('notes', <IconifyIcon icon="iconoir:page-edit" />, 118, false) : null}
+                      {hasTripNotesColumn ? renderTripHeader('notes', <span className="d-inline-flex align-items-center gap-1"><IconifyIcon icon="iconoir:page-edit" /><span>Notes</span></span>, 118, false) : null}
                       {showConfirmationTools ? renderTripHeader('confirmation-tools', 'Confirm', 158, false) : null}
                       {orderedVisibleTripColumnsWithoutNotes.map(columnKey => {
                         const metadata = tripColumnMeta[columnKey];
@@ -6591,9 +6602,15 @@ const TripDashboardWorkspace = () => {
                   </div>
                   <Badge bg="secondary">{orderedVisibleTripColumns.length}/{allTripColumnKeys.length}</Badge>
                 </div>
-                <div className="d-flex gap-2 mb-3 flex-wrap">
-                  <Button variant="success" size="sm" onClick={handleShowAllTripColumns}>All columns</Button>
-                  <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default</Button>
+                <div className="d-flex gap-3 mb-3 flex-wrap align-items-center">
+                  <Form.Check
+                    type="checkbox"
+                    id="trip-column-picker-all-columns"
+                    label="All Columns"
+                    checked={isAllTripColumnsSelected}
+                    onChange={() => handleShowAllTripColumns()}
+                  />
+                  <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default setup</Button>
                 </div>
                 <div className="d-flex flex-column gap-2" style={{ maxHeight: '52vh', overflowY: 'auto', paddingRight: 4 }}>
                   {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}

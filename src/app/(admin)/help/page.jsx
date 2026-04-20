@@ -671,16 +671,15 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
-                <Badge bg="success" className="fs-6 px-3 py-2">V20</Badge>
-                <span className="fw-semibold text-dark">Trip Scanner Auto Repair Messaging + Real Deploy</span>
+                <Badge bg="success" className="fs-6 px-3 py-2">V21</Badge>
+                <span className="fw-semibold text-dark">Trip Dashboard Scanner + Column Defaults Deploy</span>
                 <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026 — Latest</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
-                <li>Kept Auto Repair available in System Trip Scanner even when there is nothing repairable so dispatch can get an explicit no-fix result instead of a dead disabled button.</li>
-                <li>When no visible repeated-direction issue is repairable, the scanner now writes a direct status message that nothing auto-repairable was found.</li>
-                <li>When a repair does happen, the success message now explains exactly what was done: direction was inverted and pickup, dropoff, and ZIP values were swapped together.</li>
-                <li>The success message also lists the affected rider names when available so dispatch can immediately see which legs were touched.</li>
-                <li>This deploy only changes Trip Dashboard scanner messaging and does not alter driver movement, routing runtime, or import dedupe logic.</li>
+                <li>System Trip Scanner toolbar now includes a direct Confirmation button so visible selected trips can open the existing confirmation flow from the scanner panel.</li>
+                <li>The trip table Notes header now shows the Notes label again instead of only the icon, fixing the missing first letter in the dashboard header row.</li>
+                <li>Trip Dashboard column setup now treats all trip columns as the default setup, matching the dispatcher preference for a full table view.</li>
+                <li>The column picker now shows a real All Columns checkmark when every trip column is active, so the setup panel matches the saved visible state.</li>
               </ul>
             </div>
 
