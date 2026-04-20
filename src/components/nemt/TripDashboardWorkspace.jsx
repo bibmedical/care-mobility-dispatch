@@ -2034,7 +2034,11 @@ const TripDashboardWorkspace = () => {
     width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' ? 150 : option.key === 'rider' ? 180 : undefined,
     sortable: option.key !== 'notes'
   }])), []);
-  const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
+  const orderedVisibleTripColumns = useMemo(() => {
+    const normalizedVisibleColumns = visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey]));
+    if (normalizedVisibleColumns.includes('notes')) return normalizedVisibleColumns;
+    return ['notes', ...normalizedVisibleColumns];
+  }, [tripColumnMeta, visibleTripColumns]);
   const isAllTripColumnsSelected = orderedVisibleTripColumns.length === allTripColumnKeys.length && allTripColumnKeys.every(columnKey => orderedVisibleTripColumns.includes(columnKey));
   const hasTripNotesColumn = orderedVisibleTripColumns.includes('notes');
   const orderedVisibleTripColumnsWithoutNotes = useMemo(() => orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes'), [orderedVisibleTripColumns]);
@@ -2476,9 +2480,20 @@ const TripDashboardWorkspace = () => {
       24
     </Button>;
 
-  const renderSystemScannerEntryBlock = () => !showLiveTripScanPanel ? <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => setShowLiveTripScanPanel(true)}>
-      Loader Loader
-    </Button> : null;
+  const renderSystemScannerEntryBlock = () => !showLiveTripScanPanel ? <div className="d-flex align-items-center gap-2 flex-nowrap">
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+      setShowLiveTripScanPanel(true);
+      setStatusMessage('System Trip Scanner reopened.');
+    }}>
+        System Trip Scanner
+      </Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+      setShowLiveTripScanPanel(true);
+      handleOpenLiveScanConfirmation();
+    }} disabled={selectedVisibleTrips.length === 0}>
+        Confirmation
+      </Button>
+    </div> : null;
 
   const renderClosedRouteBlock = () => <Button variant={isActiveRouteClosed ? 'danger' : compactToolbarOutlineVariant} size="sm" style={isActiveRouteClosed ? undefined : toolbarButtonStyle} onClick={handleToggleClosedRoute}>
       {isActiveRouteClosed ? 'Open Route' : 'Close Route'}
@@ -5340,7 +5355,8 @@ const TripDashboardWorkspace = () => {
       case 'notes': {
         const noteText = getTripNoteText(trip);
         const hasExcelLoaderSnapshot = Boolean(getTripExcelLoaderSnapshot(trip));
-        return <td key={`${trip.id}-notes`} style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
+        const notesColumnWidth = columnWidths.notes ?? 148;
+        return <td key={`${trip.id}-notes`} style={{ whiteSpace: 'nowrap', textAlign: 'center', width: notesColumnWidth, minWidth: notesColumnWidth, maxWidth: notesColumnWidth }}>
             <div className="d-flex align-items-center justify-content-center gap-1">
               <Button
                 variant={noteText ? 'outline-info' : 'outline-secondary'}
@@ -6225,7 +6241,7 @@ const TripDashboardWorkspace = () => {
                         </div>
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
-                      {hasTripNotesColumn ? renderTripHeader('notes', <span className="d-inline-flex align-items-center gap-1"><IconifyIcon icon="iconoir:page-edit" /><span>Notes</span></span>, 118, false) : null}
+                      {hasTripNotesColumn ? renderTripHeader('notes', <span className="d-inline-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}><IconifyIcon icon="iconoir:page-edit" /><span style={{ fontWeight: 700 }}>Notes</span></span>, 148, false) : null}
                       {showConfirmationTools ? renderTripHeader('confirmation-tools', 'Confirm', 158, false) : null}
                       {orderedVisibleTripColumnsWithoutNotes.map(columnKey => {
                         const metadata = tripColumnMeta[columnKey];
