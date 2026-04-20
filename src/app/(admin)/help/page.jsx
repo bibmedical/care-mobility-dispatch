@@ -672,8 +672,23 @@ const HelpPage = () => {
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V20</Badge>
+                <span className="fw-semibold text-dark">Trip Scanner Auto Repair Messaging + Real Deploy</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Kept Auto Repair available in System Trip Scanner even when there is nothing repairable so dispatch can get an explicit no-fix result instead of a dead disabled button.</li>
+                <li>When no visible repeated-direction issue is repairable, the scanner now writes a direct status message that nothing auto-repairable was found.</li>
+                <li>When a repair does happen, the success message now explains exactly what was done: direction was inverted and pickup, dropoff, and ZIP values were swapped together.</li>
+                <li>The success message also lists the affected rider names when available so dispatch can immediately see which legs were touched.</li>
+                <li>This deploy only changes Trip Dashboard scanner messaging and does not alter driver movement, routing runtime, or import dedupe logic.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V20</Badge>
                 <span className="fw-semibold text-dark">Diarie Rename + Trip Dashboard Cleanup + Day Off Web Review</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Trip Dashboard no longer shows the extra left-side Help shortcut; the remaining visible shortcut now reads Diarie and still routes to /help.</li>

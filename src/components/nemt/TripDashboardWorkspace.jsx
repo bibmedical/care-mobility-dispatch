@@ -1228,6 +1228,7 @@ const TripDashboardWorkspace = () => {
 
     const handleAutoRepairLiveScan = () => {
       if (liveTripAutoRepairableFindings.length === 0) {
+        setStatusMessage('Scanner checked the visible trips. No auto-repairable issues were found.');
         showNotification({ message: 'No simple repeated-direction issues are available for auto-repair in the visible trips.', variant: 'warning' });
         return;
       }
@@ -1247,8 +1248,13 @@ const TripDashboardWorkspace = () => {
         updateTripRecord(trip.id, invertDashboardTripDirection(trip));
       });
       setSelectedTripIds(targetTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean));
-      setStatusMessage(`Scanner repaired ${targetTrips.length} visible trip(s).`);
-      showNotification({ message: `Scanner repaired ${targetTrips.length} visible trip(s).`, variant: 'success' });
+      const riderNames = targetTrips.map(trip => String(trip?.rider || '').trim()).filter(Boolean);
+      const uniqueRiderNames = Array.from(new Set(riderNames));
+      const riderSummary = uniqueRiderNames.slice(0, 3);
+      const riderSuffix = riderSummary.length > 0 ? ` Affected rider(s): ${riderSummary.join(', ')}${riderSummary.length < uniqueRiderNames.length ? ', ...' : ''}.` : '';
+      const repairSummary = `Scanner auto-repair inverted direction for ${targetTrips.length} visible trip(s). Pickup, dropoff, and ZIP codes were swapped together.${riderSuffix}`;
+      setStatusMessage(repairSummary);
+      showNotification({ message: repairSummary, variant: 'success' });
     };
   const [expanded, setExpanded] = useState(false);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
