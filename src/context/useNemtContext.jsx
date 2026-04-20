@@ -93,6 +93,13 @@ const getTripLookupKeys = trip => {
 const normalizeTripMatchText = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 const getNormalizedPhone = value => String(value || '').replace(/\D/g, '');
 
+const getTripImportLegMatchKey = trip => {
+  const scanRootGroupKey = String(trip?.scanRootGroupKey || '').trim();
+  const legLabel = normalizeTripMatchText(trip?.legLabel);
+  if (!scanRootGroupKey || !legLabel) return '';
+  return `scan-leg:${scanRootGroupKey}:${legLabel}`;
+};
+
 const getTripImportMatchKeys = trip => {
   const keys = [...getTripLookupKeys(trip)];
   const rideId = String(trip?.rideId || '').trim();
@@ -102,6 +109,11 @@ const getTripImportMatchKeys = trip => {
   const phone = getNormalizedPhone(trip?.patientPhoneNumber);
   const slotOwner = phone || rider;
   const pickupSortValue = Number(trip?.pickupSortValue);
+  const legMatchKey = getTripImportLegMatchKey(trip);
+
+  if (legMatchKey) {
+    keys.push(legMatchKey);
+  }
 
   if (serviceDate && slotOwner && Number.isFinite(pickupSortValue)) {
     keys.push(`slot:${serviceDate}:${slotOwner}:${pickupSortValue}`);
@@ -112,6 +124,37 @@ const getTripImportMatchKeys = trip => {
   if (brokerTripId) keys.push(`broker:${brokerTripId}`);
 
   return Array.from(new Set(keys.filter(Boolean)));
+};
+
+const buildTripImportLookup = trips => {
+  const lookup = new Map();
+
+  (Array.isArray(trips) ? trips : []).forEach(trip => {
+    getTripImportMatchKeys(trip).forEach(key => {
+      if (!key) return;
+      const currentEntries = lookup.get(key) || [];
+      currentEntries.push(trip);
+      lookup.set(key, currentEntries);
+    });
+  });
+
+  return lookup;
+};
+
+const findMatchingImportedCurrentTrip = (importedTrip, tripLookup, consumedTripIds = new Set()) => {
+  const seenCandidateIds = new Set();
+
+  for (const key of getTripImportMatchKeys(importedTrip)) {
+    const candidates = tripLookup.get(key) || [];
+    for (const candidateTrip of candidates) {
+      const candidateId = String(candidateTrip?.id || '').trim();
+      if (!candidateId || consumedTripIds.has(candidateId) || seenCandidateIds.has(candidateId)) continue;
+      seenCandidateIds.add(candidateId);
+      return candidateTrip;
+    }
+  }
+
+  return null;
 };
 
 const isCancelledLikeStatus = value => {
@@ -247,19 +290,13 @@ const buildImportedTripRoutingChangePreview = (currentTrip, importedTrip) => ({
 const getImportedTripRoutingChangePreviews = (currentTrips, importedTrips) => {
   const normalizedCurrentTrips = normalizeTripRecords(currentTrips);
   const normalizedImportedTrips = dedupeImportedTripBatch(normalizeTripRecords(importedTrips));
-  const currentTripLookup = new Map();
-
-  normalizedCurrentTrips.forEach(trip => {
-    getTripImportMatchKeys(trip).forEach(key => {
-      if (key && !currentTripLookup.has(key)) {
-        currentTripLookup.set(key, trip);
-      }
-    });
-  });
+  const currentTripLookup = buildTripImportLookup(normalizedCurrentTrips);
+  const consumedTripIds = new Set();
 
   return normalizedImportedTrips.flatMap(importedTrip => {
-    const currentTrip = getTripImportMatchKeys(importedTrip).map(key => currentTripLookup.get(key)).find(Boolean);
+    const currentTrip = findMatchingImportedCurrentTrip(importedTrip, currentTripLookup, consumedTripIds);
     if (!currentTrip || !hasImportedTripRoutingChange(currentTrip, importedTrip)) return [];
+    consumedTripIds.add(String(currentTrip?.id || '').trim());
     return [buildImportedTripRoutingChangePreview(currentTrip, importedTrip)];
   });
 };
@@ -1870,7 +1907,8 @@ export const NemtProvider = ({
     const importedAt = new Date().toISOString();
     const batchId = `saferide-${Date.now()}-${importedTrips.length}`;
     const applyRoutingChanges = options?.applyRoutingChanges !== false;
-    const currentTripLookup = new Map();
+    const currentTripLookup = buildTripImportLookup(currentTrips);
+    const consumedCurrentTripIds = new Set();
     const importedLookupKeys = new Set();
     const missingTrips = getTripsMissingFromLatestSafeRideImport(currentTrips, importedTrips);
     const missingTripIdSet = new Set(missingTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
@@ -1881,16 +1919,8 @@ export const NemtProvider = ({
       });
     });
 
-    currentTrips.forEach(trip => {
-      getTripImportMatchKeys(trip).forEach(key => {
-        if (key && !currentTripLookup.has(key)) {
-          currentTripLookup.set(key, trip);
-        }
-      });
-    });
-
     const mergedImportedTrips = importedTrips.map(importedTrip => {
-      const currentTrip = getTripImportMatchKeys(importedTrip).map(key => currentTripLookup.get(key)).find(Boolean);
+      const currentTrip = findMatchingImportedCurrentTrip(importedTrip, currentTripLookup, consumedCurrentTripIds);
       if (!currentTrip) {
         return normalizeTripRecord({
           ...importedTrip,
@@ -1904,6 +1934,7 @@ export const NemtProvider = ({
           }
         });
       }
+      consumedCurrentTripIds.add(String(currentTrip?.id || '').trim());
       return mergeImportedTripWithCurrent(currentTrip, importedTrip, {
         importedAt,
         batchId
