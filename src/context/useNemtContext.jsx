@@ -55,6 +55,7 @@ const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
 const DISPATCH_STATE_SYNC_ACTIVE_POLL_MS = 2500;
 const DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS = 5000;
 const TRIP_DASHBOARD_DRIVERS_SYNC_ACTIVE_POLL_MS = 15000;
+const SAFE_RIDE_MISSING_STATUS = 'Missing from latest SafeRide file';
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
   if (Array.isArray(tripIds) && tripIds.length > 0) return tripIds;
@@ -89,6 +90,30 @@ const getTripLookupKeys = trip => {
   return keys;
 };
 
+const normalizeTripMatchText = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+const getNormalizedPhone = value => String(value || '').replace(/\D/g, '');
+
+const getTripImportMatchKeys = trip => {
+  const keys = [...getTripLookupKeys(trip)];
+  const rideId = String(trip?.rideId || '').trim();
+  const brokerTripId = String(trip?.brokerTripId || '').trim();
+  const serviceDate = String(getTripServiceDateKey(trip) || '').trim();
+  const rider = normalizeTripMatchText(trip?.rider);
+  const phone = getNormalizedPhone(trip?.patientPhoneNumber);
+  const slotOwner = phone || rider;
+  const pickupSortValue = Number(trip?.pickupSortValue);
+
+  if (serviceDate && slotOwner && Number.isFinite(pickupSortValue)) {
+    keys.push(`slot:${serviceDate}:${slotOwner}:${pickupSortValue}`);
+  }
+
+  if (rideId && brokerTripId) keys.push(`ride-broker:${rideId}:${brokerTripId}`);
+  if (rideId) keys.push(`ride:${rideId}`);
+  if (brokerTripId) keys.push(`broker:${brokerTripId}`);
+
+  return Array.from(new Set(keys.filter(Boolean)));
+};
+
 const isCancelledLikeStatus = value => {
   const token = String(value || '').trim().toLowerCase().replace(/\s+/g, '');
   return token === 'cancelled' || token === 'canceled' || token === 'disconnected';
@@ -101,6 +126,43 @@ const isSafeRideCancelledImport = importedTrip => {
 const isProtectedManualTrip = trip => {
   const source = String(trip?.source || '').trim().toLowerCase();
   return Boolean(trip?.createdManually) || Boolean(trip?.protectedFromImportPrune) || source === MANUAL_TRIP_SOURCE;
+};
+
+const isSafeRideManagedTrip = trip => {
+  if (!trip || isProtectedManualTrip(trip)) return false;
+  const source = String(trip?.source || '').trim().toLowerCase();
+  if (source === 'saferide') return true;
+  if (String(trip?.importTemplateId || '').trim()) return true;
+  if (String(trip?.importFingerprint || '').trim()) return true;
+  if (trip?.excelLoaderSnapshot && typeof trip.excelLoaderSnapshot === 'object') return true;
+  return Boolean(trip?.providerSnapshot?.importedAt);
+};
+
+const getSafeRideImportScopedDateKeys = trips => new Set((Array.isArray(trips) ? trips : []).map(trip => String(getTripServiceDateKey(trip) || '').trim()).filter(Boolean));
+
+const getSafeRideImportLookupKeySet = trips => {
+  const lookupKeys = new Set();
+  (Array.isArray(trips) ? trips : []).forEach(trip => {
+    getTripImportMatchKeys(trip).forEach(key => {
+      if (key) lookupKeys.add(key);
+    });
+  });
+  return lookupKeys;
+};
+
+const getTripsMissingFromLatestSafeRideImport = (currentTrips, importedTrips) => {
+  const scopedDateKeys = getSafeRideImportScopedDateKeys(importedTrips);
+  if (scopedDateKeys.size === 0) return [];
+
+  const importedLookupKeys = getSafeRideImportLookupKeySet(importedTrips);
+  return (Array.isArray(currentTrips) ? currentTrips : []).filter(trip => {
+    if (!isSafeRideManagedTrip(trip)) return false;
+    if (isCancelledLikeStatus(trip?.status) || isCancelledLikeStatus(trip?.safeRideStatus) || isCancelledLikeStatus(trip?.confirmationStatus)) return false;
+    const serviceDateKey = String(getTripServiceDateKey(trip) || '').trim();
+    if (!scopedDateKeys.has(serviceDateKey)) return false;
+    const tripLookupKeys = getTripImportMatchKeys(trip);
+    return !tripLookupKeys.some(key => importedLookupKeys.has(key));
+  });
 };
 
 const buildManualTripId = timestamp => `manual-${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
@@ -166,20 +228,58 @@ const hasImportedTripRoutingChange = (currentTrip, importedTrip) => {
   });
 };
 
-const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
+const buildImportedTripRoutingChangePreview = (currentTrip, importedTrip) => ({
+  id: String(currentTrip?.id || importedTrip?.id || '').trim(),
+  rideId: String(currentTrip?.rideId || importedTrip?.rideId || '').trim(),
+  brokerTripId: String(currentTrip?.brokerTripId || importedTrip?.brokerTripId || '').trim(),
+  rider: String(currentTrip?.rider || importedTrip?.rider || '').trim(),
+  serviceDate: String(getTripServiceDateKey(currentTrip) || getTripServiceDateKey(importedTrip) || '').trim(),
+  currentAddress: String(currentTrip?.address || '').trim(),
+  importedAddress: String(importedTrip?.address || '').trim(),
+  currentFromZipcode: String(currentTrip?.fromZipcode || currentTrip?.fromZip || '').trim(),
+  importedFromZipcode: String(importedTrip?.fromZipcode || importedTrip?.fromZip || '').trim(),
+  currentDestination: String(currentTrip?.destination || '').trim(),
+  importedDestination: String(importedTrip?.destination || '').trim(),
+  currentToZipcode: String(currentTrip?.toZipcode || currentTrip?.toZip || '').trim(),
+  importedToZipcode: String(importedTrip?.toZipcode || importedTrip?.toZip || '').trim()
+});
+
+const getImportedTripRoutingChangePreviews = (currentTrips, importedTrips) => {
+  const normalizedCurrentTrips = normalizeTripRecords(currentTrips);
+  const normalizedImportedTrips = dedupeImportedTripBatch(normalizeTripRecords(importedTrips));
+  const currentTripLookup = new Map();
+
+  normalizedCurrentTrips.forEach(trip => {
+    getTripImportMatchKeys(trip).forEach(key => {
+      if (key && !currentTripLookup.has(key)) {
+        currentTripLookup.set(key, trip);
+      }
+    });
+  });
+
+  return normalizedImportedTrips.flatMap(importedTrip => {
+    const currentTrip = getTripImportMatchKeys(importedTrip).map(key => currentTripLookup.get(key)).find(Boolean);
+    if (!currentTrip || !hasImportedTripRoutingChange(currentTrip, importedTrip)) return [];
+    return [buildImportedTripRoutingChangePreview(currentTrip, importedTrip)];
+  });
+};
+
+const mergeImportedTripWithCurrent = (currentTrip, importedTrip, importMetadata = {}, applyRoutingChanges = true) => {
   const shouldAutoCancel = isSafeRideCancelledImport(importedTrip);
   const hasRoutingChange = hasImportedTripRoutingChange(currentTrip, importedTrip);
+  const importedAt = String(importMetadata?.importedAt || '').trim() || new Date().toISOString();
+  const batchId = String(importMetadata?.batchId || '').trim() || null;
   const baseLocalOverrides = currentTrip?.localOverrides && typeof currentTrip.localOverrides === 'object' ? currentTrip.localOverrides : {};
   const localOverrides = hasRoutingChange ? {
     ...baseLocalOverrides,
     pickupTime: false,
     dropoffTime: false,
-    pickupAddress: false,
-    dropoffAddress: false
+    pickupAddress: !applyRoutingChanges,
+    dropoffAddress: !applyRoutingChanges
   } : baseLocalOverrides;
   const providerSnapshot = {
     ...buildTripProviderSnapshot(importedTrip),
-    importedAt: new Date().toISOString()
+    importedAt
   };
   return normalizeTripRecord({
     ...currentTrip,
@@ -200,6 +300,8 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
     dropoff: getPreferredImportedValue(localOverrides.dropoffTime, currentTrip?.dropoff, importedTrip?.dropoff),
     scheduledDropoff: getPreferredImportedValue(localOverrides.dropoffTime, currentTrip?.scheduledDropoff, importedTrip?.scheduledDropoff),
     dropoffSortValue: getPreferredImportedNumericValue(localOverrides.dropoffTime, currentTrip?.dropoffSortValue, importedTrip?.dropoffSortValue),
+    position: hasRoutingChange && !applyRoutingChanges ? currentTrip?.position : importedTrip?.position,
+    destinationPosition: hasRoutingChange && !applyRoutingChanges ? currentTrip?.destinationPosition : importedTrip?.destinationPosition,
     address: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.address, importedTrip?.address),
     fromAddress: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.fromAddress, importedTrip?.fromAddress),
     fromZipcode: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.fromZipcode, importedTrip?.fromZipcode),
@@ -214,6 +316,20 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip) => {
     actualPickup: currentTrip?.actualPickup || importedTrip?.actualPickup,
     actualDropoff: currentTrip?.actualDropoff || importedTrip?.actualDropoff,
     confirmation: currentTrip?.confirmation || importedTrip?.confirmation,
+    routeChangePendingReview: hasRoutingChange && !applyRoutingChanges,
+    routeChangeDetectedAt: hasRoutingChange ? importedAt : null,
+    routeChangeCurrentAddress: hasRoutingChange ? String(currentTrip?.address || '').trim() : '',
+    routeChangeCurrentFromZipcode: hasRoutingChange ? String(currentTrip?.fromZipcode || currentTrip?.fromZip || '').trim() : '',
+    routeChangeImportedAddress: hasRoutingChange ? String(importedTrip?.address || '').trim() : '',
+    routeChangeImportedFromZipcode: hasRoutingChange ? String(importedTrip?.fromZipcode || importedTrip?.fromZip || '').trim() : '',
+    routeChangeCurrentDestination: hasRoutingChange ? String(currentTrip?.destination || '').trim() : '',
+    routeChangeCurrentToZipcode: hasRoutingChange ? String(currentTrip?.toZipcode || currentTrip?.toZip || '').trim() : '',
+    routeChangeImportedDestination: hasRoutingChange ? String(importedTrip?.destination || '').trim() : '',
+    routeChangeImportedToZipcode: hasRoutingChange ? String(importedTrip?.toZipcode || importedTrip?.toZip || '').trim() : '',
+    missingFromLatestSafeRideImport: false,
+    missingFromLatestSafeRideImportAt: null,
+    lastSeenInSafeRideImportAt: importedAt,
+    lastSafeRideImportBatchId: batchId,
     localOverrides,
     providerSnapshot,
     updatedAt: Number(currentTrip?.updatedAt) || Number(importedTrip?.updatedAt) || 0
@@ -1748,20 +1864,25 @@ export const NemtProvider = ({
     allowTripShrinkReason: 'replace-trips'
   });
 
-  const upsertImportedTrips = trips => updateState(currentState => {
+  const upsertImportedTrips = (trips, options = {}) => updateState(currentState => {
     const currentTrips = normalizeTripRecords(currentState.trips);
     const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
+    const importedAt = new Date().toISOString();
+    const batchId = `saferide-${Date.now()}-${importedTrips.length}`;
+    const applyRoutingChanges = options?.applyRoutingChanges !== false;
     const currentTripLookup = new Map();
     const importedLookupKeys = new Set();
+    const missingTrips = getTripsMissingFromLatestSafeRideImport(currentTrips, importedTrips);
+    const missingTripIdSet = new Set(missingTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
 
     importedTrips.forEach(importedTrip => {
-      getTripLookupKeys(importedTrip).forEach(key => {
+      getTripImportMatchKeys(importedTrip).forEach(key => {
         if (key) importedLookupKeys.add(key);
       });
     });
 
     currentTrips.forEach(trip => {
-      getTripLookupKeys(trip).forEach(key => {
+      getTripImportMatchKeys(trip).forEach(key => {
         if (key && !currentTripLookup.has(key)) {
           currentTripLookup.set(key, trip);
         }
@@ -1769,16 +1890,45 @@ export const NemtProvider = ({
     });
 
     const mergedImportedTrips = importedTrips.map(importedTrip => {
-      const currentTrip = getTripLookupKeys(importedTrip).map(key => currentTripLookup.get(key)).find(Boolean);
+      const currentTrip = getTripImportMatchKeys(importedTrip).map(key => currentTripLookup.get(key)).find(Boolean);
       if (!currentTrip) {
-        return importedTrip;
+        return normalizeTripRecord({
+          ...importedTrip,
+          missingFromLatestSafeRideImport: false,
+          missingFromLatestSafeRideImportAt: null,
+          lastSeenInSafeRideImportAt: importedAt,
+          lastSafeRideImportBatchId: batchId,
+          providerSnapshot: {
+            ...buildTripProviderSnapshot(importedTrip),
+            importedAt
+          }
+        });
       }
-      return mergeImportedTripWithCurrent(currentTrip, importedTrip);
+      return mergeImportedTripWithCurrent(currentTrip, importedTrip, {
+        importedAt,
+        batchId
+      }, applyRoutingChanges);
     });
 
     const untouchedCurrentTrips = currentTrips.filter(trip => {
-      const lookupKeys = getTripLookupKeys(trip);
+      const lookupKeys = getTripImportMatchKeys(trip);
       return !lookupKeys.some(key => importedLookupKeys.has(key));
+    }).map(trip => {
+      const tripId = String(trip?.id || '').trim();
+      if (!missingTripIdSet.has(tripId)) return trip;
+
+      return normalizeTripRecord({
+        ...trip,
+        safeRideStatus: SAFE_RIDE_MISSING_STATUS,
+        missingFromLatestSafeRideImport: true,
+        missingFromLatestSafeRideImportAt: importedAt,
+        lastSafeRideImportBatchId: batchId,
+        providerSnapshot: {
+          ...buildTripProviderSnapshot(trip),
+          status: SAFE_RIDE_MISSING_STATUS,
+          importedAt
+        }
+      });
     });
     const nextTrips = normalizeTripRecords([...untouchedCurrentTrips, ...mergedImportedTrips]);
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
@@ -2082,6 +2232,15 @@ export const NemtProvider = ({
     return driver ? driver.name : 'Unassigned';
   };
 
+  const previewMissingSafeRideTrips = importedTrips => getTripsMissingFromLatestSafeRideImport(normalizeTripRecords(state.trips), normalizeTripRecords(importedTrips));
+  const previewImportedTripRoutingChanges = importedTrips => {
+    try {
+      return getImportedTripRoutingChangePreviews(normalizeTripRecords(state.trips), normalizeTripRecords(importedTrips));
+    } catch {
+      return [];
+    }
+  };
+
   const resolvedUiPreferences = hasLoadedUserUiPreferences ? userUiPreferences : normalizeNemtUiPreferences(state?.uiPreferences);
 
   return <NemtContext.Provider value={useMemo(() => ({
@@ -2105,6 +2264,8 @@ export const NemtProvider = ({
     addDriver,
     replaceTrips,
     upsertImportedTrips,
+    previewImportedTripRoutingChanges,
+    previewMissingSafeRideTrips,
     clearTripsByServiceDates,
     clearTrips,
     createManualTripRecord,

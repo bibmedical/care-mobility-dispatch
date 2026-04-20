@@ -61,6 +61,13 @@ const buildDispatcherHelpButton = (router, setStatusMessage, buttonStyle) => <Bu
     Help
   </Button>;
 
+const buildDispatcherScreensButton = (router, setStatusMessage, buttonStyle) => <Button variant="outline-dark" size="sm" style={buttonStyle} onClick={() => {
+  setStatusMessage('Opening dispatcher screens registry.');
+  router.push('/dispatcher/screens');
+}}>
+    All
+  </Button>;
+
 const getActiveTimeOffAppointment = driver => {
   const appointment = driver?.timeOffAppointment;
   if (!appointment || typeof appointment !== 'object') return null;
@@ -198,6 +205,14 @@ const DEFAULT_DISPATCHER_LAYOUT = {
   tripsVisible: true,
   messagingVisible: true,
   actionsVisible: true
+};
+
+const MOBILE_DISPATCHER_LAYOUT = {
+  preset: 'custom',
+  mapVisible: false,
+  tripsVisible: true,
+  messagingVisible: false,
+  actionsVisible: false
 };
 
 const getDispatcherPresetPanels = presetId => DISPATCHER_LAYOUT_PRESETS.find(preset => preset.id === presetId)?.panels || null;
@@ -893,10 +908,11 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
   popupAnchor: [0, -14]
 });
 
-const DispatcherWorkspace = () => {
+const DispatcherWorkspace = ({ mobileMode = false }) => {
   const router = useRouter();
   const { themeMode } = useLayoutContext();
   const isDarkMode = themeMode === 'dark';
+  const isMobileDispatchMode = Boolean(mobileMode);
   const dispatcherSurfaceStyles = useMemo(() => buildDispatcherSurfaceStyles(isDarkMode), [isDarkMode]);
   const { data: adminData, refresh: refreshAdminData } = useNemtAdminApi();
   const { data: smsData } = useSmsIntegrationApi();
@@ -966,6 +982,7 @@ const DispatcherWorkspace = () => {
   const [toolbarBlockVisibility, setToolbarBlockVisibility] = useState(() => Object.fromEntries(ALL_DISPATCHER_TOOLBAR_BLOCKS.map(blockId => [blockId, true])));
   const [dispatcherLayout, setDispatcherLayout] = useState(DEFAULT_DISPATCHER_LAYOUT);
   const [dispatcherTableViewMode, setDispatcherTableViewMode] = useState('default');
+  const [mobileExpandedTripId, setMobileExpandedTripId] = useState(null);
   const [rightPanelMode, setRightPanelMode] = useState('default');
   const [cancelledDetailMode, setCancelledDetailMode] = useState('names');
   const [draggingToolbarBlockId, setDraggingToolbarBlockId] = useState(null);
@@ -1224,6 +1241,13 @@ const DispatcherWorkspace = () => {
   }, [saveUserPreferences, toolbarBlockVisibility, toolbarRow1Order, toolbarRow2Order, toolbarRow3Order, userPreferences, userPreferencesLoading]);
 
   useEffect(() => {
+    if (isMobileDispatchMode) {
+      setDispatcherLayout(normalizeDispatcherLayout(MOBILE_DISPATCHER_LAYOUT));
+      setShowInlineMap(false);
+      setExpanded(false);
+      setIsRoutePanelCollapsed(true);
+      return;
+    }
     if (userPreferencesLoading) return;
     const baseLayout = normalizeDispatcherLayout(userPreferences?.dispatcherLayout);
     const nextLayout = hasHydratedDefaultLayoutRef.current ? baseLayout : normalizeDispatcherLayout({
@@ -1235,7 +1259,7 @@ const DispatcherWorkspace = () => {
     });
     setDispatcherLayout(nextLayout);
     hasHydratedDefaultLayoutRef.current = true;
-  }, [userPreferences?.dispatcherLayout, userPreferencesLoading]);
+  }, [isMobileDispatchMode, userPreferences?.dispatcherLayout, userPreferencesLoading]);
 
   const persistDispatcherLayout = nextValue => {
     const normalizedLayout = normalizeDispatcherLayout(nextValue);
@@ -1381,7 +1405,7 @@ const DispatcherWorkspace = () => {
     label: 'Actions'
   }].filter(item => !dispatcherLayout[item.key]);
 
-  const hasHiddenDispatcherPanels = hiddenDispatcherPanels.length > 0 && Object.values(dispatcherLayout).slice(1).some(Boolean);
+  const hasHiddenDispatcherPanels = !isMobileDispatchMode && hiddenDispatcherPanels.length > 0 && Object.values(dispatcherLayout).slice(1).some(Boolean);
   const isToolbarBlockEnabled = blockId => toolbarBlockVisibility[canonicalizeToolbarBlockId(blockId)] !== false;
   const hasAnyVisibleToolbarBlock = ALL_DISPATCHER_TOOLBAR_BLOCKS.some(blockId => isToolbarBlockEnabled(blockId));
   const shouldShowToolbarRecovery = !isToolbarBlockEnabled('columns') || !hasAnyVisibleToolbarBlock;
@@ -1775,6 +1799,7 @@ const DispatcherWorkspace = () => {
   };
 
   const renderHelpButton = () => buildDispatcherHelpButton(router, setStatusMessage, greenToolbarButtonStyle);
+  const renderScreensButton = () => buildDispatcherScreensButton(router, setStatusMessage, greenToolbarButtonStyle);
 
   const handleCreateManualTrip = async draft => {
     const createdTrip = createManualTripRecord({
@@ -3703,6 +3728,190 @@ const DispatcherWorkspace = () => {
       </CardBody>
     </Card>;
 
+    const handleQuickCompleteTrip = trip => {
+      if (!trip) return;
+      const currentStatus = String(getEffectiveTripStatus(trip) || '').trim().toLowerCase();
+      if (currentStatus === 'completed') {
+        setStatusMessage(`Trip ${getDisplayTripId(trip)} ya estaba completado.`);
+        return;
+      }
+      const actualDropoff = formatWillCallDeadlineLabel(new Date());
+      updateTripRecord(trip.id, {
+        status: 'Completed',
+        actualDropoff
+      });
+      setStatusMessage(`Trip ${getDisplayTripId(trip)} cerrado a las ${actualDropoff}.`);
+    };
+
+    const buildMobileMapHref = position => {
+      if (!Array.isArray(position) || position.length !== 2) return '';
+      const [lat, lng] = position;
+      const query = encodeURIComponent(`${lat},${lng}`);
+      return `https://www.google.com/maps/search/?api=1&query=${query}`;
+    };
+
+    const getTripAssignedDriver = trip => {
+      const normalizedDriverId = normalizeDriverId(trip?.driverId) || normalizeDriverId(trip?.secondaryDriverId);
+      if (!normalizedDriverId) return null;
+      return drivers.find(driver => normalizeDriverId(driver?.id) === normalizedDriverId) || null;
+    };
+
+      const renderMobileDispatchWorkspace = () => <div className="d-flex flex-column h-100" style={{ background: isDarkMode ? 'linear-gradient(180deg, #020617 0%, #0f172a 100%)' : 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
+        <div className="px-3 py-3 border-bottom" style={{ background: isDarkMode ? 'linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%)' : 'linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)', color: isDarkMode ? '#e2e8f0' : '#f8fafc' }}>
+          <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+            <div>
+              <div className="text-uppercase fw-semibold" style={{ fontSize: '0.72rem', letterSpacing: '0.08em', opacity: 0.86 }}>Dispatcher Mobile</div>
+                <div className="fw-bold" style={{ fontSize: '1.15rem', lineHeight: 1.1 }}>Trips, ETA, patient info, and driver map</div>
+              <div className="small mt-1" style={{ opacity: 0.86 }}>{filteredTrips.length} trip(s) for {tripDateFilter === 'all' ? todayDateKey : tripDateFilter}</div>
+            </div>
+            <Button variant="light" size="sm" onClick={() => setShowManualTripModal(true)} disabled={mapLocked} title="Create manual trip">
+              + Trip
+            </Button>
+          </div>
+          <div className="d-flex flex-column gap-2 mt-3">
+            <div className="d-flex gap-2 flex-wrap">
+                <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ flex: '1 1 180px', minWidth: 180 }}>
+                  <option value="">All drivers</option>
+                  {drivers.map(driver => <option key={`mobile-driver-${driver.id}`} value={driver.id}>{driver.name}</option>)}
+                </Form.Select>
+                <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 140, minWidth: 140 }}>
+                <option value="all">All</option>
+                <option value="unassigned">Unassigned</option>
+                <option value="assigned">Assigned</option>
+                <option value="inprogress">In progress</option>
+                <option value="completed">Completed</option>
+                <option value="willcall">WillCall</option>
+                <option value="cancelled">Cancelled</option>
+              </Form.Select>
+              <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? todayDateKey : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || todayDateKey)} style={{ width: 160, minWidth: 160 }} />
+            </div>
+            <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search rider, trip, phone, address..." disabled={mapLocked} />
+            {selectedDriver ? <div className="rounded-3 px-3 py-2 d-flex align-items-center justify-content-between gap-3 flex-wrap" style={{ backgroundColor: isDarkMode ? 'rgba(15, 118, 110, 0.18)' : 'rgba(204, 251, 241, 0.18)', border: isDarkMode ? '1px solid rgba(45, 212, 191, 0.25)' : '1px solid rgba(13, 148, 136, 0.24)' }}>
+                <div>
+                  <div className="fw-semibold">{selectedDriver.name}</div>
+                  <div className="small" style={{ opacity: 0.86 }}>{getDriverMapLocationLabel(selectedDriver)} • {driverEtaPreviewById.get(String(selectedDriver?.id || '').trim())?.etaLabel || 'ETA unavailable'}</div>
+                </div>
+                {buildMobileMapHref(selectedDriver.position) ? <a className="btn btn-light btn-sm" href={buildMobileMapHref(selectedDriver.position)} target="_blank" rel="noreferrer">Open driver map</a> : <Button variant="outline-light" size="sm" disabled>No GPS</Button>}
+              </div> : null}
+          </div>
+        </div>
+
+        {activeDispatcherContextTokens.length > 0 ? <div className="px-3 py-2 border-bottom d-flex align-items-center gap-2 flex-wrap" style={{ backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.92)' }}>
+            {activeDispatcherContextTokens.map(token => <Badge key={`mobile-${token}`} bg="secondary">{token}</Badge>)}
+            <Button variant="outline-dark" size="sm" onClick={() => {
+            exitCancelledPanelMode('Vista móvil restaurada.');
+            setTripStatusFilter('all');
+            setTripDateFilter(todayDateKey);
+            setTripIdSearch('');
+          }}>
+              Reset
+            </Button>
+          </div> : null}
+
+        <div className="flex-grow-1 overflow-auto p-3 d-flex flex-column gap-3">
+          {filteredTrips.length > 0 ? filteredTrips.map(trip => {
+          const normalizedDriverId = normalizeDriverId(trip?.driverId) || normalizeDriverId(trip?.secondaryDriverId);
+          const etaPreview = normalizedDriverId ? driverEtaPreviewById.get(normalizedDriverId) : null;
+          const assignedDriver = getTripAssignedDriver(trip);
+          const driverMapHref = buildMobileMapHref(assignedDriver?.position);
+          const phoneNumber = String(trip?.patientPhoneNumber || '').trim();
+          const phoneHref = phoneNumber ? `tel:${phoneNumber.replace(/[^+\d]/g, '')}` : '';
+          const currentStatus = getEffectiveTripStatus(trip);
+          const lateMinutes = getCurrentLateMinutesForTrip(trip);
+          const actualPickup = String(trip?.actualPickup || '').trim();
+          const actualDropoff = String(trip?.actualDropoff || '').trim();
+          const isExpanded = mobileExpandedTripId === trip.id;
+          return <Card key={`mobile-trip-${trip.id}`} style={{ borderRadius: 20, border: isDarkMode ? '1px solid rgba(71, 85, 105, 0.7)' : '1px solid rgba(148, 163, 184, 0.4)', boxShadow: isDarkMode ? '0 18px 34px rgba(2, 6, 23, 0.32)' : '0 16px 30px rgba(15, 23, 42, 0.08)', overflow: 'clip' }}>
+                <CardBody className="p-0" style={{ background: isDarkMode ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(17, 24, 39, 0.96) 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', color: isDarkMode ? '#e5eefc' : '#0f172a' }}>
+                  <div style={{ padding: '16px 16px 14px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div className="d-flex align-items-start justify-content-between gap-3">
+                      <div style={{ minWidth: 0 }}>
+                        <div className="fw-bold" style={{ fontSize: '1.08rem', lineHeight: 1.2, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{trip.rider || trip.patientName || 'Unnamed patient'}</div>
+                        <div className="small mt-1" style={{ color: isDarkMode ? '#cbd5e1' : '#475569', wordBreak: 'break-word' }}>{getDisplayTripId(trip)}{trip.brokerTripId && trip.brokerTripId !== trip.id ? ` • Broker ${trip.brokerTripId}` : ''}</div>
+                      </div>
+                      <div className="d-flex flex-column align-items-end gap-2">
+                        <Badge bg={getStatusBadge(currentStatus)}>{currentStatus}</Badge>
+                        <Button variant={isExpanded ? 'outline-light' : 'outline-primary'} size="sm" onClick={() => setMobileExpandedTripId(current => current === trip.id ? null : trip.id)} style={{ padding: '0.12rem 0.55rem', lineHeight: 1.1 }}>
+                          {isExpanded ? 'Hide' : 'Open'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="d-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                      <div className="rounded-3 px-3 py-2" style={{ backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.7)' : '#eef2ff' }}>
+                        <div className="small text-uppercase fw-semibold" style={{ letterSpacing: '0.05em', color: isDarkMode ? '#93c5fd' : '#3730a3' }}>Driver</div>
+                        <div className="fw-semibold mt-1" style={{ wordBreak: 'break-word' }}>{getTripDriverDisplay(trip)}</div>
+                      </div>
+                      <div className="rounded-3 px-3 py-2" style={{ backgroundColor: isDarkMode ? 'rgba(8, 47, 73, 0.6)' : '#ecfeff' }}>
+                        <div className="small text-uppercase fw-semibold" style={{ letterSpacing: '0.05em', color: isDarkMode ? '#67e8f9' : '#0f766e' }}>ETA</div>
+                        <div className="fw-semibold mt-1">{etaPreview?.etaLabel || 'Unavailable'}</div>
+                      </div>
+                    </div>
+
+                    <div className="small d-flex gap-2 flex-wrap" style={{ color: isDarkMode ? '#cbd5e1' : '#475569' }}>
+                      <span>PU: {trip.pickup || '-'}</span>
+                      <span>DO: {trip.dropoff || '-'}</span>
+                      {Number.isFinite(lateMinutes) ? <span>{lateMinutes > 0 ? `Late ${lateMinutes} min` : 'On time'}</span> : null}
+                    </div>
+                  </div>
+
+                  {isExpanded ? <div className="px-3 pb-3 pt-0 d-flex flex-column gap-3">
+                      <div className="rounded-3 p-3" style={{ backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc' }}>
+                        <div className="small text-uppercase fw-semibold" style={{ letterSpacing: '0.05em', color: isDarkMode ? '#93c5fd' : '#0f766e' }}>Pickup</div>
+                        <div className="fw-semibold mt-1">{trip.pickup || '-'}</div>
+                        <div className="small mt-1" style={{ color: isDarkMode ? '#cbd5e1' : '#475569', wordBreak: 'break-word' }}>{trip.address || 'No pickup address'}</div>
+                        {actualPickup ? <div className="small mt-2" style={{ color: isDarkMode ? '#f9a8d4' : '#be185d' }}>Real PU: {actualPickup}</div> : null}
+                      </div>
+
+                      <div className="rounded-3 p-3" style={{ backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc' }}>
+                        <div className="small text-uppercase fw-semibold" style={{ letterSpacing: '0.05em', color: isDarkMode ? '#86efac' : '#166534' }}>Dropoff</div>
+                        <div className="fw-semibold mt-1">{trip.dropoff || '-'}</div>
+                        <div className="small mt-1" style={{ color: isDarkMode ? '#cbd5e1' : '#475569', wordBreak: 'break-word' }}>{trip.destination || 'No dropoff address'}</div>
+                        {actualDropoff ? <div className="small mt-2" style={{ color: isDarkMode ? '#f9a8d4' : '#be185d' }}>Real DO: {actualDropoff}</div> : null}
+                      </div>
+
+                      <div className="rounded-3 p-3" style={{ backgroundColor: isDarkMode ? 'rgba(8, 47, 73, 0.45)' : 'rgba(224, 242, 254, 0.85)' }}>
+                        <div className="small text-uppercase fw-semibold" style={{ letterSpacing: '0.05em' }}>Patient phone</div>
+                        <div className="fw-semibold mt-1">{phoneNumber || 'No phone available'}</div>
+                        <div className="d-flex gap-2 flex-wrap mt-3">
+                          {phoneHref ? <a className="btn btn-primary btn-sm" href={phoneHref}>Call patient</a> : <Button variant="outline-secondary" size="sm" disabled>No phone</Button>}
+                          {driverMapHref ? <a className="btn btn-outline-info btn-sm" href={driverMapHref} target="_blank" rel="noreferrer">Open driver map</a> : <Button variant="outline-secondary" size="sm" disabled>No driver GPS</Button>}
+                        </div>
+                        {assignedDriver ? <div className="small mt-2" style={{ color: isDarkMode ? '#cbd5e1' : '#475569' }}>{assignedDriver.name}: {getDriverMapLocationLabel(assignedDriver)}</div> : null}
+                      </div>
+
+                      {String(trip?.notes || '').trim() ? <div className="small rounded-3 px-3 py-2" style={{ backgroundColor: isDarkMode ? 'rgba(51, 65, 85, 0.55)' : 'rgba(241, 245, 249, 0.95)', color: isDarkMode ? '#cbd5e1' : '#334155', wordBreak: 'break-word' }}>
+                          {String(trip.notes).trim()}
+                        </div> : null}
+
+                      <div className="d-flex gap-2 flex-wrap">
+                        <Button variant="outline-dark" size="sm" onClick={() => {
+                        setSelectedTripIds([trip.id]);
+                        handleOpenTripNote(trip);
+                      }} disabled={mapLocked}>
+                          Edit / Close
+                        </Button>
+                        {String(currentStatus || '').trim().toLowerCase() !== 'completed' && String(currentStatus || '').trim().toLowerCase() !== 'cancelled' ? <Button variant="success" size="sm" onClick={() => handleQuickCompleteTrip(trip)} disabled={mapLocked}>
+                            Complete now
+                          </Button> : null}
+                        {String(currentStatus || '').trim().toLowerCase() === 'cancelled' ? <Button variant="primary" size="sm" onClick={() => handleReinstateTrip(trip.id)} disabled={mapLocked}>
+                            Reinstate
+                          </Button> : <Button variant="outline-danger" size="sm" onClick={() => handleCancelTrip(trip.id)} disabled={mapLocked || String(currentStatus || '').trim().toLowerCase() === 'completed'}>
+                            Cancel trip
+                          </Button>}
+                      </div>
+                    </div> : null}
+                </CardBody>
+              </Card>;
+        }) : <Card style={{ borderRadius: 18, border: isDarkMode ? '1px solid rgba(71, 85, 105, 0.65)' : '1px solid rgba(148, 163, 184, 0.45)' }}>
+              <CardBody className="p-4 text-center" style={{ background: isDarkMode ? 'rgba(15, 23, 42, 0.96)' : '#ffffff', color: isDarkMode ? '#e2e8f0' : '#0f172a' }}>
+                <div className="fw-semibold">No trips match this mobile view.</div>
+                <div className="small mt-2" style={{ color: isDarkMode ? '#cbd5e1' : '#475569' }}>Try another date, status, or search term.</div>
+              </CardBody>
+            </Card>}
+        </div>
+      </div>;
+
   return <>
       <ManualTripModal
         show={showManualTripModal}
@@ -3747,6 +3956,7 @@ const DispatcherWorkspace = () => {
         <div style={{ minWidth: 0, minHeight: 0, display: dispatcherLayout.tripsVisible ? 'block' : 'none', gridColumn: 3, gridRow: tripsPanelGridRow }}>
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 d-flex flex-column h-100">
+              {isMobileDispatchMode ? renderMobileDispatchWorkspace() : <>
               {shouldShowToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 px-2 pt-2 flex-wrap">
                   {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
                   <Button variant="dark" size="sm" onClick={handleRestoreDispatcherLayout}>Restore toolbar</Button>
@@ -3831,8 +4041,13 @@ const DispatcherWorkspace = () => {
                   >
                       {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
-                  <div>
-                    {renderHelpButton()}
+                  <div className="d-flex align-items-center gap-2">
+                    <div>
+                      {renderScreensButton()}
+                    </div>
+                    <div>
+                      {renderHelpButton()}
+                    </div>
                   </div>
                 </div>
                 
@@ -4069,6 +4284,7 @@ const DispatcherWorkspace = () => {
                   </tbody>
                 </Table>
               </div>
+              </>}
             </CardBody>
           </Card>
         </div>
