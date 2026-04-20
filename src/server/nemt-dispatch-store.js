@@ -1,5 +1,5 @@
 import { readFile } from 'fs/promises';
-import { getLocalDateKey, getTripServiceDateKey, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { getLocalDateKey, getRouteServiceDateKey, getTripServiceDateKey, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { archiveDispatchState, readDispatchHistoryArchive } from '@/server/dispatch-history-store';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
@@ -124,6 +124,38 @@ const readLocalNemtDispatchState = async () => {
   }
 };
 
+const applyScopedLocalDispatchState = (state, options = {}) => {
+  const normalizedState = normalizePersistentDispatchState(state);
+  const includePastDates = options?.includePastDates === true;
+  const requestedDateKey = normalizeDateKey(options?.dateKey);
+  const hasScopedWindow = !includePastDates && (Boolean(requestedDateKey) || options?.windowPastDays != null || options?.windowFutureDays != null);
+
+  if (!hasScopedWindow) {
+    return normalizedState;
+  }
+
+  const scopedDateKeys = new Set(buildDispatchWindowDateKeys(requestedDateKey || getLocalDateKey(new Date()), Number(options?.windowPastDays ?? 0), Number(options?.windowFutureDays ?? 0)));
+  if (scopedDateKeys.size === 0) {
+    return normalizedState;
+  }
+
+  const scopedTrips = normalizedState.trips.filter(trip => {
+    const serviceDateKey = getTripServiceDateKey(trip);
+    return !serviceDateKey || scopedDateKeys.has(serviceDateKey);
+  });
+
+  const scopedRoutePlans = normalizedState.routePlans.filter(routePlan => {
+    const routeDateKey = getRouteServiceDateKey(routePlan, normalizedState.trips);
+    return !routeDateKey || scopedDateKeys.has(routeDateKey);
+  });
+
+  return normalizePersistentDispatchState({
+    ...normalizedState,
+    trips: scopedTrips,
+    routePlans: scopedRoutePlans
+  });
+};
+
 const writeLocalNemtDispatchState = async nextState => {
   const normalized = normalizePersistentDispatchState(nextState);
   await writeJsonFileWithSnapshots({
@@ -132,6 +164,40 @@ const writeLocalNemtDispatchState = async nextState => {
     backupName: 'nemt-dispatch-local'
   });
   return normalized;
+};
+
+const mergeLocalDispatchStateForWrite = (currentState, nextState) => {
+  const normalizedCurrentState = normalizePersistentDispatchState(currentState);
+  const normalizedNextState = normalizePersistentDispatchState(nextState);
+
+  return normalizePersistentDispatchState({
+    ...normalizedCurrentState,
+    trips: mergeUniqueItems(
+      [...normalizedCurrentState.trips, ...normalizedNextState.trips],
+      trip => trip?.id,
+      (_, nextTrip) => nextTrip
+    ),
+    routePlans: mergeUniqueItems(
+      [...normalizedCurrentState.routePlans, ...normalizedNextState.routePlans],
+      routePlan => routePlan?.id,
+      (_, nextRoutePlan) => nextRoutePlan
+    ),
+    dispatchThreads: mergeDispatchThreads([
+      ...normalizedCurrentState.dispatchThreads,
+      ...normalizedNextState.dispatchThreads
+    ]),
+    dailyDrivers: mergeUniqueItems(
+      [...normalizedCurrentState.dailyDrivers, ...normalizedNextState.dailyDrivers],
+      driver => driver?.id,
+      (_, nextDriver) => nextDriver
+    ),
+    auditLog: mergeUniqueItems(
+      [...normalizedCurrentState.auditLog, ...normalizedNextState.auditLog],
+      entry => entry?.id,
+      (_, nextEntry) => nextEntry
+    ),
+    uiPreferences: normalizedNextState.uiPreferences ?? normalizedCurrentState.uiPreferences ?? {}
+  });
 };
 
 let ensureDispatchSchemaPromise = null;
@@ -155,7 +221,8 @@ export const readNemtDispatchState = async (options = {}) => {
     if (!shouldUseLocalFallback()) {
       throw new Error('DATABASE_URL is required for dispatch store access.');
     }
-    return await readLocalNemtDispatchState();
+    const localState = await readLocalNemtDispatchState();
+    return applyScopedLocalDispatchState(localState, options);
   }
 
   await ensureDispatchSchema();
@@ -354,7 +421,13 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
     if (!shouldUseLocalFallback()) {
       throw new Error('DATABASE_URL is required for dispatch store access.');
     }
-    return await writeLocalNemtDispatchState(normalized);
+    if (allowPrune) {
+      return await writeLocalNemtDispatchState(normalized);
+    }
+
+    const currentLocalState = await readLocalNemtDispatchState();
+    const mergedLocalState = mergeLocalDispatchStateForWrite(currentLocalState, normalized);
+    return await writeLocalNemtDispatchState(mergedLocalState);
   }
 
   await ensureDispatchSchema();
@@ -387,11 +460,7 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
          FROM json_array_elements($1::json) AS t(data)
          WHERE t.data->>'id' IS NOT NULL AND t.data->>'id' != ''
          ON CONFLICT (id) DO UPDATE SET
-           data = CASE
-             WHEN (EXCLUDED.data->>'updatedAt')::bigint >= COALESCE((dispatch_trips.data->>'updatedAt')::bigint, 0)
-             THEN EXCLUDED.data
-             ELSE dispatch_trips.data
-           END,
+           data = EXCLUDED.data,
            service_date = EXCLUDED.service_date,
            broker_trip_id = EXCLUDED.broker_trip_id,
            updated_at = NOW()`,

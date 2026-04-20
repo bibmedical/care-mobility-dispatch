@@ -46,7 +46,14 @@ const getNotificationsModule = () => {
 };
 
 const buildLoginApiBaseCandidates = () => {
-  const candidates = [DRIVER_APP_CONFIG.apiBaseUrl, DRIVER_RENDER_API_BASE_URL]
+  if (DRIVER_APP_CONFIG.requiresExplicitApiBaseUrl && !DRIVER_APP_CONFIG.apiBaseUrl) {
+    return [];
+  }
+
+  const candidates = [
+    DRIVER_APP_CONFIG.apiBaseUrl,
+    DRIVER_APP_CONFIG.requiresExplicitApiBaseUrl ? '' : DRIVER_RENDER_API_BASE_URL
+  ]
     .map(value => String(value || '').trim().replace(/\/$/, ''))
     .filter(Boolean);
 
@@ -92,6 +99,10 @@ const fetchJsonWithTimeout = async (input: string, init?: RequestInit, timeoutMs
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('The server took too long to respond. Check your connection and try again.');
+    }
+
+    if (DRIVER_APP_CONFIG.requiresExplicitApiBaseUrl && !DRIVER_APP_CONFIG.apiBaseUrl) {
+      throw new Error(DRIVER_APP_CONFIG.missingApiBaseUrlMessage);
     }
 
     if (error instanceof Error && /failed to fetch|network request failed/i.test(error.message)) {
@@ -1395,6 +1406,9 @@ export const useDriverRuntime = () => {
     try {
       const deviceId = await readOrCreateDriverDeviceId();
       const loginApiBaseCandidates = buildLoginApiBaseCandidates();
+      if (!loginApiBaseCandidates.length) {
+        throw new Error(DRIVER_APP_CONFIG.missingApiBaseUrlMessage);
+      }
       let response: Response | null = null;
       let payload: any = null;
       let lastError: Error | null = null;
