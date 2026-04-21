@@ -4,7 +4,7 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import ManualTripModal from '@/components/nemt/ManualTripModal';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { buildStableDriverId, createBlankDriver, GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
-import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripDropoffPosition, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPickupPosition, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument, DEFAULT_ROUTE_PRINT_COLUMNS, formatPrintGeneratedAt, normalizeRoutePrintColumns, PRINT_COLUMN_OPTIONS } from '@/helpers/nemt-print-setup';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import { analyzeImportedTrips, annotateTripsByScanLogic, parseTripImportFile } from '@/helpers/nemt-trip-import';
@@ -849,7 +849,7 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
   }
 };
 
-const getTripTargetPosition = trip => trip?.status === 'In Progress' ? trip?.destinationPosition ?? trip?.position : trip?.position;
+const getTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffPosition(trip) : getTripPickupPosition(trip);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -2034,7 +2034,11 @@ const TripDashboardWorkspace = () => {
     width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' ? 150 : option.key === 'rider' ? 180 : undefined,
     sortable: option.key !== 'notes'
   }])), []);
-  const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
+  const orderedVisibleTripColumns = useMemo(() => {
+    const normalizedVisibleColumns = visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey]));
+    if (normalizedVisibleColumns.includes('notes')) return normalizedVisibleColumns;
+    return ['notes', ...normalizedVisibleColumns];
+  }, [tripColumnMeta, visibleTripColumns]);
   const isAllTripColumnsSelected = orderedVisibleTripColumns.length === allTripColumnKeys.length && allTripColumnKeys.every(columnKey => orderedVisibleTripColumns.includes(columnKey));
   const hasTripNotesColumn = orderedVisibleTripColumns.includes('notes');
   const orderedVisibleTripColumnsWithoutNotes = useMemo(() => orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes'), [orderedVisibleTripColumns]);
@@ -2367,6 +2371,18 @@ const TripDashboardWorkspace = () => {
       Diarie
     </Button>;
 
+  const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+      <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={handleToggleConfirmationTools}>Confirmation</Button>
+      {showConfirmationTools ? <Button variant="light" size="sm" onClick={() => {
+      const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
+      handleOpenConfirmationMethod(selectedTripsForConfirmation);
+    }}>
+          Send Selected
+        </Button> : null}
+      {renderDispatchHistoryButton()}
+      {renderHelpButton()}
+    </div>;
+
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">P</Button>
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handleShareRouteWhatsapp} title="WhatsApp" aria-label="WhatsApp">W</Button>
@@ -2476,9 +2492,14 @@ const TripDashboardWorkspace = () => {
       24
     </Button>;
 
-  const renderSystemScannerEntryBlock = () => !showLiveTripScanPanel ? <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => setShowLiveTripScanPanel(true)}>
-      Loader Loader
-    </Button> : null;
+  const renderSystemScannerEntryBlock = () => !showLiveTripScanPanel ? <div className="d-flex align-items-center gap-2 flex-nowrap">
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+      setShowLiveTripScanPanel(true);
+      setStatusMessage('System Trip Scanner reopened.');
+    }}>
+        System Trip Scanner
+      </Button>
+    </div> : null;
 
   const renderClosedRouteBlock = () => <Button variant={isActiveRouteClosed ? 'danger' : compactToolbarOutlineVariant} size="sm" style={isActiveRouteClosed ? undefined : toolbarButtonStyle} onClick={handleToggleClosedRoute}>
       {isActiveRouteClosed ? 'Open Route' : 'Close Route'}
@@ -2907,24 +2928,36 @@ const TripDashboardWorkspace = () => {
   const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
   const selectedVisibleTrips = useMemo(() => sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)))), [filteredTrips, selectedTripIdSet]);
+  const getMapTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffPosition(trip) : getTripPickupPosition(trip);
   const selectedTripMapPoints = useMemo(() => {
     if (selectedTrips.length === 0 || showRoute) return [];
     const scopedSelectedTrips = activeDateTripIdSet ? selectedTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : selectedTrips;
-    return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => [{
-      key: `${trip.id}-pickup-selected-map`,
-      tripId: trip.id,
-      position: trip.position,
-      color: '#0284c7',
-      label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
-      detail: trip.address || 'No pickup address available'
-    }, {
-      key: `${trip.id}-dropoff-selected-map`,
-      tripId: trip.id,
-      position: trip.destinationPosition ?? trip.position,
-      color: '#16a34a',
-      label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
-      detail: trip.destination || 'No dropoff address available'
-    }]);
+    return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => {
+      const pickupPosition = getTripPickupPosition(trip);
+      const dropoffPosition = getTripDropoffPosition(trip);
+      const points = [];
+      if (pickupPosition) {
+        points.push({
+          key: `${trip.id}-pickup-selected-map`,
+          tripId: trip.id,
+          position: pickupPosition,
+          color: '#0284c7',
+          label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
+          detail: trip.address || 'No pickup address available'
+        });
+      }
+      if (dropoffPosition) {
+        points.push({
+          key: `${trip.id}-dropoff-selected-map`,
+          tripId: trip.id,
+          position: dropoffPosition,
+          color: '#16a34a',
+          label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
+          detail: trip.destination || 'No dropoff address available'
+        });
+      }
+      return points;
+    });
   }, [activeDateTripIdSet, selectedTrips, showRoute]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
@@ -3232,39 +3265,61 @@ const TripDashboardWorkspace = () => {
         if (!activeDateTripIdSet) return true;
         return activeDateTripIdSet.has(tripId);
       });
-      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: 'pickup',
-        position: trip.position,
-        title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
+      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
+        const stops = [];
+        if (pickupPosition) {
+          stops.push({
+            key: `${trip.id}-pickup`,
+            label: `${index * 2 + 1}`,
+            variant: 'pickup',
+            position: pickupPosition,
+            title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
+            detail: trip.address
+          });
+        }
+        if (dropoffPosition) {
+          stops.push({
+            key: `${trip.id}-dropoff`,
+            label: `${index * 2 + 2}`,
+            variant: 'dropoff',
+            position: dropoffPosition,
+            title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
+            detail: trip.destination || 'Destination pending'
+          });
+        }
+        return stops;
+      });
     }
 
     if (selectedRoute) {
-      return routeTrips.flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: 'pickup',
-        position: trip.position,
-        title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
+      return routeTrips.flatMap((trip, index) => {
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
+        const stops = [];
+        if (pickupPosition) {
+          stops.push({
+            key: `${trip.id}-pickup`,
+            label: `${index * 2 + 1}`,
+            variant: 'pickup',
+            position: pickupPosition,
+            title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
+            detail: trip.address
+          });
+        }
+        if (dropoffPosition) {
+          stops.push({
+            key: `${trip.id}-dropoff`,
+            label: `${index * 2 + 2}`,
+            variant: 'dropoff',
+            position: dropoffPosition,
+            title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
+            detail: trip.destination || 'Destination pending'
+          });
+        }
+        return stops;
+      });
     }
 
     return [];
@@ -3325,12 +3380,12 @@ const TripDashboardWorkspace = () => {
   }, [routeTrips, selectedDriver, selectedTripIdSet, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
-    const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip));
+    const miles = getDistanceMiles(selectedDriver.position, getMapTripTargetPosition(selectedDriverActiveTrip));
     return {
       miles,
       label: formatEta(miles)
     };
-  }, [selectedDriver, selectedDriverActiveTrip]);
+  }, [getMapTripTargetPosition, selectedDriver, selectedDriverActiveTrip]);
   const selectedDriverRouteHealth = useMemo(() => {
     if (!selectedDriver || selectedDriverWorkingTrips.length === 0) return null;
 
@@ -3340,8 +3395,10 @@ const TripDashboardWorkspace = () => {
     let previousDropoffPosition = selectedDriver.hasRealLocation ? selectedDriver.position : null;
 
     for (const trip of selectedDriverWorkingTrips) {
+      const pickupPosition = getTripPickupPosition(trip);
+      const dropoffPosition = getTripDropoffPosition(trip);
       const scheduledStart = Number.isFinite(Number(trip.pickupSortValue)) ? Number(trip.pickupSortValue) : previousAvailableAt;
-      const travelMinutes = previousDropoffPosition ? estimateTravelMinutes(previousDropoffPosition, trip.position) : 0;
+      const travelMinutes = previousDropoffPosition && pickupPosition ? estimateTravelMinutes(previousDropoffPosition, pickupPosition) : 0;
       const estimatedArrival = previousAvailableAt != null ? previousAvailableAt + travelMinutes * 60000 : scheduledStart;
       const effectiveStart = scheduledStart != null && estimatedArrival != null ? Math.max(scheduledStart, estimatedArrival) : scheduledStart ?? estimatedArrival ?? null;
       const slackMinutes = scheduledStart != null && estimatedArrival != null ? Math.round((scheduledStart - estimatedArrival) / 60000) : null;
@@ -3359,7 +3416,7 @@ const TripDashboardWorkspace = () => {
       });
 
       previousAvailableAt = finishAt;
-      previousDropoffPosition = trip.destinationPosition ?? trip.position;
+      previousDropoffPosition = dropoffPosition ?? pickupPosition;
     }
 
     return {
@@ -3858,10 +3915,32 @@ const TripDashboardWorkspace = () => {
       setStatusMessage(`Unable to clone ${getDisplayTripId(trip)}.`);
       return;
     }
+    setTripStatusFilter('all');
     setSelectedTripIds([clonedTripId]);
     setSelectedDriverId(null);
     setSelectedRouteId(null);
     setStatusMessage(`Trip ${getDisplayTripId(trip)} cloned as ${clonedTripId}.`);
+  };
+
+  const handleDeleteTrip = trip => {
+    if (!trip?.id) return;
+    const tripLabel = getDisplayTripId(trip);
+    const confirmed = window.confirm(`Delete trip ${tripLabel}? This will remove it from the dashboard and any route that contains it.`);
+    if (!confirmed) return;
+
+    deleteTripRecord(trip.id);
+
+    if (noteModalTripId === trip.id) {
+      handleCloseTripNote();
+    }
+
+    if (tripExcelCompareModalId === trip.id) {
+      handleCloseTripExcelCompare();
+    }
+
+    setSelectedRouteId(null);
+    setStatusMessage(`Trip ${tripLabel} deleted.`);
+    showNotification({ message: `Trip ${tripLabel} deleted.`, variant: 'success' });
   };
 
   const isInlineTripCellEditing = (tripId, columnKey) => inlineTripEditCell?.tripId === tripId && inlineTripEditCell?.columnKey === columnKey;
@@ -5340,7 +5419,8 @@ const TripDashboardWorkspace = () => {
       case 'notes': {
         const noteText = getTripNoteText(trip);
         const hasExcelLoaderSnapshot = Boolean(getTripExcelLoaderSnapshot(trip));
-        return <td key={`${trip.id}-notes`} style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
+        const notesColumnWidth = columnWidths.notes ?? 182;
+        return <td key={`${trip.id}-notes`} style={{ whiteSpace: 'nowrap', textAlign: 'center', width: notesColumnWidth, minWidth: notesColumnWidth, maxWidth: notesColumnWidth }}>
             <div className="d-flex align-items-center justify-content-center gap-1">
               <Button
                 variant={noteText ? 'outline-info' : 'outline-secondary'}
@@ -5359,6 +5439,15 @@ const TripDashboardWorkspace = () => {
                 style={compactTripActionButtonStyle}
               >
                 C
+              </Button>
+              <Button
+                variant="outline-danger"
+                size="sm"
+                onClick={() => handleDeleteTrip(trip)}
+                title="Delete trip"
+                style={compactTripActionButtonStyle}
+              >
+                D
               </Button>
               <Button
                 variant="outline-primary"
@@ -5438,15 +5527,6 @@ const TripDashboardWorkspace = () => {
           }}>
               Day Off{routeDayOffDrivers.length > 0 ? ` (${routeDayOffDrivers.length})` : ''}
             </Button>
-            <Button variant={showConfirmationTools ? 'warning' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={handleToggleConfirmationTools}>
-              Confirmation
-            </Button>
-            {showConfirmationTools ? <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
-            const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
-            handleOpenConfirmationMethod(selectedTripsForConfirmation);
-          }}>
-                Send Selected
-              </Button> : null}
             {!isFocusRightLayout ? <Form.Control size="sm" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" style={{ width: 180 }} /> : null}
             <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} title="Manage Drivers" aria-label="Manage Drivers" onClick={() => {
             refreshDrivers();
@@ -5644,7 +5724,7 @@ const TripDashboardWorkspace = () => {
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               <ZoomControl position="bottomleft" />
               {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip && getMapTripTargetPosition(selectedDriverActiveTrip) ? <Polyline positions={[selectedDriver.position, getMapTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
               {mapVisibleDriversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
@@ -5657,19 +5737,27 @@ const TripDashboardWorkspace = () => {
                   </Popup>
                 </Marker>)}
               {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
-            const points = [{
-              key: `${trip.id}-pickup-mapquick`,
-              tripId: trip.id,
-              position: trip.position,
-              color: '#0ea5e9',
-              label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
-            }, {
-              key: `${trip.id}-dropoff-mapquick`,
-              tripId: trip.id,
-              position: trip.destinationPosition ?? trip.position,
-              color: '#22c55e',
-              label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
-            }];
+            const pickupPosition = getTripPickupPosition(trip);
+            const dropoffPosition = getTripDropoffPosition(trip);
+            const points = [];
+            if (pickupPosition) {
+              points.push({
+                key: `${trip.id}-pickup-mapquick`,
+                tripId: trip.id,
+                position: pickupPosition,
+                color: '#0ea5e9',
+                label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
+              });
+            }
+            if (dropoffPosition) {
+              points.push({
+                key: `${trip.id}-dropoff-mapquick`,
+                tripId: trip.id,
+                position: dropoffPosition,
+                color: '#22c55e',
+                label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
+              });
+            }
             return points;
           }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
             click: () => {
@@ -5902,7 +5990,6 @@ const TripDashboardWorkspace = () => {
                       {shouldRenderBlock ? renderedBlock || (isToolbarEditMode ? <Badge bg="secondary">{blockId}</Badge> : null) : null}
                     </div>;
                 })}
-                  {renderHelpButton()}
                 </div>
                 
                 {/* Bottom toolbar line */}
@@ -5977,8 +6064,6 @@ const TripDashboardWorkspace = () => {
                     AI Route
                   </button>
                   {renderStatusFilterBlock()}
-                  {renderDispatchHistoryButton()}
-                  {renderHelpButton()}
                   {renderColumnsButton()}
                   {renderSecondaryToolbarActionBlocks()}
                 </div> : <div className="mx-3 mb-3 p-3 rounded-3 border" style={aiPlannerPanelStyle}>
@@ -6186,13 +6271,13 @@ const TripDashboardWorkspace = () => {
                       <Badge bg={liveTripScan?.blockingCount > 0 ? 'danger' : liveTripScan?.warningCount > 0 ? 'warning' : 'light'} text={liveTripScan?.blockingCount > 0 ? undefined : 'dark'}>
                         {liveTripScan?.findingCount || 0}
                       </Badge>
+                      {renderScannerConfirmationPanelButtons()}
                       <Button variant="light" size="sm" onClick={() => {
                       setShowTripImportModal(true);
                       setStatusMessage('Excel Loader with scanner opened inside Trip Dashboard. Nothing changes in the tree until you import.');
                     }}>
                         Excel Loader + Scanner
                       </Button>
-                      <Button variant="light" size="sm" onClick={handleOpenLiveScanConfirmation} disabled={selectedVisibleTrips.length === 0}>Confirmation</Button>
                       <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
                       <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
                       <Button variant="light" size="sm" onClick={handleAutoRepairLiveScan}>Auto Repair</Button>
@@ -6225,7 +6310,7 @@ const TripDashboardWorkspace = () => {
                         </div>
                       </th>
                       {renderTripHeader('act', 'ACT', 56, false)}
-                      {hasTripNotesColumn ? renderTripHeader('notes', <span className="d-inline-flex align-items-center gap-1"><IconifyIcon icon="iconoir:page-edit" /><span>Notes</span></span>, 118, false) : null}
+                      {hasTripNotesColumn ? renderTripHeader('notes', <span className="d-inline-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}><IconifyIcon icon="iconoir:page-edit" /><span style={{ fontWeight: 700 }}>Notes</span></span>, 148, false) : null}
                       {showConfirmationTools ? renderTripHeader('confirmation-tools', 'Confirm', 158, false) : null}
                       {orderedVisibleTripColumnsWithoutNotes.map(columnKey => {
                         const metadata = tripColumnMeta[columnKey];
