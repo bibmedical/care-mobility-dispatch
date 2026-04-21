@@ -6883,7 +6883,7 @@ const TripDashboardWorkspace = () => {
             <Modal.Title>Cancel Trip</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <div className="small text-muted mb-2">Trip: {cancelNoteModal?.id}</div>
+              <div className="small text-muted mb-2">Trip: {getDisplayTripId(cancelNoteModal) || '-'}</div>
             <div className="small text-muted mb-3">Rider: {cancelNoteModal?.rider || '-'}</div>
             {cancelNoteModal && getSiblingLegTrips(cancelNoteModal, trips).length > 0 ? <>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Cancel Scope</Form.Label>
@@ -6918,7 +6918,7 @@ const TripDashboardWorkspace = () => {
                 <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Leg Scope</Form.Label>
                 <Form.Select className="mb-3" value={confirmationLegScope} onChange={event => setConfirmationLegScope(event.target.value)}>
                   <option value="">Choose one option</option>
-                  <option value="single">Only this leg ({confirmationSourceTrip?.id})</option>
+                  <option value="single">Only this leg ({getDisplayTripId(confirmationSourceTrip) || '-'})</option>
                   <option value="both">Both legs</option>
                 </Form.Select>
               </> : null}
@@ -6942,7 +6942,7 @@ const TripDashboardWorkspace = () => {
             <Modal.Title>Trip Update</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <div className="small text-muted mb-2">Trip: {tripUpdateModal?.id} | Rider: {tripUpdateModal?.rider}</div>
+            <div className="small text-muted mb-2">Trip: {getDisplayTripId(tripUpdateModal) || '-'} | Rider: {tripUpdateModal?.rider}</div>
             <Row className="g-3">
               <Col md={4}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Confirmed Via</Form.Label>
@@ -6967,7 +6967,7 @@ const TripDashboardWorkspace = () => {
               {tripUpdateSupportsBothLegs ? <Col md={12}>
                   <Form.Label className="small text-uppercase text-muted fw-semibold">Apply Confirmation To</Form.Label>
                   <Form.Select value={tripUpdateLegScope} onChange={event => setTripUpdateLegScope(event.target.value)}>
-                    <option value="single">Only this leg ({tripUpdateModal?.id})</option>
+                    <option value="single">Only this leg ({getDisplayTripId(tripUpdateModal) || '-'})</option>
                     <option value="both">Both legs</option>
                   </Form.Select>
                   <div className="small text-muted mt-1">Confirmation and notes can be applied to both legs. Time changes stay only on the current leg.</div>
