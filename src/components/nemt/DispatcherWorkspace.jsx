@@ -10,6 +10,7 @@ import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assign
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import useTripMapPositionRepair from '@/hooks/useTripMapPositionRepair';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripDropoffPosition, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPickupPosition, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument, formatPrintGeneratedAt } from '@/helpers/nemt-print-setup';
@@ -2139,10 +2140,18 @@ const DispatcherWorkspace = () => {
     return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => String(value || '').toLowerCase().includes(term))));
   }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedRoute, selectedTripIds, trips]);
 
+  const mapRepairTrips = useMemo(() => {
+    const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
+    const selectedMapTrips = trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
+    return [...routeTrips, ...mapQuickTrips, ...selectedMapTrips];
+  }, [mapQuickTrips, routeTrips, selectedTripIds, trips]);
+
+  const { getTripPickupMapPosition, getTripDropoffMapPosition } = useTripMapPositionRepair(mapRepairTrips);
+
   const getMapTripTargetPosition = trip => {
     const etaTarget = getSelectedDriverEtaTarget(trip);
-    if (!etaTarget) return getTripPickupPosition(trip);
-    return etaTarget.stage === 'dropoff' ? getTripDropoffPosition(trip) : getTripPickupPosition(trip);
+    if (!etaTarget) return getTripPickupMapPosition(trip);
+    return etaTarget.stage === 'dropoff' ? getTripDropoffMapPosition(trip) : getTripPickupMapPosition(trip);
   };
 
   const routeStops = useMemo(() => {
@@ -2157,8 +2166,8 @@ const DispatcherWorkspace = () => {
         return activeDateTripIdSet.has(tripId);
       });
       return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
-        const pickupPosition = getTripPickupPosition(trip);
-        const dropoffPosition = getTripDropoffPosition(trip);
+        const pickupPosition = getTripPickupMapPosition(trip);
+        const dropoffPosition = getTripDropoffMapPosition(trip);
         const stops = [];
         if (pickupPosition) {
           stops.push({
@@ -2186,8 +2195,8 @@ const DispatcherWorkspace = () => {
 
     if (selectedRoute) {
       return routeTrips.flatMap((trip, index) => {
-        const pickupPosition = getTripPickupPosition(trip);
-        const dropoffPosition = getTripDropoffPosition(trip);
+        const pickupPosition = getTripPickupMapPosition(trip);
+        const dropoffPosition = getTripDropoffMapPosition(trip);
         const stops = [];
         if (pickupPosition) {
           stops.push({
@@ -2214,7 +2223,7 @@ const DispatcherWorkspace = () => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, getTripDropoffMapPosition, getTripPickupMapPosition, routeTrips, selectedRoute, selectedTripIds, showRoute, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
@@ -3654,7 +3663,7 @@ const DispatcherWorkspace = () => {
             <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
             <ZoomControl position="bottomleft" />
             {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-            {selectedDriver?.hasRealLocation && selectedDriverEtaTrip && selectedDriverEta && getMapTripTargetPosition(selectedDriverEtaTrip) ? <>
+            {selectedDriver?.hasRealLocation && selectedDriverEtaTrip && selectedDriverEta ? <>
               <Polyline positions={selectedDriverRouteGeometry.length > 1 ? selectedDriverRouteGeometry : [selectedDriver.position, getMapTripTargetPosition(selectedDriverEtaTrip)]} pathOptions={{ color: selectedDriverColor, weight: 4, dashArray: selectedDriverRouteGeometry.length > 1 && selectedDriverRouteMetrics?.isFallback !== true ? undefined : '10 8', opacity: 0.95 }} />
               <Marker position={getMapTripTargetPosition(selectedDriverEtaTrip)} icon={createRouteStopIcon(selectedDriverEta?.target?.stage === 'dropoff' ? 'DO' : 'PU', selectedDriverEta?.target?.stage === 'dropoff' ? 'dropoff' : 'pickup')}>
                   <Popup>
@@ -3692,8 +3701,8 @@ const DispatcherWorkspace = () => {
                 </Tooltip>
               </Marker>)}
             {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
-            const pickupPosition = getTripPickupPosition(trip);
-            const dropoffPosition = getTripDropoffPosition(trip);
+            const pickupPosition = getTripPickupMapPosition(trip);
+            const dropoffPosition = getTripDropoffMapPosition(trip);
             const points = [];
             if (pickupPosition) {
               points.push({
@@ -3727,7 +3736,7 @@ const DispatcherWorkspace = () => {
               </Marker>) : null}
             {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).map(trip => ({
             trip,
-            pickupPosition: getTripPickupPosition(trip)
+            pickupPosition: getTripPickupMapPosition(trip)
           })).filter(entry => Boolean(entry.pickupPosition)).map(({ trip, pickupPosition }) => <CircleMarker key={trip.id} center={pickupPosition} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
               click: () => toggleTripSelection(trip.id)
             }}>
