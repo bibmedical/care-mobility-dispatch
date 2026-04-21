@@ -2081,7 +2081,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   }, [selectedDriverId, trips]);
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
-      if (isCancelledPanelMode && !isCancelledRoutesMode) {
+      if (isCancelledPanelMode && !isCancelledRoutesMode && tripOrderMode !== 'custom') {
         const leftRider = String(leftTrip?.rider || '').trim().toLowerCase();
         const rightRider = String(rightTrip?.rider || '').trim().toLowerCase();
         if (leftRider !== rightRider) return leftRider.localeCompare(rightRider);
@@ -2127,6 +2127,11 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     };
 
     if (isCancelledRoutesMode) {
+      const compareGroupLabels = (leftLabel, rightLabel) => compareNormalizedTripSortValues(
+        normalizeSortValue(leftLabel),
+        normalizeSortValue(rightLabel),
+        tripOrderMode === 'custom' && tripSort.key === 'driver' ? tripSort.direction : 'asc'
+      );
       const groups = tripTableTrips.reduce((map, trip) => {
         const primaryDriverId = normalizeDriverId(trip?.driverId);
         const secondaryDriverId = normalizeDriverId(trip?.secondaryDriverId);
@@ -2145,8 +2150,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       return Array.from(groups.entries()).map(([groupKey, groupValue]) => ({
         groupKey,
         label: groupValue.label,
-        trips: sortTripsByPickupTime(groupValue.trips)
-      })).sort((leftGroup, rightGroup) => leftGroup.label.localeCompare(rightGroup.label)).flatMap(group => [{
+        trips: tripOrderMode === 'custom' ? [...groupValue.trips].sort(compareTrips) : sortTripsByPickupTime(groupValue.trips)
+      })).sort((leftGroup, rightGroup) => compareGroupLabels(leftGroup.label, rightGroup.label)).flatMap(group => [{
         type: 'group',
         groupKey: group.groupKey,
         ridesCount: group.trips.length,
