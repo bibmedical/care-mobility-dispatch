@@ -388,6 +388,35 @@ const DIARIO_2026_04_16 = [{
   detail: 'If web-side shortcut buttons are added later, place them next to the existing selected-driver controls in Dispatcher and Trip Dashboard. Those actions are driver-scoped and should reuse the existing tablet flow instead of creating a disconnected panel.'
 }];
 
+const DIARIO_2026_04_20 = [{
+  area: 'Wrong-day import repair',
+  detail: 'The import date bug was traced to unsafe date parsing and local tomorrow generation. Import parsing now keeps local service dates stable so trips uploaded for tomorrow do not land under the wrong day.'
+}, {
+  area: 'Prune root cause and safety law',
+  detail: 'The destructive loss came from applying shrink/prune logic to a partial date-window snapshot as if it were the full live dispatch state. The repair now scopes trip shrink to the active service-date window instead of globally deleting live trips from other days.'
+}, {
+  area: 'TEST aligned with production safety',
+  detail: 'The critical date, sync, API, and SQL-store files in TEST were aligned with the safe production behavior so local verification now matches the real prune and date rules before future uploads.'
+}, {
+  area: 'Excel type and mobility visibility',
+  detail: 'Trip Dashboard now shows the real imported Excel type label instead of collapsing everything into the normalized mobility shortcut only. Detection also expanded across imported fields so WCV, service-animal markers, wheelchair, electric wheelchair, and stretcher hints are recognized more reliably.'
+}, {
+  area: 'Trip modal cleanup',
+  detail: 'Trip Update, Send Confirmation, and Cancel Trip modal labels no longer expose the huge internal import id built from rider, addresses, and raw times. The UI now shows a short readable trip identifier instead.'
+}, {
+  area: 'Excel compare time cleanup',
+  detail: 'Excel Loader vs Current no longer shows raw Excel serial numbers like 46133.32013888889 in Pickup and Dropoff. Those snapshot values are now formatted into normal readable clock times before being shown in the comparison modal.'
+}, {
+  area: 'Render real deploy record',
+  detail: 'The April 20 web repairs were uploaded to origin/main in multiple validated commits: 8c8940c for the local-date import fix, 4307383 for the real Excel type display and broader mobility detection, 0c2556f for readable trip modal ids, and 336a5d2 for Excel compare time formatting. Render real should auto-deploy those pushes from main.'
+}, {
+  area: 'Checks completed',
+  detail: 'Repeated editor error checks returned clean for the touched files, and npm run build passed after the local fixes and again in the clean deploy worktree before each Render push.'
+}, {
+  area: 'Conversation record by day',
+  detail: 'The full April 20 work log and conversation backup were written into conversation-summary-20260420.md and backup/chat-20260420-render-real-diary-and-dispatch-fixes.md so the day can be reviewed later without rebuilding context from memory.'
+}];
+
 const HelpPage = () => {
   return <>
   <PageTitle title="Diarie" subName="Operations" />
@@ -514,6 +543,25 @@ const HelpPage = () => {
               <div className="d-flex flex-column gap-2">
                 {SAFE_DEPLOY_NOTE.map(item => <div key={item.step} className="border rounded p-3">
                     <div className="fw-semibold mb-1">{item.step}</div>
+                    <div className="small text-muted">{item.detail}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="g-3 mb-3">
+        <Col xl={12}>
+          <Card className="h-100 border-success-subtle">
+            <CardBody>
+              <div className="d-flex flex-column gap-2 mb-3">
+                <h5 className="mb-0">Diario — April 20, 2026</h5>
+                <p className="text-muted mb-0">Operational diary for the full day of dispatch fixes, root-cause notes, validation, and Render production uploads completed on April 20.</p>
+              </div>
+              <div className="d-flex flex-column gap-2">
+                {DIARIO_2026_04_20.map(item => <div key={item.area} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.area}</div>
                     <div className="small text-muted">{item.detail}</div>
                   </div>)}
               </div>
@@ -671,9 +719,25 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V22</Badge>
+                <span className="fw-semibold text-dark">Dispatch Date Safety + Excel Visibility + Diary Record</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Fixed the wrong-day SafeRide import behavior by keeping local service-date parsing stable and aligning tomorrow generation with the operational timezone rules.</li>
+                <li>Documented and repaired the destructive prune regression so partial date-window snapshots no longer delete live trips from other service dates.</li>
+                <li>Trip Dashboard now shows real imported Excel type labels and broader mobility/support detection from imported fields, including WCV and service-animal signals.</li>
+                <li>Trip Update and related modals now show readable trip ids instead of the long internal import id string.</li>
+                <li>Excel Loader vs Current now formats raw Excel pickup and dropoff serials into readable times before display.</li>
+                <li>Stored the April 20 conversation history in dated diary markdown files so the day can be recovered later without losing context.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V21</Badge>
                 <span className="fw-semibold text-dark">Trip Dashboard Scanner + Column Defaults Deploy</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>System Trip Scanner toolbar now includes a direct Confirmation button so visible selected trips can open the existing confirmation flow from the scanner panel.</li>
