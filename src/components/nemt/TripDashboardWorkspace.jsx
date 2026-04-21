@@ -808,14 +808,18 @@ const compareNormalizedTripSortValues = (leftValue, rightValue, direction = 'asc
   return direction === 'asc' ? result : -result;
 };
 
-const getTripSortValue = (trip, sortKey, getDriverName) => {
+const getTripSortValue = (trip, sortKey, getDriverName, sortHelpers = {}) => {
+  const getDisplayTripIdValue = typeof sortHelpers.getDisplayTripId === 'function' ? sortHelpers.getDisplayTripId : currentTrip => currentTrip?.brokerTripId || currentTrip?.id;
+  const getStatusSortValue = typeof sortHelpers.getStatusSortValue === 'function' ? sortHelpers.getStatusSortValue : currentTrip => getEffectiveTripStatus(currentTrip);
+  const getDriverSortValue = typeof sortHelpers.getDriverSortValue === 'function' ? sortHelpers.getDriverSortValue : currentTrip => getDriverName(currentTrip?.driverId);
+  const getVehicleSortValue = typeof sortHelpers.getVehicleSortValue === 'function' ? sortHelpers.getVehicleSortValue : currentTrip => currentTrip?.vehicleType;
   switch (sortKey) {
     case 'trip':
-      return trip.brokerTripId || trip.id;
+      return getDisplayTripIdValue(trip);
     case 'status':
-      return getEffectiveTripStatus(trip);
+      return getStatusSortValue(trip);
     case 'driver':
-      return getDriverName(trip.driverId);
+      return getDriverSortValue(trip);
     case 'pickup':
       return trip.pickupSortValue ?? trip.pickup;
     case 'dropoff':
@@ -835,7 +839,7 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
     case 'miles':
       return Number(trip.miles) || 0;
     case 'vehicle':
-      return trip.vehicleType;
+      return getVehicleSortValue(trip);
     case 'notes':
       return trip.notes;
     case 'leg':
@@ -2076,6 +2080,12 @@ const TripDashboardWorkspace = () => {
     const secondaryDriverName = getDriverName(trip.secondaryDriverId);
     if (!hasPrimary) return secondaryDriverName;
     return `${primaryDriverName} + ${secondaryDriverName}`;
+  };
+  const getTripSortDisplayId = trip => getDisplayTripId(trip) || '-';
+  const getTripStatusSortValue = trip => isTripAssignedToSelectedDriver(trip) ? 'Assigned Here' : getEffectiveTripStatus(trip);
+  const getTripVehicleSortValue = trip => {
+    const vehicleMeta = getTripVehicleMeta(trip);
+    return vehicleMeta.actualVehicleLabel || vehicleMeta.requestedVehicle || getTripDisplayedTypeLabel(trip) || '-';
   };
   const getTripCompanionNote = trip => {
     const directCompanion = String(trip?.companion || trip?.companionNote || '').trim();
@@ -4011,8 +4021,18 @@ const TripDashboardWorkspace = () => {
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
       if (tripOrderMode === 'custom') {
-        const leftValue = normalizeSortValue(getTripSortValue(leftTrip, tripSort.key, getDriverName));
-        const rightValue = normalizeSortValue(getTripSortValue(rightTrip, tripSort.key, getDriverName));
+        const leftValue = normalizeSortValue(getTripSortValue(leftTrip, tripSort.key, getDriverName, {
+          getDisplayTripId: getTripSortDisplayId,
+          getStatusSortValue: getTripStatusSortValue,
+          getDriverSortValue: getTripDriverDisplay,
+          getVehicleSortValue: getTripVehicleSortValue
+        }));
+        const rightValue = normalizeSortValue(getTripSortValue(rightTrip, tripSort.key, getDriverName, {
+          getDisplayTripId: getTripSortDisplayId,
+          getStatusSortValue: getTripStatusSortValue,
+          getDriverSortValue: getTripDriverDisplay,
+          getVehicleSortValue: getTripVehicleSortValue
+        }));
         const customResult = compareNormalizedTripSortValues(leftValue, rightValue, tripSort.direction);
         if (customResult !== 0) return customResult;
       } else {
