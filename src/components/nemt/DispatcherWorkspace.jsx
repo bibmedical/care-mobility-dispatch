@@ -5,7 +5,7 @@ import DispatcherMessagingPanel from '@/components/nemt/DispatcherMessagingPanel
 import ManualTripModal from '@/components/nemt/ManualTripModal';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useLayoutContext } from '@/context/useLayoutContext';
-import { getDriverColor } from '@/helpers/nemt-driver-colors';
+import { getDriverColor, withDriverAlpha } from '@/helpers/nemt-driver-colors';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
@@ -308,6 +308,29 @@ const buildDispatcherSurfaceStyles = isDarkMode => ({
   },
   emptyText: isDarkMode ? '#94a3b8' : '#64748b'
 });
+
+const getHexColorBrightness = hexColor => {
+  const normalizedHex = String(hexColor || '').trim().replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(normalizedHex)) return 0;
+  const red = Number.parseInt(normalizedHex.slice(0, 2), 16);
+  const green = Number.parseInt(normalizedHex.slice(2, 4), 16);
+  const blue = Number.parseInt(normalizedHex.slice(4, 6), 16);
+  return (red * 299 + green * 587 + blue * 114) / 1000;
+};
+
+const getDriverGroupRowTheme = driverKey => {
+  const driverColor = getDriverColor(driverKey || 'unassigned');
+  const brightness = getHexColorBrightness(driverColor);
+  const textColor = brightness >= 150 ? '#0f172a' : '#ffffff';
+  return {
+    backgroundColor: withDriverAlpha(driverColor, 0.24),
+    borderTop: `1px solid ${withDriverAlpha(driverColor, 0.55)}`,
+    borderBottom: `1px solid ${withDriverAlpha(driverColor, 0.55)}`,
+    boxShadow: `inset 4px 0 0 ${driverColor}`,
+    color: textColor,
+    accentColor: driverColor
+  };
+};
 
 const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
   try {
@@ -2150,12 +2173,14 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       return Array.from(groups.entries()).map(([groupKey, groupValue]) => ({
         groupKey,
         label: groupValue.label,
+        groupTheme: getDriverGroupRowTheme(groupKey),
         trips: tripOrderMode === 'custom' ? [...groupValue.trips].sort(compareTrips) : sortTripsByPickupTime(groupValue.trips)
       })).sort((leftGroup, rightGroup) => compareGroupLabels(leftGroup.label, rightGroup.label)).flatMap(group => [{
         type: 'group',
         groupKey: group.groupKey,
         ridesCount: group.trips.length,
-        label: group.trips.length > 1 ? `${group.label} • ${group.trips.length} rides` : `${group.label} • 1 ride`
+        label: group.trips.length > 1 ? `${group.label} • ${group.trips.length} rides` : `${group.label} • 1 ride`,
+        groupTheme: group.groupTheme
       }, ...group.trips.map(trip => ({
         type: 'trip',
         groupKey: group.groupKey,
@@ -4246,8 +4271,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={dispatcherSurfaceStyles.groupRow}>
-                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: '#374151' }}>{row.label}</td>
+                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={row.groupTheme || dispatcherSurfaceStyles.groupRow}>
+                      <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: row.groupTheme?.color || '#374151', letterSpacing: '0.04em', textShadow: row.groupTheme ? '0 1px 0 rgba(15, 23, 42, 0.18)' : 'none' }}>{row.label}</td>
                       </tr> : <tr id={`dispatcher-trip-row-${normalizeTripId(row.trip.id)}`} key={row.trip.id} onClick={() => {
                         if (mapLocked) return;
                         setSelectedTripIds([row.trip.id]);
