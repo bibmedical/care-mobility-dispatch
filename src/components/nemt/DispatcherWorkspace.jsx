@@ -318,12 +318,31 @@ const getHexColorBrightness = hexColor => {
   return (red * 299 + green * 587 + blue * 114) / 1000;
 };
 
-const getDriverGroupRowTheme = driverKey => {
+const getBlendedColorBrightness = (hexColor, alpha, baseHexColor) => {
+  const normalizedHex = String(hexColor || '').trim().replace('#', '');
+  const normalizedBaseHex = String(baseHexColor || '').trim().replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(normalizedHex) || !/^[0-9a-fA-F]{6}$/.test(normalizedBaseHex)) return 0;
+  const sourceRed = Number.parseInt(normalizedHex.slice(0, 2), 16);
+  const sourceGreen = Number.parseInt(normalizedHex.slice(2, 4), 16);
+  const sourceBlue = Number.parseInt(normalizedHex.slice(4, 6), 16);
+  const baseRed = Number.parseInt(normalizedBaseHex.slice(0, 2), 16);
+  const baseGreen = Number.parseInt(normalizedBaseHex.slice(2, 4), 16);
+  const baseBlue = Number.parseInt(normalizedBaseHex.slice(4, 6), 16);
+  const blendedRed = Math.round(sourceRed * alpha + baseRed * (1 - alpha));
+  const blendedGreen = Math.round(sourceGreen * alpha + baseGreen * (1 - alpha));
+  const blendedBlue = Math.round(sourceBlue * alpha + baseBlue * (1 - alpha));
+  return (blendedRed * 299 + blendedGreen * 587 + blendedBlue * 114) / 1000;
+};
+
+const getDriverGroupRowTheme = (driverKey, isDarkMode = false) => {
   const driverColor = getDriverColor(driverKey || 'unassigned');
-  const brightness = getHexColorBrightness(driverColor);
-  const textColor = brightness >= 150 ? '#0f172a' : '#ffffff';
+  const backgroundAlpha = isDarkMode ? 0.4 : 0.24;
+  const backgroundBase = isDarkMode ? '0f172a' : 'ffffff';
+  const backgroundBrightness = getBlendedColorBrightness(driverColor, backgroundAlpha, backgroundBase);
+  const accentBrightness = getHexColorBrightness(driverColor);
+  const textColor = isDarkMode ? backgroundBrightness >= 150 ? '#0f172a' : '#f8fafc' : backgroundBrightness >= 170 || accentBrightness >= 150 ? '#0f172a' : '#f8fafc';
   return {
-    backgroundColor: withDriverAlpha(driverColor, 0.24),
+    backgroundColor: withDriverAlpha(driverColor, backgroundAlpha),
     borderTop: `1px solid ${withDriverAlpha(driverColor, 0.55)}`,
     borderBottom: `1px solid ${withDriverAlpha(driverColor, 0.55)}`,
     boxShadow: `inset 4px 0 0 ${driverColor}`,
@@ -2173,7 +2192,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       return Array.from(groups.entries()).map(([groupKey, groupValue]) => ({
         groupKey,
         label: groupValue.label,
-        groupTheme: getDriverGroupRowTheme(groupKey),
+        groupTheme: getDriverGroupRowTheme(groupKey, isDarkMode),
         trips: tripOrderMode === 'custom' ? [...groupValue.trips].sort(compareTrips) : sortTripsByPickupTime(groupValue.trips)
       })).sort((leftGroup, rightGroup) => compareGroupLabels(leftGroup.label, rightGroup.label)).flatMap(group => [{
         type: 'group',
