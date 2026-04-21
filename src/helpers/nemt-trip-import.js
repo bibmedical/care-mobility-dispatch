@@ -1,4 +1,4 @@
-import { getTripLateMinutes, getTripPunctualityLabel, getTripServiceDateKey, splitAddressAndZipcode } from '@/helpers/nemt-dispatch-state';
+import { getTripLateMinutes, getTripPunctualityLabel, getTripServiceDateKey, normalizeMapPosition, splitAddressAndZipcode } from '@/helpers/nemt-dispatch-state';
 import * as XLSX from 'xlsx';
 
 const IMPORT_TEMPLATES = {
@@ -54,8 +54,6 @@ const IMPORT_TEMPLATES = {
 };
 
 const DEFAULT_IMPORT_TEMPLATE_ID = 'saferideOfficial';
-
-const DEFAULT_CENTER = [28.5383, -81.3792];
 
 const toRadians = value => value * (Math.PI / 180);
 
@@ -123,6 +121,39 @@ const getParsedDate = value => {
 
   const parsedDate = new Date(normalized);
   return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+};
+
+const buildTripAddressQuery = (address, zipcode) => [String(address || '').trim(), String(zipcode || '').trim()].filter(Boolean).join(', ');
+
+export const enrichImportedTripsWithGeocodedPositions = async (trips, resolveAddress) => {
+  if (typeof resolveAddress !== 'function') return Array.isArray(trips) ? trips : [];
+
+  const addressCache = new Map();
+  const resolveCachedAddress = async query => {
+    const normalizedQuery = String(query || '').trim();
+    if (!normalizedQuery) return null;
+    if (addressCache.has(normalizedQuery)) return addressCache.get(normalizedQuery);
+    const nextResolution = Promise.resolve(resolveAddress(normalizedQuery)).then(result => normalizeMapPosition(result)).catch(() => null);
+    addressCache.set(normalizedQuery, nextResolution);
+    return nextResolution;
+  };
+
+  return Promise.all((Array.isArray(trips) ? trips : []).map(async trip => {
+    const pickupQuery = buildTripAddressQuery(trip?.address, trip?.fromZipcode);
+    const dropoffQuery = buildTripAddressQuery(trip?.destination, trip?.toZipcode);
+    const [pickupPosition, dropoffPosition] = await Promise.all([
+      resolveCachedAddress(pickupQuery),
+      resolveCachedAddress(dropoffQuery)
+    ]);
+    const resolvedDropoffPosition = dropoffPosition || pickupPosition;
+
+    return {
+      ...trip,
+      position: pickupPosition,
+      destinationPosition: resolvedDropoffPosition,
+      miles: String(trip?.miles || '').trim() || getDistanceMiles(pickupPosition, resolvedDropoffPosition)
+    };
+  }));
 };
 
 const normalizeHeader = value => String(value ?? '').trim().toLowerCase();
@@ -222,9 +253,7 @@ const getCoordinate = (row, key, index, template) => {
     : [...getTemplateAliases(template, 'fromLongitude'), ...getTemplateAliases(template, 'lng')];
   const rawValue = getValueByAliases(row, aliases);
   const parsed = Number(rawValue);
-  if (Number.isFinite(parsed)) return parsed;
-  const offset = (index % 10) * 0.01;
-  return key === 'lat' ? DEFAULT_CENTER[0] + offset : DEFAULT_CENTER[1] - offset;
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const getDestinationCoordinate = (row, key, index, template) => {
@@ -232,8 +261,7 @@ const getDestinationCoordinate = (row, key, index, template) => {
   const rawValue = getValueByAliases(row, aliases);
   const parsed = Number(rawValue);
   if (Number.isFinite(parsed)) return parsed;
-  const fallback = getCoordinate(row, key, index, template);
-  return key === 'lat' ? fallback + 0.01 : fallback + 0.01;
+  return getCoordinate(row, key, index, template);
 };
 
 const getRiderName = (row, index, template) => {
@@ -706,8 +734,8 @@ const mapRowToTrip = (row, index, template) => {
   const confirmationStatus = getValueByAliases(row, getTemplateAliases(template, 'confirmationStatus')) || 'confirmed';
   const serviceDate = getImportedServiceDate(row, rawPickupTime, rawDropoffTime, template);
   const tripStatus = getImportedTripStatus(status, confirmationStatus);
-  const position = [getCoordinate(row, 'lat', index, template), getCoordinate(row, 'lng', index, template)];
-  const destinationPosition = [getDestinationCoordinate(row, 'lat', index, template), getDestinationCoordinate(row, 'lng', index, template)];
+  const position = normalizeMapPosition([getCoordinate(row, 'lat', index, template), getCoordinate(row, 'lng', index, template)]);
+  const destinationPosition = normalizeMapPosition([getDestinationCoordinate(row, 'lat', index, template), getDestinationCoordinate(row, 'lng', index, template)]) || position;
   const providedMiles = getValueByAliases(row, getTemplateAliases(template, 'miles'));
   const scheduledPickup = getValueByAliases(row, getTemplateAliases(template, 'scheduledPickup')) || rawPickupTime;
   const actualPickup = getValueByAliases(row, getTemplateAliases(template, 'actualPickup'));
@@ -846,5 +874,16 @@ export const parseTripImportBuffer = arrayBuffer => {
 
 export const parseTripImportFile = async file => {
   const arrayBuffer = await file.arrayBuffer();
-  return parseTripImportBuffer(arrayBuffer);
+  const parsedImport = parseTripImportBuffer(arrayBuffer);
+  const trips = await enrichImportedTripsWithGeocodedPositions(parsedImport.trips, async query => {
+    const response = await fetch(`/api/maps/search?q=${encodeURIComponent(query)}`, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    return payload?.coordinates;
+  });
+  return {
+    ...parsedImport,
+    trips,
+    scan: analyzeImportedTrips(trips)
+  };
 };
