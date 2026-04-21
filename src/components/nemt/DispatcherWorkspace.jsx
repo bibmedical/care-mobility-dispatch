@@ -3728,7 +3728,10 @@ const DispatcherWorkspace = () => {
                   <div>{stop.detail}</div>
                 </Popup>
               </Marker>) : null}
-            {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).filter(trip => Boolean(getTripPickupPosition(trip))).map(trip => <CircleMarker key={trip.id} center={getTripPickupPosition(trip)} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
+            {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).map(trip => ({
+            trip,
+            pickupPosition: getTripPickupMapPosition(trip)
+          })).filter(entry => Boolean(entry.pickupPosition)).map(({ trip, pickupPosition }) => <CircleMarker key={trip.id} center={pickupPosition} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
               click: () => toggleTripSelection(trip.id)
             }}>
                 <Popup>{`${trip.brokerTripId || trip.id} | ${trip.legLabel || 'Ride'} | ${trip.rider} | ${trip.pickup}`}</Popup>
