@@ -564,6 +564,27 @@ const normalizeSortValue = value => {
   return String(value).trim().toLowerCase();
 };
 
+const compareNormalizedTripSortValues = (leftValue, rightValue, direction = 'asc') => {
+  const leftEmpty = leftValue === '' || leftValue == null;
+  const rightEmpty = rightValue === '' || rightValue == null;
+
+  if (leftEmpty && rightEmpty) return 0;
+  if (leftEmpty) return 1;
+  if (rightEmpty) return -1;
+
+  let result = 0;
+  if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+    result = leftValue === rightValue ? 0 : leftValue > rightValue ? 1 : -1;
+  } else {
+    result = String(leftValue).localeCompare(String(rightValue), undefined, {
+      numeric: true,
+      sensitivity: 'base'
+    });
+  }
+
+  return direction === 'asc' ? result : -result;
+};
+
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 
 const getDisplayTripId = trip => {
@@ -698,16 +719,21 @@ const buildInlineTripUpdatePayload = ({ trip, columnKey, value, routePlans, trip
   }
 };
 
-const getTripSortValue = (trip, sortKey, getDriverName) => {
+const getTripSortValue = (trip, sortKey, getDriverName, sortHelpers = {}) => {
+  const getDisplayTripIdValue = typeof sortHelpers.getDisplayTripId === 'function' ? sortHelpers.getDisplayTripId : currentTrip => currentTrip?.brokerTripId || currentTrip?.id;
+  const getStatusSortValue = typeof sortHelpers.getStatusSortValue === 'function' ? sortHelpers.getStatusSortValue : currentTrip => getEffectiveTripStatus(currentTrip);
+  const getConfirmationSortValue = typeof sortHelpers.getConfirmationSortValue === 'function' ? sortHelpers.getConfirmationSortValue : currentTrip => String(currentTrip?.confirmation?.status || '').trim();
+  const getDriverSortValue = typeof sortHelpers.getDriverSortValue === 'function' ? sortHelpers.getDriverSortValue : currentTrip => getDriverName(currentTrip?.driverId);
+  const getVehicleSortValue = typeof sortHelpers.getVehicleSortValue === 'function' ? sortHelpers.getVehicleSortValue : currentTrip => currentTrip?.vehicleType;
   switch (sortKey) {
     case 'trip':
-      return trip.brokerTripId || trip.id;
+      return getDisplayTripIdValue(trip);
     case 'status':
-      return getEffectiveTripStatus(trip);
+      return getStatusSortValue(trip);
     case 'confirmation':
-      return String(trip?.confirmation?.status || '').trim();
+      return getConfirmationSortValue(trip);
     case 'driver':
-      return getDriverName(trip.driverId);
+      return getDriverSortValue(trip);
     case 'pickup':
       return trip.pickupSortValue ?? trip.pickup;
     case 'dropoff':
@@ -727,7 +753,7 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
     case 'miles':
       return Number(trip.miles) || 0;
     case 'vehicle':
-      return trip.vehicleType;
+      return getVehicleSortValue(trip);
     case 'notes':
       return trip.notes;
     case 'leg':
@@ -1850,6 +1876,13 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     if (!hasPrimary) return secondaryDriverName;
     return `${primaryDriverName} + ${secondaryDriverName}`;
   };
+  const getTripSortDisplayId = trip => getDisplayTripId(trip) || '-';
+  const getTripStatusSortValue = trip => {
+    if (isCancelledRoutesMode) return getDriverTripProgressLabel(trip);
+    return isTripAssignedToSelectedDriver(trip) ? 'Assigned Here' : getEffectiveTripStatus(trip);
+  };
+  const getTripConfirmationSortValue = trip => getDispatcherConfirmationLabel(trip, tripBlockingMap.get(trip.id));
+  const getTripVehicleSortValue = trip => getTripTypeLabel(trip) || String(trip?.vehicleType || '').trim() || '-';
   const getTripPatientProfileKey = trip => {
     const phoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
     if (phoneKey) return `phone:${phoneKey}`;
@@ -2066,12 +2099,22 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         const rightTime = rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER;
         if (leftTime !== rightTime) return leftTime - rightTime;
       } else if (tripOrderMode === 'custom') {
-        const leftValue = normalizeSortValue(getTripSortValue(leftTrip, tripSort.key, getDriverName));
-        const rightValue = normalizeSortValue(getTripSortValue(rightTrip, tripSort.key, getDriverName));
-        if (leftValue !== rightValue) {
-          const result = leftValue > rightValue ? 1 : -1;
-          return tripSort.direction === 'asc' ? result : -result;
-        }
+        const leftValue = normalizeSortValue(getTripSortValue(leftTrip, tripSort.key, getDriverName, {
+          getDisplayTripId: getTripSortDisplayId,
+          getStatusSortValue: getTripStatusSortValue,
+          getConfirmationSortValue: getTripConfirmationSortValue,
+          getDriverSortValue: getTripDriverDisplay,
+          getVehicleSortValue: getTripVehicleSortValue
+        }));
+        const rightValue = normalizeSortValue(getTripSortValue(rightTrip, tripSort.key, getDriverName, {
+          getDisplayTripId: getTripSortDisplayId,
+          getStatusSortValue: getTripStatusSortValue,
+          getConfirmationSortValue: getTripConfirmationSortValue,
+          getDriverSortValue: getTripDriverDisplay,
+          getVehicleSortValue: getTripVehicleSortValue
+        }));
+        const customResult = compareNormalizedTripSortValues(leftValue, rightValue, tripSort.direction);
+        if (customResult !== 0) return customResult;
       } else {
         const leftOriginalIndex = tripOriginalOrderLookup.get(leftTrip.id) ?? Number.MAX_SAFE_INTEGER;
         const rightOriginalIndex = tripOriginalOrderLookup.get(rightTrip.id) ?? Number.MAX_SAFE_INTEGER;
