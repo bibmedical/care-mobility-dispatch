@@ -11,7 +11,7 @@ import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
-import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripDropoffPosition, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPickupPosition, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument, formatPrintGeneratedAt } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
 import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
@@ -873,13 +873,15 @@ const getDriverTripProgressVariant = trip => {
 
 const getSelectedDriverEtaTarget = trip => {
   const travelState = getTripTravelState(trip);
+  const pickupPosition = getTripPickupPosition(trip);
+  const dropoffPosition = getTripDropoffPosition(trip);
 
   if (travelState === 'inprogress') {
     return {
       stage: 'dropoff',
       label: 'Heading to Dropoff',
       shortLabel: 'To Dropoff',
-      position: trip?.destinationPosition ?? trip?.position,
+      position: dropoffPosition,
       detail: trip?.destination || 'Destination pending',
       color: '#2563eb'
     };
@@ -889,13 +891,13 @@ const getSelectedDriverEtaTarget = trip => {
     stage: 'pickup',
     label: 'Heading to Pickup',
     shortLabel: 'To Pickup',
-    position: trip?.position,
+    position: pickupPosition,
     detail: trip?.address || 'Pickup pending',
     color: '#16a34a'
   };
 };
 
-const getTripTargetPosition = trip => getSelectedDriverEtaTarget(trip)?.position ?? trip?.position;
+const getTripTargetPosition = trip => getSelectedDriverEtaTarget(trip)?.position ?? getTripPickupPosition(trip);
 
 const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
 const VEHICLE_VARIANT_TOTAL = 20;
@@ -2236,39 +2238,61 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         if (!activeDateTripIdSet) return true;
         return activeDateTripIdSet.has(tripId);
       });
-      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: 'pickup',
-        position: trip.position,
-        title: `Pickup ${trip.pickup}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${trip.dropoff}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
+      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
+        const stops = [];
+        if (pickupPosition) {
+          stops.push({
+            key: `${trip.id}-pickup`,
+            label: `${index * 2 + 1}`,
+            variant: 'pickup',
+            position: pickupPosition,
+            title: `Pickup ${trip.pickup}`,
+            detail: trip.address
+          });
+        }
+        if (dropoffPosition) {
+          stops.push({
+            key: `${trip.id}-dropoff`,
+            label: `${index * 2 + 2}`,
+            variant: 'dropoff',
+            position: dropoffPosition,
+            title: `Dropoff ${trip.dropoff}`,
+            detail: trip.destination || 'Destination pending'
+          });
+        }
+        return stops;
+      });
     }
 
     if (selectedRoute) {
-      return routeTrips.flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: 'pickup',
-        position: trip.position,
-        title: `Pickup ${trip.pickup}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${trip.dropoff}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
+      return routeTrips.flatMap((trip, index) => {
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
+        const stops = [];
+        if (pickupPosition) {
+          stops.push({
+            key: `${trip.id}-pickup`,
+            label: `${index * 2 + 1}`,
+            variant: 'pickup',
+            position: pickupPosition,
+            title: `Pickup ${trip.pickup}`,
+            detail: trip.address
+          });
+        }
+        if (dropoffPosition) {
+          stops.push({
+            key: `${trip.id}-dropoff`,
+            label: `${index * 2 + 2}`,
+            variant: 'dropoff',
+            position: dropoffPosition,
+            title: `Dropoff ${trip.dropoff}`,
+            detail: trip.destination || 'Destination pending'
+          });
+        }
+        return stops;
+      });
     }
 
     return [];
@@ -3750,19 +3774,27 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 </Tooltip>
               </Marker>)}
             {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
-            const points = [{
-              key: `${trip.id}-pickup-mapquick`,
-              tripId: trip.id,
-              position: trip.position,
-              color: '#0ea5e9',
-              label: `PU ${trip.pickup}`
-            }, {
-              key: `${trip.id}-dropoff-mapquick`,
-              tripId: trip.id,
-              position: trip.destinationPosition ?? trip.position,
-              color: '#22c55e',
-              label: `DO ${trip.dropoff}`
-            }];
+            const pickupPosition = getTripPickupPosition(trip);
+            const dropoffPosition = getTripDropoffPosition(trip);
+            const points = [];
+            if (pickupPosition) {
+              points.push({
+                key: `${trip.id}-pickup-mapquick`,
+                tripId: trip.id,
+                position: pickupPosition,
+                color: '#0ea5e9',
+                label: `PU ${trip.pickup}`
+              });
+            }
+            if (dropoffPosition) {
+              points.push({
+                key: `${trip.id}-dropoff-mapquick`,
+                tripId: trip.id,
+                position: dropoffPosition,
+                color: '#22c55e',
+                label: `DO ${trip.dropoff}`
+              });
+            }
             return points;
           }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
             click: () => toggleTripSelection(point.tripId)
@@ -3775,7 +3807,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   <div>{stop.detail}</div>
                 </Popup>
               </Marker>) : null}
-            {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).map(trip => <CircleMarker key={trip.id} center={trip.position} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
+            {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).filter(trip => Boolean(getTripPickupPosition(trip))).map(trip => <CircleMarker key={trip.id} center={getTripPickupPosition(trip)} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
               click: () => toggleTripSelection(trip.id)
             }}>
                 <Popup>{`${trip.brokerTripId || trip.id} | ${trip.legLabel || 'Ride'} | ${trip.rider} | ${trip.pickup}`}</Popup>

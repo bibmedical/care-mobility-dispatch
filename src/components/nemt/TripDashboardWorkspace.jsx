@@ -4,7 +4,7 @@ import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import ManualTripModal from '@/components/nemt/ManualTripModal';
 import { useLayoutContext } from '@/context/useLayoutContext';
 import { buildStableDriverId, createBlankDriver, GROUPING_SERVICE_TYPE_OPTIONS, getVehicleCapabilityTokens } from '@/helpers/nemt-admin-model';
-import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
+import { DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS, DISPATCH_TRIP_COLUMN_OPTIONS, formatTripDateLabel, getLocalDateKey, getRouteServiceDateKey, getTripDropoffPosition, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPickupPosition, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument, DEFAULT_ROUTE_PRINT_COLUMNS, formatPrintGeneratedAt, normalizeRoutePrintColumns, PRINT_COLUMN_OPTIONS } from '@/helpers/nemt-print-setup';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import { analyzeImportedTrips, annotateTripsByScanLogic, parseTripImportFile } from '@/helpers/nemt-trip-import';
@@ -853,7 +853,7 @@ const getTripSortValue = (trip, sortKey, getDriverName, sortHelpers = {}) => {
   }
 };
 
-const getTripTargetPosition = trip => trip?.status === 'In Progress' ? trip?.destinationPosition ?? trip?.position : trip?.position;
+const getTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffPosition(trip) : getTripPickupPosition(trip);
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -2960,21 +2960,32 @@ const TripDashboardWorkspace = () => {
   const selectedTripMapPoints = useMemo(() => {
     if (selectedTrips.length === 0 || showRoute) return [];
     const scopedSelectedTrips = activeDateTripIdSet ? selectedTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : selectedTrips;
-    return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => [{
-      key: `${trip.id}-pickup-selected-map`,
-      tripId: trip.id,
-      position: trip.position,
-      color: '#0284c7',
-      label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
-      detail: trip.address || 'No pickup address available'
-    }, {
-      key: `${trip.id}-dropoff-selected-map`,
-      tripId: trip.id,
-      position: trip.destinationPosition ?? trip.position,
-      color: '#16a34a',
-      label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
-      detail: trip.destination || 'No dropoff address available'
-    }]);
+    return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => {
+      const pickupPosition = getTripPickupPosition(trip);
+      const dropoffPosition = getTripDropoffPosition(trip);
+      const points = [];
+      if (pickupPosition) {
+        points.push({
+          key: `${trip.id}-pickup-selected-map`,
+          tripId: trip.id,
+          position: pickupPosition,
+          color: '#0284c7',
+          label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
+          detail: trip.address || 'No pickup address available'
+        });
+      }
+      if (dropoffPosition) {
+        points.push({
+          key: `${trip.id}-dropoff-selected-map`,
+          tripId: trip.id,
+          position: dropoffPosition,
+          color: '#16a34a',
+          label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
+          detail: trip.destination || 'No dropoff address available'
+        });
+      }
+      return points;
+    });
   }, [activeDateTripIdSet, selectedTrips, showRoute]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
@@ -3282,39 +3293,61 @@ const TripDashboardWorkspace = () => {
         if (!activeDateTripIdSet) return true;
         return activeDateTripIdSet.has(tripId);
       });
-      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: 'pickup',
-        position: trip.position,
-        title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
+      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
+        const stops = [];
+        if (pickupPosition) {
+          stops.push({
+            key: `${trip.id}-pickup`,
+            label: `${index * 2 + 1}`,
+            variant: 'pickup',
+            position: pickupPosition,
+            title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
+            detail: trip.address
+          });
+        }
+        if (dropoffPosition) {
+          stops.push({
+            key: `${trip.id}-dropoff`,
+            label: `${index * 2 + 2}`,
+            variant: 'dropoff',
+            position: dropoffPosition,
+            title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
+            detail: trip.destination || 'Destination pending'
+          });
+        }
+        return stops;
+      });
     }
 
     if (selectedRoute) {
-      return routeTrips.flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: 'pickup',
-        position: trip.position,
-        title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
+      return routeTrips.flatMap((trip, index) => {
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
+        const stops = [];
+        if (pickupPosition) {
+          stops.push({
+            key: `${trip.id}-pickup`,
+            label: `${index * 2 + 1}`,
+            variant: 'pickup',
+            position: pickupPosition,
+            title: `Pickup ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`,
+            detail: trip.address
+          });
+        }
+        if (dropoffPosition) {
+          stops.push({
+            key: `${trip.id}-dropoff`,
+            label: `${index * 2 + 2}`,
+            variant: 'dropoff',
+            position: dropoffPosition,
+            title: `Dropoff ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`,
+            detail: trip.destination || 'Destination pending'
+          });
+        }
+        return stops;
+      });
     }
 
     return [];
@@ -5734,7 +5767,7 @@ const TripDashboardWorkspace = () => {
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               <ZoomControl position="bottomleft" />
               {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip && getTripTargetPosition(selectedDriverActiveTrip) ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
               {mapVisibleDriversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
@@ -5747,19 +5780,27 @@ const TripDashboardWorkspace = () => {
                   </Popup>
                 </Marker>)}
               {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
-            const points = [{
-              key: `${trip.id}-pickup-mapquick`,
-              tripId: trip.id,
-              position: trip.position,
-              color: '#0ea5e9',
-              label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
-            }, {
-              key: `${trip.id}-dropoff-mapquick`,
-              tripId: trip.id,
-              position: trip.destinationPosition ?? trip.position,
-              color: '#22c55e',
-              label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
-            }];
+            const pickupPosition = getTripPickupPosition(trip);
+            const dropoffPosition = getTripDropoffPosition(trip);
+            const points = [];
+            if (pickupPosition) {
+              points.push({
+                key: `${trip.id}-pickup-mapquick`,
+                tripId: trip.id,
+                position: pickupPosition,
+                color: '#0ea5e9',
+                label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
+              });
+            }
+            if (dropoffPosition) {
+              points.push({
+                key: `${trip.id}-dropoff-mapquick`,
+                tripId: trip.id,
+                position: dropoffPosition,
+                color: '#22c55e',
+                label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
+              });
+            }
             return points;
           }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
             click: () => {

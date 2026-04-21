@@ -13,6 +13,16 @@ const TRIP_MOBILITY_ASSISTANCE_SOURCE_FIELDS = ['assistanceNeeds'];
 
 const padDatePart = value => String(value).padStart(2, '0');
 
+export const normalizeMapPosition = value => {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const normalized = value.map(Number);
+  return Number.isFinite(normalized[0]) && Number.isFinite(normalized[1]) ? normalized : null;
+};
+
+export const getTripPickupPosition = trip => normalizeMapPosition(trip?.position);
+
+export const getTripDropoffPosition = trip => normalizeMapPosition(trip?.destinationPosition) || getTripPickupPosition(trip);
+
 const isValidTimeZone = timeZone => {
   const normalized = String(timeZone || '').trim();
   if (!normalized) return false;
@@ -631,8 +641,8 @@ export const getTripLateMinutesDisplay = trip => {
 };
 
 export const normalizeTripRecord = trip => {
-  const position = Array.isArray(trip?.position) && trip.position.length === 2 ? trip.position.map(Number) : [...DEFAULT_CENTER];
-  const destinationPosition = Array.isArray(trip?.destinationPosition) && trip.destinationPosition.length === 2 ? trip.destinationPosition.map(Number) : [...position];
+  const position = getTripPickupPosition(trip);
+  const destinationPosition = getTripDropoffPosition(trip);
   const rider = getDerivedRiderName(trip);
   const rideId = getDerivedRideId(trip);
   const pickup = getEffectivePickupTimeText(trip);
