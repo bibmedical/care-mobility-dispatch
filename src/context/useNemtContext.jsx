@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { buildTripProviderSnapshot, getLocalDateKey, getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
+import { buildTripProviderSnapshot, getLocalDateKey, getTripServiceDateKey, isLikelyUsCoordinate, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapPosition, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import { normalizeUserPreferences } from '@/helpers/user-preferences';
 import { hasMapboxConfigured } from '@/utils/map-tiles';
@@ -279,8 +279,33 @@ const buildTripLocalOverrides = (trip, updates) => {
     nextOverrides.localCancellation = isCancelledLikeStatus(updates?.status);
   }
 
+  if (updates?.localOverrides && typeof updates.localOverrides === 'object') {
+    Object.assign(nextOverrides, updates.localOverrides);
+  }
+
   return nextOverrides;
 };
+
+const sanitizeTripCoordinateValue = value => {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const normalized = normalizeMapPosition(value);
+  return Array.isArray(normalized) && isLikelyUsCoordinate(normalized) ? normalized : null;
+};
+
+const sanitizeTripCoordinateFields = trip => {
+  if (!trip || typeof trip !== 'object') return trip;
+  return {
+    ...trip,
+    position: sanitizeTripCoordinateValue(trip?.position),
+    destinationPosition: sanitizeTripCoordinateValue(trip?.destinationPosition),
+    routingOriginalPosition: sanitizeTripCoordinateValue(trip?.routingOriginalPosition),
+    routingOriginalDestinationPosition: sanitizeTripCoordinateValue(trip?.routingOriginalDestinationPosition)
+  };
+};
+
+const normalizeTripRecordForState = trip => normalizeTripRecord(sanitizeTripCoordinateFields(trip));
+
+const normalizeTripRecordsForState = trips => normalizeTripRecords((Array.isArray(trips) ? trips : []).map(sanitizeTripCoordinateFields));
 
 const getPreferredImportedValue = (overrideFlag, currentValue, importedValue) => {
   if (overrideFlag) return currentValue;
@@ -292,6 +317,13 @@ const getPreferredImportedNumericValue = (overrideFlag, currentValue, importedVa
   if (overrideFlag) return currentValue;
   const parsedImported = Number(importedValue);
   return Number.isFinite(parsedImported) ? parsedImported : currentValue;
+};
+
+const getPreferredImportedCoordinateValue = (overrideFlag, currentValue, importedValue) => {
+  const sanitizedCurrentValue = sanitizeTripCoordinateValue(currentValue);
+  const sanitizedImportedValue = sanitizeTripCoordinateValue(importedValue);
+  if (overrideFlag) return sanitizedCurrentValue;
+  return sanitizedImportedValue || sanitizedCurrentValue;
 };
 
 const normalizeRouteComparisonValue = value => String(value ?? '').trim().toLowerCase();
@@ -361,7 +393,8 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip, importMetadata 
     ...buildTripProviderSnapshot(importedTrip),
     importedAt
   };
-  return normalizeTripRecord({
+  const preserveInvertedRouting = Boolean(baseLocalOverrides?.routingDirectionInverted);
+  return normalizeTripRecordForState({
     ...currentTrip,
     ...importedTrip,
     id: String(currentTrip?.id || importedTrip?.id || '').trim(),
@@ -380,14 +413,16 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip, importMetadata 
     dropoff: getPreferredImportedValue(localOverrides.dropoffTime, currentTrip?.dropoff, importedTrip?.dropoff),
     scheduledDropoff: getPreferredImportedValue(localOverrides.dropoffTime, currentTrip?.scheduledDropoff, importedTrip?.scheduledDropoff),
     dropoffSortValue: getPreferredImportedNumericValue(localOverrides.dropoffTime, currentTrip?.dropoffSortValue, importedTrip?.dropoffSortValue),
-    position: hasRoutingChange && !applyRoutingChanges ? currentTrip?.position : importedTrip?.position,
-    destinationPosition: hasRoutingChange && !applyRoutingChanges ? currentTrip?.destinationPosition : importedTrip?.destinationPosition,
+    position: getPreferredImportedCoordinateValue((hasRoutingChange && !applyRoutingChanges) || localOverrides.pickupCoordinates || preserveInvertedRouting, currentTrip?.position, importedTrip?.position),
+    destinationPosition: getPreferredImportedCoordinateValue((hasRoutingChange && !applyRoutingChanges) || localOverrides.dropoffCoordinates || preserveInvertedRouting, currentTrip?.destinationPosition, importedTrip?.destinationPosition),
     address: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.address, importedTrip?.address),
     fromAddress: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.fromAddress, importedTrip?.fromAddress),
     fromZipcode: getPreferredImportedValue(localOverrides.pickupAddress, currentTrip?.fromZipcode, importedTrip?.fromZipcode),
     destination: getPreferredImportedValue(localOverrides.dropoffAddress, currentTrip?.destination, importedTrip?.destination),
     toAddress: getPreferredImportedValue(localOverrides.dropoffAddress, currentTrip?.toAddress, importedTrip?.toAddress),
     toZipcode: getPreferredImportedValue(localOverrides.dropoffAddress, currentTrip?.toZipcode, importedTrip?.toZipcode),
+    routingOriginalPosition: preserveInvertedRouting ? sanitizeTripCoordinateValue(currentTrip?.routingOriginalPosition || importedTrip?.position) : sanitizeTripCoordinateValue(currentTrip?.routingOriginalPosition),
+    routingOriginalDestinationPosition: preserveInvertedRouting ? sanitizeTripCoordinateValue(currentTrip?.routingOriginalDestinationPosition || importedTrip?.destinationPosition) : sanitizeTripCoordinateValue(currentTrip?.routingOriginalDestinationPosition),
     patientPhoneNumber: getPreferredImportedValue(localOverrides.contact, currentTrip?.patientPhoneNumber, importedTrip?.patientPhoneNumber),
     notes: getPreferredImportedValue(localOverrides.notes, currentTrip?.notes, importedTrip?.notes),
     vehicleType: getPreferredImportedValue(localOverrides.serviceLevel, currentTrip?.vehicleType, importedTrip?.vehicleType),
@@ -2178,7 +2213,7 @@ export const NemtProvider = ({
     const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
-      trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? normalizeTripRecord({
+      trips: currentState.trips.map(trip => String(trip.id) === normalizedTripId ? normalizeTripRecordForState({
         ...trip,
         updatedAt,
         ...(updates || {}),
