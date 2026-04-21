@@ -5,6 +5,8 @@ const buildTripAddressQuery = (address, zipcode) => [String(address || '').trim(
 
 const getTripRepairKey = trip => String(trip?.id || '').trim();
 
+const readRepairEntry = (repairsByTripId, tripId) => repairsByTripId && tripId ? repairsByTripId[tripId] || {} : {};
+
 const dedupeTrips = trips => {
   const seen = new Set();
   return (Array.isArray(trips) ? trips : []).filter(trip => {
@@ -40,40 +42,63 @@ export default function useTripMapPositionRepair(trips) {
       return queryCacheRef.current.get(normalizedQuery);
     };
 
-    void Promise.all(scopedTrips.map(async trip => {
+    const lookupJobs = [];
+
+    for (const trip of scopedTrips) {
       const tripId = getTripRepairKey(trip);
-      if (!tripId) return;
+      if (!tripId) continue;
 
-      const pickupPosition = getTripPickupPosition(trip);
-      const dropoffPosition = getTripDropoffPosition(trip);
-      const needsPickupRepair = !isLikelyUsCoordinate(pickupPosition);
-      const needsDropoffRepair = !isLikelyUsCoordinate(dropoffPosition);
-      if (!needsPickupRepair && !needsDropoffRepair) return;
+      const repairEntry = readRepairEntry(repairsByTripId, tripId);
+      const pickupQuery = buildTripAddressQuery(trip?.address, trip?.fromZipcode);
+      const dropoffQuery = buildTripAddressQuery(trip?.destination, trip?.toZipcode);
 
-      const pickupQuery = needsPickupRepair ? buildTripAddressQuery(trip?.address, trip?.fromZipcode) : '';
-      const dropoffQuery = needsDropoffRepair ? buildTripAddressQuery(trip?.destination, trip?.toZipcode) : '';
-      if (!pickupQuery && !dropoffQuery) return;
+      if (pickupQuery && !repairEntry.pickupAttempted) {
+        lookupJobs.push({ tripId, kind: 'pickup', query: pickupQuery });
+      }
 
-      const [resolvedPickup, resolvedDropoff] = await Promise.all([
-        pickupQuery ? resolveAddress(pickupQuery) : pickupPosition,
-        dropoffQuery ? resolveAddress(dropoffQuery) : dropoffPosition
-      ]);
+      if (dropoffQuery && !repairEntry.dropoffAttempted) {
+        lookupJobs.push({ tripId, kind: 'dropoff', query: dropoffQuery });
+      }
+    }
+
+    if (lookupJobs.length === 0) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void Promise.all(lookupJobs.map(async job => {
+      const resolvedPosition = await resolveAddress(job.query);
 
       if (cancelled) return;
 
       setRepairsByTripId(current => {
-        const nextPickup = isLikelyUsCoordinate(resolvedPickup) ? resolvedPickup : null;
-        const nextDropoff = isLikelyUsCoordinate(resolvedDropoff) ? resolvedDropoff : nextPickup;
-        const previousEntry = current[tripId];
-        if (previousEntry?.pickup === nextPickup && previousEntry?.dropoff === nextDropoff) {
+        const previousEntry = current[job.tripId] || {};
+        const nextPosition = isLikelyUsCoordinate(resolvedPosition) ? resolvedPosition : null;
+        const nextEntry = job.kind === 'pickup'
+          ? {
+              ...previousEntry,
+              pickup: nextPosition,
+              pickupAttempted: true
+            }
+          : {
+              ...previousEntry,
+              dropoff: nextPosition,
+              dropoffAttempted: true
+            };
+
+        if (
+          previousEntry.pickup === nextEntry.pickup
+          && previousEntry.dropoff === nextEntry.dropoff
+          && previousEntry.pickupAttempted === nextEntry.pickupAttempted
+          && previousEntry.dropoffAttempted === nextEntry.dropoffAttempted
+        ) {
           return current;
         }
+
         return {
           ...current,
-          [tripId]: {
-            pickup: nextPickup,
-            dropoff: nextDropoff
-          }
+          [job.tripId]: nextEntry
         };
       });
     }));
@@ -81,19 +106,29 @@ export default function useTripMapPositionRepair(trips) {
     return () => {
       cancelled = true;
     };
-  }, [scopedTrips]);
+  }, [repairsByTripId, scopedTrips]);
 
   const getTripPickupMapPosition = trip => {
+    const tripId = getTripRepairKey(trip);
+    const repairedPickup = repairsByTripId[tripId]?.pickup;
+    if (isLikelyUsCoordinate(repairedPickup)) return repairedPickup;
+
     const pickupPosition = getTripPickupPosition(trip);
     if (isLikelyUsCoordinate(pickupPosition)) return pickupPosition;
-    return repairsByTripId[getTripRepairKey(trip)]?.pickup || null;
+
+    return null;
   };
 
   const getTripDropoffMapPosition = trip => {
+    const tripId = getTripRepairKey(trip);
+    const repairedEntry = repairsByTripId[tripId];
+    if (isLikelyUsCoordinate(repairedEntry?.dropoff)) return repairedEntry.dropoff;
+    if (isLikelyUsCoordinate(repairedEntry?.pickup)) return repairedEntry.pickup;
+
     const dropoffPosition = getTripDropoffPosition(trip);
     if (isLikelyUsCoordinate(dropoffPosition)) return dropoffPosition;
-    const repairedEntry = repairsByTripId[getTripRepairKey(trip)];
-    return repairedEntry?.dropoff || repairedEntry?.pickup || null;
+
+    return null;
   };
 
   return {
