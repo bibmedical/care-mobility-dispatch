@@ -6,6 +6,19 @@ import { enrichImportedTripsWithGeocodedPositions, parseTripImportBuffer } from 
 
 const ALLOWED_EXTENSIONS = new Set(['.csv', '.xlsx', '.xls']);
 const isProduction = process.env.NODE_ENV === 'production';
+const US_LATITUDE_RANGE = [18, 72];
+const US_LONGITUDE_RANGE = [-179, -64];
+
+const isLikelyUsCoordinate = coordinates => {
+  if (!Array.isArray(coordinates) || coordinates.length !== 2) return false;
+  const [latitude, longitude] = coordinates.map(Number);
+  return Number.isFinite(latitude)
+    && Number.isFinite(longitude)
+    && latitude >= US_LATITUDE_RANGE[0]
+    && latitude <= US_LATITUDE_RANGE[1]
+    && longitude >= US_LONGITUDE_RANGE[0]
+    && longitude <= US_LONGITUDE_RANGE[1];
+};
 
 const normalizeCandidatePath = rawValue => path.normalize(String(rawValue || '').trim());
 
@@ -27,10 +40,10 @@ const isPathAllowed = absolutePath => {
 const buildMapboxUrl = query => {
   const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
   if (!token) return null;
-  return `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&access_token=${token}`;
+  return `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&autocomplete=false&country=us&types=address,postcode,place,locality,neighborhood&access_token=${token}`;
 };
 
-const buildNominatimUrl = query => `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`;
+const buildNominatimUrl = query => `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&countrycodes=us&q=${encodeURIComponent(query)}`;
 
 const geocodeAddress = async query => {
   const providers = [{
@@ -54,14 +67,16 @@ const geocodeAddress = async query => {
       const payload = await response.json();
       if (provider.name === 'mapbox') {
         const center = Array.isArray(payload?.features?.[0]?.center) ? payload.features[0].center : null;
-        if (center?.length === 2) return [Number(center[1]), Number(center[0])];
+        const coordinates = center?.length === 2 ? [Number(center[1]), Number(center[0])] : null;
+        if (isLikelyUsCoordinate(coordinates)) return coordinates;
         continue;
       }
 
       const result = Array.isArray(payload) ? payload[0] : null;
       const latitude = Number(result?.lat);
       const longitude = Number(result?.lon);
-      if (Number.isFinite(latitude) && Number.isFinite(longitude)) return [latitude, longitude];
+      const coordinates = [latitude, longitude];
+      if (isLikelyUsCoordinate(coordinates)) return coordinates;
     } catch {
       // Try next provider.
     }

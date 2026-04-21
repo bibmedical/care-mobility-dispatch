@@ -12,6 +12,7 @@ import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
+import useTripMapPositionRepair from '@/hooks/useTripMapPositionRepair';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
@@ -808,18 +809,14 @@ const compareNormalizedTripSortValues = (leftValue, rightValue, direction = 'asc
   return direction === 'asc' ? result : -result;
 };
 
-const getTripSortValue = (trip, sortKey, getDriverName, sortHelpers = {}) => {
-  const getDisplayTripIdValue = typeof sortHelpers.getDisplayTripId === 'function' ? sortHelpers.getDisplayTripId : currentTrip => currentTrip?.brokerTripId || currentTrip?.id;
-  const getStatusSortValue = typeof sortHelpers.getStatusSortValue === 'function' ? sortHelpers.getStatusSortValue : currentTrip => getEffectiveTripStatus(currentTrip);
-  const getDriverSortValue = typeof sortHelpers.getDriverSortValue === 'function' ? sortHelpers.getDriverSortValue : currentTrip => getDriverName(currentTrip?.driverId);
-  const getVehicleSortValue = typeof sortHelpers.getVehicleSortValue === 'function' ? sortHelpers.getVehicleSortValue : currentTrip => currentTrip?.vehicleType;
+const getTripSortValue = (trip, sortKey, getDriverName) => {
   switch (sortKey) {
     case 'trip':
-      return getDisplayTripIdValue(trip);
+      return trip.brokerTripId || trip.id;
     case 'status':
-      return getStatusSortValue(trip);
+      return getEffectiveTripStatus(trip);
     case 'driver':
-      return getDriverSortValue(trip);
+      return getDriverName(trip.driverId);
     case 'pickup':
       return trip.pickupSortValue ?? trip.pickup;
     case 'dropoff':
@@ -839,7 +836,7 @@ const getTripSortValue = (trip, sortKey, getDriverName, sortHelpers = {}) => {
     case 'miles':
       return Number(trip.miles) || 0;
     case 'vehicle':
-      return getVehicleSortValue(trip);
+      return trip.vehicleType;
     case 'notes':
       return trip.notes;
     case 'leg':
@@ -922,25 +919,6 @@ const getTripNoteText = trip => splitTripNoteSections(trip).combinedNotes;
 
 const getTripExcelLoaderSnapshot = trip => trip?.excelLoaderSnapshot && typeof trip.excelLoaderSnapshot === 'object' ? trip.excelLoaderSnapshot : null;
 
-const getTripDisplayedTypeLabel = trip => {
-  const snapshot = getTripExcelLoaderSnapshot(trip);
-  return String(
-    snapshot?.vehicleType
-    || trip?.vehicleType
-    || snapshot?.tripType
-    || trip?.tripType
-    || getTripTypeLabel(trip)
-    || '-'
-  ).trim() || '-';
-};
-
-const getTripExcelSnapshotTimeText = (snapshot, field = 'pickup') => {
-  if (!snapshot) return '-';
-  const rawValue = field === 'dropoff' ? snapshot.rawDropoffTime : snapshot.rawPickupTime;
-  const fallbackValue = field === 'dropoff' ? snapshot.dropoff : snapshot.pickup;
-  return formatTripTimeDisplay(getEffectiveTimeText(rawValue, fallbackValue)) || '-';
-};
-
 const buildTripExcelComparisonRows = trip => {
   const snapshot = getTripExcelLoaderSnapshot(trip);
   if (!snapshot) return [];
@@ -959,12 +937,12 @@ const buildTripExcelComparisonRows = trip => {
     currentValue: trip?.rider || '-'
   }, {
     label: 'Pickup',
-    excelValue: getTripExcelSnapshotTimeText(snapshot, 'pickup'),
-    currentValue: getTripDisplayTimeText(trip, 'pickup') || '-',
+    excelValue: snapshot.rawPickupTime || snapshot.pickup || '-',
+    currentValue: trip?.pickup || '-'
   }, {
     label: 'Dropoff',
-    excelValue: getTripExcelSnapshotTimeText(snapshot, 'dropoff'),
-    currentValue: getTripDisplayTimeText(trip, 'dropoff') || '-',
+    excelValue: snapshot.rawDropoffTime || snapshot.dropoff || '-',
+    currentValue: trip?.dropoff || '-'
   }, {
     label: 'Pickup Address',
     excelValue: snapshot.address || '-',
@@ -991,8 +969,8 @@ const buildTripExcelComparisonRows = trip => {
     currentValue: trip?.confirmationStatus || '-'
   }, {
     label: 'Type',
-    excelValue: snapshot.vehicleType || snapshot.tripType || '-',
-    currentValue: getTripDisplayedTypeLabel(trip)
+    excelValue: snapshot.tripType || '-',
+    currentValue: trip?.tripType || '-'
   }, {
     label: 'Phone',
     excelValue: snapshot.patientPhoneNumber || '-',
@@ -1355,7 +1333,7 @@ const TripDashboardWorkspace = () => {
   const [tripUpdatePickupAddress, setTripUpdatePickupAddress] = useState('');
   const [tripUpdateDropoffAddress, setTripUpdateDropoffAddress] = useState('');
   const [tripUpdateNote, setTripUpdateNote] = useState('');
-  const [showLiveTripScanPanel, setShowLiveTripScanPanel] = useState(false);
+  const [showLiveTripScanPanel, setShowLiveTripScanPanel] = useState(true);
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
   const [cancelLegScope, setCancelLegScope] = useState('single');
@@ -2080,12 +2058,6 @@ const TripDashboardWorkspace = () => {
     const secondaryDriverName = getDriverName(trip.secondaryDriverId);
     if (!hasPrimary) return secondaryDriverName;
     return `${primaryDriverName} + ${secondaryDriverName}`;
-  };
-  const getTripSortDisplayId = trip => getDisplayTripId(trip) || '-';
-  const getTripStatusSortValue = trip => isTripAssignedToSelectedDriver(trip) ? 'Assigned Here' : getEffectiveTripStatus(trip);
-  const getTripVehicleSortValue = trip => {
-    const vehicleMeta = getTripVehicleMeta(trip);
-    return vehicleMeta.actualVehicleLabel || vehicleMeta.requestedVehicle || getTripDisplayedTypeLabel(trip) || '-';
   };
   const getTripCompanionNote = trip => {
     const directCompanion = String(trip?.companion || trip?.companionNote || '').trim();
@@ -2957,12 +2929,14 @@ const TripDashboardWorkspace = () => {
   const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
   const selectedVisibleTrips = useMemo(() => sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)))), [filteredTrips, selectedTripIdSet]);
+  const { getTripPickupMapPosition, getTripDropoffMapPosition } = useTripMapPositionRepair(trips);
+  const getMapTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffMapPosition(trip) : getTripPickupMapPosition(trip);
   const selectedTripMapPoints = useMemo(() => {
     if (selectedTrips.length === 0 || showRoute) return [];
     const scopedSelectedTrips = activeDateTripIdSet ? selectedTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : selectedTrips;
     return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => {
-      const pickupPosition = getTripPickupPosition(trip);
-      const dropoffPosition = getTripDropoffPosition(trip);
+      const pickupPosition = getTripPickupMapPosition(trip);
+      const dropoffPosition = getTripDropoffMapPosition(trip);
       const points = [];
       if (pickupPosition) {
         points.push({
@@ -2986,7 +2960,7 @@ const TripDashboardWorkspace = () => {
       }
       return points;
     });
-  }, [activeDateTripIdSet, selectedTrips, showRoute]);
+  }, [activeDateTripIdSet, getTripDropoffMapPosition, getTripPickupMapPosition, selectedTrips, showRoute]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
     return sortTripsByPickupTime(filteredTrips).slice(0, 200);
@@ -3294,8 +3268,8 @@ const TripDashboardWorkspace = () => {
         return activeDateTripIdSet.has(tripId);
       });
       return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
-        const pickupPosition = getTripPickupPosition(trip);
-        const dropoffPosition = getTripDropoffPosition(trip);
+        const pickupPosition = getTripPickupMapPosition(trip);
+        const dropoffPosition = getTripDropoffMapPosition(trip);
         const stops = [];
         if (pickupPosition) {
           stops.push({
@@ -3323,8 +3297,8 @@ const TripDashboardWorkspace = () => {
 
     if (selectedRoute) {
       return routeTrips.flatMap((trip, index) => {
-        const pickupPosition = getTripPickupPosition(trip);
-        const dropoffPosition = getTripDropoffPosition(trip);
+        const pickupPosition = getTripPickupMapPosition(trip);
+        const dropoffPosition = getTripDropoffMapPosition(trip);
         const stops = [];
         if (pickupPosition) {
           stops.push({
@@ -3351,7 +3325,7 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, getTripDropoffMapPosition, getTripPickupMapPosition, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
@@ -3408,12 +3382,12 @@ const TripDashboardWorkspace = () => {
   }, [routeTrips, selectedDriver, selectedTripIdSet, trips]);
   const selectedDriverEta = useMemo(() => {
     if (!selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverActiveTrip) return null;
-    const miles = getDistanceMiles(selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip));
+    const miles = getDistanceMiles(selectedDriver.position, getMapTripTargetPosition(selectedDriverActiveTrip));
     return {
       miles,
       label: formatEta(miles)
     };
-  }, [selectedDriver, selectedDriverActiveTrip]);
+  }, [getMapTripTargetPosition, selectedDriver, selectedDriverActiveTrip]);
   const selectedDriverRouteHealth = useMemo(() => {
     if (!selectedDriver || selectedDriverWorkingTrips.length === 0) return null;
 
@@ -3423,8 +3397,10 @@ const TripDashboardWorkspace = () => {
     let previousDropoffPosition = selectedDriver.hasRealLocation ? selectedDriver.position : null;
 
     for (const trip of selectedDriverWorkingTrips) {
+      const pickupPosition = getTripPickupMapPosition(trip);
+      const dropoffPosition = getTripDropoffMapPosition(trip);
       const scheduledStart = Number.isFinite(Number(trip.pickupSortValue)) ? Number(trip.pickupSortValue) : previousAvailableAt;
-      const travelMinutes = previousDropoffPosition ? estimateTravelMinutes(previousDropoffPosition, trip.position) : 0;
+      const travelMinutes = previousDropoffPosition && pickupPosition ? estimateTravelMinutes(previousDropoffPosition, pickupPosition) : 0;
       const estimatedArrival = previousAvailableAt != null ? previousAvailableAt + travelMinutes * 60000 : scheduledStart;
       const effectiveStart = scheduledStart != null && estimatedArrival != null ? Math.max(scheduledStart, estimatedArrival) : scheduledStart ?? estimatedArrival ?? null;
       const slackMinutes = scheduledStart != null && estimatedArrival != null ? Math.round((scheduledStart - estimatedArrival) / 60000) : null;
@@ -3442,7 +3418,7 @@ const TripDashboardWorkspace = () => {
       });
 
       previousAvailableAt = finishAt;
-      previousDropoffPosition = trip.destinationPosition ?? trip.position;
+      previousDropoffPosition = dropoffPosition ?? pickupPosition;
     }
 
     return {
@@ -4054,18 +4030,8 @@ const TripDashboardWorkspace = () => {
   const groupedFilteredTripRows = useMemo(() => {
     const compareTrips = (leftTrip, rightTrip) => {
       if (tripOrderMode === 'custom') {
-        const leftValue = normalizeSortValue(getTripSortValue(leftTrip, tripSort.key, getDriverName, {
-          getDisplayTripId: getTripSortDisplayId,
-          getStatusSortValue: getTripStatusSortValue,
-          getDriverSortValue: getTripDriverDisplay,
-          getVehicleSortValue: getTripVehicleSortValue
-        }));
-        const rightValue = normalizeSortValue(getTripSortValue(rightTrip, tripSort.key, getDriverName, {
-          getDisplayTripId: getTripSortDisplayId,
-          getStatusSortValue: getTripStatusSortValue,
-          getDriverSortValue: getTripDriverDisplay,
-          getVehicleSortValue: getTripVehicleSortValue
-        }));
+        const leftValue = normalizeSortValue(getTripSortValue(leftTrip, tripSort.key, getDriverName));
+        const rightValue = normalizeSortValue(getTripSortValue(rightTrip, tripSort.key, getDriverName));
         const customResult = compareNormalizedTripSortValues(leftValue, rightValue, tripSort.direction);
         if (customResult !== 0) return customResult;
       } else {
@@ -5437,17 +5403,10 @@ const TripDashboardWorkspace = () => {
           placeholder: '(407) 555-0000'
         });
       case 'mobility': {
-        const tripTypeLabel = getTripDisplayedTypeLabel(trip);
-        const normalizedTripTypeLabel = tripTypeLabel.toUpperCase();
-        const badgeVariant = normalizedTripTypeLabel.includes('STR')
-          ? 'danger'
-          : normalizedTripTypeLabel === 'W' || normalizedTripTypeLabel.includes('WC') || normalizedTripTypeLabel.includes('WCV') || normalizedTripTypeLabel.includes('WHEEL')
-            ? 'warning'
-            : normalizedTripTypeLabel === 'SA'
-              ? 'info'
-              : 'success';
+        const tripTypeLabel = getTripTypeLabel(trip);
+        const badgeVariant = tripTypeLabel === 'STR' ? 'danger' : tripTypeLabel === 'W' ? 'warning' : 'success';
         return <td key={`${trip.id}-mobility`} style={{ whiteSpace: 'nowrap' }}>
-            <Badge bg={badgeVariant} text={badgeVariant === 'warning' || badgeVariant === 'info' ? 'dark' : undefined}>{tripTypeLabel}</Badge>
+            <Badge bg={badgeVariant} text={tripTypeLabel === 'W' ? 'dark' : undefined}>{tripTypeLabel}</Badge>
           </td>;
       }
       case 'assistLevel':
@@ -5462,7 +5421,7 @@ const TripDashboardWorkspace = () => {
       case 'notes': {
         const noteText = getTripNoteText(trip);
         const hasExcelLoaderSnapshot = Boolean(getTripExcelLoaderSnapshot(trip));
-        const notesColumnWidth = columnWidths.notes ?? 148;
+        const notesColumnWidth = columnWidths.notes ?? 182;
         return <td key={`${trip.id}-notes`} style={{ whiteSpace: 'nowrap', textAlign: 'center', width: notesColumnWidth, minWidth: notesColumnWidth, maxWidth: notesColumnWidth }}>
             <div className="d-flex align-items-center justify-content-center gap-1">
               <Button
@@ -5767,7 +5726,7 @@ const TripDashboardWorkspace = () => {
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               <ZoomControl position="bottomleft" />
               {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip && getTripTargetPosition(selectedDriverActiveTrip) ? <Polyline positions={[selectedDriver.position, getTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip && getMapTripTargetPosition(selectedDriverActiveTrip) ? <Polyline positions={[selectedDriver.position, getMapTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
               {mapVisibleDriversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
@@ -5780,8 +5739,8 @@ const TripDashboardWorkspace = () => {
                   </Popup>
                 </Marker>)}
               {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
-            const pickupPosition = getTripPickupPosition(trip);
-            const dropoffPosition = getTripDropoffPosition(trip);
+            const pickupPosition = getTripPickupMapPosition(trip);
+            const dropoffPosition = getTripDropoffMapPosition(trip);
             const points = [];
             if (pickupPosition) {
               points.push({
@@ -6951,7 +6910,7 @@ const TripDashboardWorkspace = () => {
             <Modal.Title>Cancel Trip</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-              <div className="small text-muted mb-2">Trip: {getDisplayTripId(cancelNoteModal) || '-'}</div>
+            <div className="small text-muted mb-2">Trip: {cancelNoteModal?.id}</div>
             <div className="small text-muted mb-3">Rider: {cancelNoteModal?.rider || '-'}</div>
             {cancelNoteModal && getSiblingLegTrips(cancelNoteModal, trips).length > 0 ? <>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Cancel Scope</Form.Label>
@@ -6986,7 +6945,7 @@ const TripDashboardWorkspace = () => {
                 <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Leg Scope</Form.Label>
                 <Form.Select className="mb-3" value={confirmationLegScope} onChange={event => setConfirmationLegScope(event.target.value)}>
                   <option value="">Choose one option</option>
-                  <option value="single">Only this leg ({getDisplayTripId(confirmationSourceTrip) || '-'})</option>
+                  <option value="single">Only this leg ({confirmationSourceTrip?.id})</option>
                   <option value="both">Both legs</option>
                 </Form.Select>
               </> : null}
@@ -7010,7 +6969,7 @@ const TripDashboardWorkspace = () => {
             <Modal.Title>Trip Update</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <div className="small text-muted mb-2">Trip: {getDisplayTripId(tripUpdateModal) || '-'} | Rider: {tripUpdateModal?.rider}</div>
+            <div className="small text-muted mb-2">Trip: {tripUpdateModal?.id} | Rider: {tripUpdateModal?.rider}</div>
             <Row className="g-3">
               <Col md={4}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Confirmed Via</Form.Label>
@@ -7035,7 +6994,7 @@ const TripDashboardWorkspace = () => {
               {tripUpdateSupportsBothLegs ? <Col md={12}>
                   <Form.Label className="small text-uppercase text-muted fw-semibold">Apply Confirmation To</Form.Label>
                   <Form.Select value={tripUpdateLegScope} onChange={event => setTripUpdateLegScope(event.target.value)}>
-                    <option value="single">Only this leg ({getDisplayTripId(tripUpdateModal) || '-'})</option>
+                    <option value="single">Only this leg ({tripUpdateModal?.id})</option>
                     <option value="both">Both legs</option>
                   </Form.Select>
                   <div className="small text-muted mt-1">Confirmation and notes can be applied to both legs. Time changes stay only on the current leg.</div>
