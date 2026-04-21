@@ -309,44 +309,15 @@ const buildDispatcherSurfaceStyles = isDarkMode => ({
   emptyText: isDarkMode ? '#94a3b8' : '#64748b'
 });
 
-const getHexColorBrightness = hexColor => {
-  const normalizedHex = String(hexColor || '').trim().replace('#', '');
-  if (!/^[0-9a-fA-F]{6}$/.test(normalizedHex)) return 0;
-  const red = Number.parseInt(normalizedHex.slice(0, 2), 16);
-  const green = Number.parseInt(normalizedHex.slice(2, 4), 16);
-  const blue = Number.parseInt(normalizedHex.slice(4, 6), 16);
-  return (red * 299 + green * 587 + blue * 114) / 1000;
-};
-
-const getBlendedColorBrightness = (hexColor, alpha, baseHexColor) => {
-  const normalizedHex = String(hexColor || '').trim().replace('#', '');
-  const normalizedBaseHex = String(baseHexColor || '').trim().replace('#', '');
-  if (!/^[0-9a-fA-F]{6}$/.test(normalizedHex) || !/^[0-9a-fA-F]{6}$/.test(normalizedBaseHex)) return 0;
-  const sourceRed = Number.parseInt(normalizedHex.slice(0, 2), 16);
-  const sourceGreen = Number.parseInt(normalizedHex.slice(2, 4), 16);
-  const sourceBlue = Number.parseInt(normalizedHex.slice(4, 6), 16);
-  const baseRed = Number.parseInt(normalizedBaseHex.slice(0, 2), 16);
-  const baseGreen = Number.parseInt(normalizedBaseHex.slice(2, 4), 16);
-  const baseBlue = Number.parseInt(normalizedBaseHex.slice(4, 6), 16);
-  const blendedRed = Math.round(sourceRed * alpha + baseRed * (1 - alpha));
-  const blendedGreen = Math.round(sourceGreen * alpha + baseGreen * (1 - alpha));
-  const blendedBlue = Math.round(sourceBlue * alpha + baseBlue * (1 - alpha));
-  return (blendedRed * 299 + blendedGreen * 587 + blendedBlue * 114) / 1000;
-};
-
 const getDriverGroupRowTheme = (driverKey, isDarkMode = false) => {
   const driverColor = getDriverColor(driverKey || 'unassigned');
-  const backgroundAlpha = isDarkMode ? 0.4 : 0.24;
-  const backgroundBase = isDarkMode ? '0f172a' : 'ffffff';
-  const backgroundBrightness = getBlendedColorBrightness(driverColor, backgroundAlpha, backgroundBase);
-  const accentBrightness = getHexColorBrightness(driverColor);
-  const textColor = isDarkMode ? backgroundBrightness >= 150 ? '#0f172a' : '#f8fafc' : backgroundBrightness >= 170 || accentBrightness >= 150 ? '#0f172a' : '#f8fafc';
+  const panelGreen = '#16a34a';
   return {
-    backgroundColor: withDriverAlpha(driverColor, backgroundAlpha),
-    borderTop: `1px solid ${withDriverAlpha(driverColor, 0.55)}`,
-    borderBottom: `1px solid ${withDriverAlpha(driverColor, 0.55)}`,
-    boxShadow: `inset 4px 0 0 ${driverColor}`,
-    color: textColor,
+    background: isDarkMode ? 'linear-gradient(180deg, rgba(22, 163, 74, 0.72) 0%, rgba(21, 128, 61, 0.82) 100%)' : 'linear-gradient(180deg, #bbf7d0 0%, #86efac 100%)',
+    borderTop: isDarkMode ? '1px solid rgba(187, 247, 208, 0.28)' : '1px solid #4ade80',
+    borderBottom: isDarkMode ? '1px solid rgba(21, 128, 61, 0.92)' : '1px solid #22c55e',
+    boxShadow: `inset 4px 0 0 ${driverColor}, inset 0 1px 0 ${withDriverAlpha(panelGreen, isDarkMode ? 0.2 : 0.35)}`,
+    color: isDarkMode ? '#f0fdf4' : '#14532d',
     accentColor: driverColor
   };
 };
