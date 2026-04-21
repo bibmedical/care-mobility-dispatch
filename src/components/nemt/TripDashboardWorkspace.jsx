@@ -1351,7 +1351,7 @@ const TripDashboardWorkspace = () => {
   const [tripUpdatePickupAddress, setTripUpdatePickupAddress] = useState('');
   const [tripUpdateDropoffAddress, setTripUpdateDropoffAddress] = useState('');
   const [tripUpdateNote, setTripUpdateNote] = useState('');
-  const [showLiveTripScanPanel, setShowLiveTripScanPanel] = useState(true);
+  const [showLiveTripScanPanel, setShowLiveTripScanPanel] = useState(false);
   const [cancelNoteModal, setCancelNoteModal] = useState(null);
   const [cancelNoteDraft, setCancelNoteDraft] = useState('');
   const [cancelLegScope, setCancelLegScope] = useState('single');
