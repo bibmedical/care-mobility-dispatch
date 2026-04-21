@@ -930,6 +930,13 @@ const getTripDisplayedTypeLabel = trip => {
   ).trim() || '-';
 };
 
+const getTripExcelSnapshotTimeText = (snapshot, field = 'pickup') => {
+  if (!snapshot) return '-';
+  const rawValue = field === 'dropoff' ? snapshot.rawDropoffTime : snapshot.rawPickupTime;
+  const fallbackValue = field === 'dropoff' ? snapshot.dropoff : snapshot.pickup;
+  return formatTripTimeDisplay(getEffectiveTimeText(rawValue, fallbackValue)) || '-';
+};
+
 const buildTripExcelComparisonRows = trip => {
   const snapshot = getTripExcelLoaderSnapshot(trip);
   if (!snapshot) return [];
@@ -948,12 +955,12 @@ const buildTripExcelComparisonRows = trip => {
     currentValue: trip?.rider || '-'
   }, {
     label: 'Pickup',
-    excelValue: snapshot.rawPickupTime || snapshot.pickup || '-',
-    currentValue: trip?.pickup || '-'
+    excelValue: getTripExcelSnapshotTimeText(snapshot, 'pickup'),
+    currentValue: getTripDisplayTimeText(trip, 'pickup') || '-',
   }, {
     label: 'Dropoff',
-    excelValue: snapshot.rawDropoffTime || snapshot.dropoff || '-',
-    currentValue: trip?.dropoff || '-'
+    excelValue: getTripExcelSnapshotTimeText(snapshot, 'dropoff'),
+    currentValue: getTripDisplayTimeText(trip, 'dropoff') || '-',
   }, {
     label: 'Pickup Address',
     excelValue: snapshot.address || '-',
