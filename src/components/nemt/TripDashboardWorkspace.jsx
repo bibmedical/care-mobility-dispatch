@@ -12,7 +12,6 @@ import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/
 import useBlacklistApi from '@/hooks/useBlacklistApi';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
-import useTripMapPositionRepair from '@/hooks/useTripMapPositionRepair';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
@@ -2929,20 +2928,13 @@ const TripDashboardWorkspace = () => {
   const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
   const selectedVisibleTrips = useMemo(() => sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)))), [filteredTrips, selectedTripIdSet]);
-  const mapRepairTrips = useMemo(() => {
-    const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
-    const selectedMapTrips = trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
-    return [...routeTrips, ...mapQuickTrips, ...selectedMapTrips];
-  }, [mapQuickTrips, routeTrips, selectedTripIds, trips]);
-
-  const { getTripPickupMapPosition, getTripDropoffMapPosition } = useTripMapPositionRepair(mapRepairTrips);
-  const getMapTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffMapPosition(trip) : getTripPickupMapPosition(trip);
+  const getMapTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffPosition(trip) : getTripPickupPosition(trip);
   const selectedTripMapPoints = useMemo(() => {
     if (selectedTrips.length === 0 || showRoute) return [];
     const scopedSelectedTrips = activeDateTripIdSet ? selectedTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : selectedTrips;
     return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => {
-      const pickupPosition = getTripPickupMapPosition(trip);
-      const dropoffPosition = getTripDropoffMapPosition(trip);
+      const pickupPosition = getTripPickupPosition(trip);
+      const dropoffPosition = getTripDropoffPosition(trip);
       const points = [];
       if (pickupPosition) {
         points.push({
@@ -2966,7 +2958,7 @@ const TripDashboardWorkspace = () => {
       }
       return points;
     });
-  }, [activeDateTripIdSet, getTripDropoffMapPosition, getTripPickupMapPosition, selectedTrips, showRoute]);
+  }, [activeDateTripIdSet, selectedTrips, showRoute]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
     return sortTripsByPickupTime(filteredTrips).slice(0, 200);
@@ -3274,8 +3266,8 @@ const TripDashboardWorkspace = () => {
         return activeDateTripIdSet.has(tripId);
       });
       return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
-        const pickupPosition = getTripPickupMapPosition(trip);
-        const dropoffPosition = getTripDropoffMapPosition(trip);
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
         const stops = [];
         if (pickupPosition) {
           stops.push({
@@ -3303,8 +3295,8 @@ const TripDashboardWorkspace = () => {
 
     if (selectedRoute) {
       return routeTrips.flatMap((trip, index) => {
-        const pickupPosition = getTripPickupMapPosition(trip);
-        const dropoffPosition = getTripDropoffMapPosition(trip);
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
         const stops = [];
         if (pickupPosition) {
           stops.push({
@@ -3331,7 +3323,7 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [activeDateTripIdSet, getTripDropoffMapPosition, getTripPickupMapPosition, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
@@ -3403,8 +3395,8 @@ const TripDashboardWorkspace = () => {
     let previousDropoffPosition = selectedDriver.hasRealLocation ? selectedDriver.position : null;
 
     for (const trip of selectedDriverWorkingTrips) {
-      const pickupPosition = getTripPickupMapPosition(trip);
-      const dropoffPosition = getTripDropoffMapPosition(trip);
+      const pickupPosition = getTripPickupPosition(trip);
+      const dropoffPosition = getTripDropoffPosition(trip);
       const scheduledStart = Number.isFinite(Number(trip.pickupSortValue)) ? Number(trip.pickupSortValue) : previousAvailableAt;
       const travelMinutes = previousDropoffPosition && pickupPosition ? estimateTravelMinutes(previousDropoffPosition, pickupPosition) : 0;
       const estimatedArrival = previousAvailableAt != null ? previousAvailableAt + travelMinutes * 60000 : scheduledStart;
@@ -5745,8 +5737,8 @@ const TripDashboardWorkspace = () => {
                   </Popup>
                 </Marker>)}
               {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
-            const pickupPosition = getTripPickupMapPosition(trip);
-            const dropoffPosition = getTripDropoffMapPosition(trip);
+            const pickupPosition = getTripPickupPosition(trip);
+            const dropoffPosition = getTripDropoffPosition(trip);
             const points = [];
             if (pickupPosition) {
               points.push({
