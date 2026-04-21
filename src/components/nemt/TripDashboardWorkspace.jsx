@@ -2929,7 +2929,13 @@ const TripDashboardWorkspace = () => {
   const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
   const selectedVisibleTrips = useMemo(() => sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)))), [filteredTrips, selectedTripIdSet]);
-  const { getTripPickupMapPosition, getTripDropoffMapPosition } = useTripMapPositionRepair(trips);
+  const mapRepairTrips = useMemo(() => {
+    const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
+    const selectedMapTrips = trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
+    return [...routeTrips, ...mapQuickTrips, ...selectedMapTrips];
+  }, [mapQuickTrips, routeTrips, selectedTripIds, trips]);
+
+  const { getTripPickupMapPosition, getTripDropoffMapPosition } = useTripMapPositionRepair(mapRepairTrips);
   const getMapTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffMapPosition(trip) : getTripPickupMapPosition(trip);
   const selectedTripMapPoints = useMemo(() => {
     if (selectedTrips.length === 0 || showRoute) return [];

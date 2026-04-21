@@ -2140,7 +2140,13 @@ const DispatcherWorkspace = () => {
     return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => String(value || '').toLowerCase().includes(term))));
   }, [activeDateTripIdSet, deferredRouteSearch, selectedDriver, selectedRoute, selectedTripIds, trips]);
 
-  const { getTripPickupMapPosition, getTripDropoffMapPosition } = useTripMapPositionRepair(trips);
+  const mapRepairTrips = useMemo(() => {
+    const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
+    const selectedMapTrips = trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
+    return [...routeTrips, ...mapQuickTrips, ...selectedMapTrips];
+  }, [mapQuickTrips, routeTrips, selectedTripIds, trips]);
+
+  const { getTripPickupMapPosition, getTripDropoffMapPosition } = useTripMapPositionRepair(mapRepairTrips);
 
   const getMapTripTargetPosition = trip => {
     const etaTarget = getSelectedDriverEtaTarget(trip);
