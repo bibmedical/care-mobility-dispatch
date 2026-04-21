@@ -697,8 +697,16 @@ const invertDashboardTripDirection = trip => ({
   toZipcode: getPickupZip(trip),
   fromZip: getDropoffZip(trip),
   toZip: getPickupZip(trip),
+  routingOriginalPosition: Array.isArray(trip?.routingOriginalPosition) ? [...trip.routingOriginalPosition] : Array.isArray(trip?.position) ? [...trip.position] : trip?.position,
+  routingOriginalDestinationPosition: Array.isArray(trip?.routingOriginalDestinationPosition) ? [...trip.routingOriginalDestinationPosition] : Array.isArray(trip?.destinationPosition) ? [...trip.destinationPosition] : trip?.destinationPosition,
   position: Array.isArray(trip?.destinationPosition) ? [...trip.destinationPosition] : trip?.destinationPosition,
-  destinationPosition: Array.isArray(trip?.position) ? [...trip.position] : trip?.position
+  destinationPosition: Array.isArray(trip?.position) ? [...trip.position] : trip?.position,
+  localOverrides: {
+    ...(trip?.localOverrides && typeof trip.localOverrides === 'object' ? trip.localOverrides : {}),
+    routingDirectionInverted: !Boolean(trip?.localOverrides?.routingDirectionInverted),
+    pickupCoordinates: true,
+    dropoffCoordinates: true
+  }
 });
 const normalizeDriverId = driverId => String(driverId || '').trim();
 const getClosedRouteKey = (driverId, dateKey) => {
