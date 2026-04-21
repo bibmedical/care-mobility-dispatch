@@ -313,10 +313,10 @@ const getDriverGroupRowTheme = (driverKey, isDarkMode = false) => {
   const driverColor = getDriverColor(driverKey || 'unassigned');
   const panelGreen = '#16a34a';
   return {
-    background: isDarkMode ? 'linear-gradient(180deg, rgba(22, 163, 74, 0.72) 0%, rgba(21, 128, 61, 0.82) 100%)' : 'linear-gradient(180deg, #bbf7d0 0%, #86efac 100%)',
+    background: isDarkMode ? `linear-gradient(90deg, ${withDriverAlpha(driverColor, 0.22)} 0%, rgba(22, 163, 74, 0.08) 100%), linear-gradient(180deg, rgba(22, 163, 74, 0.72) 0%, rgba(21, 128, 61, 0.82) 100%)` : `linear-gradient(90deg, ${withDriverAlpha(driverColor, 0.24)} 0%, rgba(22, 163, 74, 0.08) 100%), linear-gradient(180deg, #dcfce7 0%, #86efac 100%)`,
     borderTop: isDarkMode ? '1px solid rgba(187, 247, 208, 0.28)' : '1px solid #4ade80',
     borderBottom: isDarkMode ? '1px solid rgba(21, 128, 61, 0.92)' : '1px solid #22c55e',
-    boxShadow: `inset 4px 0 0 ${driverColor}, inset 0 1px 0 ${withDriverAlpha(panelGreen, isDarkMode ? 0.2 : 0.35)}`,
+    boxShadow: `inset 6px 0 0 ${driverColor}, inset 0 1px 0 ${withDriverAlpha(panelGreen, isDarkMode ? 0.2 : 0.35)}`,
     color: isDarkMode ? '#f0fdf4' : '#14532d',
     accentColor: driverColor
   };
