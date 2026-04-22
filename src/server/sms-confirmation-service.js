@@ -1,4 +1,4 @@
-import { readIntegrationsState } from '@/server/integrations-store';
+import { readIntegrationsState, writeIntegrationsState } from '@/server/integrations-store';
 import { readBlacklistState } from '@/server/blacklist-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
@@ -43,6 +43,8 @@ const ACTION_MAP = {
     replyMessage: 'Patient requested a call.'
   }
 };
+
+const OPT_OUT_KEYWORDS = new Set(['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'REVOKE', 'OPTOUT']);
 
 export const SMS_PROVIDER_PORTALS = PROVIDER_PORTALS;
 const normalizePhoneNumber = (value, defaultCountryCode = '1') => {
@@ -293,6 +295,13 @@ const extractReplyAction = messageText => {
   if (!normalized) return null;
   const tokens = normalized.split(/[^A-Z0-9]+/).filter(Boolean);
   return tokens.map(token => ACTION_MAP[token]).find(Boolean) ?? null;
+};
+
+const extractOptOutKeyword = messageText => {
+  const normalized = String(messageText || '').trim().toUpperCase();
+  if (!normalized) return '';
+  const tokens = normalized.split(/[^A-Z0-9]+/).filter(Boolean);
+  return tokens.find(token => OPT_OUT_KEYWORDS.has(token)) || '';
 };
 
 const extractReplyCode = messageText => {
@@ -779,6 +788,81 @@ export const sendTestSmsRequest = async ({ to, message }) => {
 };
 
 export const processInboundConfirmationReply = async ({ provider, fromPhone, messageText, providerMessageId }) => {
+  const optOutKeyword = extractOptOutKeyword(messageText);
+  const integrationsState = await readIntegrationsState();
+  const dispatchState = await readNemtDispatchState();
+  const normalizedPhone = normalizePhoneNumber(fromPhone, integrationsState.sms.defaultCountryCode);
+
+  if (optOutKeyword) {
+    const existingOptOutList = Array.isArray(integrationsState?.sms?.optOutList) ? integrationsState.sms.optOutList : [];
+    const hasExistingEntry = existingOptOutList.some(entry => normalizePhoneNumber(entry?.phone, integrationsState.sms.defaultCountryCode) === normalizedPhone);
+    const respondedAt = new Date().toISOString();
+
+    if (!hasExistingEntry && normalizedPhone) {
+      await writeIntegrationsState({
+        ...integrationsState,
+        sms: {
+          ...integrationsState.sms,
+          optOutList: [{
+            id: `${normalizedPhone}-${Date.now()}`,
+            name: '',
+            phone: normalizedPhone,
+            reason: `Inbound ${optOutKeyword} reply`,
+            createdAt: respondedAt
+          }, ...existingOptOutList]
+        }
+      });
+    }
+
+    const nextTrips = dispatchState.trips.map(trip => {
+      const tripPhone = normalizePhoneNumber(trip?.patientPhoneNumber, integrationsState.sms.defaultCountryCode);
+      const confirmationPhone = normalizePhoneNumber(trip?.confirmation?.lastPhone, integrationsState.sms.defaultCountryCode);
+      if (!normalizedPhone || (tripPhone !== normalizedPhone && confirmationPhone !== normalizedPhone)) return trip;
+      return {
+        ...trip,
+        safeRideStatus: 'Do Not Confirm',
+        confirmation: {
+          ...trip.confirmation,
+          status: 'Opted Out',
+          provider,
+          respondedAt,
+          lastMessageId: providerMessageId || trip.confirmation?.lastMessageId || '',
+          lastResponseText: String(messageText || ''),
+          lastResponseCode: optOutKeyword,
+          lastPhone: normalizedPhone,
+          lastError: ''
+        }
+      };
+    });
+
+    await writeNemtDispatchState({
+      ...dispatchState,
+      trips: nextTrips
+    });
+
+    await logSmsDelivery({
+      tripId: null,
+      driverId: null,
+      audience: 'patient',
+      eventType: 'opt-out',
+      provider,
+      recipientPhone: normalizedPhone || String(fromPhone || ''),
+      recipientName: 'patient',
+      messageBody: String(messageText || ''),
+      messageId: providerMessageId,
+      status: 'received',
+      metadata: { keyword: optOutKeyword }
+    });
+
+    return {
+      updated: true,
+      confirmationStatus: 'Opted Out',
+      safeRideStatus: 'Do Not Confirm',
+      patientPhone: normalizedPhone,
+      replyMessage: ''
+    };
+  }
+
   const action = extractReplyAction(messageText);
   if (!action) {
     return {
@@ -786,10 +870,6 @@ export const processInboundConfirmationReply = async ({ provider, fromPhone, mes
       reason: 'No confirmation action found in inbound message.'
     };
   }
-
-  const integrationsState = await readIntegrationsState();
-  const dispatchState = await readNemtDispatchState();
-  const normalizedPhone = normalizePhoneNumber(fromPhone, integrationsState.sms.defaultCountryCode);
   const code = extractReplyCode(messageText);
   const pendingTrips = dispatchState.trips.filter(trip => {
     const confirmation = trip.confirmation || {};

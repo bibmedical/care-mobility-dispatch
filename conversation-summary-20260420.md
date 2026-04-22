@@ -106,3 +106,10 @@
 - Added a public `SMS Consent Notice` block to the login page so the site now states how riders consent, what messages they receive, that frequency varies, that message/data rates may apply, and that they can reply `STOP` or `HELP`.
 - Strengthened the public Terms page wording so `STOP` and `HELP` are visually explicit.
 - Validated the change locally with `npm run build` in `clean/web-render-direct` and pushed it to `main` as commit `a2f456b`.
+
+## 2026-04-22 inbound SMS opt-out note
+
+- Confirmed the confirmation send flow already respects `sms.optOutList` before sending, but inbound SMS replies were only parsing confirm/cancel/call actions and were not auto-saving `STOP`-style replies.
+- Updated `src/server/sms-confirmation-service.js` so inbound `STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`, `END`, `QUIT`, `REVOKE`, and `OPTOUT` replies are persisted into `sms.optOutList`, matching trips are marked `Opted Out` / `Do Not Confirm`, and the event is logged.
+- Validated the change with editor checks and `npm run build` in `clean/web-render-direct`.
+- Verified the reported local break was not a dead server: `http://localhost:3015/auth/login` returned `200` and `/api/auth/session` returned valid JSON. The old `clean/web` path no longer exists, so local runs must use `clean/web-render-direct`.
