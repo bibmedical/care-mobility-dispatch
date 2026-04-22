@@ -111,7 +111,9 @@ const RiderSignaturePreview = ({ trip }) => {
 const STATUS_VARIANTS = {
   Confirmed: 'success',
   Cancelled: 'danger',
+  'Consent Granted': 'info',
   Disconnected: 'secondary',
+  'Awaiting Consent': 'warning',
   'Needs Call': 'warning',
   Pending: 'primary',
   'Not Sent': 'secondary',

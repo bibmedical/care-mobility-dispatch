@@ -48,6 +48,7 @@ const DEFAULT_STATE = {
   sms: {
     activeProvider: 'disabled',
     defaultCountryCode: '1',
+    consentRequestTemplate: 'Hello {{rider}}, this is Florida Mobility Group. Reply YES to allow transportation-related SMS updates for your trips. Reply STOP to opt out. Msg & data rates may apply.',
     confirmationTemplate: 'Hello {{rider}}, this is Florida Mobility Group about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
     arrivalNotifications: {
       patientEnabled: true,
@@ -68,6 +69,7 @@ const DEFAULT_STATE = {
     notes: '',
     lastValidatedAt: '',
     lastInboundAt: '',
+    consentList: [],
     optOutList: [],
     twilio: {
       accountSid: '',
@@ -181,6 +183,19 @@ const normalizeSmsOptOutEntry = value => ({
   createdAt: String(value?.createdAt ?? '')
 });
 
+const normalizeSmsConsentEntry = value => ({
+  id: String(value?.id ?? `${String(value?.phone ?? '').replace(/\D/g, '') || String(value?.name ?? '').trim().toLowerCase().replace(/\s+/g, '-')}`),
+  name: String(value?.name ?? ''),
+  phone: String(value?.phone ?? ''),
+  status: String(value?.status ?? 'pending').trim().toLowerCase() || 'pending',
+  source: String(value?.source ?? ''),
+  lastKeyword: String(value?.lastKeyword ?? ''),
+  createdAt: String(value?.createdAt ?? ''),
+  updatedAt: String(value?.updatedAt ?? ''),
+  consentedAt: String(value?.consentedAt ?? ''),
+  revokedAt: String(value?.revokedAt ?? '')
+});
+
 const normalizeSmsOfficeRecipientEntry = value => ({
   id: String(value?.id ?? `${String(value?.phone ?? '').replace(/\D/g, '') || String(value?.name ?? '').trim().toLowerCase().replace(/\s+/g, '-')}`),
   name: String(value?.name ?? ''),
@@ -201,6 +216,7 @@ const normalizeArrivalNotificationsState = value => ({
 const normalizeSmsState = value => ({
   activeProvider: String(value?.activeProvider ?? 'disabled'),
   defaultCountryCode: String(value?.defaultCountryCode ?? '1'),
+  consentRequestTemplate: String(value?.consentRequestTemplate ?? DEFAULT_STATE.sms.consentRequestTemplate),
   confirmationTemplate: String(value?.confirmationTemplate ?? DEFAULT_STATE.sms.confirmationTemplate),
   arrivalNotifications: normalizeArrivalNotificationsState(value?.arrivalNotifications),
   groupTemplates: {
@@ -215,6 +231,7 @@ const normalizeSmsState = value => ({
   notes: String(value?.notes ?? ''),
   lastValidatedAt: String(value?.lastValidatedAt ?? ''),
   lastInboundAt: String(value?.lastInboundAt ?? ''),
+  consentList: Array.isArray(value?.consentList) ? value.consentList.map(normalizeSmsConsentEntry).filter(entry => entry.name || entry.phone) : [],
   optOutList: Array.isArray(value?.optOutList) ? value.optOutList.map(normalizeSmsOptOutEntry).filter(entry => entry.name || entry.phone) : [],
   twilio: normalizeTwilioSmsState(value?.twilio),
   telnyx: normalizeTelnyxSmsState(value?.telnyx),
@@ -322,7 +339,10 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
 
   const currentOptOutList = Array.isArray(currentState?.sms?.optOutList) ? currentState.sms.optOutList : [];
   const incomingOptOutList = Array.isArray(normalized?.sms?.optOutList) ? normalized.sms.optOutList : [];
+  const currentConsentList = Array.isArray(currentState?.sms?.consentList) ? currentState.sms.consentList : [];
+  const incomingConsentList = Array.isArray(normalized?.sms?.consentList) ? normalized.sms.consentList : [];
   const mergedOptOutMap = new Map();
+  const mergedConsentMap = new Map();
 
   currentOptOutList.forEach(entry => {
     const key = String(entry?.id || `${String(entry?.phone || '').trim().replace(/\D/g, '')}-${String(entry?.name || '').trim().toLowerCase()}`);
@@ -337,9 +357,23 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
     });
   });
 
+  currentConsentList.forEach(entry => {
+    const key = String(entry?.id || `${String(entry?.phone || '').trim().replace(/\D/g, '')}-${String(entry?.name || '').trim().toLowerCase()}`);
+    mergedConsentMap.set(key, entry);
+  });
+
+  incomingConsentList.forEach(entry => {
+    const key = String(entry?.id || `${String(entry?.phone || '').trim().replace(/\D/g, '')}-${String(entry?.name || '').trim().toLowerCase()}`);
+    mergedConsentMap.set(key, {
+      ...mergedConsentMap.get(key),
+      ...entry
+    });
+  });
+
   const currentPatientsMemory = String(currentState?.ai?.memorySections?.patients || '').trim();
   const nextPatientsMemory = String(normalized?.ai?.memorySections?.patients || '').trim();
   const protectedOptOutList = allowPatientDataShrink ? incomingOptOutList : Array.from(mergedOptOutMap.values()).filter(entry => entry.name || entry.phone);
+  const protectedConsentList = allowPatientDataShrink ? incomingConsentList : Array.from(mergedConsentMap.values()).filter(entry => entry.name || entry.phone);
   const protectedPatientsMemory = allowPatientDataShrink ? nextPatientsMemory : nextPatientsMemory || currentPatientsMemory;
 
   const protectedState = {
@@ -353,6 +387,7 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
     },
     sms: {
       ...normalized.sms,
+      consentList: protectedConsentList,
       optOutList: protectedOptOutList
     }
   };

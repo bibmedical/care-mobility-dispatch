@@ -113,3 +113,9 @@
 - Updated `src/server/sms-confirmation-service.js` so inbound `STOP`, `STOPALL`, `UNSUBSCRIBE`, `CANCEL`, `END`, `QUIT`, `REVOKE`, and `OPTOUT` replies are persisted into `sms.optOutList`, matching trips are marked `Opted Out` / `Do Not Confirm`, and the event is logged.
 - Validated the change with editor checks and `npm run build` in `clean/web-render-direct`.
 - Verified the reported local break was not a dead server: `http://localhost:3015/auth/login` returned `200` and `/api/auth/session` returned valid JSON. The old `clean/web` path no longer exists, so local runs must use `clean/web-render-direct`.
+
+## 2026-04-22 SMS consent-first note
+
+- Added persistent `sms.consentList` and `sms.consentRequestTemplate` fields to integrations storage so the consent roster is kept in `integrations_state` SQL when `DATABASE_URL` exists, with local JSON fallback when it does not.
+- Updated the confirmation send flow so patients without granted SMS consent receive the consent-request template first instead of the normal trip confirmation. Those trips move to `Awaiting Consent` / `Needs Consent` until the patient replies.
+- Updated inbound SMS handling so `YES`, `Y`, `START`, `UNSTOP`, and `SUBSCRIBE` mark consent as granted, while `STOP`-style replies revoke consent and keep the patient in the do-not-confirm list.

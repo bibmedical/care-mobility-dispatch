@@ -467,6 +467,8 @@ const getStatusBadge = status => {
 
 const getConfirmationBadgeVariant = confirmationStatus => {
   if (confirmationStatus === 'Confirmed') return 'success';
+  if (confirmationStatus === 'Consent Granted') return 'info';
+  if (confirmationStatus === 'Awaiting Consent') return 'warning';
   if (confirmationStatus === 'Opted Out') return 'danger';
   return 'secondary';
 };
