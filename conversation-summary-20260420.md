@@ -119,3 +119,9 @@
 - Added persistent `sms.consentList` and `sms.consentRequestTemplate` fields to integrations storage so the consent roster is kept in `integrations_state` SQL when `DATABASE_URL` exists, with local JSON fallback when it does not.
 - Updated the confirmation send flow so patients without granted SMS consent receive the consent-request template first instead of the normal trip confirmation. Those trips move to `Awaiting Consent` / `Needs Consent` until the patient replies.
 - Updated inbound SMS handling so `YES`, `Y`, `START`, `UNSTOP`, and `SUBSCRIBE` mark consent as granted, while `STOP`-style replies revoke consent and keep the patient in the do-not-confirm list.
+
+## 2026-04-22 patient profile SQL note
+
+- Confirmed the Confirmation workspace was writing `sms.riderProfiles`, but the backend integrations store was not normalizing or persisting that field.
+- Updated `src/server/integrations-store.js` so rider profile records are now preserved in `integrations_state` and therefore saved in SQL for V2 when `DATABASE_URL` exists.
+- This keeps patient-specific confirmation rules and exclusion data from being dropped during SMS settings saves.

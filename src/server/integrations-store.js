@@ -48,12 +48,12 @@ const DEFAULT_STATE = {
   sms: {
     activeProvider: 'disabled',
     defaultCountryCode: '1',
-    consentRequestTemplate: 'Hello {{rider}}, this is Florida Mobility Group. Reply YES to allow transportation-related SMS updates for your trips. Reply STOP to opt out. Msg & data rates may apply.',
-    confirmationTemplate: 'Hello {{rider}}, this is Florida Mobility Group about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
+    consentRequestTemplate: 'Hello {{rider}}, this is Care Mobility Services LLC. Reply YES to allow transportation-related SMS updates for your trips. Reply STOP to opt out. Msg & data rates may apply.',
+    confirmationTemplate: 'Hello {{rider}}, this is Care Mobility Services LLC about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
     arrivalNotifications: {
       patientEnabled: true,
       officeEnabled: true,
-      patientTemplate: 'Hello {{rider}}, this is Florida Mobility Group. Your driver {{driver}} has arrived for pickup at {{pickupAddress}}. If you need help, call the office.',
+      patientTemplate: 'Hello {{rider}}, this is Care Mobility Services LLC. Your driver {{driver}} has arrived for pickup at {{pickupAddress}}. If you need help, call the office.',
       officeTemplate: 'Arrival notice: driver {{driver}} has arrived for {{rider}} at {{pickupAddress}} for trip {{tripId}}.',
       officeRecipients: []
     },
@@ -69,6 +69,7 @@ const DEFAULT_STATE = {
     notes: '',
     lastValidatedAt: '',
     lastInboundAt: '',
+    riderProfiles: {},
     consentList: [],
     optOutList: [],
     twilio: {
@@ -105,6 +106,8 @@ const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !h
 let localMigrationPromise = null;
 
 const getIntegrationsStorageFile = () => getStorageFilePath('integrations-state.json');
+
+const normalizeSmsTemplateBranding = value => String(value ?? '').replace(/Florida Mobility Group/g, 'Care Mobility Services LLC');
 
 const normalizeUberState = value => ({
   organizationName: String(value?.organizationName ?? ''),
@@ -196,6 +199,27 @@ const normalizeSmsConsentEntry = value => ({
   revokedAt: String(value?.revokedAt ?? '')
 });
 
+const normalizeSmsRiderProfiles = value => {
+  const entries = Object.entries(value && typeof value === 'object' ? value : {});
+  return entries.reduce((result, [key, profile]) => {
+    const normalizedKey = String(key || '').trim();
+    if (!normalizedKey) return result;
+    result[normalizedKey] = {
+      ...((profile && typeof profile === 'object') ? profile : {}),
+      updatedAt: String(profile?.updatedAt ?? ''),
+      exclusion: profile?.exclusion ? {
+        mode: String(profile.exclusion.mode ?? ''),
+        startDate: String(profile.exclusion.startDate ?? ''),
+        endDate: String(profile.exclusion.endDate ?? ''),
+        reason: String(profile.exclusion.reason ?? ''),
+        sourceNote: String(profile.exclusion.sourceNote ?? ''),
+        updatedAt: String(profile.exclusion.updatedAt ?? '')
+      } : undefined
+    };
+    return result;
+  }, {});
+};
+
 const normalizeSmsOfficeRecipientEntry = value => ({
   id: String(value?.id ?? `${String(value?.phone ?? '').replace(/\D/g, '') || String(value?.name ?? '').trim().toLowerCase().replace(/\s+/g, '-')}`),
   name: String(value?.name ?? ''),
@@ -208,16 +232,16 @@ const normalizeSmsOfficeRecipientEntry = value => ({
 const normalizeArrivalNotificationsState = value => ({
   patientEnabled: value?.patientEnabled !== false,
   officeEnabled: value?.officeEnabled !== false,
-  patientTemplate: String(value?.patientTemplate ?? DEFAULT_STATE.sms.arrivalNotifications.patientTemplate),
-  officeTemplate: String(value?.officeTemplate ?? DEFAULT_STATE.sms.arrivalNotifications.officeTemplate),
+  patientTemplate: normalizeSmsTemplateBranding(value?.patientTemplate ?? DEFAULT_STATE.sms.arrivalNotifications.patientTemplate),
+  officeTemplate: normalizeSmsTemplateBranding(value?.officeTemplate ?? DEFAULT_STATE.sms.arrivalNotifications.officeTemplate),
   officeRecipients: Array.isArray(value?.officeRecipients) ? value.officeRecipients.map(normalizeSmsOfficeRecipientEntry).filter(entry => entry.name || entry.phone) : []
 });
 
 const normalizeSmsState = value => ({
   activeProvider: String(value?.activeProvider ?? 'disabled'),
   defaultCountryCode: String(value?.defaultCountryCode ?? '1'),
-  consentRequestTemplate: String(value?.consentRequestTemplate ?? DEFAULT_STATE.sms.consentRequestTemplate),
-  confirmationTemplate: String(value?.confirmationTemplate ?? DEFAULT_STATE.sms.confirmationTemplate),
+  consentRequestTemplate: normalizeSmsTemplateBranding(value?.consentRequestTemplate ?? DEFAULT_STATE.sms.consentRequestTemplate),
+  confirmationTemplate: normalizeSmsTemplateBranding(value?.confirmationTemplate ?? DEFAULT_STATE.sms.confirmationTemplate),
   arrivalNotifications: normalizeArrivalNotificationsState(value?.arrivalNotifications),
   groupTemplates: {
     AL: String(value?.groupTemplates?.AL ?? ''),
@@ -231,6 +255,7 @@ const normalizeSmsState = value => ({
   notes: String(value?.notes ?? ''),
   lastValidatedAt: String(value?.lastValidatedAt ?? ''),
   lastInboundAt: String(value?.lastInboundAt ?? ''),
+  riderProfiles: normalizeSmsRiderProfiles(value?.riderProfiles),
   consentList: Array.isArray(value?.consentList) ? value.consentList.map(normalizeSmsConsentEntry).filter(entry => entry.name || entry.phone) : [],
   optOutList: Array.isArray(value?.optOutList) ? value.optOutList.map(normalizeSmsOptOutEntry).filter(entry => entry.name || entry.phone) : [],
   twilio: normalizeTwilioSmsState(value?.twilio),
@@ -341,6 +366,8 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
   const incomingOptOutList = Array.isArray(normalized?.sms?.optOutList) ? normalized.sms.optOutList : [];
   const currentConsentList = Array.isArray(currentState?.sms?.consentList) ? currentState.sms.consentList : [];
   const incomingConsentList = Array.isArray(normalized?.sms?.consentList) ? normalized.sms.consentList : [];
+  const currentRiderProfiles = currentState?.sms?.riderProfiles && typeof currentState.sms.riderProfiles === 'object' ? currentState.sms.riderProfiles : {};
+  const incomingRiderProfiles = normalized?.sms?.riderProfiles && typeof normalized.sms.riderProfiles === 'object' ? normalized.sms.riderProfiles : {};
   const mergedOptOutMap = new Map();
   const mergedConsentMap = new Map();
 
@@ -372,6 +399,10 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
 
   const currentPatientsMemory = String(currentState?.ai?.memorySections?.patients || '').trim();
   const nextPatientsMemory = String(normalized?.ai?.memorySections?.patients || '').trim();
+  const protectedRiderProfiles = allowPatientDataShrink ? incomingRiderProfiles : {
+    ...currentRiderProfiles,
+    ...incomingRiderProfiles
+  };
   const protectedOptOutList = allowPatientDataShrink ? incomingOptOutList : Array.from(mergedOptOutMap.values()).filter(entry => entry.name || entry.phone);
   const protectedConsentList = allowPatientDataShrink ? incomingConsentList : Array.from(mergedConsentMap.values()).filter(entry => entry.name || entry.phone);
   const protectedPatientsMemory = allowPatientDataShrink ? nextPatientsMemory : nextPatientsMemory || currentPatientsMemory;
@@ -387,6 +418,7 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
     },
     sms: {
       ...normalized.sms,
+      riderProfiles: protectedRiderProfiles,
       consentList: protectedConsentList,
       optOutList: protectedOptOutList
     }

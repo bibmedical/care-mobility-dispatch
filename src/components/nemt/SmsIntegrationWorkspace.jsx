@@ -42,12 +42,12 @@ const PROVIDER_PORTALS = {
 const buildBlankDraft = () => ({
   activeProvider: 'disabled',
   defaultCountryCode: '1',
-  consentRequestTemplate: 'Hello {{rider}}, this is Florida Mobility Group. Reply YES to allow transportation-related SMS updates for your trips. Reply STOP to opt out. Msg & data rates may apply.',
-  confirmationTemplate: 'Hello {{rider}}, this is Florida Mobility Group about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
+  consentRequestTemplate: 'Hello {{rider}}, this is Care Mobility Services LLC. Reply YES to allow transportation-related SMS updates for your trips. Reply STOP to opt out. Msg & data rates may apply.',
+  confirmationTemplate: 'Hello {{rider}}, this is Care Mobility Services LLC about trip {{tripId}}. Reply 1 {{code}} to confirm, 2 {{code}} to cancel, or 3 {{code}} if you need a call.',
   arrivalNotifications: {
     patientEnabled: true,
     officeEnabled: true,
-    patientTemplate: 'Hello {{rider}}, this is Florida Mobility Group. Your driver {{driver}} has arrived for pickup at {{pickupAddress}}. If you need help, call the office.',
+    patientTemplate: 'Hello {{rider}}, this is Care Mobility Services LLC. Your driver {{driver}} has arrived for pickup at {{pickupAddress}}. If you need help, call the office.',
     officeTemplate: 'Arrival notice: driver {{driver}} has arrived for {{rider}} at {{pickupAddress}} for trip {{tripId}}.',
     officeRecipients: []
   },
@@ -133,7 +133,7 @@ const SmsIntegrationWorkspace = () => {
   const [optOutPhone, setOptOutPhone] = useState('');
   const [optOutReason, setOptOutReason] = useState('No automatic confirmation');
   const [testPhone, setTestPhone] = useState('');
-  const [testMessage, setTestMessage] = useState('Prueba de SMS desde Florida Mobility Group. Si recibes este mensaje, la integracion esta funcionando.');
+  const [testMessage, setTestMessage] = useState('Prueba de SMS desde Care Mobility Services LLC. Si recibes este mensaje, la integracion esta funcionando.');
   const [testSending, setTestSending] = useState(false);
   const [officeRecipientName, setOfficeRecipientName] = useState('');
   const [officeRecipientPhone, setOfficeRecipientPhone] = useState('');
