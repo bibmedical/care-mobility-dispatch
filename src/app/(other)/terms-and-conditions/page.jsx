@@ -31,12 +31,12 @@ const TermsAndConditionsPage = () => {
 
       <h2 className="h5 mt-4">Opt-Out</h2>
       <p>
-        You can opt out at any time by replying STOP to any message.
+        You can opt out at any time by replying <strong>STOP</strong> to any message.
       </p>
 
       <h2 className="h5 mt-4">Help</h2>
       <p>
-        For support, reply HELP to any message.
+        For support, reply <strong>HELP</strong> to any message.
       </p>
 
       <h2 className="h5 mt-4">Consent</h2>
