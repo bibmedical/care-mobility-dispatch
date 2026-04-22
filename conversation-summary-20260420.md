@@ -99,3 +99,10 @@
 - Verify Render finished deploying the latest `main` commits.
 - Confirm the production Trip Update modal shows readable trip ids.
 - Confirm Excel Loader vs Current now shows readable Pickup/Dropoff times.
+
+## 2026-04-22 Twilio consent note
+
+- Confirmed the public V2/login page did not show any visible SMS consent disclosure even though Twilio legal pages had already been added.
+- Added a public `SMS Consent Notice` block to the login page so the site now states how riders consent, what messages they receive, that frequency varies, that message/data rates may apply, and that they can reply `STOP` or `HELP`.
+- Strengthened the public Terms page wording so `STOP` and `HELP` are visually explicit.
+- Validated the change locally with `npm run build` in `clean/web-render-direct` and pushed it to `main` as commit `a2f456b`.
