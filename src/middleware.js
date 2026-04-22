@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { withAuth } from 'next-auth/middleware';
 
 const AUTH_ROUTES = ['/auth/login', '/auth/register', '/auth/reset-pass', '/auth/lock-screen'];
+const PUBLIC_ROUTES = ['/privacy-policy', '/terms-and-conditions'];
 const DRIVER_PORTAL_PATH = '/driver-portal';
 const isDriverRole = role => String(role ?? '').trim().toLowerCase().includes('driver');
 const enforceIpBinding = String(process.env.ENFORCE_IP_BINDING || '').trim().toLowerCase() === 'true';
@@ -28,6 +29,10 @@ export default withAuth(
     const role = request.nextauth.token?.user?.role;
     const driverUser = isDriverRole(role);
 
+    if (PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
+      return NextResponse.next();
+    }
+
     if (pathname === '/') {
       return NextResponse.redirect(new URL(driverUser ? DRIVER_PORTAL_PATH : '/dispatcher', request.url));
     }
@@ -51,6 +56,10 @@ export default withAuth(
     callbacks: {
       authorized: ({ req, token }) => {
         const pathname = req.nextUrl.pathname;
+
+        if (PUBLIC_ROUTES.some(route => pathname.startsWith(route))) {
+          return true;
+        }
 
         if (AUTH_ROUTES.some(route => pathname.startsWith(route))) {
           return true;
