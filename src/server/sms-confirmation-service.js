@@ -535,7 +535,6 @@ export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = 
       });
       updatedTrips[tripIndex] = {
         ...trip,
-        safeRideStatus: 'Do Not Confirm',
         confirmation: {
           ...trip.confirmation,
           status: 'Opted Out',
@@ -585,7 +584,6 @@ export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = 
       if (consentEntry?.status === 'pending') {
         updatedTrips[tripIndex] = {
           ...trip,
-          safeRideStatus: 'Needs Consent',
           confirmation: {
             ...trip.confirmation,
             status: 'Awaiting Consent',
@@ -629,7 +627,6 @@ export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = 
 
         updatedTrips[tripIndex] = {
           ...trip,
-          safeRideStatus: 'Needs Consent',
           confirmation: {
             ...trip.confirmation,
             status: 'Awaiting Consent',
@@ -664,7 +661,6 @@ export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = 
       } catch (error) {
         updatedTrips[tripIndex] = {
           ...trip,
-          safeRideStatus: 'Needs Consent',
           confirmation: {
             ...trip.confirmation,
             status: 'Awaiting Consent',
@@ -985,7 +981,6 @@ export const processInboundConfirmationReply = async ({ provider, fromPhone, mes
       if (tripPhone !== normalizedPhone && confirmationPhone !== normalizedPhone) return trip;
       return {
         ...trip,
-        safeRideStatus: trip.safeRideStatus === 'Do Not Confirm' || trip.safeRideStatus === 'Needs Consent' ? 'Consent Granted' : trip.safeRideStatus,
         confirmation: {
           ...trip.confirmation,
           status: trip?.confirmation?.status === 'Awaiting Consent' || trip?.confirmation?.status === 'Opted Out' ? 'Consent Granted' : trip?.confirmation?.status,
@@ -1022,7 +1017,6 @@ export const processInboundConfirmationReply = async ({ provider, fromPhone, mes
     return {
       updated: true,
       confirmationStatus: 'Consent Granted',
-      safeRideStatus: 'Consent Granted',
       patientPhone: normalizedPhone,
       replyMessage: 'SMS consent received. Future trip confirmations can be sent by text.'
     };
@@ -1074,7 +1068,6 @@ export const processInboundConfirmationReply = async ({ provider, fromPhone, mes
       if (!normalizedPhone || (tripPhone !== normalizedPhone && confirmationPhone !== normalizedPhone)) return trip;
       return {
         ...trip,
-        safeRideStatus: 'Do Not Confirm',
         confirmation: {
           ...trip.confirmation,
           status: 'Opted Out',
@@ -1111,7 +1104,6 @@ export const processInboundConfirmationReply = async ({ provider, fromPhone, mes
     return {
       updated: true,
       confirmationStatus: 'Opted Out',
-      safeRideStatus: 'Do Not Confirm',
       patientPhone: normalizedPhone,
       replyMessage: ''
     };
