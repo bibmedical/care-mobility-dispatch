@@ -162,3 +162,9 @@
 - Tightened Trip Dashboard live scanner auto-repair so it only inverts unambiguous two-leg repeated-direction pairs.
 - If a repeated-direction warning is part of a larger or ambiguous group, the scanner now leaves it for manual review instead of inverting directions automatically.
 - This is intended to stop broad accidental inversions when the scanner sees warnings that are not clearly a simple outbound/return mismatch.
+
+## 2026-04-22 duplicate import root cause
+
+- Confirmed a separate root cause for bad scanner behavior: repeated Excel loads could duplicate trips when the file did not provide a real `rideId`.
+- The parser was generating a fallback `rideId` with `Date.now()`, which changed on every import and polluted the import fingerprint, so the same trip could be treated as new on the next load.
+- Removed that unstable fallback so repeated imports without a native `rideId` keep stable matching keys instead of creating duplicate trips.
