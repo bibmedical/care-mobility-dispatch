@@ -417,6 +417,17 @@ const DIARIO_2026_04_20 = [{
   detail: 'The full April 20 work log and conversation backup were written into conversation-summary-20260420.md and backup/chat-20260420-render-real-diary-and-dispatch-fixes.md so the day can be reviewed later without rebuilding context from memory.'
 }];
 
+const DIARIO_2026_04_23 = [{
+  area: 'Excel Loader identity alignment',
+  detail: 'The standalone Excel Loader was preserving a page-local preview row key as the trip id, while the Trip Dashboard import path kept the shared parser id. The loader now preserves the stable parser-generated id so both entry points use the same import identity before merge.'
+}, {
+  area: 'Duplicate-risk hypothesis narrowed',
+  detail: 'Production SafeRide trips already carried real rideId values, and no generated RIDE-* fallback ids were found in the current live sample. That narrowed the immediate duplicate risk toward loader-path identity drift instead of a Twilio-side SMS persistence change.'
+}, {
+  area: 'Validation and deploy path',
+  detail: 'Local next build completed successfully after the loader identity fix. This deploy is intended for Render production through the main branch auto-deploy flow.'
+}];
+
 const HelpPage = () => {
   return <>
   <PageTitle title="Diarie" subName="Operations" />
@@ -543,6 +554,25 @@ const HelpPage = () => {
               <div className="d-flex flex-column gap-2">
                 {SAFE_DEPLOY_NOTE.map(item => <div key={item.step} className="border rounded p-3">
                     <div className="fw-semibold mb-1">{item.step}</div>
+                    <div className="small text-muted">{item.detail}</div>
+                  </div>)}
+              </div>
+            </CardBody>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="g-3 mb-3">
+        <Col xl={12}>
+          <Card className="h-100 border-success-subtle">
+            <CardBody>
+              <div className="d-flex flex-column gap-2 mb-3">
+                <h5 className="mb-0">Diario — April 23, 2026</h5>
+                <p className="text-muted mb-0">Operational diary for the Excel Loader identity alignment and the Render deploy prepared today.</p>
+              </div>
+              <div className="d-flex flex-column gap-2">
+                {DIARIO_2026_04_23.map(item => <div key={item.area} className="border rounded p-3">
+                    <div className="fw-semibold mb-1">{item.area}</div>
                     <div className="small text-muted">{item.detail}</div>
                   </div>)}
               </div>
@@ -719,9 +749,22 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="success" className="fs-6 px-3 py-2">V23</Badge>
+                <span className="fw-semibold text-dark">Excel Loader Identity Alignment</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 23, 2026 — Latest</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>The standalone Excel Loader now preserves the stable parser-generated trip id instead of replacing it with a page-local preview row key.</li>
+                <li>This keeps the standalone loader aligned with the embedded Trip Dashboard import path so both loaders enter the merge flow with the same trip identity anchor.</li>
+                <li>Local next build completed successfully before the Render deploy push.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V22</Badge>
                 <span className="fw-semibold text-dark">Dispatch Date Safety + Excel Visibility + Diary Record</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026 — Latest</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Fixed the wrong-day SafeRide import behavior by keeping local service-date parsing stable and aligning tomorrow generation with the operational timezone rules.</li>

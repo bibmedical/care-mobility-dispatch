@@ -241,9 +241,10 @@ const buildPendingTripRowKey = (trip, index) => [
 
 const normalizePendingTrips = trips => (Array.isArray(trips) ? trips : []).map((trip, index) => {
   const previewRowKey = String(trip?.previewRowKey || '').trim() || buildPendingTripRowKey(trip, index);
+  const stableTripId = String(trip?.id || '').trim() || previewRowKey;
   return {
     ...trip,
-    id: previewRowKey,
+    id: stableTripId,
     previewRowKey
   };
 });
