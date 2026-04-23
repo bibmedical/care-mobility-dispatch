@@ -1256,12 +1256,7 @@ const TripDashboardWorkspace = () => {
         return;
       }
 
-      const targetTripIds = new Set();
-      liveTripAutoRepairableFindings.forEach(finding => {
-        finding.tripIds.slice(1).forEach(tripId => targetTripIds.add(normalizeTripId(tripId)));
-      });
-
-      const targetTrips = filteredTrips.filter(trip => targetTripIds.has(normalizeTripId(trip?.id)));
+      const targetTrips = filteredTrips.filter(trip => liveTripAutoRepairTargetIds.has(normalizeTripId(trip?.id)));
       if (targetTrips.length === 0) {
         showNotification({ message: 'Scanner found issues, but the target trips were not available for repair in the current visible list.', variant: 'warning' });
         return;
@@ -2855,7 +2850,29 @@ const TripDashboardWorkspace = () => {
       return left.rider.localeCompare(right.rider);
     });
   }, [liveTripScan]);
-  const liveTripAutoRepairableFindings = useMemo(() => (liveTripScan?.findings || []).filter(finding => finding.code === 'same-direction-repeated' && Array.isArray(finding.tripIds) && finding.tripIds.length === 2), [liveTripScan]);
+  const liveTripAutoRepairableFindings = useMemo(() => (liveTripScan?.findings || []).filter(finding => finding.code === 'same-direction-repeated' && Array.isArray(finding.tripIds) && finding.tripIds.length >= 2), [liveTripScan]);
+  const liveTripAutoRepairTargetIds = useMemo(() => {
+    const targetTripIds = new Set();
+
+    liveTripAutoRepairableFindings.forEach(finding => {
+      const orderedTrips = (Array.isArray(finding?.tripIds) ? finding.tripIds : [])
+        .map(tripId => filteredTrips.find(trip => normalizeTripId(trip?.id) === normalizeTripId(tripId)))
+        .filter(Boolean)
+        .sort((leftTrip, rightTrip) => {
+          const leftSortValue = Number.isFinite(Number(leftTrip?.pickupSortValue)) ? Number(leftTrip.pickupSortValue) : Number.MAX_SAFE_INTEGER;
+          const rightSortValue = Number.isFinite(Number(rightTrip?.pickupSortValue)) ? Number(rightTrip.pickupSortValue) : Number.MAX_SAFE_INTEGER;
+          if (leftSortValue !== rightSortValue) return leftSortValue - rightSortValue;
+          return normalizeTripId(leftTrip?.id).localeCompare(normalizeTripId(rightTrip?.id));
+        });
+
+      orderedTrips.slice(1).forEach(trip => {
+        const tripId = normalizeTripId(trip?.id);
+        if (tripId) targetTripIds.add(tripId);
+      });
+    });
+
+    return targetTripIds;
+  }, [filteredTrips, liveTripAutoRepairableFindings]);
   const assignmentProgressTrips = useMemo(() => trips.filter(trip => {
     const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
     const profilePhoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');

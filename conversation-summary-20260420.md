@@ -138,3 +138,9 @@
 - Updated the Confirmation workspace so `sms.riderProfiles` now preserves patient `name` and `phone` whenever a patient rule, hospital/rehab status, or confirmation profile note is saved.
 - Updated `src/server/integrations-store.js` so SQL-backed rider profile normalization preserves those contact fields when writing to `integrations_state`.
 - This means V2 now stores patient contact records in SQL as patient profiles, not only exclusion metadata.
+
+## 2026-04-22 live scanner auto-repair note
+
+- Fixed the Trip Dashboard live scanner auto-repair so `same-direction-repeated` findings with two or more trips are repairable again.
+- Auto-repair now chooses repair targets by sorting the affected trips by pickup time and leaving the earliest trip intact, instead of blindly inverting trips based on raw finding order.
+- This reduces false inversions where the scanner appeared to flip directions on the wrong trip inside a repeated-direction group.
