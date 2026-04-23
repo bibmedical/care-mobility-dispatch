@@ -2436,12 +2436,16 @@ const TripDashboardWorkspace = () => {
       style={{ width: 190 }}
     />;
 
-  const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <div className="d-flex align-items-center gap-1 flex-nowrap">
+  const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <div className="d-flex align-items-center gap-1 flex-nowrap">
+      <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button>
+      <Button variant="danger" size="sm" onClick={handleDeleteSelectedTrips} title="Delete selected trips">Del</Button>
+    </div> : <div className="d-flex align-items-center gap-1 flex-nowrap">
       <Button variant="success" size="sm" onClick={() => setShowManualTripModal(true)} title="Create manual trip">+Trip</Button>
       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
       <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
       <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+      <Button variant="outline-danger" size="sm" onClick={handleDeleteSelectedTrips} title="Delete selected trips">Del</Button>
     </div>;
 
   const renderLegButtonsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
@@ -4328,6 +4332,35 @@ const TripDashboardWorkspace = () => {
     }
 
     openCancelModalForTrips(targetTripIds);
+  };
+
+  const handleDeleteSelectedTrips = () => {
+    const targetTrips = selectedTrips;
+    if (targetTrips.length === 0) {
+      setStatusMessage('Select at least one trip to delete.');
+      return;
+    }
+
+    const tripPreview = targetTrips.slice(0, 5).map(trip => getDisplayTripId(trip)).filter(Boolean).join(', ');
+    const confirmed = window.confirm(`Delete ${targetTrips.length} selected trip(s)? This will remove them from the dashboard and any route that contains them.\n\n${tripPreview}${targetTrips.length > 5 ? ', ...' : ''}`);
+    if (!confirmed) return;
+
+    targetTrips.forEach(trip => {
+      deleteTripRecord(trip.id);
+    });
+
+    if (noteModalTripId && targetTrips.some(trip => trip.id === noteModalTripId)) {
+      handleCloseTripNote();
+    }
+
+    if (tripExcelCompareModalId && targetTrips.some(trip => trip.id === tripExcelCompareModalId)) {
+      handleCloseTripExcelCompare();
+    }
+
+    setSelectedRouteId(null);
+    setSelectedTripIds([]);
+    setStatusMessage(`${targetTrips.length} trip(s) deleted.`);
+    showNotification({ message: `${targetTrips.length} trip(s) deleted.`, variant: 'success' });
   };
 
   const handleReinstateTrip = tripId => {
