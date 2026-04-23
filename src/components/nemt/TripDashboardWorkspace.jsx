@@ -689,6 +689,7 @@ const formatAiPlannerRoutePairLabel = pairKey => {
   return `${pickupCity || '?'} -> ${dropoffCity || '?'}`;
 };
 const normalizeTripId = tripId => String(tripId || '').trim();
+const normalizeRouteText = value => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const invertDashboardTripDirection = trip => ({
   address: String(trip?.destination || '').trim(),
   destination: String(trip?.address || '').trim(),
@@ -1259,7 +1260,9 @@ const TripDashboardWorkspace = () => {
 
       const targetTrips = filteredTrips.filter(trip => liveTripAutoRepairTargetIds.has(normalizeTripId(trip?.id)));
       if (targetTrips.length === 0) {
-        showNotification({ message: 'Scanner found issues, but the target trips were not available for repair in the current visible list.', variant: 'warning' });
+        const message = 'Scanner found repeated-direction warnings, but none were simple two-leg return pairs safe for auto-repair. Review them manually.';
+        setStatusMessage(message);
+        showNotification({ message, variant: 'warning' });
         return;
       }
 
@@ -2855,7 +2858,7 @@ const TripDashboardWorkspace = () => {
     rider: String(trip?.rider || trip?.patientName || trip?.id || 'Trip').trim(),
     tripId: String(trip?.id || '').trim()
   })).filter(group => group.tripId).sort((left, right) => left.rider.localeCompare(right.rider)), [liveRemovedSinceLastLoadTrips]);
-  const liveTripAutoRepairableFindings = useMemo(() => (liveTripScan?.findings || []).filter(finding => finding.code === 'same-direction-repeated' && Array.isArray(finding.tripIds) && finding.tripIds.length >= 2), [liveTripScan]);
+  const liveTripAutoRepairableFindings = useMemo(() => (liveTripScan?.findings || []).filter(finding => finding.code === 'same-direction-repeated' && Array.isArray(finding.tripIds) && finding.tripIds.length === 2), [liveTripScan]);
   const liveTripAutoRepairTargetIds = useMemo(() => {
     const targetTripIds = new Set();
 
@@ -2870,10 +2873,21 @@ const TripDashboardWorkspace = () => {
           return normalizeTripId(leftTrip?.id).localeCompare(normalizeTripId(rightTrip?.id));
         });
 
-      orderedTrips.slice(1).forEach(trip => {
-        const tripId = normalizeTripId(trip?.id);
-        if (tripId) targetTripIds.add(tripId);
-      });
+      if (orderedTrips.length !== 2) return;
+
+      const firstTrip = orderedTrips[0];
+      const secondTrip = orderedTrips[1];
+      const firstAddress = normalizeRouteText(firstTrip?.address);
+      const firstDestination = normalizeRouteText(firstTrip?.destination);
+      const secondAddress = normalizeRouteText(secondTrip?.address);
+      const secondDestination = normalizeRouteText(secondTrip?.destination);
+
+      if (!firstAddress || !firstDestination || !secondAddress || !secondDestination) return;
+      if (firstAddress !== secondAddress || firstDestination !== secondDestination) return;
+      if (getTripLegFilterKey(secondTrip) === 'AL') return;
+
+      const tripId = normalizeTripId(secondTrip?.id);
+      if (tripId) targetTripIds.add(tripId);
     });
 
     return targetTripIds;

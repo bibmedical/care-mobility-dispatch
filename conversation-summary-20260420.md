@@ -156,3 +156,9 @@
 - Restored the explicit warning flow for trips that are missing from a later Excel reload: they stay in dispatch, and trips already assigned to a driver remain assigned.
 - Trip Dashboard now surfaces those trips separately in both Excel Loader and System Trip Scanner as `Removed Since Last Load` warnings, without feeding them back into direction auto-repair.
 - This keeps the original operational behavior: missing-from-latest-import is a warning-only state, not a routing repair target.
+
+## 2026-04-22 conservative auto-repair safeguard
+
+- Tightened Trip Dashboard live scanner auto-repair so it only inverts unambiguous two-leg repeated-direction pairs.
+- If a repeated-direction warning is part of a larger or ambiguous group, the scanner now leaves it for manual review instead of inverting directions automatically.
+- This is intended to stop broad accidental inversions when the scanner sees warnings that are not clearly a simple outbound/return mismatch.
