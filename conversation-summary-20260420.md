@@ -174,3 +174,9 @@
 - Switched the effective default tile provider to the existing free OpenStreetMap config.
 - Removed visible `Mapbox` selection from Trip Dashboard and Map Screen so the UI no longer advertises or prefers it.
 - If an old saved preference still says `mapbox`, the client now rewrites it to `openstreetmap`.
+
+## 2026-04-22 import-delete reconciliation fix
+
+- Root-caused the remaining delete/reimport failure: trip deletion suppression was using a smaller key set than same-day reimport matching.
+- Aligned deletion suppression with the same import match keys used by reimport reconciliation, so deleted trips stay suppressed when the same Excel is loaded again.
+- This restores the intended behavior the user described: reimport should reconcile against prior state, not resurrect deleted duplicates from the same batch.

@@ -100,6 +100,15 @@ const getTripDeletionSuppressionKeys = trip => {
   return Array.from(new Set(keys.filter(Boolean)));
 };
 
+const getTripReimportSuppressionKeys = trip => {
+  const baseKeys = [
+    ...getTripDeletionSuppressionKeys(trip),
+    ...getTripImportMatchKeys(trip)
+  ];
+
+  return Array.from(new Set(baseKeys.filter(Boolean)));
+};
+
 const getDeletedTripSuppressionKeySet = auditLog => {
   const suppressionKeys = new Set();
 
@@ -128,7 +137,7 @@ const filterTripsByDeletionSuppression = (trips, suppressionKeySet) => {
   }
 
   return (Array.isArray(trips) ? trips : []).filter(trip => {
-    return !getTripDeletionSuppressionKeys(trip).some(key => suppressionKeySet.has(String(key || '').trim().toLowerCase()));
+    return !getTripReimportSuppressionKeys(trip).some(key => suppressionKeySet.has(String(key || '').trim().toLowerCase()));
   });
 };
 
@@ -2290,7 +2299,7 @@ export const NemtProvider = ({
           source: 'confirmation',
           summary: `Deleted trip ${normalizedTripId}`,
           metadata: {
-            tripSuppressionKeys: getTripDeletionSuppressionKeys(deletedTrip)
+            tripSuppressionKeys: getTripReimportSuppressionKeys(deletedTrip)
           }
         };
       }
