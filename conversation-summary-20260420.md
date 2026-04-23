@@ -118,6 +118,12 @@
 
 - Added persistent `sms.consentList` and `sms.consentRequestTemplate` fields to integrations storage so the consent roster is kept in `integrations_state` SQL when `DATABASE_URL` exists, with local JSON fallback when it does not.
 - Updated the confirmation send flow so patients without granted SMS consent receive the consent-request template first instead of the normal trip confirmation. Those trips move to `Awaiting Consent` / `Needs Consent` until the patient replies.
+
+## 2026-04-22 Excel Loader reimport note
+
+- Root-caused a post-delete reload issue where Excel Loader could bring back only part of the file because old `delete-trip` audit suppression keys were still filtering imported SafeRide trips.
+- Updated `src/context/useNemtContext.jsx` so delete suppression still protects targeted reimports when trips remain on the imported date, but it no longer blocks a full-date reload after that SafeRide date has been cleared out first.
+- Validated the change locally with `npm run build` in `clean/web-render-direct`.
 - Updated inbound SMS handling so `YES`, `Y`, `START`, `UNSTOP`, and `SUBSCRIBE` mark consent as granted, while `STOP`-style replies revoke consent and keep the patient in the do-not-confirm list.
 
 ## 2026-04-22 patient profile SQL note

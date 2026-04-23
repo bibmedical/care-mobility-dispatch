@@ -234,6 +234,22 @@ const isSafeRideManagedTrip = trip => {
 
 const getSafeRideImportScopedDateKeys = trips => new Set((Array.isArray(trips) ? trips : []).map(trip => String(getTripServiceDateKey(trip) || '').trim()).filter(Boolean));
 
+const getImportDeletionSuppressionKeySet = (currentState, importedTrips) => {
+  const suppressionKeys = getDeletedTripSuppressionKeySet(currentState?.auditLog);
+  if (suppressionKeys.size === 0) return suppressionKeys;
+
+  const scopedDateKeys = getSafeRideImportScopedDateKeys(importedTrips);
+  if (scopedDateKeys.size === 0) return suppressionKeys;
+
+  const hasActiveSafeRideTripsOnImportedDates = (Array.isArray(currentState?.trips) ? currentState.trips : []).some(trip => {
+    if (!isSafeRideManagedTrip(trip)) return false;
+    const serviceDateKey = String(getTripServiceDateKey(trip) || '').trim();
+    return scopedDateKeys.has(serviceDateKey);
+  });
+
+  return hasActiveSafeRideTripsOnImportedDates ? suppressionKeys : new Set();
+};
+
 const getSafeRideImportLookupKeySet = trips => {
   const lookupKeys = new Set();
   (Array.isArray(trips) ? trips : []).forEach(trip => {
@@ -2000,7 +2016,7 @@ export const NemtProvider = ({
   });
 
   const replaceTrips = trips => updateState(currentState => {
-    const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(currentState.auditLog);
+    const deletedTripSuppressionKeySet = getImportDeletionSuppressionKeySet(currentState, trips);
     const protectedTrips = normalizeTripRecords(currentState.trips.filter(isProtectedManualTrip));
     const incomingTrips = normalizeTripRecords(filterTripsByDeletionSuppression(trips, deletedTripSuppressionKeySet));
     const protectedIds = new Set(incomingTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
@@ -2024,7 +2040,7 @@ export const NemtProvider = ({
   });
 
   const upsertImportedTrips = (trips, options = {}) => updateState(currentState => {
-    const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(currentState.auditLog);
+    const deletedTripSuppressionKeySet = getImportDeletionSuppressionKeySet(currentState, trips);
     const currentTrips = normalizeTripRecords(currentState.trips);
     const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(filterTripsByDeletionSuppression(trips, deletedTripSuppressionKeySet)));
     const importedAt = new Date().toISOString();
