@@ -2402,8 +2402,8 @@ const TripDashboardWorkspace = () => {
 
   const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
       <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={handleToggleConfirmationTools}>Confirmation</Button>
-      <Button variant="outline-light" size="sm" onClick={() => router.push('/confirmation')}>Open Confirmation</Button>
-      <Button variant="outline-light" size="sm" onClick={() => router.push('/integrations/sms')}>SMS</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 122, fontWeight: 600 }} onClick={() => router.push('/confirmation')}>Open Confirmation</Button>
+      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 58, fontWeight: 600 }} onClick={() => router.push('/integrations/sms')}>SMS</Button>
       {showConfirmationTools ? <Button variant="light" size="sm" onClick={() => {
       const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
       handleOpenConfirmationMethod(selectedTripsForConfirmation);
