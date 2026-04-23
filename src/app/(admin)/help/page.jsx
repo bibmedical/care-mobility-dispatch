@@ -430,6 +430,9 @@ const DIARIO_2026_04_23 = [{
   area: 'Latest import fingerprint refresh',
   detail: 'SafeRide merge now replaces the stored importFingerprint with the newest file fingerprint instead of preserving a stale older one. That keeps rereads of the same trips aligned with the latest imported match key and reduces false Removed Since Last Load flags.'
 }, {
+  area: 'Dashboard filter reset after import',
+  detail: 'Trip Dashboard now resets the trip status filter back to All after a successful import or route-load import. That prevents the screen from staying stuck on Last Removed and making the imported result look artificially incomplete.'
+}, {
   area: 'Validation and deploy path',
   detail: 'Local next build completed successfully after the loader identity fix. This deploy is intended for Render production through the main branch auto-deploy flow.'
 }];
@@ -764,6 +767,7 @@ const HelpPage = () => {
                 <li>This keeps the standalone loader aligned with the embedded Trip Dashboard import path so both loaders enter the merge flow with the same trip identity anchor.</li>
                 <li>The standalone loader now also refreshes the dispatch date window to the imported file range after import or day-clear actions so trips do not appear to vanish when the sync layer reloads a different server scope.</li>
                 <li>SafeRide merge now refreshes the stored import fingerprint from the newest imported row so rereading the same file does not leave stale matching keys behind.</li>
+                <li>Trip Dashboard now resets the status filter back to All after import so the screen does not remain stuck on Last Removed and hide the rest of the imported trips.</li>
                 <li>Local next build completed successfully before the Render deploy push.</li>
               </ul>
             </div>

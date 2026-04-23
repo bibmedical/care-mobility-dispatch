@@ -1553,6 +1553,7 @@ const TripDashboardWorkspace = () => {
       setTripDateFilter(importedDateFilterValue);
       setSelectedRouteId(null);
     }
+    setTripStatusFilter('all');
     setShowTripImportModal(false);
     const importMessage = routingChanges.length > 0
       ? applyRoutingChanges
@@ -1748,6 +1749,7 @@ const TripDashboardWorkspace = () => {
         setTripDateFilter(importedDateFilterValue);
         setSelectedRouteId(null);
       }
+      setTripStatusFilter('all');
 
       if (routePlan.routeSpecs.length > 0) {
         setPendingRouteImportPlan(routePlan.routeSpecs);
