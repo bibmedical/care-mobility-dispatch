@@ -2324,7 +2324,7 @@ export const NemtProvider = ({
     return nextTripId;
   };
 
-  const waitForPendingDeleteSnapshot = async () => {
+  const waitForPendingPersistSnapshot = async () => {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       await new Promise(resolve => {
         window.setTimeout(resolve, 50);
@@ -2336,6 +2336,11 @@ export const NemtProvider = ({
     }
 
     return false;
+  };
+
+  const persistDispatchStateNow = async () => {
+    await waitForPendingPersistSnapshot();
+    return await flushPersistQueue();
   };
 
   const deleteTripRecords = async tripIds => {
@@ -2395,7 +2400,7 @@ export const NemtProvider = ({
       allowTripShrinkReason: 'manual-admin-delete'
     });
 
-    await waitForPendingDeleteSnapshot();
+    await waitForPendingPersistSnapshot();
     const persisted = await flushPersistQueue();
     if (persisted) {
       return { canBatch: true, deletedTripIds: normalizedTripIds, persisted: true };
@@ -2519,6 +2524,7 @@ export const NemtProvider = ({
     resetNemtState,
     getDriverName,
     sendTripNotification,
+    persistDispatchStateNow,
     refreshDrivers: syncDriversFromServer,
     refreshDispatchState: syncDispatchFromServer,
     refreshDispatchMessages: syncDispatchThreadsFromServer

@@ -435,6 +435,7 @@ const TripImportWorkspace = () => {
     previewImportedTripRoutingChanges,
     clearTripsByServiceDates,
     clearTrips,
+    persistDispatchStateNow,
     refreshDispatchState
   } = useNemtContext();
   const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. El archivo actualiza solo los dias que contiene para evitar mezclar fechas y se guarda tambien en el servidor.');
@@ -927,9 +928,10 @@ const TripImportWorkspace = () => {
       applyRoutingChanges
     });
     const nextWindowOptions = buildImportWindowOptions(importedServiceDateKeys);
+    await persistDispatchStateNow();
     if (nextWindowOptions) {
       setSelectedAuditDate(nextWindowOptions.dateKey);
-      void refreshDispatchState(nextWindowOptions);
+      await refreshDispatchState(nextWindowOptions);
     }
     setMessage(routingChanges.length > 0
       ? applyRoutingChanges
@@ -954,9 +956,10 @@ const TripImportWorkspace = () => {
 
     clearTripsByServiceDates(importedServiceDateKeys);
     const nextWindowOptions = buildImportWindowOptions(importedServiceDateKeys);
+    await persistDispatchStateNow();
     if (nextWindowOptions) {
       setSelectedAuditDate(nextWindowOptions.dateKey);
-      void refreshDispatchState(nextWindowOptions);
+      await refreshDispatchState(nextWindowOptions);
     }
     setMessage(`Se borraron los viajes de ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'}: ${importedServiceDateKeys.join(', ')}.`);
   };
