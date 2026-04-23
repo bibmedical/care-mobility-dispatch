@@ -15,7 +15,7 @@ import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
-import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
+import { getMapTileConfig } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
@@ -5780,7 +5780,6 @@ const TripDashboardWorkspace = () => {
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
-                    <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)}>Panels anchored</Button>
                 </>

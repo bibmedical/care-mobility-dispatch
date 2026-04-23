@@ -35,11 +35,7 @@ export const getMapTileConfig = providerPreference => {
     return hasMapboxConfigured ? getMapboxConfig() : openStreetMapConfig;
   }
 
-  if (!hasMapboxConfigured) {
-    return openStreetMapConfig;
-  }
-
-  return getMapboxConfig();
+  return openStreetMapConfig;
 };
 
 export const mapTilesConfig = getMapTileConfig();

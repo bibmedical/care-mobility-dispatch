@@ -3,7 +3,6 @@
 import { buildTripProviderSnapshot, getLocalDateKey, getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import { normalizeUserPreferences } from '@/helpers/user-preferences';
-import { hasMapboxConfigured } from '@/utils/map-tiles';
 import { useSession } from 'next-auth/react';
 import { createContext, startTransition, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -2321,9 +2320,9 @@ export const NemtProvider = ({
   }, [persistUserUiPreferences, userUiPreferences]);
 
   useEffect(() => {
-    if (!hasLoadedUserUiPreferences || !hasMapboxConfigured) return;
-    if (normalizeMapProviderPreference(userUiPreferences?.mapProvider) === 'mapbox') return;
-    setMapProvider('mapbox');
+    if (!hasLoadedUserUiPreferences) return;
+    if (normalizeMapProviderPreference(userUiPreferences?.mapProvider) !== 'mapbox') return;
+    setMapProvider('openstreetmap');
   }, [hasLoadedUserUiPreferences, setMapProvider, userUiPreferences?.mapProvider]);
 
   const setPrintSetup = useCallback(updates => {

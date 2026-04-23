@@ -168,3 +168,9 @@
 - Confirmed a separate root cause for bad scanner behavior: repeated Excel loads could duplicate trips when the file did not provide a real `rideId`.
 - The parser was generating a fallback `rideId` with `Date.now()`, which changed on every import and polluted the import fingerprint, so the same trip could be treated as new on the next load.
 - Removed that unstable fallback so repeated imports without a native `rideId` keep stable matching keys instead of creating duplicate trips.
+
+## 2026-04-22 map provider cleanup
+
+- Switched the effective default tile provider to the existing free OpenStreetMap config.
+- Removed visible `Mapbox` selection from Trip Dashboard and Map Screen so the UI no longer advertises or prefers it.
+- If an old saved preference still says `mapbox`, the client now rewrites it to `openstreetmap`.
