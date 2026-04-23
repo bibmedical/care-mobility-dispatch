@@ -654,6 +654,7 @@ export const NemtProvider = ({
   const pendingAllowTripShrinkDateKeyRef = useRef('');
   const pendingAllowTripShrinkPastDaysRef = useRef(null);
   const pendingAllowTripShrinkFutureDaysRef = useRef(null);
+  const dispatchIncludePastDatesRef = useRef(false);
   const dispatchQueryDateKeyRef = useRef('');
   const dispatchWindowPastDaysRef = useRef(1);
   const dispatchWindowFutureDaysRef = useRef(1);
@@ -939,16 +940,22 @@ export const NemtProvider = ({
 
   const syncDispatchFromServer = async (options = {}) => {
     const forceServer = options.forceServer ?? false;
+    const includePastDates = options?.includePastDates === true || options?.includePastDates === false
+      ? options.includePastDates === true
+      : dispatchIncludePastDatesRef.current;
     const nextDateKey = String(options?.dateKey || dispatchQueryDateKeyRef.current || '').trim();
     const nextWindowPastDays = Math.max(Number(options?.windowPastDays ?? dispatchWindowPastDaysRef.current) || 0, 0);
     const nextWindowFutureDays = Math.max(Number(options?.windowFutureDays ?? dispatchWindowFutureDaysRef.current) || 0, 0);
+    const previousIncludePastDates = dispatchIncludePastDatesRef.current;
     const previousDateKey = String(dispatchQueryDateKeyRef.current || '').trim();
     const previousWindowPastDays = Math.max(Number(dispatchWindowPastDaysRef.current) || 0, 0);
     const previousWindowFutureDays = Math.max(Number(dispatchWindowFutureDaysRef.current) || 0, 0);
-    const isSameServerScope = previousDateKey === nextDateKey
+    const isSameServerScope = previousIncludePastDates === includePastDates
+      && previousDateKey === nextDateKey
       && previousWindowPastDays === nextWindowPastDays
       && previousWindowFutureDays === nextWindowFutureDays;
 
+    dispatchIncludePastDatesRef.current = includePastDates;
     if (nextDateKey) {
       dispatchQueryDateKeyRef.current = nextDateKey;
     }
@@ -957,9 +964,13 @@ export const NemtProvider = ({
 
     try {
       const searchParams = new URLSearchParams();
-      if (dispatchQueryDateKeyRef.current) searchParams.set('date', dispatchQueryDateKeyRef.current);
-      searchParams.set('windowPastDays', String(dispatchWindowPastDaysRef.current));
-      searchParams.set('windowFutureDays', String(dispatchWindowFutureDaysRef.current));
+      if (dispatchIncludePastDatesRef.current) {
+        searchParams.set('includePastDates', '1');
+      } else {
+        if (dispatchQueryDateKeyRef.current) searchParams.set('date', dispatchQueryDateKeyRef.current);
+        searchParams.set('windowPastDays', String(dispatchWindowPastDaysRef.current));
+        searchParams.set('windowFutureDays', String(dispatchWindowFutureDaysRef.current));
+      }
       const response = await fetch(`/api/nemt/dispatch?${searchParams.toString()}`, {
         cache: 'no-store'
       });

@@ -445,6 +445,9 @@ const DIARIO_2026_04_23 = [{
   area: 'Delete flow rollback to single-trip path',
   detail: 'Trip Dashboard selected deletes no longer use the later batch same-date delete path. The delete flow now goes back through the original single-trip persisted delete handler so SQL prune scope stays simple and closer to the behavior that was working before the extra delete patches were layered on top.'
 }, {
+  area: 'Dispatcher full-state load restored',
+  detail: 'The Dispatcher all-days view no longer forces a narrow server date window. When the operator is on the all view, the app now requests the full dispatch state again so trip visibility does not collapse to a small subset like 14 trips after the login/Twilio-era dispatch scoping patches.'
+}, {
   area: 'Validation and deploy path',
   detail: 'Local next build completed successfully after the loader identity fix. This deploy is intended for Render production through the main branch auto-deploy flow.'
 }];
@@ -784,6 +787,7 @@ const HelpPage = () => {
                 <li>The standalone loader now waits for dispatch persistence to finish before it refreshes the server window, preventing the import screen from snapping back to an older partial count such as 14 trips.</li>
                 <li>The SMS/Twilio patient profile rollback removed SQL persistence of sms.riderProfiles and stopped auto-saving patient name and phone into those profile records.</li>
                 <li>The selected-trip delete rollback removed the later batch delete path and routed deletes back through the original single-trip persisted SQL delete flow.</li>
+                <li>The Dispatcher all-days view now requests the full dispatch state again instead of forcing a narrow day window that could collapse the visible trip count to a small subset.</li>
                 <li>Local next build completed successfully before the Render deploy push.</li>
               </ul>
             </div>

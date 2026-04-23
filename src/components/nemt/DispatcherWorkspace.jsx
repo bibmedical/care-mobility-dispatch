@@ -1111,9 +1111,10 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   }, [routePlans, selectedRouteId]);
   const dispatchTimeZone = uiPreferences?.timeZone;
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), dispatchTimeZone), [dispatchTimeZone]);
-  const serverScopedDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
-  const serverScopedPastDays = tripDateFilter === 'all' ? 1 : 0;
-  const serverScopedFutureDays = tripDateFilter === 'all' ? 1 : 0;
+  const serverIncludePastDates = tripDateFilter === 'all';
+  const serverScopedDateKey = serverIncludePastDates ? todayDateKey : tripDateFilter;
+  const serverScopedPastDays = serverIncludePastDates ? 0 : 0;
+  const serverScopedFutureDays = serverIncludePastDates ? 0 : 0;
   const refreshDispatchStateRef = useRef(refreshDispatchState);
   const lastServerScopeKeyRef = useRef('');
 
@@ -1123,16 +1124,17 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
 
   useEffect(() => {
     if (!serverScopedDateKey) return;
-    const scopeKey = [serverScopedDateKey, serverScopedPastDays, serverScopedFutureDays].join('|');
+    const scopeKey = [serverIncludePastDates ? 'all' : serverScopedDateKey, serverScopedPastDays, serverScopedFutureDays].join('|');
     if (lastServerScopeKeyRef.current === scopeKey) return;
     lastServerScopeKeyRef.current = scopeKey;
     void refreshDispatchStateRef.current({
       forceServer: true,
+      includePastDates: serverIncludePastDates,
       dateKey: serverScopedDateKey,
       windowPastDays: serverScopedPastDays,
       windowFutureDays: serverScopedFutureDays
     });
-  }, [serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
+  }, [serverIncludePastDates, serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
 
   const daySummaryMetrics = useMemo(() => {
     const targetDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;

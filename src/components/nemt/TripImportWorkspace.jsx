@@ -433,8 +433,6 @@ const TripImportWorkspace = () => {
     trips,
     upsertImportedTrips,
     previewImportedTripRoutingChanges,
-    clearTripsByServiceDates,
-    clearTrips,
     persistDispatchStateNow,
     refreshDispatchState
   } = useNemtContext();
@@ -837,24 +835,6 @@ const TripImportWorkspace = () => {
     setMessage('Plantilla SafeRide descargada. Llena el archivo con el formato oficial y luego importalo.');
   };
 
-  const handleClearTrips = () => {
-    if (!requireTypedDeleteConfirmation('This will delete all current trips and routes.')) return;
-    clearTrips();
-    setPendingTrips([]);
-    setSelectedFileName('');
-    setSelectedTemplateLabel('Safe Ride Default');
-    setSourceColumns([]);
-    setSourcePreviewRows([]);
-    setSourceRowCount(0);
-    setImportedSourceColumns([]);
-    setExtraSourceColumns([]);
-    setOrderedSourceColumns([]);
-    setDraggingSourceColumn('');
-    setImportScan(null);
-    setPreviewSearch('');
-    setMessage('Todos los viajes y rutas guardadas fueron eliminados.');
-  };
-
   const handleFileChange = async event => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -940,30 +920,6 @@ const TripImportWorkspace = () => {
       : `${pendingTrips.length} viajes procesados y guardados. Solo se actualizaron los dias presentes en el archivo.`);
   };
 
-  const handleClearImportedDays = async () => {
-    if (importedServiceDateKeys.length === 0) {
-      setMessage('Primero carga un archivo para detectar los dias a borrar.');
-      return;
-    }
-
-    const confirmationMessage = `Vas a borrar ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'} (${importedServiceDateKeys.join(', ')}). Esta accion no se puede deshacer. Deseas continuar?`;
-    if (!window.confirm(confirmationMessage)) {
-      setMessage('Borrado cancelado.');
-      return;
-    }
-
-    if (!requireTypedDeleteConfirmation(`Dias a borrar: ${importedServiceDateKeys.join(', ')}`)) return;
-
-    clearTripsByServiceDates(importedServiceDateKeys);
-    const nextWindowOptions = buildImportWindowOptions(importedServiceDateKeys);
-    await persistDispatchStateNow();
-    if (nextWindowOptions) {
-      setSelectedAuditDate(nextWindowOptions.dateKey);
-      await refreshDispatchState(nextWindowOptions);
-    }
-    setMessage(`Se borraron los viajes de ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'}: ${importedServiceDateKeys.join(', ')}.`);
-  };
-
   const visibleSourcePreviewColumns = useMemo(() => {
     if (orderedSourceColumns.length > 0) {
       return orderedSourceColumns;
@@ -1030,13 +986,12 @@ const TripImportWorkspace = () => {
               <div className="d-flex flex-wrap gap-2 mb-3">
                 <Button variant="success" onClick={() => fileInputRef.current?.click()} disabled={isParsing}>{isParsing ? 'Leyendo archivo...' : 'Seleccionar Excel o CSV'}</Button>
                 <Button variant="outline-primary" onClick={handleDownloadTemplate}>Descargar plantilla SafeRide</Button>
-                <Button variant="outline-warning" onClick={handleClearImportedDays} disabled={importedServiceDateKeys.length === 0}>Borrar dias del archivo</Button>
-                <Button variant="outline-danger" onClick={handleClearTrips}>Borrar viajes actuales</Button>
               </div>
               <Form.Control ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} style={{ display: 'none' }} />
               <div className="small text-muted mb-3">{selectedFileName ? `Archivo seleccionado: ${selectedFileName}` : 'No hay archivo seleccionado.'}</div>
               <div className="small text-muted mb-2">{`Plantilla detectada: ${selectedTemplateLabel}`}</div>
               <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Dias detectados en archivo: ${importedServiceDateKeys.join(', ')}` : 'Dias detectados en archivo: -'}</div>
+              <div className="small text-muted mb-2">Este cargador ya no ejecuta borrados masivos en SQL. Solo importa y actualiza lo que venga en el archivo.</div>
               <div className="small text-muted mb-3">{message}</div>
             </CardBody>
           </Card>

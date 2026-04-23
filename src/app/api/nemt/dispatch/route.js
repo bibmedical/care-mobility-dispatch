@@ -10,10 +10,12 @@ const internalError = error => NextResponse.json({ error: 'Internal server error
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
+    const includePastDates = searchParams.get('includePastDates') === '1';
     const requestedDateKey = String(searchParams.get('date') || '').trim() || getLocalDateKey(new Date());
     const windowPastDays = Math.max(Number(searchParams.get('windowPastDays') ?? 1) || 0, 0);
     const windowFutureDays = Math.max(Number(searchParams.get('windowFutureDays') ?? 1) || 0, 0);
     const payload = await readNemtDispatchState({
+      includePastDates,
       dateKey: requestedDateKey,
       windowPastDays,
       windowFutureDays
