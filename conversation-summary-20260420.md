@@ -144,3 +144,9 @@
 - Fixed the Trip Dashboard live scanner auto-repair so `same-direction-repeated` findings with two or more trips are repairable again.
 - Auto-repair now chooses repair targets by sorting the affected trips by pickup time and leaving the earliest trip intact, instead of blindly inverting trips based on raw finding order.
 - This reduces false inversions where the scanner appeared to flip directions on the wrong trip inside a repeated-direction group.
+
+## 2026-04-22 live scanner scope note
+
+- Root-caused a second live scanner issue: the scanner scope included trips marked `Removed Since Last Load`, so active trips and removed trips could be analyzed together as if both were valid repair targets.
+- Updated the live scanner scope in Trip Dashboard to analyze only active visible trips, while the removed-trip badge/count remains available separately in the toolbar.
+- This prevents scanner findings and auto-repair from treating removed rows as if they were part of the current operational route set.

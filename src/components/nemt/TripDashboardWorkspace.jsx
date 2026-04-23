@@ -2785,13 +2785,7 @@ const TripDashboardWorkspace = () => {
     return tripMatchesCity(trip, dropoffCityValue);
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
   const removedSinceLastLoadScopeCount = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(trip => Boolean(trip?.missingFromLatestSafeRideImport)).length, [matchesTripDateFilter, scanAnnotatedTrips, tripDateFilter, routePlans, trips]);
-  const liveScanScopeTrips = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(matchesTripLegFilter).filter(matchesTripTypeFilter).filter(matchesTripServiceAnimalFilter).filter(matchesTripSearchFilter).filter(matchesPickupZipFilter).filter(matchesDropoffZipFilter).filter(matchesAnyZipFilter).filter(trip => {
-    const pickupCityValue = puCityFilter.trim().toLowerCase();
-    return tripMatchesCity(trip, pickupCityValue);
-  }).filter(trip => {
-    const dropoffCityValue = doCityFilter.trim().toLowerCase();
-    return tripMatchesCity(trip, dropoffCityValue);
-  }), [doCityFilter, matchesAnyZipFilter, matchesPickupZipFilter, matchesDropoffZipFilter, matchesTripDateFilter, matchesTripLegFilter, matchesTripSearchFilter, matchesTripServiceAnimalFilter, matchesTripTypeFilter, puCityFilter, scanAnnotatedTrips]);
+  const liveScanScopeTrips = useMemo(() => filteredTrips.filter(trip => !trip?.missingFromLatestSafeRideImport), [filteredTrips]);
   const visibleFilteredTripIdSet = useMemo(() => new Set(filteredTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean)), [filteredTrips]);
   const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanScopeTrips).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanScopeTrips]);
   const liveTripScan = useMemo(() => {
