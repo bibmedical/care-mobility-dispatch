@@ -132,3 +132,9 @@
 - Verified production health at `/api/health` returned `ok: true` after deploy.
 - Verified the production login HTML includes `SMS Consent Notice`, confirming the public consent update is live.
 - Verified the production Terms page shows the updated Care Mobility Services LLC SMS language and STOP/HELP wording.
+
+## 2026-04-22 patient contact SQL note
+
+- Updated the Confirmation workspace so `sms.riderProfiles` now preserves patient `name` and `phone` whenever a patient rule, hospital/rehab status, or confirmation profile note is saved.
+- Updated `src/server/integrations-store.js` so SQL-backed rider profile normalization preserves those contact fields when writing to `integrations_state`.
+- This means V2 now stores patient contact records in SQL as patient profiles, not only exclusion metadata.

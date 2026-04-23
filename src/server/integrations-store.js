@@ -206,6 +206,8 @@ const normalizeSmsRiderProfiles = value => {
     if (!normalizedKey) return result;
     result[normalizedKey] = {
       ...((profile && typeof profile === 'object') ? profile : {}),
+      name: String(profile?.name ?? ''),
+      phone: String(profile?.phone ?? ''),
       updatedAt: String(profile?.updatedAt ?? ''),
       exclusion: profile?.exclusion ? {
         mode: String(profile.exclusion.mode ?? ''),

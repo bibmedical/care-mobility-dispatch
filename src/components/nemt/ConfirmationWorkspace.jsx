@@ -593,6 +593,12 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     const riderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
     return riderKey ? `rider:${riderKey}` : '';
   };
+  const buildPatientProfileRecord = (source, existingProfile = {}, updates = {}) => ({
+    ...existingProfile,
+    name: String(updates.name ?? source?.rider ?? existingProfile?.name ?? '').trim(),
+    phone: String(updates.phone ?? source?.patientPhoneNumber ?? existingProfile?.phone ?? '').trim(),
+    ...updates
+  });
   const getTripPatientIdentity = trip => ({
     phone: String(trip?.patientPhoneNumber || '').replace(/\D/g, ''),
     rider: String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, ' ')
@@ -1662,8 +1668,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
             ...(smsData?.sms || {}),
             riderProfiles: {
               ...riderProfiles,
-              [patientKey]: {
-                ...existingProfile,
+              [patientKey]: buildPatientProfileRecord(hospitalRehabModal, existingProfile, {
                 exclusion: {
                   mode: 'range',
                   startDate: hospitalRehabStartDate,
@@ -1673,7 +1678,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                   updatedAt: nowIso
                 },
                 updatedAt: nowIso
-              }
+              })
             }
           }
         });
@@ -1762,7 +1767,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     const patientKey = buildPatientProfileKey(trip);
     if (patientKey) {
       const existingProfile = riderProfiles[patientKey] || {};
-      const nextProfile = { ...existingProfile };
+      const nextProfile = buildPatientProfileRecord(trip, existingProfile);
       delete nextProfile.exclusion;
       await saveSmsData({
         sms: {
@@ -1933,11 +1938,13 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
         ...(smsData?.sms || {}),
         riderProfiles: {
           ...riderProfiles,
-          [selectedPatientHistory.key]: {
-            ...existingProfile,
+          [selectedPatientHistory.key]: buildPatientProfileRecord({
+            rider: selectedPatientHistory.rider,
+            patientPhoneNumber: selectedPatientHistory.phone
+          }, existingProfile, {
             exclusion: nextExclusion,
             updatedAt: nowIso
-          }
+          })
         }
       }
     });
@@ -1958,9 +1965,10 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
   const handleClearPatientStatus = async () => {
     if (!selectedPatientHistory) return;
     const existingProfile = riderProfiles[selectedPatientHistory.key] || {};
-    const nextProfile = {
-      ...existingProfile
-    };
+    const nextProfile = buildPatientProfileRecord({
+      rider: selectedPatientHistory.rider,
+      patientPhoneNumber: selectedPatientHistory.phone
+    }, existingProfile);
     delete nextProfile.exclusion;
 
     await saveSmsData({
@@ -2265,12 +2273,12 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
           ...(smsData?.sms || {}),
           riderProfiles: {
             ...riderProfiles,
-            [riderProfileKey]: {
+            [riderProfileKey]: buildPatientProfileRecord(tripUpdateModal, riderProfiles[riderProfileKey] || {}, {
               companion: tripUpdateCompanionNote.trim(),
               mobility: tripUpdateMobilityNote.trim(),
               latestNote: tripUpdateNote.trim(),
               updatedAt: nowIso
-            }
+            })
           }
         }
       });
