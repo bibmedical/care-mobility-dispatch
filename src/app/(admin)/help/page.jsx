@@ -427,6 +427,9 @@ const DIARIO_2026_04_23 = [{
   area: 'Scoped-window visibility fix',
   detail: 'The standalone Excel Loader was not realigning the dispatch date window after importing or clearing the file days. That could make trips look deleted when the sync layer reloaded a different server scope. The loader now refreshes the visible window to the imported date range after those actions.'
 }, {
+  area: 'Latest import fingerprint refresh',
+  detail: 'SafeRide merge now replaces the stored importFingerprint with the newest file fingerprint instead of preserving a stale older one. That keeps rereads of the same trips aligned with the latest imported match key and reduces false Removed Since Last Load flags.'
+}, {
   area: 'Validation and deploy path',
   detail: 'Local next build completed successfully after the loader identity fix. This deploy is intended for Render production through the main branch auto-deploy flow.'
 }];
@@ -760,6 +763,7 @@ const HelpPage = () => {
                 <li>The standalone Excel Loader now preserves the stable parser-generated trip id instead of replacing it with a page-local preview row key.</li>
                 <li>This keeps the standalone loader aligned with the embedded Trip Dashboard import path so both loaders enter the merge flow with the same trip identity anchor.</li>
                 <li>The standalone loader now also refreshes the dispatch date window to the imported file range after import or day-clear actions so trips do not appear to vanish when the sync layer reloads a different server scope.</li>
+                <li>SafeRide merge now refreshes the stored import fingerprint from the newest imported row so rereading the same file does not leave stale matching keys behind.</li>
                 <li>Local next build completed successfully before the Render deploy push.</li>
               </ul>
             </div>

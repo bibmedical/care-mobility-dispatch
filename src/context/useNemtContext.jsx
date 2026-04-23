@@ -389,7 +389,7 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip, importMetadata 
     ...currentTrip,
     ...importedTrip,
     id: String(currentTrip?.id || importedTrip?.id || '').trim(),
-    importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
+    importFingerprint: String(importedTrip?.importFingerprint || currentTrip?.importFingerprint || '').trim(),
     driverId: shouldAutoCancel ? null : currentTrip?.driverId ?? null,
     secondaryDriverId: shouldAutoCancel ? null : currentTrip?.secondaryDriverId ?? null,
     routeId: shouldAutoCancel ? null : currentTrip?.routeId ?? null,
