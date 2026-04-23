@@ -595,8 +595,6 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
   };
   const buildPatientProfileRecord = (source, existingProfile = {}, updates = {}) => ({
     ...existingProfile,
-    name: String(updates.name ?? source?.rider ?? existingProfile?.name ?? '').trim(),
-    phone: String(updates.phone ?? source?.patientPhoneNumber ?? existingProfile?.phone ?? '').trim(),
     ...updates
   });
   const getTripPatientIdentity = trip => ({

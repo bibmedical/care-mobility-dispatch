@@ -439,6 +439,9 @@ const DIARIO_2026_04_23 = [{
   area: 'Loader import persist-before-refresh fix',
   detail: 'The standalone SafeRide loader was refreshing dispatch from the server immediately after local import state changed, while persistence still waited in the deferred queue. The loader now waits for the dispatch persist flush before reloading the scoped server window, so a fresh server read does not snap back to the older partial trip count.'
 }, {
+  area: 'SMS patient profile SQL rollback',
+  detail: 'The integrations store no longer persists sms.riderProfiles into SQL, and Confirmation no longer auto-fills patient name and phone into those profile records. This rollback removes the patient-contact profile storage path that was added with the Twilio/SMS profile work.'
+}, {
   area: 'Validation and deploy path',
   detail: 'Local next build completed successfully after the loader identity fix. This deploy is intended for Render production through the main branch auto-deploy flow.'
 }];
@@ -776,6 +779,7 @@ const HelpPage = () => {
                 <li>Trip Dashboard now resets the status filter back to All after import so the screen does not remain stuck on Last Removed and hide the rest of the imported trips.</li>
                 <li>Trip Dashboard import now also clears lingering search, leg, type, service-animal, city, and ZIP filters so the imported result is not reduced to an old filtered subset.</li>
                 <li>The standalone loader now waits for dispatch persistence to finish before it refreshes the server window, preventing the import screen from snapping back to an older partial count such as 14 trips.</li>
+                <li>The SMS/Twilio patient profile rollback removed SQL persistence of sms.riderProfiles and stopped auto-saving patient name and phone into those profile records.</li>
                 <li>Local next build completed successfully before the Render deploy push.</li>
               </ul>
             </div>

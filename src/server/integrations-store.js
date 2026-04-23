@@ -69,7 +69,6 @@ const DEFAULT_STATE = {
     notes: '',
     lastValidatedAt: '',
     lastInboundAt: '',
-    riderProfiles: {},
     consentList: [],
     optOutList: [],
     twilio: {
@@ -199,29 +198,6 @@ const normalizeSmsConsentEntry = value => ({
   revokedAt: String(value?.revokedAt ?? '')
 });
 
-const normalizeSmsRiderProfiles = value => {
-  const entries = Object.entries(value && typeof value === 'object' ? value : {});
-  return entries.reduce((result, [key, profile]) => {
-    const normalizedKey = String(key || '').trim();
-    if (!normalizedKey) return result;
-    result[normalizedKey] = {
-      ...((profile && typeof profile === 'object') ? profile : {}),
-      name: String(profile?.name ?? ''),
-      phone: String(profile?.phone ?? ''),
-      updatedAt: String(profile?.updatedAt ?? ''),
-      exclusion: profile?.exclusion ? {
-        mode: String(profile.exclusion.mode ?? ''),
-        startDate: String(profile.exclusion.startDate ?? ''),
-        endDate: String(profile.exclusion.endDate ?? ''),
-        reason: String(profile.exclusion.reason ?? ''),
-        sourceNote: String(profile.exclusion.sourceNote ?? ''),
-        updatedAt: String(profile.exclusion.updatedAt ?? '')
-      } : undefined
-    };
-    return result;
-  }, {});
-};
-
 const normalizeSmsOfficeRecipientEntry = value => ({
   id: String(value?.id ?? `${String(value?.phone ?? '').replace(/\D/g, '') || String(value?.name ?? '').trim().toLowerCase().replace(/\s+/g, '-')}`),
   name: String(value?.name ?? ''),
@@ -257,7 +233,6 @@ const normalizeSmsState = value => ({
   notes: String(value?.notes ?? ''),
   lastValidatedAt: String(value?.lastValidatedAt ?? ''),
   lastInboundAt: String(value?.lastInboundAt ?? ''),
-  riderProfiles: normalizeSmsRiderProfiles(value?.riderProfiles),
   consentList: Array.isArray(value?.consentList) ? value.consentList.map(normalizeSmsConsentEntry).filter(entry => entry.name || entry.phone) : [],
   optOutList: Array.isArray(value?.optOutList) ? value.optOutList.map(normalizeSmsOptOutEntry).filter(entry => entry.name || entry.phone) : [],
   twilio: normalizeTwilioSmsState(value?.twilio),
@@ -368,8 +343,6 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
   const incomingOptOutList = Array.isArray(normalized?.sms?.optOutList) ? normalized.sms.optOutList : [];
   const currentConsentList = Array.isArray(currentState?.sms?.consentList) ? currentState.sms.consentList : [];
   const incomingConsentList = Array.isArray(normalized?.sms?.consentList) ? normalized.sms.consentList : [];
-  const currentRiderProfiles = currentState?.sms?.riderProfiles && typeof currentState.sms.riderProfiles === 'object' ? currentState.sms.riderProfiles : {};
-  const incomingRiderProfiles = normalized?.sms?.riderProfiles && typeof normalized.sms.riderProfiles === 'object' ? normalized.sms.riderProfiles : {};
   const mergedOptOutMap = new Map();
   const mergedConsentMap = new Map();
 
@@ -401,10 +374,6 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
 
   const currentPatientsMemory = String(currentState?.ai?.memorySections?.patients || '').trim();
   const nextPatientsMemory = String(normalized?.ai?.memorySections?.patients || '').trim();
-  const protectedRiderProfiles = allowPatientDataShrink ? incomingRiderProfiles : {
-    ...currentRiderProfiles,
-    ...incomingRiderProfiles
-  };
   const protectedOptOutList = allowPatientDataShrink ? incomingOptOutList : Array.from(mergedOptOutMap.values()).filter(entry => entry.name || entry.phone);
   const protectedConsentList = allowPatientDataShrink ? incomingConsentList : Array.from(mergedConsentMap.values()).filter(entry => entry.name || entry.phone);
   const protectedPatientsMemory = allowPatientDataShrink ? nextPatientsMemory : nextPatientsMemory || currentPatientsMemory;
@@ -420,7 +389,6 @@ export const writeIntegrationsState = async (nextState, options = {}) => {
     },
     sms: {
       ...normalized.sms,
-      riderProfiles: protectedRiderProfiles,
       consentList: protectedConsentList,
       optOutList: protectedOptOutList
     }
