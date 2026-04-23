@@ -1153,6 +1153,7 @@ const TripDashboardWorkspace = () => {
     unassignTrips,
     upsertImportedTrips,
     previewImportedTripRoutingChanges,
+    previewMissingSafeRideTrips,
     cancelTrips,
     reinstateTrips,
     createRoute,
@@ -1526,6 +1527,7 @@ const TripDashboardWorkspace = () => {
     }
 
     const routingChanges = previewImportedTripRoutingChanges(importPendingTrips);
+    const missingTrips = previewMissingSafeRideTrips(importPendingTrips);
     let applyRoutingChanges = true;
     if (routingChanges.length > 0) {
       const previewLines = routingChanges.slice(0, 5).map(change => `${change.rider || change.rideId || change.brokerTripId || change.id}: ${change.currentAddress || '-'} -> ${change.importedAddress || '-'} | ${change.currentDestination || '-'} -> ${change.importedDestination || '-'}`).join('\n');
@@ -1541,8 +1543,10 @@ const TripDashboardWorkspace = () => {
         ? `${importPendingTrips.length} trip(s) imported into Trip Dashboard. ${routingChanges.length} route change(s) were applied.`
         : `${importPendingTrips.length} trip(s) imported into Trip Dashboard. ${routingChanges.length} route change(s) were kept as warning only and current addresses stayed in place. Use the Address Review filter to see them later.`
       : `${importPendingTrips.length} trip(s) imported into Trip Dashboard.`;
-    setStatusMessage(importMessage);
-    showNotification({ message: importMessage, variant: routingChanges.length > 0 && !applyRoutingChanges ? 'warning' : 'success' });
+    const missingSuffix = missingTrips.length > 0 ? ` ${missingTrips.length} trip(s) were not present in the latest Excel and were kept in dispatch as Removed Since Last Load warnings.` : '';
+    const finalImportMessage = `${importMessage}${missingSuffix}`;
+    setStatusMessage(finalImportMessage);
+    showNotification({ message: finalImportMessage, variant: missingTrips.length > 0 || routingChanges.length > 0 && !applyRoutingChanges ? 'warning' : 'success' });
     setImportPendingTrips([]);
     setImportedServiceDateKeys([]);
     setSelectedImportFileName('');
@@ -1551,6 +1555,7 @@ const TripDashboardWorkspace = () => {
   };
 
   const importedRouteDriverSummary = useMemo(() => getImportedRouteDriverGroups(importPendingTrips), [importPendingTrips]);
+  const importMissingTrips = useMemo(() => previewMissingSafeRideTrips(importPendingTrips), [importPendingTrips, previewMissingSafeRideTrips]);
 
   useEffect(() => {
     if (importedRouteDriverSummary.usableGroups.length === 0) {
@@ -1712,6 +1717,7 @@ const TripDashboardWorkspace = () => {
       const routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers, effectiveAssignments);
 
       const routingChanges = previewImportedTripRoutingChanges(importPendingTrips);
+      const missingTrips = previewMissingSafeRideTrips(importPendingTrips);
       let applyRoutingChanges = true;
       if (routingChanges.length > 0) {
         const previewLines = routingChanges.slice(0, 5).map(change => `${change.rider || change.rideId || change.brokerTripId || change.id}: ${change.currentAddress || '-'} -> ${change.importedAddress || '-'} | ${change.currentDestination || '-'} -> ${change.importedDestination || '-'}`).join('\n');
@@ -1725,14 +1731,14 @@ const TripDashboardWorkspace = () => {
       if (routePlan.routeSpecs.length > 0) {
         setPendingRouteImportPlan(routePlan.routeSpecs);
         if (routePlan.missingDriverNames.length > 0) {
-          const message = `${routePlan.matchedTripCount} trip(s) imported. Some routes were left unassigned because these driver names did not match: ${routePlan.missingDriverNames.join(', ')}`;
+          const message = `${routePlan.matchedTripCount} trip(s) imported. Some routes were left unassigned because these driver names did not match: ${routePlan.missingDriverNames.join(', ')}${missingTrips.length > 0 ? ` ${missingTrips.length} trip(s) were not in the latest Excel and stayed assigned as Removed Since Last Load warnings.` : ''}`;
           setStatusMessage(message);
           showNotification({ message, variant: 'warning' });
         }
       } else {
         const message = routePlan.missingDriverNames.length > 0
-          ? `Trips were imported, but these route names still need a driver match: ${routePlan.missingDriverNames.join(', ')}`
-          : 'Trips were imported, but the file did not contain usable driver names for route loading.';
+          ? `Trips were imported, but these route names still need a driver match: ${routePlan.missingDriverNames.join(', ')}${missingTrips.length > 0 ? ` ${missingTrips.length} trip(s) were not in the latest Excel and stayed assigned as Removed Since Last Load warnings.` : ''}`
+          : `Trips were imported, but the file did not contain usable driver names for route loading.${missingTrips.length > 0 ? ` ${missingTrips.length} trip(s) were not in the latest Excel and stayed assigned as Removed Since Last Load warnings.` : ''}`;
         setStatusMessage(message);
         showNotification({ message, variant: 'warning' });
       }
@@ -2786,6 +2792,7 @@ const TripDashboardWorkspace = () => {
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
   const removedSinceLastLoadScopeCount = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(trip => Boolean(trip?.missingFromLatestSafeRideImport)).length, [matchesTripDateFilter, scanAnnotatedTrips, tripDateFilter, routePlans, trips]);
   const liveScanScopeTrips = useMemo(() => filteredTrips.filter(trip => !trip?.missingFromLatestSafeRideImport), [filteredTrips]);
+  const liveRemovedSinceLastLoadTrips = useMemo(() => filteredTrips.filter(trip => Boolean(trip?.missingFromLatestSafeRideImport)), [filteredTrips]);
   const visibleFilteredTripIdSet = useMemo(() => new Set(filteredTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean)), [filteredTrips]);
   const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanScopeTrips).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanScopeTrips]);
   const liveTripScan = useMemo(() => {
@@ -2844,6 +2851,10 @@ const TripDashboardWorkspace = () => {
       return left.rider.localeCompare(right.rider);
     });
   }, [liveTripScan]);
+  const liveRemovedTripAttentionGroups = useMemo(() => liveRemovedSinceLastLoadTrips.map(trip => ({
+    rider: String(trip?.rider || trip?.patientName || trip?.id || 'Trip').trim(),
+    tripId: String(trip?.id || '').trim()
+  })).filter(group => group.tripId).sort((left, right) => left.rider.localeCompare(right.rider)), [liveRemovedSinceLastLoadTrips]);
   const liveTripAutoRepairableFindings = useMemo(() => (liveTripScan?.findings || []).filter(finding => finding.code === 'same-direction-repeated' && Array.isArray(finding.tripIds) && finding.tripIds.length >= 2), [liveTripScan]);
   const liveTripAutoRepairTargetIds = useMemo(() => {
     const targetTripIds = new Set();
@@ -6271,6 +6282,28 @@ const TripDashboardWorkspace = () => {
                       <div className="small" style={{ color: 'rgba(255, 255, 255, 0.92)', maxWidth: 760 }}>
                         You can open Excel Loader with scanner here. Nothing enters the tree until you press Import Trips or Load Route.
                       </div>
+                      {liveRemovedTripAttentionGroups.length > 0 ? <div className="small rounded-3 px-3 py-2" style={{
+                      backgroundColor: 'rgba(245, 158, 11, 0.18)',
+                      border: '1px solid rgba(245, 158, 11, 0.35)',
+                      color: '#ffffff',
+                      maxWidth: 760
+                    }}>
+                          <div className="fw-semibold mb-1">Removed Since Last Load: {liveRemovedTripAttentionGroups.length}</div>
+                          <div className="mb-2" style={{ color: 'rgba(255, 255, 255, 0.92)' }}>
+                            These trips were not present in the latest Excel. They stay in dispatch, and trips already assigned to a driver stay assigned. The live scanner flags them only and does not auto-repair them.
+                          </div>
+                          <div className="d-flex flex-wrap gap-2">
+                            {liveRemovedTripAttentionGroups.slice(0, 10).map(group => <Button
+                                key={`live-removed-${group.tripId}`}
+                                variant="warning"
+                                size="sm"
+                                onClick={() => handleFocusLiveScanTrip(group.tripId, group.rider)}
+                              >
+                                {group.rider}
+                              </Button>)}
+                          </div>
+                          {liveRemovedTripAttentionGroups.length > 10 ? <div className="mt-2" style={{ color: 'rgba(255, 255, 255, 0.92)' }}>Showing the first 10 riders.</div> : null}
+                        </div> : null}
                       {liveTripScanAttentionGroups.length > 0 ? <div className="d-flex flex-wrap gap-2">
                           {liveTripScanAttentionGroups.map(group => <Button
                               key={`live-scan-${group.rider}-${group.tripId}`}
@@ -6524,6 +6557,14 @@ const TripDashboardWorkspace = () => {
             <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
             <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
             <div className="small text-muted mb-3">{importPendingTrips.length > 0 ? `${importPendingTrips.length} trip(s) ready to import.` : 'Choose an import file to load trips here.'}</div>
+            {importMissingTrips.length > 0 ? <Alert variant="warning" className="mb-3">
+                <div className="fw-semibold mb-1">Trips missing from this Excel</div>
+                <div className="small mb-2">{importMissingTrips.length} current trip(s) do not appear in this file. They will stay in dispatch, and trips already assigned to a driver will remain assigned. They will only be flagged as <strong>Removed Since Last Load</strong>.</div>
+                <div className="small text-muted">
+                  {importMissingTrips.slice(0, 6).map(trip => trip.rider || trip.patientName || trip.brokerTripId || trip.id).filter(Boolean).join(', ')}
+                  {importMissingTrips.length > 6 ? ' ...' : ''}
+                </div>
+              </Alert> : null}
             {importRoutingChanges.length > 0 ? <Alert variant="warning" className="mb-3">
                 <div className="fw-semibold mb-1">Address changes found</div>
                 <div className="small mb-2">{importRoutingChanges.length} trip(s) in this file do not match the current system address.</div>

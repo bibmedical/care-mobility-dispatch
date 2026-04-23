@@ -150,3 +150,9 @@
 - Root-caused a second live scanner issue: the scanner scope included trips marked `Removed Since Last Load`, so active trips and removed trips could be analyzed together as if both were valid repair targets.
 - Updated the live scanner scope in Trip Dashboard to analyze only active visible trips, while the removed-trip badge/count remains available separately in the toolbar.
 - This prevents scanner findings and auto-repair from treating removed rows as if they were part of the current operational route set.
+
+## 2026-04-22 removed-trip warning restore
+
+- Restored the explicit warning flow for trips that are missing from a later Excel reload: they stay in dispatch, and trips already assigned to a driver remain assigned.
+- Trip Dashboard now surfaces those trips separately in both Excel Loader and System Trip Scanner as `Removed Since Last Load` warnings, without feeding them back into direction auto-repair.
+- This keeps the original operational behavior: missing-from-latest-import is a warning-only state, not a routing repair target.
