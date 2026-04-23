@@ -125,3 +125,10 @@
 - Confirmed the Confirmation workspace was writing `sms.riderProfiles`, but the backend integrations store was not normalizing or persisting that field.
 - Updated `src/server/integrations-store.js` so rider profile records are now preserved in `integrations_state` and therefore saved in SQL for V2 when `DATABASE_URL` exists.
 - This keeps patient-specific confirmation rules and exclusion data from being dropped during SMS settings saves.
+
+## 2026-04-22 Render deploy note
+
+- Pushed commit `12e0068` to `main`, which triggered the Render web service `care-mobility-dispatch-web-v2` through `autoDeployTrigger: commit`.
+- Verified production health at `/api/health` returned `ok: true` after deploy.
+- Verified the production login HTML includes `SMS Consent Notice`, confirming the public consent update is live.
+- Verified the production Terms page shows the updated Care Mobility Services LLC SMS language and STOP/HELP wording.
