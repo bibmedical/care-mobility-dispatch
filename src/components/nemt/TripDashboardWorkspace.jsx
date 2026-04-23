@@ -6409,7 +6409,6 @@ const TripDashboardWorkspace = () => {
                       </Button>
                       <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
                       <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
-                      <Button variant="danger" size="sm" onClick={handleDeleteSelectedTrips} disabled={selectedVisibleTrips.length === 0}>Delete Selected</Button>
                       <Button variant="light" size="sm" onClick={handleAutoRepairLiveScan}>Auto Repair</Button>
                       <Button variant="light" size="sm" onClick={() => setShowLiveTripScanPanel(false)}>Hide</Button>
                     </div>
