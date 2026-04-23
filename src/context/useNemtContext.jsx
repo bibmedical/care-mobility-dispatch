@@ -632,6 +632,12 @@ export const NemtProvider = ({
   const pendingAllowTripShrinkRef = useRef(false);
   const allowTripShrinkReasonNextPersistRef = useRef('');
   const pendingAllowTripShrinkReasonRef = useRef('');
+  const allowTripShrinkDateKeyNextPersistRef = useRef('');
+  const allowTripShrinkPastDaysNextPersistRef = useRef(null);
+  const allowTripShrinkFutureDaysNextPersistRef = useRef(null);
+  const pendingAllowTripShrinkDateKeyRef = useRef('');
+  const pendingAllowTripShrinkPastDaysRef = useRef(null);
+  const pendingAllowTripShrinkFutureDaysRef = useRef(null);
   const dispatchQueryDateKeyRef = useRef('');
   const dispatchWindowPastDaysRef = useRef(1);
   const dispatchWindowFutureDaysRef = useRef(1);
@@ -823,14 +829,17 @@ export const NemtProvider = ({
     const allowTripShrink = pendingAllowTripShrinkRef.current;
     const allowTripShrinkReason = pendingAllowTripShrinkReasonRef.current;
     const actorName = String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim();
-    const pruneDateKey = String(dispatchQueryDateKeyRef.current || '').trim();
-    const pruneWindowPastDays = String(Math.max(Number(dispatchWindowPastDaysRef.current) || 0, 0));
-    const pruneWindowFutureDays = String(Math.max(Number(dispatchWindowFutureDaysRef.current) || 0, 0));
+    const pruneDateKey = String((pendingAllowTripShrinkDateKeyRef.current || dispatchQueryDateKeyRef.current) || '').trim();
+    const pruneWindowPastDays = String(Math.max(Number(pendingAllowTripShrinkPastDaysRef.current ?? dispatchWindowPastDaysRef.current) || 0, 0));
+    const pruneWindowFutureDays = String(Math.max(Number(pendingAllowTripShrinkFutureDaysRef.current ?? dispatchWindowFutureDaysRef.current) || 0, 0));
 
     persistInFlightRef.current = true;
     pendingPersistSnapshotRef.current = '';
     pendingAllowTripShrinkRef.current = false;
     pendingAllowTripShrinkReasonRef.current = '';
+    pendingAllowTripShrinkDateKeyRef.current = '';
+    pendingAllowTripShrinkPastDaysRef.current = null;
+    pendingAllowTripShrinkFutureDaysRef.current = null;
 
     try {
       const response = await fetch('/api/nemt/dispatch', {
@@ -855,6 +864,9 @@ export const NemtProvider = ({
         pendingPersistSnapshotRef.current = nextSnapshot;
         pendingAllowTripShrinkRef.current = allowTripShrink;
         pendingAllowTripShrinkReasonRef.current = allowTripShrinkReason;
+        pendingAllowTripShrinkDateKeyRef.current = pruneDateKey;
+        pendingAllowTripShrinkPastDaysRef.current = Number(pruneWindowPastDays);
+        pendingAllowTripShrinkFutureDaysRef.current = Number(pruneWindowFutureDays);
         return false;
       }
     } catch {
@@ -862,6 +874,9 @@ export const NemtProvider = ({
       pendingPersistSnapshotRef.current = nextSnapshot;
       pendingAllowTripShrinkRef.current = allowTripShrink;
       pendingAllowTripShrinkReasonRef.current = allowTripShrinkReason;
+      pendingAllowTripShrinkDateKeyRef.current = pruneDateKey;
+      pendingAllowTripShrinkPastDaysRef.current = Number(pruneWindowPastDays);
+      pendingAllowTripShrinkFutureDaysRef.current = Number(pruneWindowFutureDays);
       return false;
     } finally {
       persistInFlightRef.current = false;
@@ -1062,8 +1077,14 @@ export const NemtProvider = ({
     pendingPersistSnapshotRef.current = snapshot;
     pendingAllowTripShrinkRef.current = allowTripShrinkNextPersistRef.current;
     pendingAllowTripShrinkReasonRef.current = allowTripShrinkReasonNextPersistRef.current;
+    pendingAllowTripShrinkDateKeyRef.current = allowTripShrinkDateKeyNextPersistRef.current;
+    pendingAllowTripShrinkPastDaysRef.current = allowTripShrinkPastDaysNextPersistRef.current;
+    pendingAllowTripShrinkFutureDaysRef.current = allowTripShrinkFutureDaysNextPersistRef.current;
     allowTripShrinkNextPersistRef.current = false;
     allowTripShrinkReasonNextPersistRef.current = '';
+    allowTripShrinkDateKeyNextPersistRef.current = '';
+    allowTripShrinkPastDaysNextPersistRef.current = null;
+    allowTripShrinkFutureDaysNextPersistRef.current = null;
 
     const timeoutId = window.setTimeout(async () => {
       await flushPersistQueue();
@@ -2290,7 +2311,12 @@ export const NemtProvider = ({
   const deleteTripRecord = async tripId => {
     const normalizedTripId = String(tripId || '').trim();
     if (!normalizedTripId) return false;
+    const deletedTrip = (Array.isArray(state?.trips) ? state.trips : []).find(trip => String(trip?.id || '').trim() === normalizedTripId) || null;
+    const deletedTripServiceDateKey = String(getTripServiceDateKey(deletedTrip) || '').trim();
     recentlyDeletedTripIdsRef.current.set(normalizedTripId, Date.now());
+    allowTripShrinkDateKeyNextPersistRef.current = deletedTripServiceDateKey;
+    allowTripShrinkPastDaysNextPersistRef.current = deletedTripServiceDateKey ? 0 : null;
+    allowTripShrinkFutureDaysNextPersistRef.current = deletedTripServiceDateKey ? 0 : null;
     updateState(currentState => ({
       ...currentState,
       selectedTripIds: currentState.selectedTripIds.filter(id => id !== normalizedTripId),

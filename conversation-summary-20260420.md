@@ -193,3 +193,9 @@
 - The file itself contains 192 rows and 192 distinct `rideId` values, including cancelled rows and multiple `23:59` / WillCall return legs.
 - Found a separate visibility bug after import: Trip Dashboard kept forcing its server scope to the previously selected day instead of switching to the imported service date, which could make newly imported trips appear and then disappear.
 - Updated Trip Dashboard so a successful import switches the dashboard date scope to the imported file date when the file contains a single service date.
+
+## 2026-04-22 SQL delete scope rebuild
+
+- Rechecked the delete flow against the SQL write path instead of stopping at the local UI state.
+- Root issue: destructive trip prune was scoped by the dashboard's current server date window, not by the deleted trip's actual service date.
+- Rebuilt delete persistence so the next destructive snapshot uses the deleted trip's own service date as the prune scope, which targets the correct `dispatch_trips` rows in SQL.
