@@ -417,41 +417,6 @@ const DIARIO_2026_04_20 = [{
   detail: 'The full April 20 work log and conversation backup were written into conversation-summary-20260420.md and backup/chat-20260420-render-real-diary-and-dispatch-fixes.md so the day can be reviewed later without rebuilding context from memory.'
 }];
 
-const DIARIO_2026_04_23 = [{
-  area: 'Excel Loader identity alignment',
-  detail: 'The standalone Excel Loader was preserving a page-local preview row key as the trip id, while the Trip Dashboard import path kept the shared parser id. The loader now preserves the stable parser-generated id so both entry points use the same import identity before merge.'
-}, {
-  area: 'Duplicate-risk hypothesis narrowed',
-  detail: 'Production SafeRide trips already carried real rideId values, and no generated RIDE-* fallback ids were found in the current live sample. That narrowed the immediate duplicate risk toward loader-path identity drift instead of a Twilio-side SMS persistence change.'
-}, {
-  area: 'Scoped-window visibility fix',
-  detail: 'The standalone Excel Loader was not realigning the dispatch date window after importing or clearing the file days. That could make trips look deleted when the sync layer reloaded a different server scope. The loader now refreshes the visible window to the imported date range after those actions.'
-}, {
-  area: 'Latest import fingerprint refresh',
-  detail: 'SafeRide merge now replaces the stored importFingerprint with the newest file fingerprint instead of preserving a stale older one. That keeps rereads of the same trips aligned with the latest imported match key and reduces false Removed Since Last Load flags.'
-}, {
-  area: 'Dashboard filter reset after import',
-  detail: 'Trip Dashboard now resets the trip status filter back to All after a successful import or route-load import. That prevents the screen from staying stuck on Last Removed and making the imported result look artificially incomplete.'
-}, {
-  area: 'Dashboard hidden filter reset after import',
-  detail: 'Trip Dashboard import now also clears lingering search, leg, type, service-animal, city, and ZIP filters after a successful import. That prevents the table from showing only a leftover subset like 75 visible trips when the dispatch memory already contains the full imported set.'
-}, {
-  area: 'Loader import persist-before-refresh fix',
-  detail: 'The standalone SafeRide loader was refreshing dispatch from the server immediately after local import state changed, while persistence still waited in the deferred queue. The loader now waits for the dispatch persist flush before reloading the scoped server window, so a fresh server read does not snap back to the older partial trip count.'
-}, {
-  area: 'SMS patient profile SQL rollback',
-  detail: 'The integrations store no longer persists sms.riderProfiles into SQL, and Confirmation no longer auto-fills patient name and phone into those profile records. This rollback removes the patient-contact profile storage path that was added with the Twilio/SMS profile work.'
-}, {
-  area: 'Delete flow rollback to single-trip path',
-  detail: 'Trip Dashboard selected deletes no longer use the later batch same-date delete path. The delete flow now goes back through the original single-trip persisted delete handler so SQL prune scope stays simple and closer to the behavior that was working before the extra delete patches were layered on top.'
-}, {
-  area: 'Dispatcher full-state load restored',
-  detail: 'The Dispatcher all-days view no longer forces a narrow server date window. When the operator is on the all view, the app now requests the full dispatch state again so trip visibility does not collapse to a small subset like 14 trips after the login/Twilio-era dispatch scoping patches.'
-}, {
-  area: 'Validation and deploy path',
-  detail: 'Local next build completed successfully after the loader identity fix. This deploy is intended for Render production through the main branch auto-deploy flow.'
-}];
-
 const HelpPage = () => {
   return <>
   <PageTitle title="Diarie" subName="Operations" />
@@ -578,25 +543,6 @@ const HelpPage = () => {
               <div className="d-flex flex-column gap-2">
                 {SAFE_DEPLOY_NOTE.map(item => <div key={item.step} className="border rounded p-3">
                     <div className="fw-semibold mb-1">{item.step}</div>
-                    <div className="small text-muted">{item.detail}</div>
-                  </div>)}
-              </div>
-            </CardBody>
-          </Card>
-        </Col>
-      </Row>
-
-      <Row className="g-3 mb-3">
-        <Col xl={12}>
-          <Card className="h-100 border-success-subtle">
-            <CardBody>
-              <div className="d-flex flex-column gap-2 mb-3">
-                <h5 className="mb-0">Diario — April 23, 2026</h5>
-                <p className="text-muted mb-0">Operational diary for the Excel Loader identity alignment and the Render deploy prepared today.</p>
-              </div>
-              <div className="d-flex flex-column gap-2">
-                {DIARIO_2026_04_23.map(item => <div key={item.area} className="border rounded p-3">
-                    <div className="fw-semibold mb-1">{item.area}</div>
                     <div className="small text-muted">{item.detail}</div>
                   </div>)}
               </div>
@@ -773,30 +719,9 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
-                <Badge bg="success" className="fs-6 px-3 py-2">V23</Badge>
-                <span className="fw-semibold text-dark">Excel Loader Identity Alignment</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 23, 2026 — Latest</span>
-              </div>
-              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
-                <li>The standalone Excel Loader now preserves the stable parser-generated trip id instead of replacing it with a page-local preview row key.</li>
-                <li>This keeps the standalone loader aligned with the embedded Trip Dashboard import path so both loaders enter the merge flow with the same trip identity anchor.</li>
-                <li>The standalone loader now also refreshes the dispatch date window to the imported file range after import or day-clear actions so trips do not appear to vanish when the sync layer reloads a different server scope.</li>
-                <li>SafeRide merge now refreshes the stored import fingerprint from the newest imported row so rereading the same file does not leave stale matching keys behind.</li>
-                <li>Trip Dashboard now resets the status filter back to All after import so the screen does not remain stuck on Last Removed and hide the rest of the imported trips.</li>
-                <li>Trip Dashboard import now also clears lingering search, leg, type, service-animal, city, and ZIP filters so the imported result is not reduced to an old filtered subset.</li>
-                <li>The standalone loader now waits for dispatch persistence to finish before it refreshes the server window, preventing the import screen from snapping back to an older partial count such as 14 trips.</li>
-                <li>The SMS/Twilio patient profile rollback removed SQL persistence of sms.riderProfiles and stopped auto-saving patient name and phone into those profile records.</li>
-                <li>The selected-trip delete rollback removed the later batch delete path and routed deletes back through the original single-trip persisted SQL delete flow.</li>
-                <li>The Dispatcher all-days view now requests the full dispatch state again instead of forcing a narrow day window that could collapse the visible trip count to a small subset.</li>
-                <li>Local next build completed successfully before the Render deploy push.</li>
-              </ul>
-            </div>
-
-            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
-              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V22</Badge>
                 <span className="fw-semibold text-dark">Dispatch Date Safety + Excel Visibility + Diary Record</span>
-                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 20, 2026 — Latest</span>
               </div>
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>Fixed the wrong-day SafeRide import behavior by keeping local service-date parsing stable and aligning tomorrow generation with the operational timezone rules.</li>

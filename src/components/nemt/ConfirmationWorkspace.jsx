@@ -111,9 +111,7 @@ const RiderSignaturePreview = ({ trip }) => {
 const STATUS_VARIANTS = {
   Confirmed: 'success',
   Cancelled: 'danger',
-  'Consent Granted': 'info',
   Disconnected: 'secondary',
-  'Awaiting Consent': 'warning',
   'Needs Call': 'warning',
   Pending: 'primary',
   'Not Sent': 'secondary',
@@ -593,10 +591,6 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     const riderKey = String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, '-');
     return riderKey ? `rider:${riderKey}` : '';
   };
-  const buildPatientProfileRecord = (source, existingProfile = {}, updates = {}) => ({
-    ...existingProfile,
-    ...updates
-  });
   const getTripPatientIdentity = trip => ({
     phone: String(trip?.patientPhoneNumber || '').replace(/\D/g, ''),
     rider: String(trip?.rider || '').trim().toLowerCase().replace(/\s+/g, ' ')
@@ -1624,12 +1618,12 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     }
   };
 
-  const handleDeleteClonedTrip = async trip => {
+  const handleDeleteClonedTrip = trip => {
     if (!trip?.id) return;
     const confirmed = window.confirm(`DELETE COPY ${trip.id}\nOriginal: ${trip.clonedFromTripId || '-'}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`);
     if (!confirmed) return;
-    const deleted = await deleteTripRecord(trip.id);
-    setCustomStatus(deleted ? `Deleted cloned trip ${trip.id}.` : `Could not delete cloned trip ${trip.id} from the server.`);
+    deleteTripRecord(trip.id);
+    setCustomStatus(`Deleted cloned trip ${trip.id}.`);
   };
 
   const handleSaveHospitalRehab = async () => {
@@ -1666,7 +1660,8 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
             ...(smsData?.sms || {}),
             riderProfiles: {
               ...riderProfiles,
-              [patientKey]: buildPatientProfileRecord(hospitalRehabModal, existingProfile, {
+              [patientKey]: {
+                ...existingProfile,
                 exclusion: {
                   mode: 'range',
                   startDate: hospitalRehabStartDate,
@@ -1676,7 +1671,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                   updatedAt: nowIso
                 },
                 updatedAt: nowIso
-              })
+              }
             }
           }
         });
@@ -1765,7 +1760,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     const patientKey = buildPatientProfileKey(trip);
     if (patientKey) {
       const existingProfile = riderProfiles[patientKey] || {};
-      const nextProfile = buildPatientProfileRecord(trip, existingProfile);
+      const nextProfile = { ...existingProfile };
       delete nextProfile.exclusion;
       await saveSmsData({
         sms: {
@@ -1936,13 +1931,11 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
         ...(smsData?.sms || {}),
         riderProfiles: {
           ...riderProfiles,
-          [selectedPatientHistory.key]: buildPatientProfileRecord({
-            rider: selectedPatientHistory.rider,
-            patientPhoneNumber: selectedPatientHistory.phone
-          }, existingProfile, {
+          [selectedPatientHistory.key]: {
+            ...existingProfile,
             exclusion: nextExclusion,
             updatedAt: nowIso
-          })
+          }
         }
       }
     });
@@ -1963,10 +1956,9 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
   const handleClearPatientStatus = async () => {
     if (!selectedPatientHistory) return;
     const existingProfile = riderProfiles[selectedPatientHistory.key] || {};
-    const nextProfile = buildPatientProfileRecord({
-      rider: selectedPatientHistory.rider,
-      patientPhoneNumber: selectedPatientHistory.phone
-    }, existingProfile);
+    const nextProfile = {
+      ...existingProfile
+    };
     delete nextProfile.exclusion;
 
     await saveSmsData({
@@ -2271,12 +2263,12 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
           ...(smsData?.sms || {}),
           riderProfiles: {
             ...riderProfiles,
-            [riderProfileKey]: buildPatientProfileRecord(tripUpdateModal, riderProfiles[riderProfileKey] || {}, {
+            [riderProfileKey]: {
               companion: tripUpdateCompanionNote.trim(),
               mobility: tripUpdateMobilityNote.trim(),
               latestNote: tripUpdateNote.trim(),
               updatedAt: nowIso
-            })
+            }
           }
         }
       });
@@ -2488,7 +2480,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                       <td>
                         <div className="d-flex flex-column gap-1">
                           <Button size="sm" variant="outline-warning" onClick={() => { setShowRehabBlacklistPanel(false); handleRemoveHospitalRehab(trip); }}>Remove RH</Button>
-                          <Button size="sm" variant="outline-danger" onClick={async () => { if (window.confirm(`DELETE trip ${trip.id}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { const deleted = await deleteTripRecord(trip.id); if (!deleted) { setCustomStatus(`Could not delete trip ${trip.id} from the server.`); } } }}>Delete</Button>
+                          <Button size="sm" variant="outline-danger" onClick={() => { if (window.confirm(`DELETE trip ${trip.id}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}>Delete</Button>
                         </div>
                       </td>
                     </tr>;
@@ -2929,13 +2921,10 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                               variant={trip.clonedFromTripId ? 'danger' : 'outline-danger'}
                               title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
                               style={{ minWidth: 72 }}
-                              onClick={async () => {
+                              onClick={() => {
                                 const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
                                 if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
-                                  const deleted = await deleteTripRecord(trip.id);
-                                  if (!deleted) {
-                                    setCustomStatus(`Could not delete trip ${trip.id} from the server.`);
-                                  }
+                                  deleteTripRecord(trip.id);
                                 }
                               }}
                             >

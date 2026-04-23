@@ -1,4 +1,4 @@
-import { readIntegrationsState, writeIntegrationsState } from '@/server/integrations-store';
+import { readIntegrationsState } from '@/server/integrations-store';
 import { readBlacklistState } from '@/server/blacklist-store';
 import { readNemtDispatchState, writeNemtDispatchState } from '@/server/nemt-dispatch-store';
 import { getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
@@ -44,9 +44,6 @@ const ACTION_MAP = {
   }
 };
 
-const OPT_OUT_KEYWORDS = new Set(['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT', 'REVOKE', 'OPTOUT']);
-const OPT_IN_KEYWORDS = new Set(['YES', 'Y', 'START', 'UNSTOP', 'SUBSCRIBE']);
-
 export const SMS_PROVIDER_PORTALS = PROVIDER_PORTALS;
 const normalizePhoneNumber = (value, defaultCountryCode = '1') => {
   const digits = String(value ?? '').replace(/\D/g, '');
@@ -55,21 +52,6 @@ const normalizePhoneNumber = (value, defaultCountryCode = '1') => {
   return digits;
 };
 export const normalizeSmsPhoneNumber = normalizePhoneNumber;
-
-const normalizePersonName = value => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-
-const findConsentEntryForTrip = ({ trip, consentList, defaultCountryCode = '1' }) => {
-  const normalizedTripPhone = normalizePhoneNumber(trip?.patientPhoneNumber, defaultCountryCode);
-  const normalizedRider = normalizePersonName(trip?.rider);
-
-  return (Array.isArray(consentList) ? consentList : []).find(entry => {
-    const entryPhone = normalizePhoneNumber(entry?.phone, defaultCountryCode);
-    const entryName = normalizePersonName(entry?.name);
-    if (entryPhone && normalizedTripPhone && entryPhone === normalizedTripPhone) return true;
-    if (entryName && normalizedRider && entryName === normalizedRider) return true;
-    return false;
-  }) || null;
-};
 
 const buildConfirmationCode = () => `${Date.now().toString(36).slice(-3)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
 
@@ -313,20 +295,6 @@ const extractReplyAction = messageText => {
   return tokens.map(token => ACTION_MAP[token]).find(Boolean) ?? null;
 };
 
-const extractOptOutKeyword = messageText => {
-  const normalized = String(messageText || '').trim().toUpperCase();
-  if (!normalized) return '';
-  const tokens = normalized.split(/[^A-Z0-9]+/).filter(Boolean);
-  return tokens.find(token => OPT_OUT_KEYWORDS.has(token)) || '';
-};
-
-const extractOptInKeyword = messageText => {
-  const normalized = String(messageText || '').trim().toUpperCase();
-  if (!normalized) return '';
-  const tokens = normalized.split(/[^A-Z0-9]+/).filter(Boolean);
-  return tokens.find(token => OPT_IN_KEYWORDS.has(token)) || '';
-};
-
 const extractReplyCode = messageText => {
   const normalized = String(messageText || '').trim().toUpperCase();
   const tokens = normalized.split(/[^A-Z0-9]+/).filter(Boolean);
@@ -503,8 +471,6 @@ export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = 
 
   const updatedTrips = [...dispatchState.trips];
   const results = [];
-  const nextConsentList = Array.isArray(smsState?.consentList) ? [...smsState.consentList] : [];
-  let consentListChanged = false;
 
   for (const tripId of uniqueTripIds) {
     const tripIndex = updatedTrips.findIndex(trip => trip.id === tripId);
@@ -535,6 +501,7 @@ export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = 
       });
       updatedTrips[tripIndex] = {
         ...trip,
+        safeRideStatus: 'Do Not Confirm',
         confirmation: {
           ...trip.confirmation,
           status: 'Opted Out',
@@ -571,120 +538,6 @@ export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = 
         }
       };
       results.push({ tripId, ok: false, error: 'Trip is missing a valid patient phone number.' });
-      continue;
-    }
-
-    const consentEntry = findConsentEntryForTrip({
-      trip,
-      consentList: nextConsentList,
-      defaultCountryCode: smsState.defaultCountryCode
-    });
-
-    if (!consentEntry || consentEntry.status !== 'granted') {
-      if (consentEntry?.status === 'pending') {
-        updatedTrips[tripIndex] = {
-          ...trip,
-          confirmation: {
-            ...trip.confirmation,
-            status: 'Awaiting Consent',
-            provider: providerState.provider,
-            lastPhone: normalizedPhone,
-            lastError: ''
-          }
-        };
-        results.push({ tripId, ok: false, skipped: true, awaitingConsent: true, error: 'Patient SMS consent is still pending.' });
-        continue;
-      }
-
-      const requestedAt = new Date().toISOString();
-      const consentMessage = renderConfirmationTemplate(smsState.consentRequestTemplate, trip, '');
-
-      try {
-        const providerResult = await sendThroughProvider({
-          provider: providerState.provider,
-          settings: providerState.settings,
-          to: normalizedPhone,
-          body: consentMessage
-        });
-
-        const nextConsentEntry = {
-          id: consentEntry?.id || `${normalizedPhone}-${Date.now()}`,
-          name: trip?.rider || consentEntry?.name || '',
-          phone: normalizedPhone,
-          status: 'pending',
-          source: 'sms-consent-request',
-          lastKeyword: '',
-          createdAt: consentEntry?.createdAt || requestedAt,
-          updatedAt: requestedAt,
-          consentedAt: consentEntry?.consentedAt || '',
-          revokedAt: ''
-        };
-
-        const existingConsentIndex = nextConsentList.findIndex(entry => entry.id === nextConsentEntry.id || normalizePhoneNumber(entry?.phone, smsState.defaultCountryCode) === normalizedPhone);
-        if (existingConsentIndex >= 0) nextConsentList[existingConsentIndex] = { ...nextConsentList[existingConsentIndex], ...nextConsentEntry };
-        else nextConsentList.unshift(nextConsentEntry);
-        consentListChanged = true;
-
-        updatedTrips[tripIndex] = {
-          ...trip,
-          confirmation: {
-            ...trip.confirmation,
-            status: 'Awaiting Consent',
-            provider: providerState.provider,
-            requestId: `consent-${Date.now()}-${tripIndex + 1}`,
-            sentAt: requestedAt,
-            respondedAt: '',
-            lastMessageId: providerResult.messageId,
-            lastResponseText: '',
-            lastResponseCode: '',
-            lastPhone: normalizedPhone,
-            lastError: '',
-            lastConsentRequestedAt: requestedAt
-          }
-        };
-
-        await logSmsDelivery({
-          tripId,
-          driverId: trip?.driverId || null,
-          audience: 'patient',
-          eventType: 'consent-request',
-          provider: providerState.provider,
-          recipientPhone: normalizedPhone,
-          recipientName: trip?.rider || 'patient',
-          messageBody: consentMessage,
-          messageId: providerResult.messageId,
-          providerStatus: providerResult.providerStatus,
-          status: 'sent'
-        });
-
-        results.push({ tripId, ok: true, consentRequested: true, provider: providerState.provider, messageId: providerResult.messageId, status: providerResult.providerStatus });
-      } catch (error) {
-        updatedTrips[tripIndex] = {
-          ...trip,
-          confirmation: {
-            ...trip.confirmation,
-            status: 'Awaiting Consent',
-            provider: providerState.provider,
-            lastPhone: normalizedPhone,
-            lastError: error.message || 'Unable to send SMS consent request.'
-          }
-        };
-
-        await logSmsDelivery({
-          tripId,
-          driverId: trip?.driverId || null,
-          audience: 'patient',
-          eventType: 'consent-request',
-          provider: providerState.provider,
-          recipientPhone: normalizedPhone,
-          recipientName: trip?.rider || 'patient',
-          messageBody: consentMessage,
-          status: 'failed',
-          error: error.message || 'Unable to send SMS consent request.'
-        });
-
-        results.push({ tripId, ok: false, error: error.message || 'Unable to send SMS consent request.' });
-      }
       continue;
     }
 
@@ -773,23 +626,12 @@ export const sendTripConfirmationRequests = async ({ tripIds, selectedColumns = 
     }
   }
 
-  if (consentListChanged) {
-    await writeIntegrationsState({
-      ...integrationsState,
-      sms: {
-        ...integrationsState.sms,
-        consentList: nextConsentList
-      }
-    });
-  }
-
   await writeNemtDispatchState({
     ...dispatchState,
     trips: updatedTrips
   });
 
   return {
-    consentRequestedCount: results.filter(item => item.consentRequested).length,
     sentCount: results.filter(item => item.ok).length,
     failedCount: results.filter(item => !item.ok).length,
     skippedCount: results.filter(item => item.skipped).length,
@@ -937,178 +779,6 @@ export const sendTestSmsRequest = async ({ to, message }) => {
 };
 
 export const processInboundConfirmationReply = async ({ provider, fromPhone, messageText, providerMessageId }) => {
-  const optOutKeyword = extractOptOutKeyword(messageText);
-  const optInKeyword = extractOptInKeyword(messageText);
-  const integrationsState = await readIntegrationsState();
-  const dispatchState = await readNemtDispatchState();
-  const normalizedPhone = normalizePhoneNumber(fromPhone, integrationsState.sms.defaultCountryCode);
-
-  if (optInKeyword && normalizedPhone) {
-    const existingConsentList = Array.isArray(integrationsState?.sms?.consentList) ? integrationsState.sms.consentList : [];
-    const existingOptOutList = Array.isArray(integrationsState?.sms?.optOutList) ? integrationsState.sms.optOutList : [];
-    const respondedAt = new Date().toISOString();
-    const matchingConsent = existingConsentList.find(entry => normalizePhoneNumber(entry?.phone, integrationsState.sms.defaultCountryCode) === normalizedPhone);
-
-    const nextConsentEntry = {
-      id: matchingConsent?.id || `${normalizedPhone}-${Date.now()}`,
-      name: matchingConsent?.name || '',
-      phone: normalizedPhone,
-      status: 'granted',
-      source: 'inbound-sms',
-      lastKeyword: optInKeyword,
-      createdAt: matchingConsent?.createdAt || respondedAt,
-      updatedAt: respondedAt,
-      consentedAt: respondedAt,
-      revokedAt: ''
-    };
-
-    const nextConsentList = existingConsentList.filter(entry => normalizePhoneNumber(entry?.phone, integrationsState.sms.defaultCountryCode) !== normalizedPhone);
-    nextConsentList.unshift(nextConsentEntry);
-    const nextOptOutList = existingOptOutList.filter(entry => normalizePhoneNumber(entry?.phone, integrationsState.sms.defaultCountryCode) !== normalizedPhone);
-
-    await writeIntegrationsState({
-      ...integrationsState,
-      sms: {
-        ...integrationsState.sms,
-        consentList: nextConsentList,
-        optOutList: nextOptOutList
-      }
-    });
-
-    const nextTrips = dispatchState.trips.map(trip => {
-      const tripPhone = normalizePhoneNumber(trip?.patientPhoneNumber, integrationsState.sms.defaultCountryCode);
-      const confirmationPhone = normalizePhoneNumber(trip?.confirmation?.lastPhone, integrationsState.sms.defaultCountryCode);
-      if (tripPhone !== normalizedPhone && confirmationPhone !== normalizedPhone) return trip;
-      return {
-        ...trip,
-        confirmation: {
-          ...trip.confirmation,
-          status: trip?.confirmation?.status === 'Awaiting Consent' || trip?.confirmation?.status === 'Opted Out' ? 'Consent Granted' : trip?.confirmation?.status,
-          provider,
-          respondedAt,
-          lastMessageId: providerMessageId || trip.confirmation?.lastMessageId || '',
-          lastResponseText: String(messageText || ''),
-          lastResponseCode: optInKeyword,
-          lastPhone: normalizedPhone,
-          lastError: ''
-        }
-      };
-    });
-
-    await writeNemtDispatchState({
-      ...dispatchState,
-      trips: nextTrips
-    });
-
-    await logSmsDelivery({
-      tripId: null,
-      driverId: null,
-      audience: 'patient',
-      eventType: 'opt-in',
-      provider,
-      recipientPhone: normalizedPhone,
-      recipientName: 'patient',
-      messageBody: String(messageText || ''),
-      messageId: providerMessageId,
-      status: 'received',
-      metadata: { keyword: optInKeyword }
-    });
-
-    return {
-      updated: true,
-      confirmationStatus: 'Consent Granted',
-      patientPhone: normalizedPhone,
-      replyMessage: 'SMS consent received. Future trip confirmations can be sent by text.'
-    };
-  }
-
-  if (optOutKeyword) {
-    const existingOptOutList = Array.isArray(integrationsState?.sms?.optOutList) ? integrationsState.sms.optOutList : [];
-    const existingConsentList = Array.isArray(integrationsState?.sms?.consentList) ? integrationsState.sms.consentList : [];
-    const hasExistingEntry = existingOptOutList.some(entry => normalizePhoneNumber(entry?.phone, integrationsState.sms.defaultCountryCode) === normalizedPhone);
-    const respondedAt = new Date().toISOString();
-
-    const matchingConsent = existingConsentList.find(entry => normalizePhoneNumber(entry?.phone, integrationsState.sms.defaultCountryCode) === normalizedPhone);
-    const nextConsentList = normalizedPhone ? [
-      {
-        id: matchingConsent?.id || `${normalizedPhone}-${Date.now()}`,
-        name: matchingConsent?.name || '',
-        phone: normalizedPhone,
-        status: 'revoked',
-        source: 'inbound-sms',
-        lastKeyword: optOutKeyword,
-        createdAt: matchingConsent?.createdAt || respondedAt,
-        updatedAt: respondedAt,
-        consentedAt: matchingConsent?.consentedAt || '',
-        revokedAt: respondedAt
-      },
-      ...existingConsentList.filter(entry => normalizePhoneNumber(entry?.phone, integrationsState.sms.defaultCountryCode) !== normalizedPhone)
-    ] : existingConsentList;
-
-    const nextOptOutList = !hasExistingEntry && normalizedPhone ? [{
-      id: `${normalizedPhone}-${Date.now()}`,
-      name: '',
-      phone: normalizedPhone,
-      reason: `Inbound ${optOutKeyword} reply`,
-      createdAt: respondedAt
-    }, ...existingOptOutList] : existingOptOutList;
-
-    await writeIntegrationsState({
-      ...integrationsState,
-      sms: {
-        ...integrationsState.sms,
-        consentList: nextConsentList,
-        optOutList: nextOptOutList
-      }
-    });
-
-    const nextTrips = dispatchState.trips.map(trip => {
-      const tripPhone = normalizePhoneNumber(trip?.patientPhoneNumber, integrationsState.sms.defaultCountryCode);
-      const confirmationPhone = normalizePhoneNumber(trip?.confirmation?.lastPhone, integrationsState.sms.defaultCountryCode);
-      if (!normalizedPhone || (tripPhone !== normalizedPhone && confirmationPhone !== normalizedPhone)) return trip;
-      return {
-        ...trip,
-        confirmation: {
-          ...trip.confirmation,
-          status: 'Opted Out',
-          provider,
-          respondedAt,
-          lastMessageId: providerMessageId || trip.confirmation?.lastMessageId || '',
-          lastResponseText: String(messageText || ''),
-          lastResponseCode: optOutKeyword,
-          lastPhone: normalizedPhone,
-          lastError: ''
-        }
-      };
-    });
-
-    await writeNemtDispatchState({
-      ...dispatchState,
-      trips: nextTrips
-    });
-
-    await logSmsDelivery({
-      tripId: null,
-      driverId: null,
-      audience: 'patient',
-      eventType: 'opt-out',
-      provider,
-      recipientPhone: normalizedPhone || String(fromPhone || ''),
-      recipientName: 'patient',
-      messageBody: String(messageText || ''),
-      messageId: providerMessageId,
-      status: 'received',
-      metadata: { keyword: optOutKeyword }
-    });
-
-    return {
-      updated: true,
-      confirmationStatus: 'Opted Out',
-      patientPhone: normalizedPhone,
-      replyMessage: ''
-    };
-  }
-
   const action = extractReplyAction(messageText);
   if (!action) {
     return {
@@ -1116,6 +786,10 @@ export const processInboundConfirmationReply = async ({ provider, fromPhone, mes
       reason: 'No confirmation action found in inbound message.'
     };
   }
+
+  const integrationsState = await readIntegrationsState();
+  const dispatchState = await readNemtDispatchState();
+  const normalizedPhone = normalizePhoneNumber(fromPhone, integrationsState.sms.defaultCountryCode);
   const code = extractReplyCode(messageText);
   const pendingTrips = dispatchState.trips.filter(trip => {
     const confirmation = trip.confirmation || {};

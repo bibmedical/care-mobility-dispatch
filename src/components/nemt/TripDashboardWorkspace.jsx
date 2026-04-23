@@ -15,7 +15,7 @@ import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
-import { getMapTileConfig } from '@/utils/map-tiles';
+import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
@@ -285,37 +285,6 @@ const getSiblingLegTrips = (targetTrip, allTrips = []) => {
   const pairKey = getTripPairKey(targetTrip);
   if (!pairKey) return [];
   return (Array.isArray(allTrips) ? allTrips : []).filter(item => String(item?.id) !== String(targetTrip?.id) && getTripPairKey(item) === pairKey);
-};
-
-const getImportedDateFilterValue = serviceDateKeys => {
-  const normalizedDateKeys = Array.from(new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean)));
-  if (normalizedDateKeys.length === 1) return normalizedDateKeys[0];
-  if (normalizedDateKeys.length > 1) return 'all';
-  return '';
-};
-
-const resetImportedTripViewFilters = ({
-  setTripStatusFilter,
-  setTripIdSearch,
-  setTripLegFilter,
-  setTripTypeFilter,
-  setServiceAnimalOnly,
-  setPickupZipFilter,
-  setDropoffZipFilter,
-  setZipFilter,
-  setPuCityFilter,
-  setDoCityFilter
-}) => {
-  setTripStatusFilter('all');
-  setTripIdSearch('');
-  setTripLegFilter('all');
-  setTripTypeFilter('all');
-  setServiceAnimalOnly(false);
-  setPickupZipFilter('');
-  setDropoffZipFilter('');
-  setZipFilter('');
-  setPuCityFilter('');
-  setDoCityFilter('');
 };
 
 const normalizeSignaturePayload = value => {
@@ -720,7 +689,6 @@ const formatAiPlannerRoutePairLabel = pairKey => {
   return `${pickupCity || '?'} -> ${dropoffCity || '?'}`;
 };
 const normalizeTripId = tripId => String(tripId || '').trim();
-const normalizeRouteText = value => String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 const invertDashboardTripDirection = trip => ({
   address: String(trip?.destination || '').trim(),
   destination: String(trip?.address || '').trim(),
@@ -1185,7 +1153,6 @@ const TripDashboardWorkspace = () => {
     unassignTrips,
     upsertImportedTrips,
     previewImportedTripRoutingChanges,
-    previewMissingSafeRideTrips,
     cancelTrips,
     reinstateTrips,
     createRoute,
@@ -1289,11 +1256,14 @@ const TripDashboardWorkspace = () => {
         return;
       }
 
-      const targetTrips = filteredTrips.filter(trip => liveTripAutoRepairTargetIds.has(normalizeTripId(trip?.id)));
+      const targetTripIds = new Set();
+      liveTripAutoRepairableFindings.forEach(finding => {
+        finding.tripIds.slice(1).forEach(tripId => targetTripIds.add(normalizeTripId(tripId)));
+      });
+
+      const targetTrips = filteredTrips.filter(trip => targetTripIds.has(normalizeTripId(trip?.id)));
       if (targetTrips.length === 0) {
-        const message = 'Scanner found repeated-direction warnings, but none were simple two-leg return pairs safe for auto-repair. Review them manually.';
-        setStatusMessage(message);
-        showNotification({ message, variant: 'warning' });
+        showNotification({ message: 'Scanner found issues, but the target trips were not available for repair in the current visible list.', variant: 'warning' });
         return;
       }
 
@@ -1561,7 +1531,6 @@ const TripDashboardWorkspace = () => {
     }
 
     const routingChanges = previewImportedTripRoutingChanges(importPendingTrips);
-    const missingTrips = previewMissingSafeRideTrips(importPendingTrips);
     let applyRoutingChanges = true;
     if (routingChanges.length > 0) {
       const previewLines = routingChanges.slice(0, 5).map(change => `${change.rider || change.rideId || change.brokerTripId || change.id}: ${change.currentAddress || '-'} -> ${change.importedAddress || '-'} | ${change.currentDestination || '-'} -> ${change.importedDestination || '-'}`).join('\n');
@@ -1571,33 +1540,14 @@ const TripDashboardWorkspace = () => {
     upsertImportedTrips(importPendingTrips, {
       applyRoutingChanges
     });
-    const importedDateFilterValue = getImportedDateFilterValue(importedServiceDateKeys);
-    if (importedDateFilterValue) {
-      setTripDateFilter(importedDateFilterValue);
-      setSelectedRouteId(null);
-    }
-    resetImportedTripViewFilters({
-      setTripStatusFilter,
-      setTripIdSearch,
-      setTripLegFilter,
-      setTripTypeFilter,
-      setServiceAnimalOnly,
-      setPickupZipFilter,
-      setDropoffZipFilter,
-      setZipFilter,
-      setPuCityFilter,
-      setDoCityFilter
-    });
     setShowTripImportModal(false);
     const importMessage = routingChanges.length > 0
       ? applyRoutingChanges
         ? `${importPendingTrips.length} trip(s) imported into Trip Dashboard. ${routingChanges.length} route change(s) were applied.`
         : `${importPendingTrips.length} trip(s) imported into Trip Dashboard. ${routingChanges.length} route change(s) were kept as warning only and current addresses stayed in place. Use the Address Review filter to see them later.`
       : `${importPendingTrips.length} trip(s) imported into Trip Dashboard.`;
-    const missingSuffix = missingTrips.length > 0 ? ` ${missingTrips.length} trip(s) were not present in the latest Excel and were kept in dispatch as Removed Since Last Load warnings.` : '';
-    const finalImportMessage = `${importMessage}${missingSuffix}`;
-    setStatusMessage(finalImportMessage);
-    showNotification({ message: finalImportMessage, variant: missingTrips.length > 0 || routingChanges.length > 0 && !applyRoutingChanges ? 'warning' : 'success' });
+    setStatusMessage(importMessage);
+    showNotification({ message: importMessage, variant: routingChanges.length > 0 && !applyRoutingChanges ? 'warning' : 'success' });
     setImportPendingTrips([]);
     setImportedServiceDateKeys([]);
     setSelectedImportFileName('');
@@ -1606,7 +1556,6 @@ const TripDashboardWorkspace = () => {
   };
 
   const importedRouteDriverSummary = useMemo(() => getImportedRouteDriverGroups(importPendingTrips), [importPendingTrips]);
-  const importMissingTrips = useMemo(() => previewMissingSafeRideTrips(importPendingTrips), [importPendingTrips, previewMissingSafeRideTrips]);
 
   useEffect(() => {
     if (importedRouteDriverSummary.usableGroups.length === 0) {
@@ -1768,7 +1717,6 @@ const TripDashboardWorkspace = () => {
       const routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers, effectiveAssignments);
 
       const routingChanges = previewImportedTripRoutingChanges(importPendingTrips);
-      const missingTrips = previewMissingSafeRideTrips(importPendingTrips);
       let applyRoutingChanges = true;
       if (routingChanges.length > 0) {
         const previewLines = routingChanges.slice(0, 5).map(change => `${change.rider || change.rideId || change.brokerTripId || change.id}: ${change.currentAddress || '-'} -> ${change.importedAddress || '-'} | ${change.currentDestination || '-'} -> ${change.importedDestination || '-'}`).join('\n');
@@ -1778,35 +1726,18 @@ const TripDashboardWorkspace = () => {
       upsertImportedTrips(importPendingTrips, {
         applyRoutingChanges
       });
-      const importedDateFilterValue = getImportedDateFilterValue(importedServiceDateKeys);
-      if (importedDateFilterValue) {
-        setTripDateFilter(importedDateFilterValue);
-        setSelectedRouteId(null);
-      }
-      resetImportedTripViewFilters({
-        setTripStatusFilter,
-        setTripIdSearch,
-        setTripLegFilter,
-        setTripTypeFilter,
-        setServiceAnimalOnly,
-        setPickupZipFilter,
-        setDropoffZipFilter,
-        setZipFilter,
-        setPuCityFilter,
-        setDoCityFilter
-      });
 
       if (routePlan.routeSpecs.length > 0) {
         setPendingRouteImportPlan(routePlan.routeSpecs);
         if (routePlan.missingDriverNames.length > 0) {
-          const message = `${routePlan.matchedTripCount} trip(s) imported. Some routes were left unassigned because these driver names did not match: ${routePlan.missingDriverNames.join(', ')}${missingTrips.length > 0 ? ` ${missingTrips.length} trip(s) were not in the latest Excel and stayed assigned as Removed Since Last Load warnings.` : ''}`;
+          const message = `${routePlan.matchedTripCount} trip(s) imported. Some routes were left unassigned because these driver names did not match: ${routePlan.missingDriverNames.join(', ')}`;
           setStatusMessage(message);
           showNotification({ message, variant: 'warning' });
         }
       } else {
         const message = routePlan.missingDriverNames.length > 0
-          ? `Trips were imported, but these route names still need a driver match: ${routePlan.missingDriverNames.join(', ')}${missingTrips.length > 0 ? ` ${missingTrips.length} trip(s) were not in the latest Excel and stayed assigned as Removed Since Last Load warnings.` : ''}`
-          : `Trips were imported, but the file did not contain usable driver names for route loading.${missingTrips.length > 0 ? ` ${missingTrips.length} trip(s) were not in the latest Excel and stayed assigned as Removed Since Last Load warnings.` : ''}`;
+          ? `Trips were imported, but these route names still need a driver match: ${routePlan.missingDriverNames.join(', ')}`
+          : 'Trips were imported, but the file did not contain usable driver names for route loading.';
         setStatusMessage(message);
         showNotification({ message, variant: 'warning' });
       }
@@ -2471,8 +2402,6 @@ const TripDashboardWorkspace = () => {
 
   const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
       <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={handleToggleConfirmationTools}>Confirmation</Button>
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 122, fontWeight: 600 }} onClick={() => router.push('/confirmation')}>Open Confirmation</Button>
-      <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 58, fontWeight: 600 }} onClick={() => router.push('/integrations/sms')}>SMS</Button>
       {showConfirmationTools ? <Button variant="light" size="sm" onClick={() => {
       const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
       handleOpenConfirmationMethod(selectedTripsForConfirmation);
@@ -2501,16 +2430,12 @@ const TripDashboardWorkspace = () => {
       style={{ width: 190 }}
     />;
 
-  const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <div className="d-flex align-items-center gap-1 flex-nowrap">
-      <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button>
-      <Button variant="danger" size="sm" onClick={handleDeleteSelectedTrips} title="Delete selected trips">Del</Button>
-    </div> : <div className="d-flex align-items-center gap-1 flex-nowrap">
+  const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <div className="d-flex align-items-center gap-1 flex-nowrap">
       <Button variant="success" size="sm" onClick={() => setShowManualTripModal(true)} title="Create manual trip">+Trip</Button>
       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
       <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
       <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
-      <Button variant="outline-danger" size="sm" onClick={handleDeleteSelectedTrips} title="Delete selected trips">Del</Button>
     </div>;
 
   const renderLegButtonsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
@@ -2863,8 +2788,13 @@ const TripDashboardWorkspace = () => {
     return tripMatchesCity(trip, dropoffCityValue);
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
   const removedSinceLastLoadScopeCount = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(trip => Boolean(trip?.missingFromLatestSafeRideImport)).length, [matchesTripDateFilter, scanAnnotatedTrips, tripDateFilter, routePlans, trips]);
-  const liveScanScopeTrips = useMemo(() => filteredTrips.filter(trip => !trip?.missingFromLatestSafeRideImport), [filteredTrips]);
-  const liveRemovedSinceLastLoadTrips = useMemo(() => filteredTrips.filter(trip => Boolean(trip?.missingFromLatestSafeRideImport)), [filteredTrips]);
+  const liveScanScopeTrips = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(matchesTripLegFilter).filter(matchesTripTypeFilter).filter(matchesTripServiceAnimalFilter).filter(matchesTripSearchFilter).filter(matchesPickupZipFilter).filter(matchesDropoffZipFilter).filter(matchesAnyZipFilter).filter(trip => {
+    const pickupCityValue = puCityFilter.trim().toLowerCase();
+    return tripMatchesCity(trip, pickupCityValue);
+  }).filter(trip => {
+    const dropoffCityValue = doCityFilter.trim().toLowerCase();
+    return tripMatchesCity(trip, dropoffCityValue);
+  }), [doCityFilter, matchesAnyZipFilter, matchesPickupZipFilter, matchesDropoffZipFilter, matchesTripDateFilter, matchesTripLegFilter, matchesTripSearchFilter, matchesTripServiceAnimalFilter, matchesTripTypeFilter, puCityFilter, scanAnnotatedTrips]);
   const visibleFilteredTripIdSet = useMemo(() => new Set(filteredTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean)), [filteredTrips]);
   const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanScopeTrips).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanScopeTrips]);
   const liveTripScan = useMemo(() => {
@@ -2923,44 +2853,7 @@ const TripDashboardWorkspace = () => {
       return left.rider.localeCompare(right.rider);
     });
   }, [liveTripScan]);
-  const liveRemovedTripAttentionGroups = useMemo(() => liveRemovedSinceLastLoadTrips.map(trip => ({
-    rider: String(trip?.rider || trip?.patientName || trip?.id || 'Trip').trim(),
-    tripId: String(trip?.id || '').trim()
-  })).filter(group => group.tripId).sort((left, right) => left.rider.localeCompare(right.rider)), [liveRemovedSinceLastLoadTrips]);
   const liveTripAutoRepairableFindings = useMemo(() => (liveTripScan?.findings || []).filter(finding => finding.code === 'same-direction-repeated' && Array.isArray(finding.tripIds) && finding.tripIds.length === 2), [liveTripScan]);
-  const liveTripAutoRepairTargetIds = useMemo(() => {
-    const targetTripIds = new Set();
-
-    liveTripAutoRepairableFindings.forEach(finding => {
-      const orderedTrips = (Array.isArray(finding?.tripIds) ? finding.tripIds : [])
-        .map(tripId => filteredTrips.find(trip => normalizeTripId(trip?.id) === normalizeTripId(tripId)))
-        .filter(Boolean)
-        .sort((leftTrip, rightTrip) => {
-          const leftSortValue = Number.isFinite(Number(leftTrip?.pickupSortValue)) ? Number(leftTrip.pickupSortValue) : Number.MAX_SAFE_INTEGER;
-          const rightSortValue = Number.isFinite(Number(rightTrip?.pickupSortValue)) ? Number(rightTrip.pickupSortValue) : Number.MAX_SAFE_INTEGER;
-          if (leftSortValue !== rightSortValue) return leftSortValue - rightSortValue;
-          return normalizeTripId(leftTrip?.id).localeCompare(normalizeTripId(rightTrip?.id));
-        });
-
-      if (orderedTrips.length !== 2) return;
-
-      const firstTrip = orderedTrips[0];
-      const secondTrip = orderedTrips[1];
-      const firstAddress = normalizeRouteText(firstTrip?.address);
-      const firstDestination = normalizeRouteText(firstTrip?.destination);
-      const secondAddress = normalizeRouteText(secondTrip?.address);
-      const secondDestination = normalizeRouteText(secondTrip?.destination);
-
-      if (!firstAddress || !firstDestination || !secondAddress || !secondDestination) return;
-      if (firstAddress !== secondAddress || firstDestination !== secondDestination) return;
-      if (getTripLegFilterKey(secondTrip) === 'AL') return;
-
-      const tripId = normalizeTripId(secondTrip?.id);
-      if (tripId) targetTripIds.add(tripId);
-    });
-
-    return targetTripIds;
-  }, [filteredTrips, liveTripAutoRepairableFindings]);
   const assignmentProgressTrips = useMemo(() => trips.filter(trip => {
     const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
     const profilePhoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
@@ -4022,22 +3915,13 @@ const TripDashboardWorkspace = () => {
     setStatusMessage(`Trip ${getDisplayTripId(trip)} cloned as ${clonedTripId}.`);
   };
 
-  const handleDeleteTrip = async (trip, options = {}) => {
+  const handleDeleteTrip = trip => {
     if (!trip?.id) return;
-    const skipConfirm = options?.skipConfirm === true;
-    const suppressSuccessFeedback = options?.suppressSuccessFeedback === true;
     const tripLabel = getDisplayTripId(trip);
-    if (!skipConfirm) {
-      const confirmed = window.confirm(`Delete trip ${tripLabel}? This will remove it from the dashboard and any route that contains it.`);
-      if (!confirmed) return false;
-    }
+    const confirmed = window.confirm(`Delete trip ${tripLabel}? This will remove it from the dashboard and any route that contains it.`);
+    if (!confirmed) return;
 
-    const deleted = await deleteTripRecord(trip.id);
-    if (!deleted) {
-      setStatusMessage(`Trip ${tripLabel} could not be deleted from the server.`);
-      showNotification({ message: `Trip ${tripLabel} could not be deleted from the server.`, variant: 'danger' });
-      return false;
-    }
+    deleteTripRecord(trip.id);
 
     if (noteModalTripId === trip.id) {
       handleCloseTripNote();
@@ -4048,11 +3932,8 @@ const TripDashboardWorkspace = () => {
     }
 
     setSelectedRouteId(null);
-    if (!suppressSuccessFeedback) {
-      setStatusMessage(`Trip ${tripLabel} deleted.`);
-      showNotification({ message: `Trip ${tripLabel} deleted.`, variant: 'success' });
-    }
-    return true;
+    setStatusMessage(`Trip ${tripLabel} deleted.`);
+    showNotification({ message: `Trip ${tripLabel} deleted.`, variant: 'success' });
   };
 
   const isInlineTripCellEditing = (tripId, columnKey) => inlineTripEditCell?.tripId === tripId && inlineTripEditCell?.columnKey === columnKey;
@@ -4409,51 +4290,6 @@ const TripDashboardWorkspace = () => {
     }
 
     openCancelModalForTrips(targetTripIds);
-  };
-
-  const handleDeleteSelectedTrips = async () => {
-    const targetTrips = selectedTrips;
-    if (targetTrips.length === 0) {
-      setStatusMessage('Select at least one trip to delete.');
-      return;
-    }
-
-    const tripPreview = targetTrips.slice(0, 5).map(trip => getDisplayTripId(trip)).filter(Boolean).join(', ');
-    const confirmed = window.confirm(`Delete ${targetTrips.length} selected trip(s)? This will remove them from the dashboard and any route that contains them.\n\n${tripPreview}${targetTrips.length > 5 ? ', ...' : ''}`);
-    if (!confirmed) return;
-
-    let deletedCount = 0;
-    for (const trip of targetTrips) {
-      // Keep selected deletes on the original single-trip path so SQL prune logic stays simple.
-      // eslint-disable-next-line no-await-in-loop
-      const deleted = await handleDeleteTrip(trip, {
-        skipConfirm: true,
-        suppressSuccessFeedback: true
-      });
-      if (deleted) deletedCount += 1;
-    }
-
-    if (deletedCount === 0) {
-      setStatusMessage('Selected trips could not be deleted from the server.');
-      showNotification({ message: 'Selected trips could not be deleted from the server.', variant: 'danger' });
-      return;
-    }
-
-    if (noteModalTripId && targetTrips.some(trip => trip.id === noteModalTripId)) {
-      handleCloseTripNote();
-    }
-
-    if (tripExcelCompareModalId && targetTrips.some(trip => trip.id === tripExcelCompareModalId)) {
-      handleCloseTripExcelCompare();
-    }
-
-    setSelectedRouteId(null);
-    setSelectedTripIds([]);
-    const statusMessage = deletedCount === targetTrips.length
-      ? `${deletedCount} trip(s) deleted.`
-      : `${deletedCount} of ${targetTrips.length} trip(s) deleted. The rest stayed because the server did not confirm the delete.`;
-    setStatusMessage(statusMessage);
-    showNotification({ message: statusMessage, variant: deletedCount === targetTrips.length ? 'success' : 'warning' });
   };
 
   const handleReinstateTrip = tripId => {
@@ -5873,6 +5709,7 @@ const TripDashboardWorkspace = () => {
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
+                    <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)}>Panels anchored</Button>
                 </>
@@ -6421,28 +6258,6 @@ const TripDashboardWorkspace = () => {
                       <div className="small" style={{ color: 'rgba(255, 255, 255, 0.92)', maxWidth: 760 }}>
                         You can open Excel Loader with scanner here. Nothing enters the tree until you press Import Trips or Load Route.
                       </div>
-                      {liveRemovedTripAttentionGroups.length > 0 ? <div className="small rounded-3 px-3 py-2" style={{
-                      backgroundColor: 'rgba(245, 158, 11, 0.18)',
-                      border: '1px solid rgba(245, 158, 11, 0.35)',
-                      color: '#ffffff',
-                      maxWidth: 760
-                    }}>
-                          <div className="fw-semibold mb-1">Removed Since Last Load: {liveRemovedTripAttentionGroups.length}</div>
-                          <div className="mb-2" style={{ color: 'rgba(255, 255, 255, 0.92)' }}>
-                            These trips were not present in the latest Excel. They stay in dispatch, and trips already assigned to a driver stay assigned. The live scanner flags them only and does not auto-repair them.
-                          </div>
-                          <div className="d-flex flex-wrap gap-2">
-                            {liveRemovedTripAttentionGroups.slice(0, 10).map(group => <Button
-                                key={`live-removed-${group.tripId}`}
-                                variant="warning"
-                                size="sm"
-                                onClick={() => handleFocusLiveScanTrip(group.tripId, group.rider)}
-                              >
-                                {group.rider}
-                              </Button>)}
-                          </div>
-                          {liveRemovedTripAttentionGroups.length > 10 ? <div className="mt-2" style={{ color: 'rgba(255, 255, 255, 0.92)' }}>Showing the first 10 riders.</div> : null}
-                        </div> : null}
                       {liveTripScanAttentionGroups.length > 0 ? <div className="d-flex flex-wrap gap-2">
                           {liveTripScanAttentionGroups.map(group => <Button
                               key={`live-scan-${group.rider}-${group.tripId}`}
@@ -6696,14 +6511,6 @@ const TripDashboardWorkspace = () => {
             <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
             <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
             <div className="small text-muted mb-3">{importPendingTrips.length > 0 ? `${importPendingTrips.length} trip(s) ready to import.` : 'Choose an import file to load trips here.'}</div>
-            {importMissingTrips.length > 0 ? <Alert variant="warning" className="mb-3">
-                <div className="fw-semibold mb-1">Trips missing from this Excel</div>
-                <div className="small mb-2">{importMissingTrips.length} current trip(s) do not appear in this file. They will stay in dispatch, and trips already assigned to a driver will remain assigned. They will only be flagged as <strong>Removed Since Last Load</strong>.</div>
-                <div className="small text-muted">
-                  {importMissingTrips.slice(0, 6).map(trip => trip.rider || trip.patientName || trip.brokerTripId || trip.id).filter(Boolean).join(', ')}
-                  {importMissingTrips.length > 6 ? ' ...' : ''}
-                </div>
-              </Alert> : null}
             {importRoutingChanges.length > 0 ? <Alert variant="warning" className="mb-3">
                 <div className="fw-semibold mb-1">Address changes found</div>
                 <div className="small mb-2">{importRoutingChanges.length} trip(s) in this file do not match the current system address.</div>

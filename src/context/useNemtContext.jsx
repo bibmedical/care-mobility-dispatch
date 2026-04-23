@@ -3,6 +3,7 @@
 import { buildTripProviderSnapshot, getLocalDateKey, getTripServiceDateKey, normalizeDailyDriverRecord, normalizeDispatchAuditRecord, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizeDispatcherVisibleTripColumns, normalizeMapProviderPreference, normalizeNemtUiPreferences, normalizePersistentDispatchState, normalizeRoutePlanRecord, normalizeTripRecord, normalizeTripRecords } from '@/helpers/nemt-dispatch-state';
 import { normalizePrintSetup } from '@/helpers/nemt-print-setup';
 import { normalizeUserPreferences } from '@/helpers/user-preferences';
+import { hasMapboxConfigured } from '@/utils/map-tiles';
 import { useSession } from 'next-auth/react';
 import { createContext, startTransition, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -100,15 +101,6 @@ const getTripDeletionSuppressionKeys = trip => {
   return Array.from(new Set(keys.filter(Boolean)));
 };
 
-const getTripReimportSuppressionKeys = trip => {
-  const baseKeys = [
-    ...getTripDeletionSuppressionKeys(trip),
-    ...getTripImportMatchKeys(trip)
-  ];
-
-  return Array.from(new Set(baseKeys.filter(Boolean)));
-};
-
 const getDeletedTripSuppressionKeySet = auditLog => {
   const suppressionKeys = new Set();
 
@@ -137,7 +129,7 @@ const filterTripsByDeletionSuppression = (trips, suppressionKeySet) => {
   }
 
   return (Array.isArray(trips) ? trips : []).filter(trip => {
-    return !getTripReimportSuppressionKeys(trip).some(key => suppressionKeySet.has(String(key || '').trim().toLowerCase()));
+    return !getTripDeletionSuppressionKeys(trip).some(key => suppressionKeySet.has(String(key || '').trim().toLowerCase()));
   });
 };
 
@@ -233,22 +225,6 @@ const isSafeRideManagedTrip = trip => {
 };
 
 const getSafeRideImportScopedDateKeys = trips => new Set((Array.isArray(trips) ? trips : []).map(trip => String(getTripServiceDateKey(trip) || '').trim()).filter(Boolean));
-
-const getImportDeletionSuppressionKeySet = (currentState, importedTrips) => {
-  const suppressionKeys = getDeletedTripSuppressionKeySet(currentState?.auditLog);
-  if (suppressionKeys.size === 0) return suppressionKeys;
-
-  const scopedDateKeys = getSafeRideImportScopedDateKeys(importedTrips);
-  if (scopedDateKeys.size === 0) return suppressionKeys;
-
-  const hasActiveSafeRideTripsOnImportedDates = (Array.isArray(currentState?.trips) ? currentState.trips : []).some(trip => {
-    if (!isSafeRideManagedTrip(trip)) return false;
-    const serviceDateKey = String(getTripServiceDateKey(trip) || '').trim();
-    return scopedDateKeys.has(serviceDateKey);
-  });
-
-  return hasActiveSafeRideTripsOnImportedDates ? suppressionKeys : new Set();
-};
 
 const getSafeRideImportLookupKeySet = trips => {
   const lookupKeys = new Set();
@@ -389,7 +365,7 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip, importMetadata 
     ...currentTrip,
     ...importedTrip,
     id: String(currentTrip?.id || importedTrip?.id || '').trim(),
-    importFingerprint: String(importedTrip?.importFingerprint || currentTrip?.importFingerprint || '').trim(),
+    importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
     driverId: shouldAutoCancel ? null : currentTrip?.driverId ?? null,
     secondaryDriverId: shouldAutoCancel ? null : currentTrip?.secondaryDriverId ?? null,
     routeId: shouldAutoCancel ? null : currentTrip?.routeId ?? null,
@@ -648,13 +624,6 @@ export const NemtProvider = ({
   const pendingAllowTripShrinkRef = useRef(false);
   const allowTripShrinkReasonNextPersistRef = useRef('');
   const pendingAllowTripShrinkReasonRef = useRef('');
-  const allowTripShrinkDateKeyNextPersistRef = useRef('');
-  const allowTripShrinkPastDaysNextPersistRef = useRef(null);
-  const allowTripShrinkFutureDaysNextPersistRef = useRef(null);
-  const pendingAllowTripShrinkDateKeyRef = useRef('');
-  const pendingAllowTripShrinkPastDaysRef = useRef(null);
-  const pendingAllowTripShrinkFutureDaysRef = useRef(null);
-  const dispatchIncludePastDatesRef = useRef(false);
   const dispatchQueryDateKeyRef = useRef('');
   const dispatchWindowPastDaysRef = useRef(1);
   const dispatchWindowFutureDaysRef = useRef(1);
@@ -830,33 +799,20 @@ export const NemtProvider = ({
   };
 
   const flushPersistQueue = async () => {
-    if (persistInFlightRef.current) {
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        await new Promise(resolve => {
-          window.setTimeout(resolve, 25);
-        });
-
-        if (!persistInFlightRef.current) break;
-      }
-    }
-
-    if (persistInFlightRef.current) return false;
+    if (persistInFlightRef.current) return;
     const nextSnapshot = pendingPersistSnapshotRef.current;
-    if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return true;
+    if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return;
     const allowTripShrink = pendingAllowTripShrinkRef.current;
     const allowTripShrinkReason = pendingAllowTripShrinkReasonRef.current;
     const actorName = String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim();
-    const pruneDateKey = String((pendingAllowTripShrinkDateKeyRef.current || dispatchQueryDateKeyRef.current) || '').trim();
-    const pruneWindowPastDays = String(Math.max(Number(pendingAllowTripShrinkPastDaysRef.current ?? dispatchWindowPastDaysRef.current) || 0, 0));
-    const pruneWindowFutureDays = String(Math.max(Number(pendingAllowTripShrinkFutureDaysRef.current ?? dispatchWindowFutureDaysRef.current) || 0, 0));
+    const pruneDateKey = String(dispatchQueryDateKeyRef.current || '').trim();
+    const pruneWindowPastDays = String(Math.max(Number(dispatchWindowPastDaysRef.current) || 0, 0));
+    const pruneWindowFutureDays = String(Math.max(Number(dispatchWindowFutureDaysRef.current) || 0, 0));
 
     persistInFlightRef.current = true;
     pendingPersistSnapshotRef.current = '';
     pendingAllowTripShrinkRef.current = false;
     pendingAllowTripShrinkReasonRef.current = '';
-    pendingAllowTripShrinkDateKeyRef.current = '';
-    pendingAllowTripShrinkPastDaysRef.current = null;
-    pendingAllowTripShrinkFutureDaysRef.current = null;
 
     try {
       const response = await fetch('/api/nemt/dispatch', {
@@ -875,26 +831,17 @@ export const NemtProvider = ({
       if (response.ok) {
         lastPersistedSnapshotRef.current = nextSnapshot;
         hasLocalDispatchChangesRef.current = false;
-        return true;
       } else {
         // Keep failed snapshots queued so trip updates are not lost on transient server errors.
         pendingPersistSnapshotRef.current = nextSnapshot;
         pendingAllowTripShrinkRef.current = allowTripShrink;
         pendingAllowTripShrinkReasonRef.current = allowTripShrinkReason;
-        pendingAllowTripShrinkDateKeyRef.current = pruneDateKey;
-        pendingAllowTripShrinkPastDaysRef.current = Number(pruneWindowPastDays);
-        pendingAllowTripShrinkFutureDaysRef.current = Number(pruneWindowFutureDays);
-        return false;
       }
     } catch {
       // Keep failed snapshots queued so trip updates are not lost on transient network issues.
       pendingPersistSnapshotRef.current = nextSnapshot;
       pendingAllowTripShrinkRef.current = allowTripShrink;
       pendingAllowTripShrinkReasonRef.current = allowTripShrinkReason;
-      pendingAllowTripShrinkDateKeyRef.current = pruneDateKey;
-      pendingAllowTripShrinkPastDaysRef.current = Number(pruneWindowPastDays);
-      pendingAllowTripShrinkFutureDaysRef.current = Number(pruneWindowFutureDays);
-      return false;
     } finally {
       persistInFlightRef.current = false;
       if (pendingPersistSnapshotRef.current && pendingPersistSnapshotRef.current !== lastPersistedSnapshotRef.current) {
@@ -940,22 +887,16 @@ export const NemtProvider = ({
 
   const syncDispatchFromServer = async (options = {}) => {
     const forceServer = options.forceServer ?? false;
-    const includePastDates = options?.includePastDates === true || options?.includePastDates === false
-      ? options.includePastDates === true
-      : dispatchIncludePastDatesRef.current;
     const nextDateKey = String(options?.dateKey || dispatchQueryDateKeyRef.current || '').trim();
     const nextWindowPastDays = Math.max(Number(options?.windowPastDays ?? dispatchWindowPastDaysRef.current) || 0, 0);
     const nextWindowFutureDays = Math.max(Number(options?.windowFutureDays ?? dispatchWindowFutureDaysRef.current) || 0, 0);
-    const previousIncludePastDates = dispatchIncludePastDatesRef.current;
     const previousDateKey = String(dispatchQueryDateKeyRef.current || '').trim();
     const previousWindowPastDays = Math.max(Number(dispatchWindowPastDaysRef.current) || 0, 0);
     const previousWindowFutureDays = Math.max(Number(dispatchWindowFutureDaysRef.current) || 0, 0);
-    const isSameServerScope = previousIncludePastDates === includePastDates
-      && previousDateKey === nextDateKey
+    const isSameServerScope = previousDateKey === nextDateKey
       && previousWindowPastDays === nextWindowPastDays
       && previousWindowFutureDays === nextWindowFutureDays;
 
-    dispatchIncludePastDatesRef.current = includePastDates;
     if (nextDateKey) {
       dispatchQueryDateKeyRef.current = nextDateKey;
     }
@@ -964,13 +905,9 @@ export const NemtProvider = ({
 
     try {
       const searchParams = new URLSearchParams();
-      if (dispatchIncludePastDatesRef.current) {
-        searchParams.set('includePastDates', '1');
-      } else {
-        if (dispatchQueryDateKeyRef.current) searchParams.set('date', dispatchQueryDateKeyRef.current);
-        searchParams.set('windowPastDays', String(dispatchWindowPastDaysRef.current));
-        searchParams.set('windowFutureDays', String(dispatchWindowFutureDaysRef.current));
-      }
+      if (dispatchQueryDateKeyRef.current) searchParams.set('date', dispatchQueryDateKeyRef.current);
+      searchParams.set('windowPastDays', String(dispatchWindowPastDaysRef.current));
+      searchParams.set('windowFutureDays', String(dispatchWindowFutureDaysRef.current));
       const response = await fetch(`/api/nemt/dispatch?${searchParams.toString()}`, {
         cache: 'no-store'
       });
@@ -1104,14 +1041,8 @@ export const NemtProvider = ({
     pendingPersistSnapshotRef.current = snapshot;
     pendingAllowTripShrinkRef.current = allowTripShrinkNextPersistRef.current;
     pendingAllowTripShrinkReasonRef.current = allowTripShrinkReasonNextPersistRef.current;
-    pendingAllowTripShrinkDateKeyRef.current = allowTripShrinkDateKeyNextPersistRef.current;
-    pendingAllowTripShrinkPastDaysRef.current = allowTripShrinkPastDaysNextPersistRef.current;
-    pendingAllowTripShrinkFutureDaysRef.current = allowTripShrinkFutureDaysNextPersistRef.current;
     allowTripShrinkNextPersistRef.current = false;
     allowTripShrinkReasonNextPersistRef.current = '';
-    allowTripShrinkDateKeyNextPersistRef.current = '';
-    allowTripShrinkPastDaysNextPersistRef.current = null;
-    allowTripShrinkFutureDaysNextPersistRef.current = null;
 
     const timeoutId = window.setTimeout(async () => {
       await flushPersistQueue();
@@ -2027,7 +1958,7 @@ export const NemtProvider = ({
   });
 
   const replaceTrips = trips => updateState(currentState => {
-    const deletedTripSuppressionKeySet = getImportDeletionSuppressionKeySet(currentState, trips);
+    const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(currentState.auditLog);
     const protectedTrips = normalizeTripRecords(currentState.trips.filter(isProtectedManualTrip));
     const incomingTrips = normalizeTripRecords(filterTripsByDeletionSuppression(trips, deletedTripSuppressionKeySet));
     const protectedIds = new Set(incomingTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
@@ -2051,7 +1982,7 @@ export const NemtProvider = ({
   });
 
   const upsertImportedTrips = (trips, options = {}) => updateState(currentState => {
-    const deletedTripSuppressionKeySet = getImportDeletionSuppressionKeySet(currentState, trips);
+    const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(currentState.auditLog);
     const currentTrips = normalizeTripRecords(currentState.trips);
     const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(filterTripsByDeletionSuppression(trips, deletedTripSuppressionKeySet)));
     const importedAt = new Date().toISOString();
@@ -2335,34 +2266,10 @@ export const NemtProvider = ({
     return nextTripId;
   };
 
-  const waitForPendingPersistSnapshot = async () => {
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await new Promise(resolve => {
-        window.setTimeout(resolve, 50);
-      });
-
-      if (pendingPersistSnapshotRef.current || persistInFlightRef.current) {
-        return true;
-      }
-    }
-
-    return false;
-  };
-
-  const persistDispatchStateNow = async () => {
-    await waitForPendingPersistSnapshot();
-    return await flushPersistQueue();
-  };
-
-  const deleteTripRecord = async tripId => {
+  const deleteTripRecord = (tripId) => {
     const normalizedTripId = String(tripId || '').trim();
-    if (!normalizedTripId) return false;
-    const deletedTrip = (Array.isArray(state?.trips) ? state.trips : []).find(trip => String(trip?.id || '').trim() === normalizedTripId) || null;
-    const deletedTripServiceDateKey = String(getTripServiceDateKey(deletedTrip) || '').trim();
+    if (!normalizedTripId) return;
     recentlyDeletedTripIdsRef.current.set(normalizedTripId, Date.now());
-    allowTripShrinkDateKeyNextPersistRef.current = deletedTripServiceDateKey;
-    allowTripShrinkPastDaysNextPersistRef.current = deletedTripServiceDateKey ? 0 : null;
-    allowTripShrinkFutureDaysNextPersistRef.current = deletedTripServiceDateKey ? 0 : null;
     updateState(currentState => ({
       ...currentState,
       selectedTripIds: currentState.selectedTripIds.filter(id => id !== normalizedTripId),
@@ -2376,7 +2283,7 @@ export const NemtProvider = ({
       allowTripShrink: true,
       allowTripShrinkReason: 'manual-admin-delete',
       buildAuditEntry: currentState => {
-        const deletedCurrentTrip = (Array.isArray(currentState?.trips) ? currentState.trips : []).find(trip => String(trip?.id || '').trim() === normalizedTripId);
+        const deletedTrip = (Array.isArray(currentState?.trips) ? currentState.trips : []).find(trip => String(trip?.id || '').trim() === normalizedTripId);
         return {
           action: 'delete-trip',
           entityType: 'trip',
@@ -2384,19 +2291,11 @@ export const NemtProvider = ({
           source: 'confirmation',
           summary: `Deleted trip ${normalizedTripId}`,
           metadata: {
-            tripSuppressionKeys: getTripReimportSuppressionKeys(deletedCurrentTrip)
+            tripSuppressionKeys: getTripDeletionSuppressionKeys(deletedTrip)
           }
         };
       }
     });
-
-    await waitForPendingPersistSnapshot();
-    const persisted = await flushPersistQueue();
-    if (persisted) return true;
-
-    recentlyDeletedTripIdsRef.current.delete(normalizedTripId);
-    await syncDispatchFromServer({ forceServer: true });
-    return false;
   };
 
   const setDispatcherVisibleTripColumns = useCallback(columnKeys => {
@@ -2422,9 +2321,9 @@ export const NemtProvider = ({
   }, [persistUserUiPreferences, userUiPreferences]);
 
   useEffect(() => {
-    if (!hasLoadedUserUiPreferences) return;
-    if (normalizeMapProviderPreference(userUiPreferences?.mapProvider) !== 'mapbox') return;
-    setMapProvider('openstreetmap');
+    if (!hasLoadedUserUiPreferences || !hasMapboxConfigured) return;
+    if (normalizeMapProviderPreference(userUiPreferences?.mapProvider) === 'mapbox') return;
+    setMapProvider('mapbox');
   }, [hasLoadedUserUiPreferences, setMapProvider, userUiPreferences?.mapProvider]);
 
   const setPrintSetup = useCallback(updates => {
@@ -2504,7 +2403,6 @@ export const NemtProvider = ({
     resetNemtState,
     getDriverName,
     sendTripNotification,
-    persistDispatchStateNow,
     refreshDrivers: syncDriversFromServer,
     refreshDispatchState: syncDispatchFromServer,
     refreshDispatchMessages: syncDispatchThreadsFromServer

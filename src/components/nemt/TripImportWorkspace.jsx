@@ -163,37 +163,6 @@ const toLocalDateKey = date => {
   return `${y}-${m}-${d}`;
 };
 
-const parseDateKey = value => {
-  const normalized = String(value || '').trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
-  const [year, month, day] = normalized.split('-').map(Number);
-  const parsed = new Date(year, month - 1, day);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const buildImportWindowOptions = serviceDateKeys => {
-  const normalizedDateKeys = Array.from(new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean))).sort();
-  if (normalizedDateKeys.length === 0) return null;
-
-  const startDate = parseDateKey(normalizedDateKeys[0]);
-  const endDate = parseDateKey(normalizedDateKeys[normalizedDateKeys.length - 1]);
-  if (!startDate || !endDate) {
-    return {
-      dateKey: normalizedDateKeys[0],
-      windowPastDays: 0,
-      windowFutureDays: 0
-    };
-  }
-
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const windowFutureDays = Math.max(Math.round((endDate.getTime() - startDate.getTime()) / msPerDay), 0);
-  return {
-    dateKey: normalizedDateKeys[0],
-    windowPastDays: 0,
-    windowFutureDays
-  };
-};
-
 const getImportedServiceDate = (row, rawPickupTime, rawDropoffTime) => {
   const explicitServiceDate = getValueByAliases(row, COLUMN_ALIASES.serviceDate);
   const parsedExplicitDate = getParsedDate(explicitServiceDate);
@@ -272,10 +241,9 @@ const buildPendingTripRowKey = (trip, index) => [
 
 const normalizePendingTrips = trips => (Array.isArray(trips) ? trips : []).map((trip, index) => {
   const previewRowKey = String(trip?.previewRowKey || '').trim() || buildPendingTripRowKey(trip, index);
-  const stableTripId = String(trip?.id || '').trim() || previewRowKey;
   return {
     ...trip,
-    id: stableTripId,
+    id: previewRowKey,
     previewRowKey
   };
 });
@@ -433,8 +401,8 @@ const TripImportWorkspace = () => {
     trips,
     upsertImportedTrips,
     previewImportedTripRoutingChanges,
-    persistDispatchStateNow,
-    refreshDispatchState
+    clearTripsByServiceDates,
+    clearTrips
   } = useNemtContext();
   const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. El archivo actualiza solo los dias que contiene para evitar mezclar fechas y se guarda tambien en el servidor.');
   const [pendingTrips, setPendingTrips] = useState([]);
@@ -835,6 +803,24 @@ const TripImportWorkspace = () => {
     setMessage('Plantilla SafeRide descargada. Llena el archivo con el formato oficial y luego importalo.');
   };
 
+  const handleClearTrips = () => {
+    if (!requireTypedDeleteConfirmation('This will delete all current trips and routes.')) return;
+    clearTrips();
+    setPendingTrips([]);
+    setSelectedFileName('');
+    setSelectedTemplateLabel('Safe Ride Default');
+    setSourceColumns([]);
+    setSourcePreviewRows([]);
+    setSourceRowCount(0);
+    setImportedSourceColumns([]);
+    setExtraSourceColumns([]);
+    setOrderedSourceColumns([]);
+    setDraggingSourceColumn('');
+    setImportScan(null);
+    setPreviewSearch('');
+    setMessage('Todos los viajes y rutas guardadas fueron eliminados.');
+  };
+
   const handleFileChange = async event => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -891,7 +877,7 @@ const TripImportWorkspace = () => {
     }
   };
 
-  const handleImportTrips = async () => {
+  const handleImportTrips = () => {
     if (pendingTrips.length === 0) {
       setMessage('Primero selecciona un archivo valido.');
       return;
@@ -907,17 +893,29 @@ const TripImportWorkspace = () => {
     upsertImportedTrips(pendingTrips, {
       applyRoutingChanges
     });
-    const nextWindowOptions = buildImportWindowOptions(importedServiceDateKeys);
-    await persistDispatchStateNow();
-    if (nextWindowOptions) {
-      setSelectedAuditDate(nextWindowOptions.dateKey);
-      await refreshDispatchState(nextWindowOptions);
-    }
     setMessage(routingChanges.length > 0
       ? applyRoutingChanges
         ? `${pendingTrips.length} viajes procesados y guardados. Se aplicaron ${routingChanges.length} cambio(s) nuevos de direccion.`
         : `${pendingTrips.length} viajes procesados y guardados. Se detectaron ${routingChanges.length} cambio(s) de direccion y se mantuvo la direccion actual del sistema.`
       : `${pendingTrips.length} viajes procesados y guardados. Solo se actualizaron los dias presentes en el archivo.`);
+  };
+
+  const handleClearImportedDays = () => {
+    if (importedServiceDateKeys.length === 0) {
+      setMessage('Primero carga un archivo para detectar los dias a borrar.');
+      return;
+    }
+
+    const confirmationMessage = `Vas a borrar ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'} (${importedServiceDateKeys.join(', ')}). Esta accion no se puede deshacer. Deseas continuar?`;
+    if (!window.confirm(confirmationMessage)) {
+      setMessage('Borrado cancelado.');
+      return;
+    }
+
+    if (!requireTypedDeleteConfirmation(`Dias a borrar: ${importedServiceDateKeys.join(', ')}`)) return;
+
+    clearTripsByServiceDates(importedServiceDateKeys);
+    setMessage(`Se borraron los viajes de ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'}: ${importedServiceDateKeys.join(', ')}.`);
   };
 
   const visibleSourcePreviewColumns = useMemo(() => {
@@ -986,12 +984,13 @@ const TripImportWorkspace = () => {
               <div className="d-flex flex-wrap gap-2 mb-3">
                 <Button variant="success" onClick={() => fileInputRef.current?.click()} disabled={isParsing}>{isParsing ? 'Leyendo archivo...' : 'Seleccionar Excel o CSV'}</Button>
                 <Button variant="outline-primary" onClick={handleDownloadTemplate}>Descargar plantilla SafeRide</Button>
+                <Button variant="outline-warning" onClick={handleClearImportedDays} disabled={importedServiceDateKeys.length === 0}>Borrar dias del archivo</Button>
+                <Button variant="outline-danger" onClick={handleClearTrips}>Borrar viajes actuales</Button>
               </div>
               <Form.Control ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileChange} style={{ display: 'none' }} />
               <div className="small text-muted mb-3">{selectedFileName ? `Archivo seleccionado: ${selectedFileName}` : 'No hay archivo seleccionado.'}</div>
               <div className="small text-muted mb-2">{`Plantilla detectada: ${selectedTemplateLabel}`}</div>
               <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Dias detectados en archivo: ${importedServiceDateKeys.join(', ')}` : 'Dias detectados en archivo: -'}</div>
-              <div className="small text-muted mb-2">Este cargador ya no ejecuta borrados masivos en SQL. Solo importa y actualiza lo que venga en el archivo.</div>
               <div className="small text-muted mb-3">{message}</div>
             </CardBody>
           </Card>

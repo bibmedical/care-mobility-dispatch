@@ -700,7 +700,7 @@ const mapRowToTrip = (row, index, template) => {
     address: destination,
     zipcode: toZipcode
   } = splitAddressAndZipcode(rawDestination, getValueByAliases(row, getTemplateAliases(template, 'toZipcode')));
-  const rideId = getValueByAliases(row, getTemplateAliases(template, 'id')) || '';
+  const rideId = getValueByAliases(row, getTemplateAliases(template, 'id')) || `RIDE-${Date.now()}-${index + 1}`;
   const tripId = getValueByAliases(row, getTemplateAliases(template, 'brokerTripId'));
   const status = getValueByAliases(row, getTemplateAliases(template, 'status')) || 'Scheduled';
   const confirmationStatus = getValueByAliases(row, getTemplateAliases(template, 'confirmationStatus')) || 'confirmed';

@@ -467,8 +467,6 @@ const getStatusBadge = status => {
 
 const getConfirmationBadgeVariant = confirmationStatus => {
   if (confirmationStatus === 'Confirmed') return 'success';
-  if (confirmationStatus === 'Consent Granted') return 'info';
-  if (confirmationStatus === 'Awaiting Consent') return 'warning';
   if (confirmationStatus === 'Opted Out') return 'danger';
   return 'secondary';
 };
@@ -1111,10 +1109,9 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   }, [routePlans, selectedRouteId]);
   const dispatchTimeZone = uiPreferences?.timeZone;
   const todayDateKey = useMemo(() => getLocalDateKey(new Date(), dispatchTimeZone), [dispatchTimeZone]);
-  const serverIncludePastDates = tripDateFilter === 'all';
-  const serverScopedDateKey = serverIncludePastDates ? todayDateKey : tripDateFilter;
-  const serverScopedPastDays = serverIncludePastDates ? 0 : 0;
-  const serverScopedFutureDays = serverIncludePastDates ? 0 : 0;
+  const serverScopedDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
+  const serverScopedPastDays = tripDateFilter === 'all' ? 1 : 0;
+  const serverScopedFutureDays = tripDateFilter === 'all' ? 1 : 0;
   const refreshDispatchStateRef = useRef(refreshDispatchState);
   const lastServerScopeKeyRef = useRef('');
 
@@ -1124,17 +1121,16 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
 
   useEffect(() => {
     if (!serverScopedDateKey) return;
-    const scopeKey = [serverIncludePastDates ? 'all' : serverScopedDateKey, serverScopedPastDays, serverScopedFutureDays].join('|');
+    const scopeKey = [serverScopedDateKey, serverScopedPastDays, serverScopedFutureDays].join('|');
     if (lastServerScopeKeyRef.current === scopeKey) return;
     lastServerScopeKeyRef.current = scopeKey;
     void refreshDispatchStateRef.current({
       forceServer: true,
-      includePastDates: serverIncludePastDates,
       dateKey: serverScopedDateKey,
       windowPastDays: serverScopedPastDays,
       windowFutureDays: serverScopedFutureDays
     });
-  }, [serverIncludePastDates, serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
+  }, [serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
 
   const daySummaryMetrics = useMemo(() => {
     const targetDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
@@ -1888,7 +1884,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(effectiveStatus) || hasActiveHospitalRehab;
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
     const confirmationLabel = getDispatcherConfirmationLabel(trip, blockingState);
-    const matchesStatus = tripStatusFilter === 'all' ? !isNonOperationalTrip : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationLabel === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationLabel === 'Not Sent' || confirmationLabel === 'Unconfirmed' : effectiveStatus === tripStatusFilter;
+    const matchesStatus = tripStatusFilter === 'all' ? true : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationLabel === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationLabel === 'Not Sent' || confirmationLabel === 'Unconfirmed' : effectiveStatus === tripStatusFilter;
     if (!matchesStatus) return false;
     if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) return false;
     return true;
