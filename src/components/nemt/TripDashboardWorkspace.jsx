@@ -287,6 +287,13 @@ const getSiblingLegTrips = (targetTrip, allTrips = []) => {
   return (Array.isArray(allTrips) ? allTrips : []).filter(item => String(item?.id) !== String(targetTrip?.id) && getTripPairKey(item) === pairKey);
 };
 
+const getImportedDateFilterValue = serviceDateKeys => {
+  const normalizedDateKeys = Array.from(new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean)));
+  if (normalizedDateKeys.length === 1) return normalizedDateKeys[0];
+  if (normalizedDateKeys.length > 1) return 'all';
+  return '';
+};
+
 const normalizeSignaturePayload = value => {
   if (!value || typeof value !== 'object') return null;
   const width = Number(value.width);
@@ -1540,6 +1547,11 @@ const TripDashboardWorkspace = () => {
     upsertImportedTrips(importPendingTrips, {
       applyRoutingChanges
     });
+    const importedDateFilterValue = getImportedDateFilterValue(importedServiceDateKeys);
+    if (importedDateFilterValue) {
+      setTripDateFilter(importedDateFilterValue);
+      setSelectedRouteId(null);
+    }
     setShowTripImportModal(false);
     const importMessage = routingChanges.length > 0
       ? applyRoutingChanges
@@ -1730,6 +1742,11 @@ const TripDashboardWorkspace = () => {
       upsertImportedTrips(importPendingTrips, {
         applyRoutingChanges
       });
+      const importedDateFilterValue = getImportedDateFilterValue(importedServiceDateKeys);
+      if (importedDateFilterValue) {
+        setTripDateFilter(importedDateFilterValue);
+        setSelectedRouteId(null);
+      }
 
       if (routePlan.routeSpecs.length > 0) {
         setPendingRouteImportPlan(routePlan.routeSpecs);

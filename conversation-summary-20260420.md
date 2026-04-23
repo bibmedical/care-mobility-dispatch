@@ -186,3 +186,10 @@
 - Traced `Delete` end-to-end from UI to SQL and confirmed the actual database removal happens during dispatch snapshot persistence, not at the first local click.
 - Changed trip deletion so the UI waits for a real persist attempt and rolls back from server state if the delete is not confirmed.
 - Updated Trip Dashboard and Confirmation delete actions so they only report success when the server keeps the deletion.
+
+## 2026-04-22 external CSV flow check
+
+- Verified the real external file `rides_138493_1776878081.csv` instead of inferring from screenshots.
+- The file itself contains 192 rows and 192 distinct `rideId` values, including cancelled rows and multiple `23:59` / WillCall return legs.
+- Found a separate visibility bug after import: Trip Dashboard kept forcing its server scope to the previously selected day instead of switching to the imported service date, which could make newly imported trips appear and then disappear.
+- Updated Trip Dashboard so a successful import switches the dashboard date scope to the imported file date when the file contains a single service date.
