@@ -294,6 +294,30 @@ const getImportedDateFilterValue = serviceDateKeys => {
   return '';
 };
 
+const resetImportedTripViewFilters = ({
+  setTripStatusFilter,
+  setTripIdSearch,
+  setTripLegFilter,
+  setTripTypeFilter,
+  setServiceAnimalOnly,
+  setPickupZipFilter,
+  setDropoffZipFilter,
+  setZipFilter,
+  setPuCityFilter,
+  setDoCityFilter
+}) => {
+  setTripStatusFilter('all');
+  setTripIdSearch('');
+  setTripLegFilter('all');
+  setTripTypeFilter('all');
+  setServiceAnimalOnly(false);
+  setPickupZipFilter('');
+  setDropoffZipFilter('');
+  setZipFilter('');
+  setPuCityFilter('');
+  setDoCityFilter('');
+};
+
 const normalizeSignaturePayload = value => {
   if (!value || typeof value !== 'object') return null;
   const width = Number(value.width);
@@ -1553,7 +1577,18 @@ const TripDashboardWorkspace = () => {
       setTripDateFilter(importedDateFilterValue);
       setSelectedRouteId(null);
     }
-    setTripStatusFilter('all');
+    resetImportedTripViewFilters({
+      setTripStatusFilter,
+      setTripIdSearch,
+      setTripLegFilter,
+      setTripTypeFilter,
+      setServiceAnimalOnly,
+      setPickupZipFilter,
+      setDropoffZipFilter,
+      setZipFilter,
+      setPuCityFilter,
+      setDoCityFilter
+    });
     setShowTripImportModal(false);
     const importMessage = routingChanges.length > 0
       ? applyRoutingChanges
@@ -1749,7 +1784,18 @@ const TripDashboardWorkspace = () => {
         setTripDateFilter(importedDateFilterValue);
         setSelectedRouteId(null);
       }
-      setTripStatusFilter('all');
+      resetImportedTripViewFilters({
+        setTripStatusFilter,
+        setTripIdSearch,
+        setTripLegFilter,
+        setTripTypeFilter,
+        setServiceAnimalOnly,
+        setPickupZipFilter,
+        setDropoffZipFilter,
+        setZipFilter,
+        setPuCityFilter,
+        setDoCityFilter
+      });
 
       if (routePlan.routeSpecs.length > 0) {
         setPendingRouteImportPlan(routePlan.routeSpecs);
