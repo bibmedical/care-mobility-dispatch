@@ -163,6 +163,37 @@ const toLocalDateKey = date => {
   return `${y}-${m}-${d}`;
 };
 
+const parseDateKey = value => {
+  const normalized = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const [year, month, day] = normalized.split('-').map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const buildImportWindowOptions = serviceDateKeys => {
+  const normalizedDateKeys = Array.from(new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean))).sort();
+  if (normalizedDateKeys.length === 0) return null;
+
+  const startDate = parseDateKey(normalizedDateKeys[0]);
+  const endDate = parseDateKey(normalizedDateKeys[normalizedDateKeys.length - 1]);
+  if (!startDate || !endDate) {
+    return {
+      dateKey: normalizedDateKeys[0],
+      windowPastDays: 0,
+      windowFutureDays: 0
+    };
+  }
+
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const windowFutureDays = Math.max(Math.round((endDate.getTime() - startDate.getTime()) / msPerDay), 0);
+  return {
+    dateKey: normalizedDateKeys[0],
+    windowPastDays: 0,
+    windowFutureDays
+  };
+};
+
 const getImportedServiceDate = (row, rawPickupTime, rawDropoffTime) => {
   const explicitServiceDate = getValueByAliases(row, COLUMN_ALIASES.serviceDate);
   const parsedExplicitDate = getParsedDate(explicitServiceDate);
@@ -403,7 +434,8 @@ const TripImportWorkspace = () => {
     upsertImportedTrips,
     previewImportedTripRoutingChanges,
     clearTripsByServiceDates,
-    clearTrips
+    clearTrips,
+    refreshDispatchState
   } = useNemtContext();
   const [message, setMessage] = useState('Importa un Excel o CSV de SafeRide. El archivo actualiza solo los dias que contiene para evitar mezclar fechas y se guarda tambien en el servidor.');
   const [pendingTrips, setPendingTrips] = useState([]);
@@ -878,7 +910,7 @@ const TripImportWorkspace = () => {
     }
   };
 
-  const handleImportTrips = () => {
+  const handleImportTrips = async () => {
     if (pendingTrips.length === 0) {
       setMessage('Primero selecciona un archivo valido.');
       return;
@@ -894,6 +926,11 @@ const TripImportWorkspace = () => {
     upsertImportedTrips(pendingTrips, {
       applyRoutingChanges
     });
+    const nextWindowOptions = buildImportWindowOptions(importedServiceDateKeys);
+    if (nextWindowOptions) {
+      setSelectedAuditDate(nextWindowOptions.dateKey);
+      void refreshDispatchState(nextWindowOptions);
+    }
     setMessage(routingChanges.length > 0
       ? applyRoutingChanges
         ? `${pendingTrips.length} viajes procesados y guardados. Se aplicaron ${routingChanges.length} cambio(s) nuevos de direccion.`
@@ -901,7 +938,7 @@ const TripImportWorkspace = () => {
       : `${pendingTrips.length} viajes procesados y guardados. Solo se actualizaron los dias presentes en el archivo.`);
   };
 
-  const handleClearImportedDays = () => {
+  const handleClearImportedDays = async () => {
     if (importedServiceDateKeys.length === 0) {
       setMessage('Primero carga un archivo para detectar los dias a borrar.');
       return;
@@ -916,6 +953,11 @@ const TripImportWorkspace = () => {
     if (!requireTypedDeleteConfirmation(`Dias a borrar: ${importedServiceDateKeys.join(', ')}`)) return;
 
     clearTripsByServiceDates(importedServiceDateKeys);
+    const nextWindowOptions = buildImportWindowOptions(importedServiceDateKeys);
+    if (nextWindowOptions) {
+      setSelectedAuditDate(nextWindowOptions.dateKey);
+      void refreshDispatchState(nextWindowOptions);
+    }
     setMessage(`Se borraron los viajes de ${importedServiceDateKeys.length} dia${importedServiceDateKeys.length === 1 ? '' : 's'}: ${importedServiceDateKeys.join(', ')}.`);
   };
 

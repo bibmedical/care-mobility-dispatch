@@ -424,6 +424,9 @@ const DIARIO_2026_04_23 = [{
   area: 'Duplicate-risk hypothesis narrowed',
   detail: 'Production SafeRide trips already carried real rideId values, and no generated RIDE-* fallback ids were found in the current live sample. That narrowed the immediate duplicate risk toward loader-path identity drift instead of a Twilio-side SMS persistence change.'
 }, {
+  area: 'Scoped-window visibility fix',
+  detail: 'The standalone Excel Loader was not realigning the dispatch date window after importing or clearing the file days. That could make trips look deleted when the sync layer reloaded a different server scope. The loader now refreshes the visible window to the imported date range after those actions.'
+}, {
   area: 'Validation and deploy path',
   detail: 'Local next build completed successfully after the loader identity fix. This deploy is intended for Render production through the main branch auto-deploy flow.'
 }];
@@ -756,6 +759,7 @@ const HelpPage = () => {
               <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
                 <li>The standalone Excel Loader now preserves the stable parser-generated trip id instead of replacing it with a page-local preview row key.</li>
                 <li>This keeps the standalone loader aligned with the embedded Trip Dashboard import path so both loaders enter the merge flow with the same trip identity anchor.</li>
+                <li>The standalone loader now also refreshes the dispatch date window to the imported file range after import or day-clear actions so trips do not appear to vanish when the sync layer reloads a different server scope.</li>
                 <li>Local next build completed successfully before the Render deploy push.</li>
               </ul>
             </div>
