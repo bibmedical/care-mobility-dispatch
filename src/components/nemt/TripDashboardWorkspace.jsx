@@ -1173,6 +1173,7 @@ const TripDashboardWorkspace = () => {
     updateTripNotes,
     updateTripRecord,
     cloneTripRecord,
+    deleteTripRecords,
     deleteTripRecord,
     uiPreferences,
     hasLoadedUserUiPreferences,
@@ -4375,13 +4376,18 @@ const TripDashboardWorkspace = () => {
     if (!confirmed) return;
 
     let deletedCount = 0;
-    for (const trip of targetTrips) {
-      // eslint-disable-next-line no-await-in-loop
-      const deleted = await handleDeleteTrip(trip, {
-        skipConfirm: true,
-        suppressSuccessFeedback: true
-      });
-      if (deleted) deletedCount += 1;
+    const batchDeleteResult = await deleteTripRecords(targetTrips.map(trip => trip.id));
+    if (batchDeleteResult?.canBatch) {
+      deletedCount = batchDeleteResult.deletedTripIds.length;
+    } else {
+      for (const trip of targetTrips) {
+        // eslint-disable-next-line no-await-in-loop
+        const deleted = await handleDeleteTrip(trip, {
+          skipConfirm: true,
+          suppressSuccessFeedback: true
+        });
+        if (deleted) deletedCount += 1;
+      }
     }
 
     if (deletedCount === 0) {
