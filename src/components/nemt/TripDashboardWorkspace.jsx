@@ -3957,13 +3957,18 @@ const TripDashboardWorkspace = () => {
     setStatusMessage(`Trip ${getDisplayTripId(trip)} cloned as ${clonedTripId}.`);
   };
 
-  const handleDeleteTrip = trip => {
+  const handleDeleteTrip = async trip => {
     if (!trip?.id) return;
     const tripLabel = getDisplayTripId(trip);
     const confirmed = window.confirm(`Delete trip ${tripLabel}? This will remove it from the dashboard and any route that contains it.`);
     if (!confirmed) return;
 
-    deleteTripRecord(trip.id);
+    const deleted = await deleteTripRecord(trip.id);
+    if (!deleted) {
+      setStatusMessage(`Trip ${tripLabel} could not be deleted from the server.`);
+      showNotification({ message: `Trip ${tripLabel} could not be deleted from the server.`, variant: 'danger' });
+      return;
+    }
 
     if (noteModalTripId === trip.id) {
       handleCloseTripNote();
@@ -4334,7 +4339,7 @@ const TripDashboardWorkspace = () => {
     openCancelModalForTrips(targetTripIds);
   };
 
-  const handleDeleteSelectedTrips = () => {
+  const handleDeleteSelectedTrips = async () => {
     const targetTrips = selectedTrips;
     if (targetTrips.length === 0) {
       setStatusMessage('Select at least one trip to delete.');
@@ -4345,9 +4350,19 @@ const TripDashboardWorkspace = () => {
     const confirmed = window.confirm(`Delete ${targetTrips.length} selected trip(s)? This will remove them from the dashboard and any route that contains them.\n\n${tripPreview}${targetTrips.length > 5 ? ', ...' : ''}`);
     if (!confirmed) return;
 
-    targetTrips.forEach(trip => {
-      deleteTripRecord(trip.id);
-    });
+    let deletedCount = 0;
+    for (const trip of targetTrips) {
+      // Persist each delete so a failed request cannot leave trips only hidden locally.
+      // eslint-disable-next-line no-await-in-loop
+      const deleted = await deleteTripRecord(trip.id);
+      if (deleted) deletedCount += 1;
+    }
+
+    if (deletedCount === 0) {
+      setStatusMessage('Selected trips could not be deleted from the server.');
+      showNotification({ message: 'Selected trips could not be deleted from the server.', variant: 'danger' });
+      return;
+    }
 
     if (noteModalTripId && targetTrips.some(trip => trip.id === noteModalTripId)) {
       handleCloseTripNote();
@@ -4359,8 +4374,11 @@ const TripDashboardWorkspace = () => {
 
     setSelectedRouteId(null);
     setSelectedTripIds([]);
-    setStatusMessage(`${targetTrips.length} trip(s) deleted.`);
-    showNotification({ message: `${targetTrips.length} trip(s) deleted.`, variant: 'success' });
+    const statusMessage = deletedCount === targetTrips.length
+      ? `${deletedCount} trip(s) deleted.`
+      : `${deletedCount} of ${targetTrips.length} trip(s) deleted. The rest stayed because the server did not confirm the delete.`;
+    setStatusMessage(statusMessage);
+    showNotification({ message: statusMessage, variant: deletedCount === targetTrips.length ? 'success' : 'warning' });
   };
 
   const handleReinstateTrip = tripId => {

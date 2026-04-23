@@ -807,9 +807,19 @@ export const NemtProvider = ({
   };
 
   const flushPersistQueue = async () => {
-    if (persistInFlightRef.current) return;
+    if (persistInFlightRef.current) {
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        await new Promise(resolve => {
+          window.setTimeout(resolve, 25);
+        });
+
+        if (!persistInFlightRef.current) break;
+      }
+    }
+
+    if (persistInFlightRef.current) return false;
     const nextSnapshot = pendingPersistSnapshotRef.current;
-    if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return;
+    if (!nextSnapshot || nextSnapshot === lastPersistedSnapshotRef.current) return true;
     const allowTripShrink = pendingAllowTripShrinkRef.current;
     const allowTripShrinkReason = pendingAllowTripShrinkReasonRef.current;
     const actorName = String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim();
@@ -839,17 +849,20 @@ export const NemtProvider = ({
       if (response.ok) {
         lastPersistedSnapshotRef.current = nextSnapshot;
         hasLocalDispatchChangesRef.current = false;
+        return true;
       } else {
         // Keep failed snapshots queued so trip updates are not lost on transient server errors.
         pendingPersistSnapshotRef.current = nextSnapshot;
         pendingAllowTripShrinkRef.current = allowTripShrink;
         pendingAllowTripShrinkReasonRef.current = allowTripShrinkReason;
+        return false;
       }
     } catch {
       // Keep failed snapshots queued so trip updates are not lost on transient network issues.
       pendingPersistSnapshotRef.current = nextSnapshot;
       pendingAllowTripShrinkRef.current = allowTripShrink;
       pendingAllowTripShrinkReasonRef.current = allowTripShrinkReason;
+      return false;
     } finally {
       persistInFlightRef.current = false;
       if (pendingPersistSnapshotRef.current && pendingPersistSnapshotRef.current !== lastPersistedSnapshotRef.current) {
@@ -2274,9 +2287,9 @@ export const NemtProvider = ({
     return nextTripId;
   };
 
-  const deleteTripRecord = (tripId) => {
+  const deleteTripRecord = async tripId => {
     const normalizedTripId = String(tripId || '').trim();
-    if (!normalizedTripId) return;
+    if (!normalizedTripId) return false;
     recentlyDeletedTripIdsRef.current.set(normalizedTripId, Date.now());
     updateState(currentState => ({
       ...currentState,
@@ -2304,6 +2317,28 @@ export const NemtProvider = ({
         };
       }
     });
+
+    const waitForSnapshot = async () => {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        await new Promise(resolve => {
+          window.setTimeout(resolve, 50);
+        });
+
+        if (pendingPersistSnapshotRef.current || persistInFlightRef.current) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    await waitForSnapshot();
+    const persisted = await flushPersistQueue();
+    if (persisted) return true;
+
+    recentlyDeletedTripIdsRef.current.delete(normalizedTripId);
+    await syncDispatchFromServer({ forceServer: true });
+    return false;
   };
 
   const setDispatcherVisibleTripColumns = useCallback(columnKeys => {

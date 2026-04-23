@@ -1626,12 +1626,12 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     }
   };
 
-  const handleDeleteClonedTrip = trip => {
+  const handleDeleteClonedTrip = async trip => {
     if (!trip?.id) return;
     const confirmed = window.confirm(`DELETE COPY ${trip.id}\nOriginal: ${trip.clonedFromTripId || '-'}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`);
     if (!confirmed) return;
-    deleteTripRecord(trip.id);
-    setCustomStatus(`Deleted cloned trip ${trip.id}.`);
+    const deleted = await deleteTripRecord(trip.id);
+    setCustomStatus(deleted ? `Deleted cloned trip ${trip.id}.` : `Could not delete cloned trip ${trip.id} from the server.`);
   };
 
   const handleSaveHospitalRehab = async () => {
@@ -2490,7 +2490,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                       <td>
                         <div className="d-flex flex-column gap-1">
                           <Button size="sm" variant="outline-warning" onClick={() => { setShowRehabBlacklistPanel(false); handleRemoveHospitalRehab(trip); }}>Remove RH</Button>
-                          <Button size="sm" variant="outline-danger" onClick={() => { if (window.confirm(`DELETE trip ${trip.id}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}>Delete</Button>
+                          <Button size="sm" variant="outline-danger" onClick={async () => { if (window.confirm(`DELETE trip ${trip.id}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { const deleted = await deleteTripRecord(trip.id); if (!deleted) { setCustomStatus(`Could not delete trip ${trip.id} from the server.`); } } }}>Delete</Button>
                         </div>
                       </td>
                     </tr>;
@@ -2931,10 +2931,13 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                               variant={trip.clonedFromTripId ? 'danger' : 'outline-danger'}
                               title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
                               style={{ minWidth: 72 }}
-                              onClick={() => {
+                              onClick={async () => {
                                 const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
                                 if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
-                                  deleteTripRecord(trip.id);
+                                  const deleted = await deleteTripRecord(trip.id);
+                                  if (!deleted) {
+                                    setCustomStatus(`Could not delete trip ${trip.id} from the server.`);
+                                  }
                                 }
                               }}
                             >

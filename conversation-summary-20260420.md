@@ -180,3 +180,9 @@
 - Root-caused the remaining delete/reimport failure: trip deletion suppression was using a smaller key set than same-day reimport matching.
 - Aligned deletion suppression with the same import match keys used by reimport reconciliation, so deleted trips stay suppressed when the same Excel is loaded again.
 - This restores the intended behavior the user described: reimport should reconcile against prior state, not resurrect deleted duplicates from the same batch.
+
+## 2026-04-22 reliable delete persistence
+
+- Traced `Delete` end-to-end from UI to SQL and confirmed the actual database removal happens during dispatch snapshot persistence, not at the first local click.
+- Changed trip deletion so the UI waits for a real persist attempt and rolls back from server state if the delete is not confirmed.
+- Updated Trip Dashboard and Confirmation delete actions so they only report success when the server keeps the deletion.
