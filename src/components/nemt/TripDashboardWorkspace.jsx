@@ -3974,17 +3974,21 @@ const TripDashboardWorkspace = () => {
     setStatusMessage(`Trip ${getDisplayTripId(trip)} cloned as ${clonedTripId}.`);
   };
 
-  const handleDeleteTrip = async trip => {
+  const handleDeleteTrip = async (trip, options = {}) => {
     if (!trip?.id) return;
+    const skipConfirm = options?.skipConfirm === true;
+    const suppressSuccessFeedback = options?.suppressSuccessFeedback === true;
     const tripLabel = getDisplayTripId(trip);
-    const confirmed = window.confirm(`Delete trip ${tripLabel}? This will remove it from the dashboard and any route that contains it.`);
-    if (!confirmed) return;
+    if (!skipConfirm) {
+      const confirmed = window.confirm(`Delete trip ${tripLabel}? This will remove it from the dashboard and any route that contains it.`);
+      if (!confirmed) return false;
+    }
 
     const deleted = await deleteTripRecord(trip.id);
     if (!deleted) {
       setStatusMessage(`Trip ${tripLabel} could not be deleted from the server.`);
       showNotification({ message: `Trip ${tripLabel} could not be deleted from the server.`, variant: 'danger' });
-      return;
+      return false;
     }
 
     if (noteModalTripId === trip.id) {
@@ -3996,8 +4000,11 @@ const TripDashboardWorkspace = () => {
     }
 
     setSelectedRouteId(null);
-    setStatusMessage(`Trip ${tripLabel} deleted.`);
-    showNotification({ message: `Trip ${tripLabel} deleted.`, variant: 'success' });
+    if (!suppressSuccessFeedback) {
+      setStatusMessage(`Trip ${tripLabel} deleted.`);
+      showNotification({ message: `Trip ${tripLabel} deleted.`, variant: 'success' });
+    }
+    return true;
   };
 
   const isInlineTripCellEditing = (tripId, columnKey) => inlineTripEditCell?.tripId === tripId && inlineTripEditCell?.columnKey === columnKey;
@@ -4369,9 +4376,11 @@ const TripDashboardWorkspace = () => {
 
     let deletedCount = 0;
     for (const trip of targetTrips) {
-      // Persist each delete so a failed request cannot leave trips only hidden locally.
       // eslint-disable-next-line no-await-in-loop
-      const deleted = await deleteTripRecord(trip.id);
+      const deleted = await handleDeleteTrip(trip, {
+        skipConfirm: true,
+        suppressSuccessFeedback: true
+      });
       if (deleted) deletedCount += 1;
     }
 
