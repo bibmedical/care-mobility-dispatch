@@ -13,6 +13,36 @@ const TRIP_MOBILITY_ASSISTANCE_SOURCE_FIELDS = ['assistanceNeeds'];
 
 const padDatePart = value => String(value).padStart(2, '0');
 
+const US_LATITUDE_RANGE = [18, 72];
+const US_LONGITUDE_RANGE = [-179, -64];
+
+export const isLikelyUsCoordinate = position => {
+  if (!Array.isArray(position) || position.length !== 2) return false;
+  const [latitude, longitude] = position;
+  return latitude >= US_LATITUDE_RANGE[0]
+    && latitude <= US_LATITUDE_RANGE[1]
+    && longitude >= US_LONGITUDE_RANGE[0]
+    && longitude <= US_LONGITUDE_RANGE[1];
+};
+
+export const normalizeMapPosition = value => {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const normalized = value.map(Number);
+  if (!Number.isFinite(normalized[0]) || !Number.isFinite(normalized[1])) return null;
+
+  const [latitude, longitude] = normalized;
+  const swapped = [longitude, latitude];
+  if (!isLikelyUsCoordinate(normalized) && isLikelyUsCoordinate(swapped)) {
+    return swapped;
+  }
+
+  return normalized;
+};
+
+export const getTripPickupPosition = trip => normalizeMapPosition(trip?.position);
+
+export const getTripDropoffPosition = trip => normalizeMapPosition(trip?.destinationPosition) || getTripPickupPosition(trip);
+
 const isValidTimeZone = timeZone => {
   const normalized = String(timeZone || '').trim();
   if (!normalized) return false;
@@ -85,10 +115,6 @@ const normalizeTripDateInput = value => {
   return `${parsedDate.getFullYear()}-${padDatePart(parsedDate.getMonth() + 1)}-${padDatePart(parsedDate.getDate())}`;
 };
 
-const getTripSourceFieldValues = (trip, fields = []) => {
-  return fields.flatMap(field => String(trip?.[field] || '').split('|')).map(normalizeTextValue).filter(Boolean);
-};
-
 const normalizeTimestampToDateKey = value => {
   const timestamp = Number(value);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return '';
@@ -124,7 +150,7 @@ export const getTripServiceDateKey = trip => {
   return normalizeTimestampToDateKey(trip?.pickupSortValue) || normalizeTimestampToDateKey(trip?.dropoffSortValue) || normalizeTimestampToDateKey(trip?.confirmation?.sentAt) || '';
 };
 
-const getTripMobilitySource = (trip, fields = TRIP_MOBILITY_SOURCE_FIELDS) => getTripSourceFieldValues(trip, fields).join(' ').toLowerCase();
+const getTripMobilitySource = (trip, fields = TRIP_MOBILITY_SOURCE_FIELDS) => fields.map(field => String(trip?.[field] || '').trim()).filter(Boolean).join(' ').toLowerCase();
 
 const normalizeMobilitySource = source => source.replace(/provide\s+wheelchair/gi, ' ').replace(/wheelchair\s+provided/gi, ' ').replace(/needs?\s+wheelchair/gi, ' ').replace(/wheelchair\s+needed/gi, ' ').replace(/requires?\s+wheelchair/gi, ' ').replace(/wheelchair\s+required/gi, ' ').replace(/\s+/g, ' ').trim();
 
@@ -132,14 +158,8 @@ const detectTripMobilityLabelFromSource = source => {
   const normalizedSource = normalizeMobilitySource(String(source || '').toLowerCase());
   if (!normalizedSource) return '';
   if (normalizedSource.includes('stretcher') || normalizedSource.includes('gurney') || normalizedSource.includes('str')) return 'STR';
-  if (normalizedSource.includes('wheelchair') || normalizedSource.includes('wheel chair') || normalizedSource.includes('wheel') || normalizedSource.includes('wc') || normalizedSource.includes('w/c') || normalizedSource.includes('wcv') || normalizedSource.includes('wxl') || normalizedSource.includes('electric wheelchair') || normalizedSource.includes('power wheelchair') || normalizedSource.includes('ew')) return 'W';
+  if (normalizedSource.includes('wheelchair') || normalizedSource.includes('wheel chair') || normalizedSource.includes('wheel') || normalizedSource.includes('wc') || normalizedSource.includes('w/c') || normalizedSource.includes('wxl') || normalizedSource.includes('electric wheelchair') || normalizedSource.includes('power wheelchair') || normalizedSource.includes('ew')) return 'W';
   return 'A';
-};
-
-const TRIP_SUPPORT_SOURCE_FIELDS = ['assistanceNeeds', 'subMobilityType', 'mobilityType', 'mobility', 'vehicleType', 'tripType', 'serviceType', 'levelOfService', 'serviceLevel', 'los', 'transportType', 'tripMode', 'vehicleRequired'];
-
-const getTripSupportTokens = trip => {
-  return Array.from(new Set(getTripSourceFieldValues(trip, TRIP_SUPPORT_SOURCE_FIELDS)));
 };
 
 export const getTripMobilityLabel = trip => {
@@ -380,7 +400,12 @@ const getDerivedRideId = trip => {
   return firstSegment || normalizedId;
 };
 
-const getTripAssistanceTokens = trip => getTripSupportTokens(trip);
+const getTripAssistanceTokens = trip => {
+  return Array.from(new Set([
+    ...String(trip?.assistanceNeeds || '').split('|'),
+    ...String(trip?.subMobilityType || '').split('|')
+  ].map(normalizeTextValue).filter(Boolean)));
+};
 
 const findAssistanceToken = (tokens, patterns) => {
   return tokens.find(token => {
@@ -391,9 +416,9 @@ const findAssistanceToken = (tokens, patterns) => {
 
 export const getTripSupportMetadata = trip => {
   const assistanceTokens = getTripAssistanceTokens(trip);
-  const hasServiceAnimal = Boolean(findAssistanceToken(assistanceTokens, ['service animal', 'service dog', 'sa']));
+  const hasServiceAnimal = Boolean(findAssistanceToken(assistanceTokens, ['service animal', 'service dog']));
   const assistLevelToken = findAssistanceToken(assistanceTokens, ['room to door', 'door to door', 'curb to curb']);
-  const mobilityToken = findAssistanceToken(assistanceTokens, ['wheelchair-power/electric', 'power wheelchair', 'electric wheelchair', 'standard manual wheelchair', 'manual wheelchair', 'folding wheelchair', 'wheelchair van', 'wcv', 'wheelchair', 'w/c', 'stretcher/gurney', 'stretcher', 'gurney', 'scooter', 'walker', 'cane', 'none']);
+  const mobilityToken = findAssistanceToken(assistanceTokens, ['wheelchair-power/electric', 'power wheelchair', 'standard manual wheelchair', 'manual wheelchair', 'folding wheelchair', 'stretcher/gurney', 'stretcher', 'gurney', 'scooter', 'walker', 'cane', 'none']);
 
   const mobilityType = mobilityToken
     ? mobilityToken.toLowerCase().includes('wheelchair-power/electric') || mobilityToken.toLowerCase().includes('power wheelchair')
@@ -631,8 +656,8 @@ export const getTripLateMinutesDisplay = trip => {
 };
 
 export const normalizeTripRecord = trip => {
-  const position = Array.isArray(trip?.position) && trip.position.length === 2 ? trip.position.map(Number) : [...DEFAULT_CENTER];
-  const destinationPosition = Array.isArray(trip?.destinationPosition) && trip.destinationPosition.length === 2 ? trip.destinationPosition.map(Number) : [...position];
+  const position = getTripPickupPosition(trip);
+  const destinationPosition = getTripDropoffPosition(trip);
   const rider = getDerivedRiderName(trip);
   const rideId = getDerivedRideId(trip);
   const pickup = getEffectivePickupTimeText(trip);
