@@ -2726,6 +2726,13 @@ const TripDashboardWorkspace = () => {
     return tripMatchesCity(trip, dropoffCityValue);
   }), [cityOptionTrips, doCityFilter, puCityFilter]);
   const removedSinceLastLoadScopeCount = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(trip => Boolean(trip?.missingFromLatestSafeRideImport)).length, [matchesTripDateFilter, scanAnnotatedTrips, tripDateFilter, routePlans, trips]);
+  const liveScanAnalysisTrips = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(matchesTripTypeFilter).filter(matchesTripServiceAnimalFilter).filter(matchesTripSearchFilter).filter(matchesPickupZipFilter).filter(matchesDropoffZipFilter).filter(matchesAnyZipFilter).filter(trip => {
+    const pickupCityValue = puCityFilter.trim().toLowerCase();
+    return tripMatchesCity(trip, pickupCityValue);
+  }).filter(trip => {
+    const dropoffCityValue = doCityFilter.trim().toLowerCase();
+    return tripMatchesCity(trip, dropoffCityValue);
+  }), [doCityFilter, matchesAnyZipFilter, matchesPickupZipFilter, matchesDropoffZipFilter, matchesTripDateFilter, matchesTripSearchFilter, matchesTripServiceAnimalFilter, matchesTripTypeFilter, puCityFilter, scanAnnotatedTrips]);
   const liveScanScopeTrips = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(matchesTripLegFilter).filter(matchesTripTypeFilter).filter(matchesTripServiceAnimalFilter).filter(matchesTripSearchFilter).filter(matchesPickupZipFilter).filter(matchesDropoffZipFilter).filter(matchesAnyZipFilter).filter(trip => {
     const pickupCityValue = puCityFilter.trim().toLowerCase();
     return tripMatchesCity(trip, pickupCityValue);
@@ -2734,9 +2741,9 @@ const TripDashboardWorkspace = () => {
     return tripMatchesCity(trip, dropoffCityValue);
   }), [doCityFilter, matchesAnyZipFilter, matchesPickupZipFilter, matchesDropoffZipFilter, matchesTripDateFilter, matchesTripLegFilter, matchesTripSearchFilter, matchesTripServiceAnimalFilter, matchesTripTypeFilter, puCityFilter, scanAnnotatedTrips]);
   const visibleFilteredTripIdSet = useMemo(() => new Set(filteredTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean)), [filteredTrips]);
-  const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanScopeTrips).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanScopeTrips]);
+  const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanAnalysisTrips).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanAnalysisTrips]);
   const liveTripScan = useMemo(() => {
-    const scanResult = analyzeImportedTrips(liveScanScopeTrips);
+    const scanResult = analyzeImportedTrips(liveScanAnalysisTrips);
     const visibleFindings = (scanResult?.findings || []).filter(finding => (Array.isArray(finding?.tripIds) ? finding.tripIds : []).some(tripId => visibleFilteredTripIdSet.has(String(tripId || '').trim())));
     return {
       ...scanResult,
@@ -2745,7 +2752,7 @@ const TripDashboardWorkspace = () => {
       blockingCount: visibleFindings.filter(finding => finding.severity === 'blocking').length,
       findings: visibleFindings
     };
-  }, [liveScanScopeTrips, visibleFilteredTripIdSet]);
+  }, [liveScanAnalysisTrips, visibleFilteredTripIdSet]);
   const liveTripFieldErrorMap = useMemo(() => {
     const errorMap = new Map();
 
