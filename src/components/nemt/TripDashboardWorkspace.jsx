@@ -2333,6 +2333,9 @@ const TripDashboardWorkspace = () => {
       }
       handleToggleConfirmationTools();
     }}>Confirmation</Button>
+      <Button variant="light" size="sm" onClick={() => router.push('/confirmation')} title="Open the separate confirmation page">
+        Confirmation Page
+      </Button>
       {showConfirmationTools ? <Button variant="light" size="sm" onClick={() => {
       const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
       handleOpenConfirmationMethod(selectedTripsForConfirmation);
@@ -2367,6 +2370,7 @@ const TripDashboardWorkspace = () => {
       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
       <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
       <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+      <Button variant="outline-danger" size="sm" onClick={handleDeleteSelectedTrips} title="Delete selected trips" disabled={selectedTripIds.length === 0}>D</Button>
     </div>;
 
   const renderLegButtonsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
@@ -4261,6 +4265,35 @@ const TripDashboardWorkspace = () => {
     }
 
     openCancelModalForTrips(targetTripIds);
+  };
+
+  const handleDeleteSelectedTrips = () => {
+    const targetTripIdSet = new Set(selectedTripIds.map(normalizeTripId).filter(Boolean));
+    const targetTrips = trips.filter(trip => targetTripIdSet.has(normalizeTripId(trip.id)));
+    if (targetTrips.length === 0) {
+      setStatusMessage('Select at least one trip to delete.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete ${targetTrips.length} selected trip(s)? This will remove them from the dashboard and any route that contains them.`);
+    if (!confirmed) return;
+
+    targetTrips.forEach(trip => {
+      deleteTripRecord(trip.id);
+    });
+
+    if (noteModalTripId && targetTripIdSet.has(normalizeTripId(noteModalTripId))) {
+      handleCloseTripNote();
+    }
+
+    if (tripExcelCompareModalId && targetTripIdSet.has(normalizeTripId(tripExcelCompareModalId))) {
+      handleCloseTripExcelCompare();
+    }
+
+    setSelectedTripIds([]);
+    setSelectedRouteId(null);
+    setStatusMessage(`${targetTrips.length} trip(s) deleted.`);
+    showNotification({ message: `${targetTrips.length} trip(s) deleted.`, variant: 'success' });
   };
 
   const handleReinstateTrip = tripId => {

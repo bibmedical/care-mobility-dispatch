@@ -6,10 +6,11 @@ import React from 'react';
 
 const QUICK_LINKS = [
   { href: '/trip-dashboard', label: 'Trip Dashboard', variant: 'success' },
+  { href: '/confirmation', label: 'Confirmation', variant: 'warning' },
   { href: '/dispatcher', label: 'Dispatch', variant: 'success' }
 ];
 
-const HIDDEN_PATHS = new Set(['/trip-dashboard', '/dispatcher']);
+const HIDDEN_PATHS = new Set(['/trip-dashboard', '/dispatcher', '/confirmation']);
 
 const AdminQuickNav = () => {
   const pathname = usePathname();
