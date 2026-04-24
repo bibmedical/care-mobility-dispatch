@@ -1958,9 +1958,8 @@ export const NemtProvider = ({
   });
 
   const replaceTrips = trips => updateState(currentState => {
-    const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(currentState.auditLog);
     const protectedTrips = normalizeTripRecords(currentState.trips.filter(isProtectedManualTrip));
-    const incomingTrips = normalizeTripRecords(filterTripsByDeletionSuppression(trips, deletedTripSuppressionKeySet));
+    const incomingTrips = normalizeTripRecords(trips);
     const protectedIds = new Set(incomingTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean));
     const nextTrips = normalizeTripRecords([
       ...protectedTrips.filter(trip => !protectedIds.has(String(trip?.id || '').trim())),
@@ -1982,9 +1981,8 @@ export const NemtProvider = ({
   });
 
   const upsertImportedTrips = (trips, options = {}) => updateState(currentState => {
-    const deletedTripSuppressionKeySet = getDeletedTripSuppressionKeySet(currentState.auditLog);
     const currentTrips = normalizeTripRecords(currentState.trips);
-    const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(filterTripsByDeletionSuppression(trips, deletedTripSuppressionKeySet)));
+    const importedTrips = dedupeImportedTripBatch(normalizeTripRecords(trips));
     const importedAt = new Date().toISOString();
     const batchId = `saferide-${Date.now()}-${importedTrips.length}`;
     const applyRoutingChanges = options?.applyRoutingChanges !== false;
@@ -2282,19 +2280,13 @@ export const NemtProvider = ({
       markDispatchDirty: true,
       allowTripShrink: true,
       allowTripShrinkReason: 'manual-admin-delete',
-      buildAuditEntry: currentState => {
-        const deletedTrip = (Array.isArray(currentState?.trips) ? currentState.trips : []).find(trip => String(trip?.id || '').trim() === normalizedTripId);
-        return {
-          action: 'delete-trip',
-          entityType: 'trip',
-          entityId: normalizedTripId,
-          source: 'confirmation',
-          summary: `Deleted trip ${normalizedTripId}`,
-          metadata: {
-            tripSuppressionKeys: getTripDeletionSuppressionKeys(deletedTrip)
-          }
-        };
-      }
+      buildAuditEntry: () => ({
+        action: 'delete-trip',
+        entityType: 'trip',
+        entityId: normalizedTripId,
+        source: 'confirmation',
+        summary: `Deleted trip ${normalizedTripId}`
+      })
     });
   };
 

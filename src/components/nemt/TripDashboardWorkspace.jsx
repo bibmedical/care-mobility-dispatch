@@ -38,6 +38,49 @@ const darkToolbarButtonStyle = {
   backgroundColor: 'transparent'
 };
 
+const TRIP_DASHBOARD_MAP_LAYER_OPTIONS = [{
+  value: 'all',
+  label: 'Layers: All'
+}, {
+  value: 'driver-route',
+  label: 'Layers: Driver + Route'
+}, {
+  value: 'driver-selected',
+  label: 'Layers: Driver + Trip'
+}, {
+  value: 'route-selected',
+  label: 'Layers: Route + Trip'
+}, {
+  value: 'route-only',
+  label: 'Layers: Route Only'
+}, {
+  value: 'selected-only',
+  label: 'Layers: Trip Only'
+}, {
+  value: 'driver-only',
+  label: 'Layers: Driver Only'
+}];
+
+const getTripDashboardMapLayerVisibility = preset => {
+  switch (String(preset || '').trim()) {
+    case 'driver-route':
+      return { drivers: true, route: true, selectedTrips: false };
+    case 'driver-selected':
+      return { drivers: true, route: false, selectedTrips: true };
+    case 'route-selected':
+      return { drivers: false, route: true, selectedTrips: true };
+    case 'route-only':
+      return { drivers: false, route: true, selectedTrips: false };
+    case 'selected-only':
+      return { drivers: false, route: false, selectedTrips: true };
+    case 'driver-only':
+      return { drivers: true, route: false, selectedTrips: false };
+    case 'all':
+    default:
+      return { drivers: true, route: true, selectedTrips: true };
+  }
+};
+
 const TripDashboardMapResizer = ({ resizeKey }) => {
   const map = useMap();
 
@@ -56,6 +99,29 @@ const TripDashboardMapResizer = ({ resizeKey }) => {
       window.clearTimeout(timeoutId);
     };
   }, [map, resizeKey]);
+
+  return null;
+};
+
+const TripDashboardMapViewportController = ({ focusPoints, focusKey }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!Array.isArray(focusPoints) || focusPoints.length === 0) return;
+
+    if (focusPoints.length === 1) {
+      map.setView(focusPoints[0], Math.max(map.getZoom(), 12), {
+        animate: false
+      });
+      return;
+    }
+
+    map.fitBounds(focusPoints, {
+      padding: [36, 36],
+      maxZoom: 13,
+      animate: false
+    });
+  }, [focusKey, focusPoints, map]);
 
   return null;
 };
@@ -1198,6 +1264,7 @@ const TripDashboardWorkspace = () => {
   const [blacklistDraftTrip, setBlacklistDraftTrip] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
   const [showRoute, setShowRoute] = useState(true);
+  const [mapLayerPreset, setMapLayerPreset] = useState('all');
   const [showBottomPanels, setShowBottomPanels] = useState(() => getInitialTripDashboardLayoutMode() !== TRIP_DASHBOARD_LAYOUTS.normal);
   const showInlineMap = true;
   const [showMapPane, setShowMapPane] = useState(() => getInitialTripDashboardLayoutMode() === TRIP_DASHBOARD_LAYOUTS.normal);
@@ -1877,6 +1944,10 @@ const TripDashboardWorkspace = () => {
   }), [routePlans, tripDateFilter, trips]);
   const selectedRoute = useMemo(() => filteredRoutePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [filteredRoutePlans, selectedRouteId]);
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const mapLayerVisibility = useMemo(() => getTripDashboardMapLayerVisibility(mapLayerPreset), [mapLayerPreset]);
+  const showDriverMapLayer = mapLayerVisibility.drivers;
+  const showRouteMapLayer = mapLayerVisibility.route && showRoute;
+  const showSelectedTripMapLayer = mapLayerVisibility.selectedTrips;
   const isDarkTheme = themeMode === 'dark';
   const mapQuickFilterControlStyle = themeMode === 'dark'
     ? {
@@ -2900,8 +2971,39 @@ const TripDashboardWorkspace = () => {
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
   const selectedVisibleTrips = useMemo(() => sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)))), [filteredTrips, selectedTripIdSet]);
   const getMapTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffPosition(trip) : getTripPickupPosition(trip);
+  const mapQuickTripPoints = useMemo(() => {
+    if (!showSelectedTripMapLayer || selectedTrips.length > 0) return [];
+
+    return mapQuickTrips.flatMap(trip => {
+      const pickupPosition = getTripPickupPosition(trip);
+      const dropoffPosition = getTripDropoffPosition(trip);
+      const points = [];
+
+      if (pickupPosition) {
+        points.push({
+          key: `${trip.id}-pickup-mapquick`,
+          tripId: trip.id,
+          position: pickupPosition,
+          color: '#0ea5e9',
+          label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
+        });
+      }
+
+      if (dropoffPosition) {
+        points.push({
+          key: `${trip.id}-dropoff-mapquick`,
+          tripId: trip.id,
+          position: dropoffPosition,
+          color: '#22c55e',
+          label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
+        });
+      }
+
+      return points;
+    });
+  }, [mapQuickTrips, selectedTrips.length, showSelectedTripMapLayer, timeDisplayMode]);
   const selectedTripMapPoints = useMemo(() => {
-    if (selectedTrips.length === 0 || showRoute) return [];
+    if (selectedTrips.length === 0 || !showSelectedTripMapLayer) return [];
     const scopedSelectedTrips = activeDateTripIdSet ? selectedTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : selectedTrips;
     return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => {
       const pickupPosition = getTripPickupPosition(trip);
@@ -2929,7 +3031,7 @@ const TripDashboardWorkspace = () => {
       }
       return points;
     });
-  }, [activeDateTripIdSet, selectedTrips, showRoute]);
+  }, [activeDateTripIdSet, selectedTrips, showSelectedTripMapLayer, timeDisplayMode]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
     return sortTripsByPickupTime(filteredTrips).slice(0, 200);
@@ -3226,7 +3328,7 @@ const TripDashboardWorkspace = () => {
   };
 
   const routeStops = useMemo(() => {
-    if (!showRoute) return [];
+    if (!showRouteMapLayer) return [];
 
     if (selectedTripIds.length > 0) {
       const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
@@ -3294,7 +3396,7 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRouteMapLayer, trips, timeDisplayMode]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
@@ -3302,9 +3404,10 @@ const TripDashboardWorkspace = () => {
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
   const mapVisibleDriversWithRealLocation = useMemo(() => {
+    if (!showDriverMapLayer) return [];
     if (!showInlineMap || !showMapPane) return [];
     return driversWithRealLocation.filter(driver => String(driver?.live || '').trim().toLowerCase() === 'online' || String(driver?.id || '').trim() === String(selectedDriverId || '').trim());
-  }, [driversWithRealLocation, selectedDriverId, showInlineMap, showMapPane]);
+  }, [driversWithRealLocation, selectedDriverId, showDriverMapLayer, showInlineMap, showMapPane]);
   const liveVehicleIconByDriverId = useMemo(() => {
     const iconByDriverId = new Map();
     for (const driver of mapVisibleDriversWithRealLocation) {
@@ -3316,6 +3419,19 @@ const TripDashboardWorkspace = () => {
     }
     return iconByDriverId;
   }, [mapVisibleDriversWithRealLocation]);
+  const mapViewportFocusPoints = useMemo(() => {
+    if (selectedTripMapPoints.length > 0) {
+      return selectedTripMapPoints.map(point => point.position);
+    }
+    if (mapQuickTripPoints.length > 0) {
+      return mapQuickTripPoints.map(point => point.position);
+    }
+    if (routeStops.length > 0) {
+      return routeStops.map(stop => stop.position);
+    }
+    return [];
+  }, [mapQuickTripPoints, routeStops, selectedTripMapPoints]);
+  const mapViewportFocusKey = useMemo(() => mapViewportFocusPoints.map(point => `${Number(point?.[0] || 0).toFixed(5)},${Number(point?.[1] || 0).toFixed(5)}`).join('|'), [mapViewportFocusPoints]);
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
@@ -5700,6 +5816,14 @@ const TripDashboardWorkspace = () => {
             <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'hidden', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
               <>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
+                  <Form.Select size="sm" value={mapLayerPreset} onChange={event => {
+                const nextPreset = event.target.value;
+                const nextOption = TRIP_DASHBOARD_MAP_LAYER_OPTIONS.find(option => option.value === nextPreset);
+                setMapLayerPreset(nextPreset);
+                setStatusMessage(`${nextOption?.label || 'Map layers'} ready.`);
+              }} style={mapQuickFilterControlStyle}>
+                    {TRIP_DASHBOARD_MAP_LAYER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </Form.Select>
                   <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="">City</option>
                     {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
@@ -5733,10 +5857,11 @@ const TripDashboardWorkspace = () => {
               </div> : null}
             <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
               <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
+              <TripDashboardMapViewportController focusPoints={mapViewportFocusPoints} focusKey={mapViewportFocusKey} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               <ZoomControl position="bottomleft" />
-              {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip && getMapTripTargetPosition(selectedDriverActiveTrip) ? <Polyline positions={[selectedDriver.position, getMapTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+              {showRouteMapLayer && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
+              {showDriverMapLayer && selectedDriver?.hasRealLocation && selectedDriverActiveTrip && getMapTripTargetPosition(selectedDriverActiveTrip) ? <Polyline positions={[selectedDriver.position, getMapTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
               {mapVisibleDriversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
@@ -5748,36 +5873,13 @@ const TripDashboardWorkspace = () => {
                     <div>{getDriverCheckpoint(driver)}</div>
                   </Popup>
                 </Marker>)}
-              {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
-            const pickupPosition = getTripPickupPosition(trip);
-            const dropoffPosition = getTripDropoffPosition(trip);
-            const points = [];
-            if (pickupPosition) {
-              points.push({
-                key: `${trip.id}-pickup-mapquick`,
-                tripId: trip.id,
-                position: pickupPosition,
-                color: '#0ea5e9',
-                label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
-              });
-            }
-            if (dropoffPosition) {
-              points.push({
-                key: `${trip.id}-dropoff-mapquick`,
-                tripId: trip.id,
-                position: dropoffPosition,
-                color: '#22c55e',
-                label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
-              });
-            }
-            return points;
-          }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
+              {mapQuickTripPoints.map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
             click: () => {
               toggleTripSelection(point.tripId);
             }
           }}>
                   <Popup>{point.label}</Popup>
-                </CircleMarker>) : null}
+                </CircleMarker>)}
               {selectedTripMapPoints.map(point => <CircleMarker key={point.key} center={point.position} radius={7} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.92, weight: 2 }}>
                   <Popup>
                     <div className="fw-semibold">{point.label}</div>
