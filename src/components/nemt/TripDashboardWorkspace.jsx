@@ -1152,7 +1152,6 @@ const TripDashboardWorkspace = () => {
     assignTripsToSecondaryDriver,
     unassignTrips,
     upsertImportedTrips,
-    previewImportedTripRoutingChanges,
     cancelTrips,
     reinstateTrips,
     createRoute,
@@ -1249,35 +1248,6 @@ const TripDashboardWorkspace = () => {
       showNotification({ message: `${selectedVisibleTrips.length} selected visible trip(s) inverted.`, variant: 'success' });
     };
 
-    const handleAutoRepairLiveScan = () => {
-      if (liveTripAutoRepairableFindings.length === 0) {
-        setStatusMessage('Scanner checked the visible trips. No auto-repairable issues were found.');
-        showNotification({ message: 'No simple repeated-direction issues are available for auto-repair in the visible trips.', variant: 'warning' });
-        return;
-      }
-
-      const targetTripIds = new Set();
-      liveTripAutoRepairableFindings.forEach(finding => {
-        finding.tripIds.slice(1).forEach(tripId => targetTripIds.add(normalizeTripId(tripId)));
-      });
-
-      const targetTrips = filteredTrips.filter(trip => targetTripIds.has(normalizeTripId(trip?.id)));
-      if (targetTrips.length === 0) {
-        showNotification({ message: 'Scanner found issues, but the target trips were not available for repair in the current visible list.', variant: 'warning' });
-        return;
-      }
-
-      targetTrips.forEach(trip => {
-        updateTripRecord(trip.id, invertDashboardTripDirection(trip));
-      });
-      setSelectedTripIds(targetTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean));
-      const riderSummary = Array.from(new Set(targetTrips.map(trip => String(trip?.rider || '').trim()).filter(Boolean))).slice(0, 3);
-      const riderSuffix = riderSummary.length > 0 ? ` Affected rider(s): ${riderSummary.join(', ')}${riderSummary.length < new Set(targetTrips.map(trip => String(trip?.rider || '').trim()).filter(Boolean)).size ? ', ...' : ''}.` : '';
-      const repairSummary = `Scanner auto-repair inverted direction for ${targetTrips.length} visible trip(s). Pickup, dropoff, and ZIP codes were swapped together.${riderSuffix}`;
-      setStatusMessage(repairSummary);
-      showNotification({ message: repairSummary, variant: 'success' });
-    };
-
     const handleOpenLiveScanConfirmation = () => {
       if (selectedVisibleTrips.length === 0) {
         setStatusMessage('Select at least one visible scanner trip before opening confirmation.');
@@ -1327,8 +1297,6 @@ const TripDashboardWorkspace = () => {
   const [importedServiceDateKeys, setImportedServiceDateKeys] = useState([]);
   const [selectedImportFileName, setSelectedImportFileName] = useState('');
   const [importScan, setImportScan] = useState(null);
-  const [importRoutingChanges, setImportRoutingChanges] = useState([]);
-  const [showImportRoutingChangeModal, setShowImportRoutingChangeModal] = useState(false);
   const [pendingImportAction, setPendingImportAction] = useState('');
   const [isImportParsing, setIsImportParsing] = useState(false);
   const [localImportPath, setLocalImportPath] = useState('');
@@ -1439,22 +1407,17 @@ const TripDashboardWorkspace = () => {
       setImportPendingTrips(parsedImport.trips);
       setImportedServiceDateKeys(parsedImport.serviceDateKeys);
       setImportScan(parsedImport.scan || null);
-      const routingChanges = previewImportedTripRoutingChanges(parsedImport.trips);
-      setImportRoutingChanges(routingChanges);
       if (parsedImport.trips.length === 0) {
         setStatusMessage('The selected file does not contain trips to import.');
         showNotification({ message: 'The selected file does not contain trips to import.', variant: 'warning' });
         return;
       }
-      const routingChangeCount = routingChanges.length;
       const scanSuffix = parsedImport.scan?.findingCount ? ` Scanner found ${parsedImport.scan.blockingCount} blocking issue(s) and ${parsedImport.scan.warningCount} warning(s).` : '';
-      const routingSuffix = routingChangeCount > 0 ? ` ${routingChangeCount} trip(s) have a new address change waiting for review.` : '';
-      setStatusMessage(`${parsedImport.trips.length} trip(s) ready to import from ${file.name}.${scanSuffix}${routingSuffix}`);
+      setStatusMessage(`${parsedImport.trips.length} trip(s) ready to import from ${file.name}.${scanSuffix}`);
     } catch (error) {
       setImportPendingTrips([]);
       setImportedServiceDateKeys([]);
       setImportScan(null);
-      setImportRoutingChanges([]);
       const message = error?.message || `Could not read ${file.name}. Use a valid .xlsx, .xls, or .csv import file.`;
       setStatusMessage(message);
       showNotification({ message, variant: 'danger' });
@@ -1497,8 +1460,6 @@ const TripDashboardWorkspace = () => {
       setImportPendingTrips(Array.isArray(payload?.trips) ? payload.trips : []);
       setImportedServiceDateKeys(Array.isArray(payload?.serviceDateKeys) ? payload.serviceDateKeys : []);
       setImportScan(payload?.scan || null);
-      const routingChanges = previewImportedTripRoutingChanges(payload.trips);
-      setImportRoutingChanges(routingChanges);
 
       if (!Array.isArray(payload?.trips) || payload.trips.length === 0) {
         const message = 'The selected local file does not contain trips to import.';
@@ -1507,15 +1468,12 @@ const TripDashboardWorkspace = () => {
         return;
       }
 
-      const routingChangeCount = routingChanges.length;
       const scanSuffix = payload?.scan?.findingCount ? ` Scanner found ${payload.scan.blockingCount} blocking issue(s) and ${payload.scan.warningCount} warning(s).` : '';
-      const routingSuffix = routingChangeCount > 0 ? ` ${routingChangeCount} trip(s) have a new address change waiting for review.` : '';
-      setStatusMessage(`${payload.trips.length} trip(s) ready to import from ${trimmedPath}.${scanSuffix}${routingSuffix}`);
+      setStatusMessage(`${payload.trips.length} trip(s) ready to import from ${trimmedPath}.${scanSuffix}`);
     } catch (error) {
       setImportPendingTrips([]);
       setImportedServiceDateKeys([]);
       setImportScan(null);
-      setImportRoutingChanges([]);
       const message = error?.message || 'Could not read the local file path.';
       setStatusMessage(message);
       showNotification({ message, variant: 'danger' });
@@ -1530,24 +1488,13 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    const routingChanges = previewImportedTripRoutingChanges(importPendingTrips);
-    let applyRoutingChanges = true;
-    if (routingChanges.length > 0) {
-      const previewLines = routingChanges.slice(0, 5).map(change => `${change.rider || change.rideId || change.brokerTripId || change.id}: ${change.currentAddress || '-'} -> ${change.importedAddress || '-'} | ${change.currentDestination || '-'} -> ${change.importedDestination || '-'}`).join('\n');
-      applyRoutingChanges = window.confirm(`The new import changed the route on ${routingChanges.length} trip(s).\n\nPress OK to apply the new address(es).\nPress Cancel to keep the current system address(es) and import everything else.\n\n${previewLines}${routingChanges.length > 5 ? '\n...' : ''}`);
-    }
-
-    upsertImportedTrips(importPendingTrips, {
-      applyRoutingChanges
-    });
+    upsertImportedTrips(importPendingTrips);
     setShowTripImportModal(false);
-    const importMessage = routingChanges.length > 0
-      ? applyRoutingChanges
-        ? `${importPendingTrips.length} trip(s) imported into Trip Dashboard. ${routingChanges.length} route change(s) were applied.`
-        : `${importPendingTrips.length} trip(s) imported into Trip Dashboard. ${routingChanges.length} route change(s) were kept as warning only and current addresses stayed in place. Use the Address Review filter to see them later.`
+    const importMessage = importScan?.findingCount > 0
+      ? `${importPendingTrips.length} trip(s) imported into Trip Dashboard. Scanner warnings stay highlighted so you can review and invert manually if needed.`
       : `${importPendingTrips.length} trip(s) imported into Trip Dashboard.`;
     setStatusMessage(importMessage);
-    showNotification({ message: importMessage, variant: routingChanges.length > 0 && !applyRoutingChanges ? 'warning' : 'success' });
+    showNotification({ message: importMessage, variant: importScan?.findingCount > 0 ? 'warning' : 'success' });
     setImportPendingTrips([]);
     setImportedServiceDateKeys([]);
     setSelectedImportFileName('');
@@ -1716,16 +1663,7 @@ const TripDashboardWorkspace = () => {
 
       const routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers, effectiveAssignments);
 
-      const routingChanges = previewImportedTripRoutingChanges(importPendingTrips);
-      let applyRoutingChanges = true;
-      if (routingChanges.length > 0) {
-        const previewLines = routingChanges.slice(0, 5).map(change => `${change.rider || change.rideId || change.brokerTripId || change.id}: ${change.currentAddress || '-'} -> ${change.importedAddress || '-'} | ${change.currentDestination || '-'} -> ${change.importedDestination || '-'}`).join('\n');
-        applyRoutingChanges = window.confirm(`The new import changed the route on ${routingChanges.length} trip(s).\n\nPress OK to apply the new address(es).\nPress Cancel to keep the current system address(es) and import everything else.\n\n${previewLines}${routingChanges.length > 5 ? '\n...' : ''}`);
-      }
-
-      upsertImportedTrips(importPendingTrips, {
-        applyRoutingChanges
-      });
+      upsertImportedTrips(importPendingTrips);
 
       if (routePlan.routeSpecs.length > 0) {
         setPendingRouteImportPlan(routePlan.routeSpecs);
@@ -6282,7 +6220,6 @@ const TripDashboardWorkspace = () => {
                       </Button>
                       <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
                       <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
-                      <Button variant="light" size="sm" onClick={handleAutoRepairLiveScan}>Auto Repair</Button>
                       <Button variant="light" size="sm" onClick={() => setShowLiveTripScanPanel(false)}>Hide</Button>
                     </div>
                   </div>
@@ -6511,11 +6448,6 @@ const TripDashboardWorkspace = () => {
             <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
             <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
             <div className="small text-muted mb-3">{importPendingTrips.length > 0 ? `${importPendingTrips.length} trip(s) ready to import.` : 'Choose an import file to load trips here.'}</div>
-            {importRoutingChanges.length > 0 ? <Alert variant="warning" className="mb-3">
-                <div className="fw-semibold mb-1">Address changes found</div>
-                <div className="small mb-2">{importRoutingChanges.length} trip(s) in this file do not match the current system address.</div>
-                <Button variant="outline-dark" size="sm" onClick={() => setShowImportRoutingChangeModal(true)}>Review Address Changes</Button>
-              </Alert> : null}
             {importScan?.findingCount > 0 ? <Alert variant={importScan.blockingCount > 0 ? 'danger' : 'warning'} className="mb-3">
                 <div className="fw-semibold mb-1">File scanner findings</div>
                 <div className="small mb-2">Found {importScan.findingCount} issue(s): {importScan.blockingCount} blocking and {importScan.warningCount} warning.</div>
@@ -6578,56 +6510,6 @@ const TripDashboardWorkspace = () => {
             <Button variant="outline-secondary" onClick={() => setShowTripImportModal(false)}>Close</Button>
             <Button variant="success" onClick={handleImportTripsIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing}>Import Trips</Button>
             <Button variant="primary" onClick={handleLoadRoutesIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing || isRouteImporting}>{isRouteImporting ? 'Loading Route...' : 'Load Route'}</Button>
-          </Modal.Footer>
-        </Modal>
-
-        <Modal show={showImportRoutingChangeModal} onHide={() => setShowImportRoutingChangeModal(false)} size="xl" centered scrollable>
-          <Modal.Header closeButton>
-            <Modal.Title>Address Change Review</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <div className="small text-muted mb-3">Review every trip where the new import does not match the current system address.</div>
-            <div className="table-responsive">
-              <Table bordered hover className="align-middle mb-0" data-bs-theme={themeMode}>
-                <thead>
-                  <tr>
-                    <th>Trip</th>
-                    <th>Rider</th>
-                    <th>Current Pickup</th>
-                    <th>Imported Pickup</th>
-                    <th>Current Dropoff</th>
-                    <th>Imported Dropoff</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importRoutingChanges.length > 0 ? importRoutingChanges.map(change => <tr key={`routing-change-${change.id}`}>
-                      <td style={{ whiteSpace: 'nowrap' }}>{change.rideId || change.brokerTripId || change.id || '-'}</td>
-                      <td>{change.rider || '-'}</td>
-                      <td style={{ minWidth: 220, whiteSpace: 'normal' }}>
-                        <div>{change.currentAddress || '-'}</div>
-                        <div className="small text-muted">ZIP: {change.currentFromZipcode || '-'}</div>
-                      </td>
-                      <td style={{ minWidth: 220, whiteSpace: 'normal' }} className="table-warning">
-                        <div>{change.importedAddress || '-'}</div>
-                        <div className="small text-muted">ZIP: {change.importedFromZipcode || '-'}</div>
-                      </td>
-                      <td style={{ minWidth: 220, whiteSpace: 'normal' }}>
-                        <div>{change.currentDestination || '-'}</div>
-                        <div className="small text-muted">ZIP: {change.currentToZipcode || '-'}</div>
-                      </td>
-                      <td style={{ minWidth: 220, whiteSpace: 'normal' }} className="table-warning">
-                        <div>{change.importedDestination || '-'}</div>
-                        <div className="small text-muted">ZIP: {change.importedToZipcode || '-'}</div>
-                      </td>
-                    </tr>) : <tr>
-                      <td colSpan={6} className="text-center text-muted py-4">No address changes are waiting for review.</td>
-                    </tr>}
-                </tbody>
-              </Table>
-            </div>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowImportRoutingChangeModal(false)}>Close</Button>
           </Modal.Footer>
         </Modal>
 
