@@ -4077,6 +4077,13 @@ const TripDashboardWorkspace = () => {
     return rows;
   }, [filteredTrips, getDriverName, selectedDriverId, todayDateKey, tripDateFilter, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key]);
 
+  const visibleTripPairSizeMap = useMemo(() => filteredTrips.reduce((map, trip) => {
+    const pairKey = getTripPairKey(trip);
+    if (!pairKey) return map;
+    map.set(pairKey, (map.get(pairKey) ?? 0) + 1);
+    return map;
+  }, new Map()), [filteredTrips]);
+
   const selectedDateDriverSummary = useMemo(() => {
     const driverCounts = filteredTrips.reduce((summary, trip) => {
       const driverName = getDriverName(trip.driverId) || 'Unassigned';
@@ -6266,11 +6273,38 @@ const TripDashboardWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.filter(row => row.type === 'trip').map(row => <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
+                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.filter(row => row.type === 'trip').map(row => {
+                    const tripLegKey = getTripLegFilterKey(row.trip);
+                    const tripPairKey = getTripPairKey(row.trip);
+                    const isSoloLegTrip = (visibleTripPairSizeMap.get(tripPairKey) ?? 0) <= 1;
+                    const isSelectedTripRow = selectedTripIdSet.has(normalizeTripId(row.trip.id));
+                    const isAssignedTripRow = isTripAssignedToSelectedDriver(row.trip);
+                    const tripRowBackgroundColor = isSoloLegTrip
+                      ? '#374151'
+                      : tripLegKey === 'AL'
+                        ? '#34b58f'
+                        : tripLegKey === 'BL'
+                          ? isDarkTheme ? '#ca8a04' : '#fde047'
+                          : tripLegKey === 'CL'
+                            ? isDarkTheme ? '#be185d' : '#f9a8d4'
+                            : undefined;
+                    const tripRowTextColor = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? '#f8fafc' : '#1f2937';
+                    const tripRowSubtleTextColor = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? 'rgba(248,250,252,0.92)' : '#334155';
+                    const tripRowOutlineBackground = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? 'rgba(255,255,255,0.16)' : 'transparent';
+                    const tripRowOutlineTextColor = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? '#f8fafc' : '#0f172a';
+                    const tripRowOutlineBorderColor = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? 'rgba(248,250,252,0.28)' : 'rgba(15,23,42,0.18)';
+                    return <tr key={row.trip.id} className={isSelectedTripRow ? 'table-primary' : isAssignedTripRow ? 'table-success' : ''} data-trip-row={tripRowBackgroundColor ? 'true' : undefined} style={tripRowBackgroundColor ? {
+                      '--trip-row-bg': tripRowBackgroundColor,
+                      '--trip-row-text': tripRowTextColor,
+                      '--trip-row-subtle-text': tripRowSubtleTextColor,
+                      '--trip-row-outline-bg': tripRowOutlineBackground,
+                      '--trip-row-outline-text': tripRowOutlineTextColor,
+                      '--trip-row-outline-border': tripRowOutlineBorderColor
+                    } : undefined}>
                         <td>
                           <input
                             type="checkbox"
-                            checked={selectedTripIdSet.has(normalizeTripId(row.trip.id))}
+                            checked={isSelectedTripRow}
                             onChange={() => handleTripSelectionToggle(row.trip.id)}
                             style={{
                               width: 16,
@@ -6312,7 +6346,8 @@ const TripDashboardWorkspace = () => {
                           </div>
                         </td> : null}
                         {orderedVisibleTripColumnsWithoutNotes.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
-                      </tr>) : <tr>
+                      </tr>;
+                  }) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No activity found for that day. If a route was saved, check the same day in Trip Route to view related trips and drivers.</td>
                       </tr>}
                   </tbody>
@@ -6967,6 +7002,43 @@ const TripDashboardWorkspace = () => {
             background: #f9fcf9;
           }
 
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] td {
+            background: var(--trip-row-bg) !important;
+            color: var(--trip-row-text) !important;
+          }
+
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .text-muted,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .small.text-muted {
+            color: var(--trip-row-subtle-text) !important;
+            opacity: 1 !important;
+          }
+
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-secondary,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-success,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-primary,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-info,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-danger {
+            --bs-btn-color: var(--trip-row-outline-text);
+            --bs-btn-border-color: var(--trip-row-outline-border);
+            --bs-btn-hover-color: var(--trip-row-outline-text);
+            --bs-btn-hover-bg: var(--trip-row-outline-bg);
+            --bs-btn-hover-border-color: var(--trip-row-outline-border);
+            --bs-btn-active-color: var(--trip-row-outline-text);
+            --bs-btn-active-bg: var(--trip-row-outline-bg);
+            --bs-btn-active-border-color: var(--trip-row-outline-border);
+            background-color: var(--trip-row-outline-bg);
+            box-shadow: 0 0 0 1px var(--trip-row-outline-border) inset;
+          }
+
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-success,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-primary,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-secondary,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-info,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-danger,
+          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-warning {
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08) inset;
+          }
+
           .trip-dashboard-selector {
             margin-bottom: 0;
           }
@@ -7020,6 +7092,11 @@ const TripDashboardWorkspace = () => {
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table tbody tr:nth-child(even) td {
             background: #111c31;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] td {
+            background: var(--trip-row-bg) !important;
+            color: var(--trip-row-text) !important;
           }
         `}</style>
       </div>
