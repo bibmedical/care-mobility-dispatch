@@ -1,5 +1,6 @@
 'use client';
 
+import PowerToggleButton from '@/components/form/PowerToggleButton';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import ManualTripModal from '@/components/nemt/ManualTripModal';
 import { useLayoutContext } from '@/context/useLayoutContext';
@@ -15,7 +16,7 @@ import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
-import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
+import { getMapTileConfig } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
@@ -37,6 +38,8 @@ const darkToolbarButtonStyle = {
   borderColor: 'rgba(226, 232, 240, 0.34)',
   backgroundColor: 'transparent'
 };
+
+const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
 
 const TRIP_DASHBOARD_MAP_LAYER_OPTIONS = [{
   value: 'all',
@@ -1209,8 +1212,12 @@ const TripDashboardWorkspace = () => {
     drivers,
     trips,
     routePlans,
+    selectedTripIds,
+    setSelectedTripIds,
     selectedDriverId,
     setSelectedDriverId,
+    selectedRouteId,
+    setSelectedRouteId,
     assignTripsToDriver,
     assignTripsToSecondaryDriver,
     unassignTrips,
@@ -1238,11 +1245,10 @@ const TripDashboardWorkspace = () => {
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripDateFilter, setTripDateFilter] = useState('all');
-  const [selectedTripIds, setSelectedTripIds] = useState([]);
-  const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
+  const [showScannerRowColors, setShowScannerRowColors] = useState(true);
   const [serviceAnimalOnly, setServiceAnimalOnly] = useState(false);
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
   const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
@@ -1272,6 +1278,20 @@ const TripDashboardWorkspace = () => {
   const [showBottomPanels, setShowBottomPanels] = useState(() => getInitialTripDashboardLayoutMode() !== TRIP_DASHBOARD_LAYOUTS.normal);
   const showInlineMap = true;
   const [showMapPane, setShowMapPane] = useState(() => getInitialTripDashboardLayoutMode() === TRIP_DASHBOARD_LAYOUTS.normal);
+  const [showScannerMapInRoutePanel, setShowScannerMapInRoutePanel] = useState(false);
+  const [scannerColumnsSaved, setScannerColumnsSaved] = useState(true);
+  const [scannerActionPulse, setScannerActionPulse] = useState({
+    save: false,
+    reset: false,
+    confirmationPage: false,
+    sendSelected: false,
+    history: false,
+    diarie: false,
+    excel: false,
+    focusReset: false,
+    invert: false,
+    hide: false
+  });
   const [mapLocked, setMapLocked] = useState(false);
     const handleFocusLiveScanTrip = (tripId, riderName = '') => {
       const normalizedTripId = normalizeTripId(tripId);
@@ -1348,6 +1368,19 @@ const TripDashboardWorkspace = () => {
     key: 'pickup',
     direction: 'asc'
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedPreference = window.localStorage.getItem('trip-dashboard-scanner-row-colors');
+    if (storedPreference === 'off') {
+      setShowScannerRowColors(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('trip-dashboard-scanner-row-colors', showScannerRowColors ? 'on' : 'off');
+  }, [showScannerRowColors]);
   const [columnWidths, setColumnWidths] = useState({});
   const [statusMessage, setStatusMessage] = useState('Trip dashboard ready.');
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
@@ -2063,11 +2096,7 @@ const TripDashboardWorkspace = () => {
     width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' ? 150 : option.key === 'rider' ? 180 : undefined,
     sortable: option.key !== 'notes'
   }])), []);
-  const orderedVisibleTripColumns = useMemo(() => {
-    const normalizedVisibleColumns = visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey]));
-    if (normalizedVisibleColumns.includes('notes')) return normalizedVisibleColumns;
-    return ['notes', ...normalizedVisibleColumns];
-  }, [tripColumnMeta, visibleTripColumns]);
+  const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
   const isAllTripColumnsSelected = orderedVisibleTripColumns.length === allTripColumnKeys.length && allTripColumnKeys.every(columnKey => orderedVisibleTripColumns.includes(columnKey));
   const hasTripNotesColumn = orderedVisibleTripColumns.includes('notes');
   const orderedVisibleTripColumnsWithoutNotes = useMemo(() => orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes'), [orderedVisibleTripColumns]);
@@ -2140,6 +2169,7 @@ const TripDashboardWorkspace = () => {
     panelOrder,
     showBottomPanels,
     showMapPane,
+    showScannerMapInRoutePanel,
     showDriversPanel,
     showRoutesPanel,
     showTripsPanel,
@@ -2152,7 +2182,7 @@ const TripDashboardWorkspace = () => {
     rowSplit: Math.round(rowSplit * 100) / 100,
     columnWidths,
     closedRouteStateByKey
-  }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, routePrintColumns, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showTripsPanel, timeDisplayMode, tripOrderMode]);
+  }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, routePrintColumns, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showScannerMapInRoutePanel, showTripsPanel, timeDisplayMode, tripOrderMode]);
 
   useEffect(() => {
     if (!todayDateKey) return;
@@ -2361,7 +2391,7 @@ const TripDashboardWorkspace = () => {
       <Button variant="outline-dark" size="sm" style={toolbarButtonStyle} onClick={() => handleShiftTripDate(1)} title="Next day">→</Button>
     </div>;
 
-  const renderColumnsButton = () => <Button
+    const renderColumnsButton = () => <Button
       variant={showColumnPicker ? 'dark' : 'outline-dark'}
       size="sm"
       style={{ ...toolbarButtonStyle, minWidth: 86, fontWeight: 600 }}
@@ -2400,26 +2430,178 @@ const TripDashboardWorkspace = () => {
       Diarie
     </Button>;
 
-  const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-      <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={() => {
-      if (selectedVisibleTrips.length > 0) {
-        handleOpenLiveScanConfirmation();
-        return;
-      }
-      handleToggleConfirmationTools();
-    }}>Confirmation</Button>
-      <Button variant="light" size="sm" onClick={() => router.push('/confirmation')} title="Open the separate confirmation page">
-        Confirmation Page
-      </Button>
-      {showConfirmationTools ? <Button variant="light" size="sm" onClick={() => {
-      const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
-      handleOpenConfirmationMethod(selectedTripsForConfirmation);
-    }}>
-          Send Selected
-        </Button> : null}
-      {renderDispatchHistoryButton()}
-      {renderHelpButton()}
+  const scannerMiniControlShellStyle = {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    border: '1px solid rgba(255, 255, 255, 0.24)',
+    minWidth: 70,
+    minHeight: 26,
+    whiteSpace: 'nowrap'
+  };
+
+  const renderScannerPowerAction = ({
+    label,
+    checked = false,
+    onToggle,
+    ariaLabel,
+    shellStyle,
+    onLabel = 'On',
+    offLabel = 'Off'
+  }) => <div className="d-inline-flex align-items-center gap-1 px-1 py-0 rounded-3 justify-content-between" style={{ ...scannerMiniControlShellStyle, ...shellStyle }}>
+      <span className="small fw-semibold" style={{ color: '#ffffff', letterSpacing: '0.02em', fontSize: 9, lineHeight: 1 }}>{label}</span>
+      <PowerToggleButton
+        checked={checked}
+        onToggle={onToggle}
+        onLabel={onLabel}
+        offLabel={offLabel}
+        offVariant="neutral"
+        size="xs"
+        style={{ transform: 'scale(0.68)', transformOrigin: 'right center' }}
+        aria-label={ariaLabel || label}
+      />
     </div>;
+
+  const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-1 flex-wrap justify-content-end">
+      {renderScannerPowerAction({
+      label: 'Confirm',
+      checked: showConfirmationTools,
+      onToggle: () => {
+        if (selectedVisibleTrips.length > 0) {
+          handleOpenLiveScanConfirmation();
+          return;
+        }
+        handleToggleConfirmationTools();
+      },
+      ariaLabel: 'Confirmation controls',
+      shellStyle: {
+        minWidth: 84
+      }
+    })}
+      {renderScannerPowerAction({
+      label: 'Conf Page',
+      checked: false,
+      onToggle: () => {
+        pulseScannerActionControl('confirmationPage');
+        router.push('/confirmation');
+      },
+      ariaLabel: 'Open the separate confirmation page',
+      shellStyle: {
+        minWidth: 96
+      },
+      onLabel: 'Go',
+      offLabel: 'Go'
+    })}
+      {showConfirmationTools ? renderScannerPowerAction({
+      label: 'Send',
+      checked: scannerActionPulse.sendSelected,
+      onToggle: () => {
+        pulseScannerActionControl('sendSelected');
+        const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
+        handleOpenConfirmationMethod(selectedTripsForConfirmation);
+      },
+      ariaLabel: 'Send selected trips',
+      shellStyle: {
+        minWidth: 74
+      },
+      onLabel: 'Go',
+      offLabel: 'Go'
+    }) : null}
+      {renderScannerPowerAction({
+      label: 'H',
+      checked: scannerActionPulse.history,
+      onToggle: () => {
+        pulseScannerActionControl('history');
+        router.push('/dispatch-history');
+      },
+      ariaLabel: 'Open dispatch history',
+      shellStyle: {
+        minWidth: 52
+      },
+      onLabel: 'Go',
+      offLabel: 'Go'
+    })}
+      {renderScannerPowerAction({
+      label: 'Diarie',
+      checked: scannerActionPulse.diarie,
+      onToggle: () => {
+        pulseScannerActionControl('diarie');
+        setStatusMessage('Opening Diarie workspace.');
+        router.push('/help');
+      },
+      ariaLabel: 'Open Diarie',
+      shellStyle: {
+        minWidth: 84
+      },
+      onLabel: 'Go',
+      offLabel: 'Go'
+    })}
+    </div>;
+
+  const pulseScannerActionControl = key => {
+    setScannerActionPulse(current => ({ ...current, [key]: true }));
+    window.setTimeout(() => {
+      setScannerActionPulse(current => ({ ...current, [key]: false }));
+    }, 700);
+  };
+
+  const handleToggleScannerRoutesPanel = () => {
+    setShowBottomPanels(true);
+    setShowRoutesPanel(current => {
+      const nextValue = !current;
+      if (!nextValue) {
+        setShowScannerMapInRoutePanel(false);
+      }
+      setStatusMessage(nextValue ? 'Bottom route panel shown.' : 'Bottom route panel hidden.');
+      return nextValue;
+    });
+  };
+
+  const handleToggleScannerMapInRoutePanel = () => {
+    setShowBottomPanels(true);
+    setShowRoutesPanel(true);
+    setShowScannerMapInRoutePanel(current => {
+      const nextValue = !current;
+      if (nextValue) {
+        setShowMapPane(false);
+        setStatusMessage('Small map moved into the bottom route panel.');
+      } else {
+        setStatusMessage('Bottom route panel restored.');
+      }
+      return nextValue;
+    });
+  };
+
+  const handleOpenScannerColumnOrder = () => {
+    const nextColumns = hasTripNotesColumn ? orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes') : ['notes', ...orderedVisibleTripColumns];
+    setScannerColumnsSaved(false);
+    setDispatcherVisibleTripColumns(nextColumns);
+    setStatusMessage(hasTripNotesColumn ? 'Notes column hidden.' : 'Notes column shown.');
+  };
+
+  const handleSaveScannerColumnOrder = () => {
+    const nextColumns = [...orderedVisibleTripColumns];
+    pulseScannerActionControl('save');
+    setDispatcherVisibleTripColumns(nextColumns);
+    setScannerColumnsSaved(true);
+    void saveUserPreferences({
+      ...userPreferences,
+      nemtUiPreferences: {
+        ...userPreferences?.nemtUiPreferences,
+        dispatcherVisibleTripColumns: nextColumns
+      }
+    }).catch(() => {
+      setScannerColumnsSaved(false);
+      setStatusMessage('Could not save the column order.');
+    });
+    setStatusMessage('Column order saved. It will reopen the same way next time.');
+  };
+
+  const handleResetScannerDockTools = () => {
+    pulseScannerActionControl('reset');
+    setShowBottomPanels(true);
+    setShowRoutesPanel(true);
+    setShowScannerMapInRoutePanel(false);
+    setStatusMessage('Bottom panel restored.');
+  };
 
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">P</Button>
@@ -3400,7 +3582,7 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRouteMapLayer, trips, timeDisplayMode]);
+  }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds, showRouteMapLayer, timeDisplayMode, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
@@ -3408,8 +3590,7 @@ const TripDashboardWorkspace = () => {
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
   const mapVisibleDriversWithRealLocation = useMemo(() => {
-    if (!showDriverMapLayer) return [];
-    if (!showInlineMap || !showMapPane) return [];
+    if (!showInlineMap || !showMapPane || !showDriverMapLayer) return [];
     return driversWithRealLocation.filter(driver => String(driver?.live || '').trim().toLowerCase() === 'online' || String(driver?.id || '').trim() === String(selectedDriverId || '').trim());
   }, [driversWithRealLocation, selectedDriverId, showDriverMapLayer, showInlineMap, showMapPane]);
   const liveVehicleIconByDriverId = useMemo(() => {
@@ -3437,6 +3618,20 @@ const TripDashboardWorkspace = () => {
   }, [mapQuickTripPoints, routeStops, selectedTripMapPoints]);
   const mapViewportFocusKey = useMemo(() => mapViewportFocusPoints.map(point => `${Number(point?.[0] || 0).toFixed(5)},${Number(point?.[1] || 0).toFixed(5)}`).join('|'), [mapViewportFocusPoints]);
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      window.localStorage.setItem(DETACHED_MAP_SELECTION_STORAGE_KEY, JSON.stringify({
+        selectedTripIds: selectedVisibleTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
+        selectedDriverId: selectedDriverId || null,
+        selectedRouteId: selectedRouteId || null,
+        updatedAt: Date.now()
+      }));
+    } catch {
+      // Ignore detached map payload write failures.
+    }
+  }, [selectedDriverId, selectedRouteId, selectedVisibleTrips]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const remainingVisibleTripCount = filteredTrips.length;
@@ -4220,13 +4415,6 @@ const TripDashboardWorkspace = () => {
     return rows;
   }, [filteredTrips, getDriverName, selectedDriverId, todayDateKey, tripDateFilter, tripOrderMode, tripOriginalOrderLookup, tripSort.direction, tripSort.key]);
 
-  const visibleTripPairSizeMap = useMemo(() => filteredTrips.reduce((map, trip) => {
-    const pairKey = getTripPairKey(trip);
-    if (!pairKey) return map;
-    map.set(pairKey, (map.get(pairKey) ?? 0) + 1);
-    return map;
-  }, new Map()), [filteredTrips]);
-
   const selectedDateDriverSummary = useMemo(() => {
     const driverCounts = filteredTrips.reduce((summary, trip) => {
       const driverName = getDriverName(trip.driverId) || 'Unassigned';
@@ -4259,16 +4447,19 @@ const TripDashboardWorkspace = () => {
       setStatusMessage('At least one column must remain visible.');
       return;
     }
+    setScannerColumnsSaved(false);
     setDispatcherVisibleTripColumns(nextColumns);
     setStatusMessage('Column view updated.');
   };
 
   const handleShowAllTripColumns = () => {
+    setScannerColumnsSaved(false);
     setDispatcherVisibleTripColumns(allTripColumnKeys);
     setStatusMessage('All trip columns are now visible.');
   };
 
   const handleResetTripColumns = () => {
+    setScannerColumnsSaved(false);
     setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
     setStatusMessage('Trip columns reset to default view.');
   };
@@ -4281,6 +4472,7 @@ const TripDashboardWorkspace = () => {
     const nextColumns = [...orderedVisibleTripColumns];
     const [movedColumn] = nextColumns.splice(sourceIndex, 1);
     nextColumns.splice(targetIndex, 0, movedColumn);
+    setScannerColumnsSaved(false);
     setDispatcherVisibleTripColumns(nextColumns);
     setStatusMessage(`Column order saved: ${draggingTripColumnKey} moved.`);
   };
@@ -5007,7 +5199,7 @@ const TripDashboardWorkspace = () => {
   };
 
   useEffect(() => {
-    if (!showInlineMap || !showMapPane || !showRoute || routeStops.length < 2) {
+    if (!showInlineMap || !showMapPane || !showRouteMapLayer || routeStops.length < 2) {
       setRouteGeometry([]);
       setRouteMetrics(null);
       return;
@@ -5047,7 +5239,7 @@ const TripDashboardWorkspace = () => {
     return () => {
       abortController.abort();
     };
-  }, [routeStops, showInlineMap, showMapPane, showRoute]);
+  }, [routeStops, showInlineMap, showMapPane, showRouteMapLayer]);
 
   useEffect(() => {
     if (!dragMode) return;
@@ -5102,6 +5294,7 @@ const TripDashboardWorkspace = () => {
     if (effectiveLayoutMode !== TRIP_DASHBOARD_LAYOUTS.normal) {
       setShowBottomPanels(dashboardPreferences.showBottomPanels !== false);
       setShowMapPane(dashboardPreferences.showMapPane === true);
+      setShowScannerMapInRoutePanel(dashboardPreferences.showScannerMapInRoutePanel === true);
       setShowDriversPanel(dashboardPreferences.showDriversPanel !== false);
       setShowRoutesPanel(dashboardPreferences.showRoutesPanel !== false);
       setShowTripsPanel(dashboardPreferences.showTripsPanel !== false);
@@ -5117,6 +5310,7 @@ const TripDashboardWorkspace = () => {
     } else {
       setShowMapPane(true);
       setShowBottomPanels(false);
+      setShowScannerMapInRoutePanel(false);
       setShowDriversPanel(true);
       setShowRoutesPanel(true);
       setShowTripsPanel(true);
@@ -5802,9 +5996,20 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
-  const renderTripMapPanel = () => <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
+  const tripDashboardMapResizeKey = [showMapPane ? 'open' : 'closed', layoutMode, Math.round(columnSplit), rightPanelCollapsed ? 'collapsed' : 'expanded', showBottomPanels ? 'bottom' : 'solo', showDriversPanel ? 'drivers' : 'no-drivers', showRoutesPanel ? 'routes' : 'no-routes', showTripsPanel ? 'trips' : 'no-trips'].join('|');
+
+  const renderTripMapPanel = ({ docked = false } = {}) => <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
       <CardBody className="p-0 d-flex flex-column h-100 position-relative">
         {showInlineMap ? <div className="position-relative h-100">
+            {docked ? <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 660, maxWidth: '100%', overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
+                <Badge bg="dark">Dock Map</Badge>
+                <Button variant="light" size="sm" onClick={() => {
+              setShowScannerMapInRoutePanel(false);
+              setStatusMessage('Bottom route panel restored.');
+            }}>
+                  Route Panel
+                </Button>
+              </div> : <>
             <Button variant="warning" type="button" onClick={() => {
           setShowMapPane(false);
           setStatusMessage('Map hidden in Trip Dashboard.');
@@ -5817,7 +6022,8 @@ const TripDashboardWorkspace = () => {
             <Button variant="primary" type="button" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)} style={blueMapTabStyle}>
                 Panels Anchored
               </Button>
-            <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'hidden', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
+              </>}
+            <div className="position-absolute start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ top: docked ? 40 : 0, zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'hidden', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
               <>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
                   <Form.Select size="sm" value={mapLayerPreset} onChange={event => {
@@ -5839,7 +6045,7 @@ const TripDashboardWorkspace = () => {
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
-                    <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
+                    <option value="local">Map: Local</option>
                   </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)}>Panels anchored</Button>
                 </>
@@ -5902,17 +6108,19 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
+  const routeDockNode = showScannerMapInRoutePanel ? renderTripMapPanel({ docked: true }) : routePanelCard;
+
   const dockPanelsOrdered = panelOrder === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? [{
     key: 'drivers',
     node: driverPanelCard,
     visible: showDriversPanel
   }, {
     key: 'routes',
-    node: routePanelCard,
+    node: routeDockNode,
     visible: showRoutesPanel
   }] : [{
     key: 'routes',
-    node: routePanelCard,
+    node: routeDockNode,
     visible: showRoutesPanel
   }, {
     key: 'drivers',
@@ -5921,7 +6129,6 @@ const TripDashboardWorkspace = () => {
   }];
 
   const dockPanelsVisible = dockPanelsOrdered.filter(panel => panel.visible);
-  const tripDashboardMapResizeKey = [showMapPane ? 'open' : 'closed', layoutMode, Math.round(columnSplit), rightPanelCollapsed ? 'collapsed' : 'expanded', showBottomPanels ? 'bottom' : 'solo', showDriversPanel ? 'drivers' : 'no-drivers', showRoutesPanel ? 'routes' : 'no-routes', showTripsPanel ? 'trips' : 'no-trips'].join('|');
 
   return <>
       {(!showDriversPanel || !showRoutesPanel || !showTripsPanel) && <div style={{
@@ -6370,10 +6577,6 @@ const TripDashboardWorkspace = () => {
                   paddingBottom: '1rem'
                 }}>
                     <div className="d-flex flex-column gap-2" style={{ minWidth: 0 }}>
-                      <strong>System Trip Scanner</strong>
-                      <div className="small" style={{ color: 'rgba(255, 255, 255, 0.92)', maxWidth: 760 }}>
-                        You can open Excel Loader with scanner here. Nothing enters the tree until you press Import Trips or Load Route.
-                      </div>
                       {liveTripScanAttentionGroups.length > 0 ? <div className="d-flex flex-wrap gap-2">
                           {liveTripScanAttentionGroups.map(group => <Button
                               key={`live-scan-${group.rider}-${group.tripId}`}
@@ -6383,28 +6586,127 @@ const TripDashboardWorkspace = () => {
                             >
                               {group.rider}{group.count > 1 ? ` (${group.count})` : ''}
                             </Button>)}
-                        </div> : <div className="small" style={{ color: 'rgba(255, 255, 255, 0.92)' }}>No riders need attention in the visible system trips.</div>}
+                        </div> : null}
                     </div>
-                    <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                    <div className="d-flex align-items-center gap-1 flex-wrap justify-content-end">
                       <Badge bg={liveTripScan?.blockingCount > 0 ? 'danger' : liveTripScan?.warningCount > 0 ? 'warning' : 'light'} text={liveTripScan?.blockingCount > 0 ? undefined : 'dark'}>
                         {liveTripScan?.findingCount || 0}
                       </Badge>
+                      <div className="d-inline-flex align-items-center gap-1 px-1 py-0 rounded-3" style={{ backgroundColor: 'rgba(255, 255, 255, 0.16)', border: '1px solid rgba(255, 255, 255, 0.24)', minHeight: 26 }}>
+                        <span className="small fw-semibold" style={{ color: '#ffffff', letterSpacing: '0.02em', fontSize: 9, lineHeight: 1 }}>Colors</span>
+                        <PowerToggleButton
+                          checked={showScannerRowColors}
+                          onToggle={setShowScannerRowColors}
+                          onLabel="On"
+                          offLabel="Off"
+                          offVariant="neutral"
+                          size="xs"
+                          style={{ transform: 'scale(0.68)', transformOrigin: 'right center' }}
+                          aria-label="Toggle scanner row background colors"
+                        />
+                      </div>
+                      <div className="d-flex align-items-center gap-1 flex-wrap">
+                        {renderScannerPowerAction({
+                          label: 'Panel',
+                          checked: showRoutesPanel,
+                          onToggle: handleToggleScannerRoutesPanel,
+                          ariaLabel: 'Show or hide the bottom route panel'
+                        })}
+                        {renderScannerPowerAction({
+                          label: 'Map',
+                          checked: showScannerMapInRoutePanel,
+                          onToggle: handleToggleScannerMapInRoutePanel,
+                          ariaLabel: 'Put the small map in the marked bottom panel'
+                        })}
+                        {renderScannerPowerAction({
+                          label: 'Notes',
+                          checked: showColumnPicker,
+                          onToggle: handleOpenScannerColumnOrder,
+                          ariaLabel: 'Open trip columns'
+                        })}
+                        {renderScannerPowerAction({
+                          label: 'Save',
+                          checked: scannerColumnsSaved,
+                          onToggle: handleSaveScannerColumnOrder,
+                          ariaLabel: 'Save current column order',
+                          onLabel: 'Go',
+                          offLabel: 'Go'
+                        })}
+                        {renderScannerPowerAction({
+                          label: 'Reset',
+                          checked: scannerActionPulse.reset,
+                          onToggle: handleResetScannerDockTools,
+                          ariaLabel: 'Restore the bottom panel view',
+                          onLabel: 'Go',
+                          offLabel: 'Go'
+                        })}
+                      </div>
                       {renderScannerConfirmationPanelButtons()}
-                      <Button variant="light" size="sm" onClick={() => {
-                      setShowTripImportModal(true);
-                      setStatusMessage('Excel Loader with scanner opened inside Trip Dashboard. Nothing changes in the tree until you import.');
-                    }}>
-                        Excel Loader + Scanner
-                      </Button>
-                      <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
-                      <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
-                      <Button variant="light" size="sm" onClick={() => setShowLiveTripScanPanel(false)}>Hide</Button>
+                      {renderScannerPowerAction({
+                        label: 'Excel',
+                        checked: scannerActionPulse.excel,
+                        onToggle: () => {
+                          pulseScannerActionControl('excel');
+                          setShowTripImportModal(true);
+                          setStatusMessage('Excel Loader with scanner opened inside Trip Dashboard. Nothing changes in the tree until you import.');
+                        },
+                        ariaLabel: 'Excel Loader plus scanner',
+                        shellStyle: {
+                          minWidth: 86
+                        },
+                        onLabel: 'Go',
+                        offLabel: 'Go'
+                      })}
+                      {renderScannerPowerAction({
+                        label: 'Focus',
+                        checked: scannerActionPulse.focusReset,
+                        onToggle: () => {
+                          pulseScannerActionControl('focusReset');
+                          handleResetLiveScanFocus();
+                        },
+                        ariaLabel: 'Reset scanner focus',
+                        shellStyle: {
+                          minWidth: 76
+                        },
+                        onLabel: 'Go',
+                        offLabel: 'Go'
+                      })}
+                      {renderScannerPowerAction({
+                        label: 'Invert',
+                        checked: scannerActionPulse.invert,
+                        onToggle: () => {
+                          if (selectedVisibleTrips.length === 0) return;
+                          pulseScannerActionControl('invert');
+                          handleInvertSelectedLiveScanTrips();
+                        },
+                        ariaLabel: 'Invert selected trips',
+                        shellStyle: {
+                          minWidth: 84,
+                          opacity: selectedVisibleTrips.length === 0 ? 0.55 : 1
+                        },
+                        onLabel: 'Go',
+                        offLabel: 'Go'
+                      })}
+                      {renderScannerPowerAction({
+                        label: 'Hide',
+                        checked: scannerActionPulse.hide,
+                        onToggle: () => {
+                          pulseScannerActionControl('hide');
+                          setShowLiveTripScanPanel(false);
+                        },
+                        ariaLabel: 'Hide scanner panel',
+                        shellStyle: {
+                          minWidth: 70
+                        },
+                        onLabel: 'Go',
+                        offLabel: 'Go'
+                      })}
                     </div>
                   </div>
                 </div> : null}
                   {filteredTrips.length > 0 ? null : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1 trip-dashboard-sheet-wrap" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'auto', scrollbarWidth: 'thin', msOverflowStyle: 'auto', paddingBottom: 0 }}>
-                <Table ref={tripTableElementRef} hover className="align-middle mb-0 trip-dashboard-sheet-table" data-bs-theme={themeMode} style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
+                <Table ref={tripTableElementRef} hover className={`align-middle mb-0 trip-dashboard-sheet-table ${showScannerRowColors ? 'trip-dashboard-sheet-table--scanner-colors' : ''}`.trim()} data-bs-theme={themeMode} style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
                   <thead className={themeMode === 'dark' ? 'table-dark' : ''} style={{ position: 'sticky', top: 0, backgroundColor: tripTableHeaderStyle.backgroundColor, color: tripTableHeaderStyle.color }}>
                     <tr>
                       <th style={{ ...tripHeaderCellStyle, width: 48 }}>
@@ -6439,32 +6741,11 @@ const TripDashboardWorkspace = () => {
                   <tbody>
                     {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.filter(row => row.type === 'trip').map(row => {
                     const tripLegKey = getTripLegFilterKey(row.trip);
-                    const tripPairKey = getTripPairKey(row.trip);
-                    const isSoloLegTrip = (visibleTripPairSizeMap.get(tripPairKey) ?? 0) <= 1;
                     const isSelectedTripRow = selectedTripIdSet.has(normalizeTripId(row.trip.id));
                     const isAssignedTripRow = isTripAssignedToSelectedDriver(row.trip);
-                    const tripRowBackgroundColor = isSoloLegTrip
-                      ? '#374151'
-                      : tripLegKey === 'AL'
-                        ? '#34b58f'
-                        : tripLegKey === 'BL'
-                          ? isDarkTheme ? '#ca8a04' : '#fde047'
-                          : tripLegKey === 'CL'
-                            ? isDarkTheme ? '#be185d' : '#f9a8d4'
-                            : undefined;
-                    const tripRowTextColor = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? '#f8fafc' : '#1f2937';
-                    const tripRowSubtleTextColor = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? 'rgba(248,250,252,0.92)' : '#334155';
-                    const tripRowOutlineBackground = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? 'rgba(255,255,255,0.16)' : 'transparent';
-                    const tripRowOutlineTextColor = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? '#f8fafc' : '#0f172a';
-                    const tripRowOutlineBorderColor = isSoloLegTrip || tripLegKey === 'AL' || isDarkTheme ? 'rgba(248,250,252,0.28)' : 'rgba(15,23,42,0.18)';
-                    return <tr key={row.trip.id} className={isSelectedTripRow ? 'table-primary' : isAssignedTripRow ? 'table-success' : ''} data-trip-row={tripRowBackgroundColor ? 'true' : undefined} style={tripRowBackgroundColor ? {
-                      '--trip-row-bg': tripRowBackgroundColor,
-                      '--trip-row-text': tripRowTextColor,
-                      '--trip-row-subtle-text': tripRowSubtleTextColor,
-                      '--trip-row-outline-bg': tripRowOutlineBackground,
-                      '--trip-row-outline-text': tripRowOutlineTextColor,
-                      '--trip-row-outline-border': tripRowOutlineBorderColor
-                    } : undefined}>
+                    const scannerRowTone = tripLegKey === 'BL' ? 'bl' : tripLegKey === 'AL' ? 'al' : undefined;
+                    const tripRowClassName = [isSelectedTripRow ? 'trip-dashboard-sheet-row--selected' : '', isAssignedTripRow ? 'trip-dashboard-sheet-row--assigned' : ''].filter(Boolean).join(' ');
+                    return <tr key={row.trip.id} className={tripRowClassName} data-trip-row={scannerRowTone}>
                         <td>
                           <input
                             type="checkbox"
@@ -7166,41 +7447,76 @@ const TripDashboardWorkspace = () => {
             background: #f9fcf9;
           }
 
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] td {
-            background: var(--trip-row-bg) !important;
-            color: var(--trip-row-text) !important;
+          .trip-dashboard-sheet-table tbody tr.trip-dashboard-sheet-row--assigned td:first-child {
+            box-shadow: inset 3px 0 0 rgba(22, 163, 74, 0.78);
           }
 
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .text-muted,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .small.text-muted {
-            color: var(--trip-row-subtle-text) !important;
+          .trip-dashboard-sheet-table tbody tr.trip-dashboard-sheet-row--selected td {
+            box-shadow: inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+          }
+
+          .trip-dashboard-sheet-table tbody tr.trip-dashboard-sheet-row--selected td:first-child {
+            box-shadow: inset 3px 0 0 #2563eb, inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+          }
+
+          .trip-dashboard-sheet-table tbody tr.trip-dashboard-sheet-row--selected td:last-child {
+            box-shadow: inset -3px 0 0 #2563eb, inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] td {
+            background: #43bfa3 !important;
+            color: #f8fafc !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .text-muted,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .small.text-muted {
+            color: rgba(248, 250, 252, 0.9) !important;
             opacity: 1 !important;
           }
 
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-secondary,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-success,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-primary,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-info,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-outline-danger {
-            --bs-btn-color: var(--trip-row-outline-text);
-            --bs-btn-border-color: var(--trip-row-outline-border);
-            --bs-btn-hover-color: var(--trip-row-outline-text);
-            --bs-btn-hover-bg: var(--trip-row-outline-bg);
-            --bs-btn-hover-border-color: var(--trip-row-outline-border);
-            --bs-btn-active-color: var(--trip-row-outline-text);
-            --bs-btn-active-bg: var(--trip-row-outline-bg);
-            --bs-btn-active-border-color: var(--trip-row-outline-border);
-            background-color: var(--trip-row-outline-bg);
-            box-shadow: 0 0 0 1px var(--trip-row-outline-border) inset;
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-secondary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-success,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-primary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-info,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-danger {
+            --bs-btn-color: #f8fafc;
+            --bs-btn-border-color: rgba(248, 250, 252, 0.28);
+            --bs-btn-hover-color: #f8fafc;
+            --bs-btn-hover-bg: rgba(255, 255, 255, 0.16);
+            --bs-btn-hover-border-color: rgba(248, 250, 252, 0.28);
+            --bs-btn-active-color: #f8fafc;
+            --bs-btn-active-bg: rgba(255, 255, 255, 0.16);
+            --bs-btn-active-border-color: rgba(248, 250, 252, 0.28);
+            background-color: rgba(255, 255, 255, 0.16);
+            box-shadow: 0 0 0 1px rgba(248, 250, 252, 0.28) inset;
           }
 
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-success,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-primary,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-secondary,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-info,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-danger,
-          .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] .btn-warning {
-            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08) inset;
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] td {
+            background: #ffe25a !important;
+            color: #18212a !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .text-muted,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .small.text-muted {
+            color: rgba(24, 33, 42, 0.78) !important;
+            opacity: 1 !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-secondary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-success,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-primary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-info,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-danger {
+            --bs-btn-color: #18212a;
+            --bs-btn-border-color: rgba(24, 33, 42, 0.2);
+            --bs-btn-hover-color: #18212a;
+            --bs-btn-hover-bg: rgba(255, 255, 255, 0.2);
+            --bs-btn-hover-border-color: rgba(24, 33, 42, 0.28);
+            --bs-btn-active-color: #18212a;
+            --bs-btn-active-bg: rgba(255, 255, 255, 0.28);
+            --bs-btn-active-border-color: rgba(24, 33, 42, 0.28);
+            background-color: rgba(255, 255, 255, 0.18);
+            box-shadow: 0 0 0 1px rgba(24, 33, 42, 0.14) inset;
           }
 
           .trip-dashboard-selector {
@@ -7258,10 +7574,38 @@ const TripDashboardWorkspace = () => {
             background: #111c31;
           }
 
-          html[data-bs-theme='dark'] .trip-dashboard-sheet-table tbody tr[data-trip-row='true'] td {
-            background: var(--trip-row-bg) !important;
-            color: var(--trip-row-text) !important;
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] td {
+            background: #2f9f89 !important;
+            color: #f8fafc !important;
           }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] td {
+            background: #d9b733 !important;
+            color: #111827 !important;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .text-muted,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .small.text-muted {
+            color: rgba(17, 24, 39, 0.78) !important;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-secondary,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-success,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-primary,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-info,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-danger {
+            --bs-btn-color: #111827;
+            --bs-btn-border-color: rgba(17, 24, 39, 0.18);
+            --bs-btn-hover-color: #111827;
+            --bs-btn-hover-bg: rgba(255, 255, 255, 0.22);
+            --bs-btn-hover-border-color: rgba(17, 24, 39, 0.28);
+            --bs-btn-active-color: #111827;
+            --bs-btn-active-bg: rgba(255, 255, 255, 0.3);
+            --bs-btn-active-border-color: rgba(17, 24, 39, 0.28);
+            background-color: rgba(255, 255, 255, 0.14);
+            box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.12) inset;
+          }
+
         `}</style>
       </div>
     </>;
