@@ -3517,15 +3517,10 @@ const TripDashboardWorkspace = () => {
   };
 
   const routeStops = useMemo(() => {
-    if (!showRouteMapLayer) return [];
-
     if (selectedTripIds.length > 0) {
-      const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
-      const selectedTripsForMap = trips.filter(trip => {
-        const tripId = String(trip?.id || '').trim();
-        if (!selectedTripIdSet.has(tripId)) return false;
+      const selectedTripsForMap = selectedTrips.filter(trip => {
         if (!activeDateTripIdSet) return true;
-        return activeDateTripIdSet.has(tripId);
+        return activeDateTripIdSet.has(String(trip?.id || '').trim());
       });
       return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
         const pickupPosition = getTripPickupPosition(trip);
@@ -3585,7 +3580,7 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds, showRouteMapLayer, timeDisplayMode, trips]);
+  }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds.length, selectedTrips, timeDisplayMode]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
 
@@ -6205,7 +6200,7 @@ const TripDashboardWorkspace = () => {
                     <div>{point.detail}</div>
                   </Popup>
                 </CircleMarker>)}
-              {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
+              {routeStops.map(stop => <Marker key={stop.key} position={stop.position} zIndexOffset={900} icon={createRouteStopIcon(stop.label, stop.variant)}>
                   <Popup>
                     <div className="fw-semibold">{stop.title}</div>
                     <div>{stop.detail}</div>
