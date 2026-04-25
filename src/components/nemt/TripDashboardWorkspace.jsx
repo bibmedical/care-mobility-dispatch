@@ -6054,6 +6054,7 @@ const TripDashboardWorkspace = () => {
             <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver" disabled={selectedRoutePanelTripIds.length === 0}>A2</Button>
             <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={handleRoutePanelUnassign} title="Unassign selected trips" disabled={selectedRoutePanelTripIds.length === 0}>U</Button>
             {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
+            <Button variant={showScannerMapInRoutePanel ? 'warning' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleToggleScannerMapInRoutePanel} title="Show map in this panel">Map</Button>
             
             </div>
           </div>
@@ -6111,8 +6112,7 @@ const TripDashboardWorkspace = () => {
   const renderTripMapPanel = ({ docked = false } = {}) => <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
       <CardBody className="p-0 d-flex flex-column h-100 position-relative">
         {showInlineMap ? <div className="position-relative h-100">
-            {docked ? <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 660, maxWidth: '100%', overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
-                <Badge bg="dark">Dock Map</Badge>
+            {docked ? <div className="position-absolute top-0 end-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 660, maxWidth: '100%', overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
                 <Button variant="light" size="sm" onClick={() => {
               setShowScannerMapInRoutePanel(false);
               setStatusMessage('Bottom route panel restored.');
@@ -6133,7 +6133,7 @@ const TripDashboardWorkspace = () => {
                 Panels Anchored
               </Button>
               </>}
-            <div className="position-absolute start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ top: docked ? 40 : 0, zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'hidden', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
+            {!docked ? <div className="position-absolute start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ top: 0, zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'hidden', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
               <>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
                   <Form.Select size="sm" value={mapLayerPreset} onChange={event => {
@@ -6159,7 +6159,7 @@ const TripDashboardWorkspace = () => {
                   </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)}>Panels anchored</Button>
                 </>
-            </div>
+            </div> : null}
             {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
           zIndex: 500,
           minWidth: 260,
@@ -6721,12 +6721,6 @@ const TripDashboardWorkspace = () => {
                           checked: showRoutesPanel,
                           onToggle: handleToggleScannerRoutesPanel,
                           ariaLabel: 'Show or hide the bottom route panel'
-                        })}
-                        {renderScannerPowerAction({
-                          label: 'Map',
-                          checked: showScannerMapInRoutePanel,
-                          onToggle: handleToggleScannerMapInRoutePanel,
-                          ariaLabel: 'Put the small map in the marked bottom panel'
                         })}
                         {renderScannerPowerAction({
                           label: 'Notes',
