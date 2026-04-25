@@ -212,6 +212,8 @@ const MapScreenWorkspace = () => {
     if (dashboardSelection?.drivers?.length > 0) return dashboardSelection.drivers;
     return dashboardSelection?.driver?.position ? [dashboardSelection.driver] : [];
   }, [dashboardSelection?.driver, dashboardSelection?.drivers]);
+  const dashboardDriverNames = useMemo(() => dashboardDrivers.map(driver => driver.name || driver.id).filter(Boolean), [dashboardDrivers]);
+  const dashboardTrips = dashboardSelection?.trips || [];
   const mapPoints = useMemo(() => {
     if (routeResult?.geometry?.length > 1) return routeResult.geometry;
     if (!hasManualMapSearch && dashboardRouteGeometry.length > 0) return dashboardRouteGeometry;
@@ -370,13 +372,27 @@ const MapScreenWorkspace = () => {
                     <span>{routeResult.distanceMiles != null ? `${routeResult.distanceMiles.toFixed(1)} miles` : 'Miles unavailable'}</span>
                     <span>{routeResult.durationMinutes != null ? `${Math.round(routeResult.durationMinutes)} min` : 'ETA unavailable'}</span>
                   </div> : null}
-              </div> : !hasManualMapSearch && dashboardSelection?.trips?.length > 0 ? <div className="d-flex flex-column gap-2">
+              </div> : !hasManualMapSearch && dashboardSelection ? <div className="d-flex flex-column gap-2">
                 <div className="fw-semibold">Trip Dashboard route</div>
-                <div className="small text-muted">{dashboardSelection.trips.length} trip(s){dashboardDrivers.length > 0 ? ` | ${dashboardDrivers.map(driver => driver.name || driver.id).filter(Boolean).join(', ')}` : ''}</div>
+                <div className="small text-muted">Driver: {dashboardDriverNames.length > 0 ? dashboardDriverNames.join(', ') : 'None selected'}</div>
+                <div className="d-flex gap-2 flex-wrap small text-muted">
+                  <span>{dashboardTrips.length} trip(s)</span>
+                  <span>{dashboardRouteStops.length} stop(s)</span>
+                </div>
                 {dashboardRouteResult ? <div className="d-flex gap-2 flex-wrap small text-muted">
                     <span>{dashboardRouteResult.distanceMiles != null ? `${dashboardRouteResult.distanceMiles.toFixed(1)} miles` : 'Miles unavailable'}</span>
                     <span>{dashboardRouteResult.durationMinutes != null ? `${Math.round(dashboardRouteResult.durationMinutes)} min` : 'ETA unavailable'}</span>
                   </div> : null}
+                {dashboardTrips.length > 0 ? <div className="d-flex flex-column gap-1" style={{ maxHeight: 150, overflowY: 'auto', paddingRight: 4 }}>
+                    {dashboardTrips.map((trip, index) => <div key={`dashboard-route-trip-${trip.id || index}`} className="d-flex gap-2 small" style={{ borderTop: index === 0 ? '1px solid rgba(148, 163, 184, 0.22)' : 0, paddingTop: index === 0 ? 6 : 0 }}>
+                        <Badge bg="success" pill style={{ alignSelf: 'flex-start' }}>{index + 1}</Badge>
+                        <div className="d-flex flex-column" style={{ minWidth: 0 }}>
+                          <span className="fw-semibold text-truncate">{trip.rider || `Trip ${trip.id || index + 1}`}</span>
+                          {trip.pickup ? <span className="text-muted text-truncate">PU: {trip.pickup}</span> : null}
+                          {trip.dropoff ? <span className="text-muted text-truncate">DO: {trip.dropoff}</span> : null}
+                        </div>
+                      </div>)}
+                  </div> : <div className="small text-muted">No active Trip Dashboard route.</div>}
               </div> : null}
           </Form>
         </div>
