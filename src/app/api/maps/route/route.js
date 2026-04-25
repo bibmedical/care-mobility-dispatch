@@ -25,14 +25,9 @@ export async function GET(request) {
   }
 
   const coordinateQuery = coordinates.map(([latitude, longitude]) => `${longitude},${latitude}`).join(';');
-  const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
-  const mapboxUrl = mapboxToken ? `https://api.mapbox.com/directions/v5/mapbox/driving/${coordinateQuery}?alternatives=${includeAlternatives ? 'true' : 'false'}&geometries=geojson&overview=full&steps=false&access_token=${mapboxToken}` : null;
   const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordinateQuery}?alternatives=${includeAlternatives ? 'true' : 'false'}&geometries=geojson&overview=full&steps=false`;
 
   const providers = [{
-    name: 'mapbox',
-    url: mapboxUrl
-  }, {
     name: 'osrm',
     url: osrmUrl
   }].filter(provider => provider.url);

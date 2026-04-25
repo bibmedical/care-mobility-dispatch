@@ -528,7 +528,7 @@ export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = DISPATCH_TRIP_COLUMN_OPTI
 
 export const normalizeMapProviderPreference = value => {
   const normalized = String(value ?? 'auto').trim().toLowerCase();
-  return ['auto', 'openstreetmap', 'mapbox'].includes(normalized) ? normalized : 'auto';
+  return ['auto', 'openstreetmap', 'local'].includes(normalized) ? normalized : 'openstreetmap';
 };
 
 export const normalizeDispatcherVisibleTripColumns = value => {

@@ -1,10 +1,15 @@
-const mapboxAccessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
-const mapboxStyleId = process.env.NEXT_PUBLIC_MAPBOX_STYLE_ID?.trim() || 'mapbox/streets-v12';
+const localTileUrl = process.env.NEXT_PUBLIC_LOCAL_TILE_URL?.trim();
 
 const openStreetMapConfig = {
   provider: 'openstreetmap',
   attribution: '&copy; OpenStreetMap contributors',
   url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+};
+
+const localMapConfig = {
+  provider: 'local',
+  attribution: '&copy; OpenStreetMap contributors',
+  url: localTileUrl || openStreetMapConfig.url
 };
 
 export const MAP_PROVIDER_OPTIONS = [{
@@ -14,32 +19,20 @@ export const MAP_PROVIDER_OPTIONS = [{
   value: 'openstreetmap',
   label: 'OpenStreetMap'
 }, {
-  value: 'mapbox',
-  label: 'Mapbox'
+  value: 'local',
+  label: localTileUrl ? 'Local Tiles' : 'Local Tiles (configure env)'
 }];
 
-export const hasMapboxConfigured = Boolean(mapboxAccessToken);
+export const hasLocalMapTilesConfigured = Boolean(localTileUrl);
 
-const getMapboxConfig = () => ({
-  provider: 'mapbox',
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a>',
-  url: `https://api.mapbox.com/styles/v1/${mapboxStyleId}/tiles/256/{z}/{x}/{y}@2x?access_token=${mapboxAccessToken}`
-});
+export const hasMapboxConfigured = false;
 
 export const getMapTileConfig = providerPreference => {
-  if (providerPreference === 'openstreetmap') {
-    return openStreetMapConfig;
+  const normalized = String(providerPreference ?? 'auto').trim().toLowerCase();
+  if (normalized === 'local' && hasLocalMapTilesConfigured) {
+    return localMapConfig;
   }
-
-  if (providerPreference === 'mapbox') {
-    return hasMapboxConfigured ? getMapboxConfig() : openStreetMapConfig;
-  }
-
-  if (!hasMapboxConfigured) {
-    return openStreetMapConfig;
-  }
-
-  return getMapboxConfig();
+  return openStreetMapConfig;
 };
 
 export const mapTilesConfig = getMapTileConfig();

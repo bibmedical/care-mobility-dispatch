@@ -1,12 +1,22 @@
 import { NextResponse } from 'next/server';
 
-const buildMapboxUrl = query => {
-  const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN?.trim();
-  if (!token) return null;
-  return `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?limit=1&access_token=${token}`;
+const US_LATITUDE_RANGE = [18, 72];
+const US_LONGITUDE_RANGE = [-179, -64];
+
+const buildCensusUrl = query => `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${encodeURIComponent(query)}&benchmark=Public_AR_Current&format=json`;
+
+const isLikelyUsCoordinate = coordinates => {
+  if (!Array.isArray(coordinates) || coordinates.length !== 2) return false;
+  const [latitude, longitude] = coordinates.map(Number);
+  return Number.isFinite(latitude)
+    && Number.isFinite(longitude)
+    && latitude >= US_LATITUDE_RANGE[0]
+    && latitude <= US_LATITUDE_RANGE[1]
+    && longitude >= US_LONGITUDE_RANGE[0]
+    && longitude <= US_LONGITUDE_RANGE[1];
 };
 
-const buildNominatimUrl = query => `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`;
+const buildNominatimUrl = query => `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&countrycodes=us&q=${encodeURIComponent(query)}`;
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -21,8 +31,8 @@ export async function GET(request) {
   }
 
   const providers = [{
-    name: 'mapbox',
-    url: buildMapboxUrl(query)
+    name: 'census',
+    url: buildCensusUrl(query)
   }, {
     name: 'nominatim',
     url: buildNominatimUrl(query)
@@ -41,14 +51,16 @@ export async function GET(request) {
 
       const payload = await response.json();
 
-      if (provider.name === 'mapbox') {
-        const feature = payload?.features?.[0];
-        const center = Array.isArray(feature?.center) ? feature.center : null;
-        if (!center || center.length !== 2) continue;
+      if (provider.name === 'census') {
+        const match = payload?.result?.addressMatches?.[0];
+        const latitude = Number(match?.coordinates?.y);
+        const longitude = Number(match?.coordinates?.x);
+        const coordinates = [latitude, longitude];
+        if (!isLikelyUsCoordinate(coordinates)) continue;
         return NextResponse.json({
-          provider: 'mapbox',
-          label: feature.place_name || query,
-          coordinates: [Number(center[1]), Number(center[0])]
+          provider: 'census',
+          label: match?.matchedAddress || query,
+          coordinates
         });
       }
 
@@ -56,10 +68,12 @@ export async function GET(request) {
       const latitude = Number(result?.lat);
       const longitude = Number(result?.lon);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+      const coordinates = [latitude, longitude];
+      if (!isLikelyUsCoordinate(coordinates)) continue;
       return NextResponse.json({
         provider: 'nominatim',
         label: result.display_name || query,
-        coordinates: [latitude, longitude]
+        coordinates
       });
     } catch {
       // Try the next provider.

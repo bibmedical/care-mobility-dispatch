@@ -1,6 +1,6 @@
 'use client';
 
-import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
+import { getMapTileConfig } from '@/utils/map-tiles';
 import React, { useMemo, useState } from 'react';
 import { Badge, Button, Form, Spinner } from 'react-bootstrap';
 import { CircleMarker, MapContainer, Polyline, Popup, useMap } from 'react-leaflet';
@@ -233,7 +233,6 @@ const MapScreenWorkspace = () => {
               <Form.Select value={mapProviderPreference} onChange={event => setMapProviderPreference(event.target.value)} style={{ width: 170 }}>
                 <option value="auto">Map: Auto</option>
                 <option value="openstreetmap">Map: OSM</option>
-                <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
               </Form.Select>
               {originResult ? <Badge bg="success">Origin: {originResult.provider}</Badge> : null}
               {destinationResult ? <Badge bg="primary">Destination: {destinationResult.provider}</Badge> : null}
