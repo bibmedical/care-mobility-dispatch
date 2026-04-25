@@ -1,15 +1,17 @@
 'use client';
 
 import { getMapTileConfig } from '@/utils/map-tiles';
-import React, { useMemo, useState } from 'react';
+import { divIcon } from 'leaflet';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Form, Spinner } from 'react-bootstrap';
-import { CircleMarker, MapContainer, Polyline, Popup, useMap } from 'react-leaflet';
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 
 const DEFAULT_CENTER = [28.5383, -81.3792];
 const DEFAULT_ZOOM = 10;
 const RESULT_ZOOM = 16;
+const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
 
 const shellStyle = {
   minHeight: '100vh',
@@ -104,6 +106,14 @@ const buildExternalMapUrl = coordinates => {
   return `https://www.google.com/maps/search/?api=1&query=${coordinates[0]},${coordinates[1]}`;
 };
 
+const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
+  className: 'route-stop-icon-shell',
+  html: `<div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:${variant === 'pickup' ? '#16a34a' : '#ef4444'};border:2px solid #ffffff;box-shadow:0 6px 18px rgba(15,23,42,0.34);color:#ffffff;font-size:13px;font-weight:800;line-height:1;">${label}</div>`,
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+  popupAnchor: [0, -14]
+});
+
 const searchAddress = async query => {
   const response = await fetch(`/api/maps/search?q=${encodeURIComponent(query)}`, {
     cache: 'no-store'
@@ -144,6 +154,28 @@ const loadRouteGeometry = async coordinatesList => {
   };
 };
 
+const readTripDashboardMapSelection = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const rawValue = window.localStorage.getItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+    if (!rawValue) return null;
+    const parsedValue = JSON.parse(rawValue);
+    const routeWaypoints = Array.isArray(parsedValue?.routeWaypoints)
+      ? parsedValue.routeWaypoints.filter(point => Array.isArray(point) && point.length === 2)
+      : [];
+    if (routeWaypoints.length === 0 && !Array.isArray(parsedValue?.trips)) return null;
+    return {
+      ...parsedValue,
+      routeWaypoints,
+      routeGeometry: Array.isArray(parsedValue?.routeGeometry) ? parsedValue.routeGeometry : [],
+      routeStops: Array.isArray(parsedValue?.routeStops) ? parsedValue.routeStops.filter(stop => Array.isArray(stop?.position)) : [],
+      trips: Array.isArray(parsedValue?.trips) ? parsedValue.trips : []
+    };
+  } catch {
+    return null;
+  }
+};
+
 const MapScreenWorkspace = () => {
   const [originQuery, setOriginQuery] = useState('');
   const [destinationQuery, setDestinationQuery] = useState('');
@@ -152,10 +184,77 @@ const MapScreenWorkspace = () => {
   const [originResult, setOriginResult] = useState(null);
   const [destinationResult, setDestinationResult] = useState(null);
   const [routeResult, setRouteResult] = useState(null);
+  const [dashboardSelection, setDashboardSelection] = useState(() => readTripDashboardMapSelection());
+  const [dashboardRouteResult, setDashboardRouteResult] = useState(null);
   const [mapProviderPreference, setMapProviderPreference] = useState('auto');
 
   const mapTileConfig = useMemo(() => getMapTileConfig(mapProviderPreference), [mapProviderPreference]);
-  const mapPoints = useMemo(() => routeResult?.geometry?.length > 1 ? routeResult.geometry : [originResult?.coordinates, destinationResult?.coordinates].filter(Boolean), [destinationResult?.coordinates, originResult?.coordinates, routeResult?.geometry]);
+  const hasManualMapSearch = Boolean(originResult || destinationResult || routeResult);
+  const dashboardRouteGeometry = dashboardRouteResult?.geometry?.length > 1 ? dashboardRouteResult.geometry : dashboardSelection?.routeGeometry?.length > 1 ? dashboardSelection.routeGeometry : dashboardSelection?.routeWaypoints || [];
+  const dashboardRouteStops = useMemo(() => {
+    if (dashboardSelection?.routeStops?.length > 0) return dashboardSelection.routeStops;
+    return (dashboardSelection?.trips || []).flatMap((trip, index) => [{
+      key: `${trip.id || index}-pickup`,
+      label: `${index * 2 + 1}`,
+      variant: 'pickup',
+      position: trip.pickupPosition,
+      title: 'Pickup'
+    }, {
+      key: `${trip.id || index}-dropoff`,
+      label: `${index * 2 + 2}`,
+      variant: 'dropoff',
+      position: trip.dropoffPosition,
+      title: 'Dropoff'
+    }]).filter(stop => Array.isArray(stop.position));
+  }, [dashboardSelection?.routeStops, dashboardSelection?.trips]);
+  const mapPoints = useMemo(() => {
+    if (routeResult?.geometry?.length > 1) return routeResult.geometry;
+    if (!hasManualMapSearch && dashboardRouteGeometry.length > 0) return dashboardRouteGeometry;
+    return [originResult?.coordinates, destinationResult?.coordinates].filter(Boolean);
+  }, [dashboardRouteGeometry, destinationResult?.coordinates, hasManualMapSearch, originResult?.coordinates, routeResult?.geometry]);
+
+  useEffect(() => {
+    const refreshSelection = () => setDashboardSelection(readTripDashboardMapSelection());
+    refreshSelection();
+    window.addEventListener('storage', refreshSelection);
+    window.addEventListener('focus', refreshSelection);
+    const intervalId = window.setInterval(refreshSelection, 1500);
+    return () => {
+      window.removeEventListener('storage', refreshSelection);
+      window.removeEventListener('focus', refreshSelection);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (hasManualMapSearch || !dashboardSelection?.routeWaypoints || dashboardSelection.routeWaypoints.length < 2) {
+      setDashboardRouteResult(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadDashboardRoute = async () => {
+      try {
+        const nextRoute = await loadRouteGeometry(dashboardSelection.routeWaypoints);
+        if (!cancelled) setDashboardRouteResult(nextRoute);
+      } catch {
+        if (!cancelled) {
+          setDashboardRouteResult({
+            geometry: dashboardSelection.routeWaypoints,
+            provider: 'fallback',
+            distanceMiles: null,
+            durationMinutes: null,
+            isFallback: true
+          });
+        }
+      }
+    };
+
+    loadDashboardRoute();
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardSelection?.updatedAt, hasManualMapSearch]);
 
   const handleSearch = async event => {
     event.preventDefault();
@@ -203,6 +302,7 @@ const MapScreenWorkspace = () => {
     setDestinationResult(null);
     setRouteResult(null);
     setErrorMessage('');
+    setDashboardSelection(readTripDashboardMapSelection());
   };
 
   return <div style={shellStyle}>
@@ -237,6 +337,7 @@ const MapScreenWorkspace = () => {
               {originResult ? <Badge bg="success">Origin: {originResult.provider}</Badge> : null}
               {destinationResult ? <Badge bg="primary">Destination: {destinationResult.provider}</Badge> : null}
               {routeResult ? <Badge bg={routeResult.isFallback ? 'warning' : 'dark'} text={routeResult.isFallback ? 'dark' : 'light'}>Route: {routeResult.provider}</Badge> : null}
+              {!hasManualMapSearch && dashboardSelection?.routeWaypoints?.length > 1 ? <Badge bg={dashboardRouteResult?.isFallback ? 'warning' : 'dark'} text={dashboardRouteResult?.isFallback ? 'dark' : 'light'}>{dashboardSelection?.routeLoading ? 'Calculating route' : 'Trip Dashboard route'}</Badge> : null}
             </div>
 
             {errorMessage ? <div className="small text-danger fw-semibold">{errorMessage}</div> : null}
@@ -264,11 +365,18 @@ const MapScreenWorkspace = () => {
                     <span>{routeResult.distanceMiles != null ? `${routeResult.distanceMiles.toFixed(1)} miles` : 'Miles unavailable'}</span>
                     <span>{routeResult.durationMinutes != null ? `${Math.round(routeResult.durationMinutes)} min` : 'ETA unavailable'}</span>
                   </div> : null}
+              </div> : !hasManualMapSearch && dashboardSelection?.trips?.length > 0 ? <div className="d-flex flex-column gap-2">
+                <div className="fw-semibold">Trip Dashboard route</div>
+                <div className="small text-muted">{dashboardSelection.trips.length} trip(s){dashboardSelection.driver?.name ? ` | ${dashboardSelection.driver.name}` : ''}</div>
+                {dashboardRouteResult ? <div className="d-flex gap-2 flex-wrap small text-muted">
+                    <span>{dashboardRouteResult.distanceMiles != null ? `${dashboardRouteResult.distanceMiles.toFixed(1)} miles` : 'Miles unavailable'}</span>
+                    <span>{dashboardRouteResult.durationMinutes != null ? `${Math.round(dashboardRouteResult.durationMinutes)} min` : 'ETA unavailable'}</span>
+                  </div> : null}
               </div> : null}
           </Form>
         </div>
 
-        {!originResult && !destinationResult ? <div style={emptyHintStyle}>
+        {!originResult && !destinationResult && !dashboardSelection?.routeWaypoints?.length ? <div style={emptyHintStyle}>
             <div className="fw-semibold mb-1">Ready for second monitor</div>
             <div className="small">Search an address from dispatch and keep this map open as a dedicated location screen.</div>
           </div> : null}
@@ -292,7 +400,19 @@ const MapScreenWorkspace = () => {
                   <div className="small text-muted">{destinationResult.coordinates[0].toFixed(6)}, {destinationResult.coordinates[1].toFixed(6)}</div>
                 </Popup>
               </CircleMarker> : null}
+            {!hasManualMapSearch && dashboardSelection?.driver?.position ? <CircleMarker center={dashboardSelection.driver.position} radius={12} pathOptions={{ color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.9, weight: 3 }}>
+                <Popup>
+                  <div className="fw-semibold">Driver</div>
+                  <div>{dashboardSelection.driver.name || dashboardSelection.driver.id || '-'}</div>
+                </Popup>
+              </CircleMarker> : null}
+            {!hasManualMapSearch && dashboardRouteStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
+                <Popup>
+                  <div className="fw-semibold">{stop.title || (stop.variant === 'pickup' ? 'Pickup' : 'Dropoff')}</div>
+                </Popup>
+              </Marker>)}
             {routeResult?.geometry?.length > 1 ? <Polyline positions={routeResult.geometry} pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.78, dashArray: routeResult.isFallback ? '8 8' : undefined }} /> : originResult && destinationResult ? <Polyline positions={[originResult.coordinates, destinationResult.coordinates]} pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.7, dashArray: '8 8' }} /> : null}
+            {!hasManualMapSearch && dashboardRouteGeometry.length > 1 ? <Polyline positions={dashboardRouteGeometry} pathOptions={{ color: '#0f766e', weight: 4, opacity: 0.82, dashArray: dashboardRouteResult?.isFallback ? '8 8' : undefined }} /> : null}
           </MapContainer>
         </div>
       </div>
