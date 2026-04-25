@@ -1816,42 +1816,49 @@ const TripDashboardWorkspace = () => {
       if (!normalizedSearch) return true;
       const haystack = [entry?.name, entry?.phone, entry?.category, entry?.notes, entry?.source].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(normalizedSearch);
-    useEffect(() => {
-      if (userPreferencesLoading || detailedDashboardHydratedRef.current || layoutHydratedRef.current) return;
+    });
+  }, [blacklistEntries, blacklistSearch]);
+  const tripBlockingMap = useMemo(() => new Map(trips.map(trip => [trip.id, getTripBlockingState({
+    trip,
+    optOutList,
+    blacklistEntries,
+    defaultCountryCode: smsData?.sms?.defaultCountryCode,
+    tripDateKey: getTripTimelineDateKey(trip, routePlans, trips)
+  })])), [blacklistEntries, optOutList, routePlans, smsData?.sms?.defaultCountryCode, trips]);
 
-      const dashboardPreferences = userPreferences?.tripDashboard || {};
-      const hasSavedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(dashboardPreferences.layoutMode);
-      const hasSavedShowMapPane = Object.prototype.hasOwnProperty.call(dashboardPreferences, 'showMapPane');
-      const resolvedLayoutMode = hasSavedLayoutMode ? dashboardPreferences.layoutMode : TRIP_DASHBOARD_LAYOUTS.normal;
-      const storedLayout = typeof window === 'undefined' ? null : window.localStorage.getItem(TRIP_DASHBOARD_LAYOUT_KEY);
-      const effectiveLayoutMode = !storedLayout || !Object.values(TRIP_DASHBOARD_LAYOUTS).includes(storedLayout) || storedLayout === TRIP_DASHBOARD_LAYOUTS.normal
-        ? TRIP_DASHBOARD_LAYOUTS.focusRight
-        : resolvedLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && !hasSavedShowMapPane
-        ? TRIP_DASHBOARD_LAYOUTS.normal
-        : resolvedLayoutMode;
-      const resolvedPanelView = Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(dashboardPreferences.panelView) ? dashboardPreferences.panelView : TRIP_DASHBOARD_PANEL_VIEWS.both;
-      const resolvedPanelOrder = Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(dashboardPreferences.panelOrder) ? dashboardPreferences.panelOrder : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst;
+  const handleCloseBlacklistModal = () => {
+    setShowBlacklistModal(false);
+    setBlacklistDraft(createEmptyBlacklistEntryDraft());
+    setBlacklistDraftTrip(null);
+  };
 
-      setLayoutMode(effectiveLayoutMode);
-      setPanelView(resolvedPanelView);
-      setPanelOrder(resolvedPanelOrder);
+  const handleOpenBlacklistModal = trip => {
+    if (trip) {
+      setBlacklistDraftTrip(trip);
+      setBlacklistDraft({
+        name: String(trip?.rider || '').trim(),
+        phone: String(trip?.patientPhoneNumber || '').trim(),
+        category: 'Do Not Schedule',
+        holdUntil: '',
+        notes: `Trip: ${trip?.id || ''}`.trim()
+      });
+      setStatusMessage(`Black List ready for ${trip?.rider || 'selected rider'}.`);
+    } else {
+      setBlacklistDraftTrip(null);
+      setBlacklistDraft(createEmptyBlacklistEntryDraft());
+    }
+    setShowBlacklistModal(true);
+  };
 
-      if (effectiveLayoutMode !== TRIP_DASHBOARD_LAYOUTS.normal) {
-        setShowBottomPanels(dashboardPreferences.showBottomPanels !== false);
-        setShowMapPane(dashboardPreferences.showMapPane === true);
-        setShowDriversPanel(dashboardPreferences.showDriversPanel !== false);
-        setShowRoutesPanel(dashboardPreferences.showRoutesPanel !== false);
-        setShowTripsPanel(dashboardPreferences.showTripsPanel !== false);
-        setRightPanelCollapsed(dashboardPreferences.rightPanelCollapsed === true);
-        setShowConfirmationTools(dashboardPreferences.showConfirmationTools === true);
-        setTimeDisplayMode(normalizeTripTimeDisplayMode(dashboardPreferences.timeDisplayMode));
-        setTripOrderMode(dashboardPreferences.tripOrderMode || 'original');
-        setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
-        setColumnSplit(dashboardPreferences.columnSplit ?? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT);
-        setRowSplit(dashboardPreferences.rowSplit ?? TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
-        setColumnWidths(dashboardPreferences.columnWidths || {});
-        setClosedRouteStateByKey(dashboardPreferences.closedRouteStateByKey || {});
-      } else {
+  const handleAddBlacklistEntry = async () => {
+    if (!blacklistDraft.name.trim() && !blacklistDraft.phone.trim()) {
+      setStatusMessage('Write a name or phone before adding to Black List.');
+      return;
+    }
+
+    const addedFromTrip = Boolean(blacklistDraftTrip);
+
+    const nextEntry = {
       id: `blacklist-${Date.now()}`,
       name: blacklistDraft.name.trim(),
       phone: blacklistDraft.phone.trim(),
