@@ -105,14 +105,17 @@ const TripDashboardMapResizer = ({ resizeKey }) => {
 
 const TripDashboardMapViewportController = ({ focusPoints, focusKey }) => {
   const map = useMap();
+  const lastAppliedFocusKeyRef = useRef('');
 
   useEffect(() => {
     if (!Array.isArray(focusPoints) || focusPoints.length === 0) return;
+    if (focusKey && lastAppliedFocusKeyRef.current === focusKey) return;
 
     if (focusPoints.length === 1) {
       map.setView(focusPoints[0], Math.max(map.getZoom(), 12), {
         animate: false
       });
+      lastAppliedFocusKeyRef.current = focusKey;
       return;
     }
 
@@ -121,7 +124,8 @@ const TripDashboardMapViewportController = ({ focusPoints, focusKey }) => {
       maxZoom: 13,
       animate: false
     });
-  }, [focusKey, focusPoints, map]);
+    lastAppliedFocusKeyRef.current = focusKey;
+  }, [focusKey, map]);
 
   return null;
 };
