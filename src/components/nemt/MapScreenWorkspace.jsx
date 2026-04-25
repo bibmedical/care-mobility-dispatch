@@ -40,15 +40,18 @@ const panelStyle = {
 
 const overlayCardStyle = {
   position: 'absolute',
-  top: 24,
-  left: 24,
+  top: 16,
+  left: 16,
   zIndex: 500,
-  width: 'min(460px, calc(100% - 48px))',
-  backgroundColor: 'rgba(255, 255, 255, 0.96)',
+  width: 'min(360px, calc(100% - 32px))',
+  backgroundColor: 'rgba(255, 255, 255, 0.98)',
   border: '1px solid rgba(148, 163, 184, 0.35)',
-  borderRadius: 18,
-  boxShadow: '0 24px 48px rgba(15, 23, 42, 0.18)',
-  padding: 16,
+  borderRadius: 10,
+  boxShadow: '0 16px 34px rgba(15, 23, 42, 0.16)',
+  padding: '10px 12px',
+  color: '#0f172a',
+  fontSize: 13,
+  lineHeight: 1.25,
   backdropFilter: 'blur(10px)'
 };
 
@@ -323,10 +326,10 @@ const MapScreenWorkspace = () => {
 
       <div style={panelStyle}>
         <div style={overlayCardStyle}>
-          <Form onSubmit={handleSearch} className="d-flex flex-column gap-3">
+          <Form onSubmit={handleSearch} className="d-flex flex-column gap-2">
             <div>
               <div className="fw-semibold mb-1">Address search</div>
-              <div className="small text-muted">Use two address fields for origin and destination, or fill only one if you just need a single location.</div>
+              <div className="small" style={{ color: '#475569' }}>Use two address fields for origin and destination, or fill only one if you just need a single location.</div>
             </div>
 
             <div className="d-flex gap-2 flex-wrap">
@@ -383,7 +386,7 @@ const MapScreenWorkspace = () => {
                     <span>{dashboardRouteResult.distanceMiles != null ? `${dashboardRouteResult.distanceMiles.toFixed(1)} miles` : 'Miles unavailable'}</span>
                     <span>{dashboardRouteResult.durationMinutes != null ? `${Math.round(dashboardRouteResult.durationMinutes)} min` : 'ETA unavailable'}</span>
                   </div> : null}
-                {dashboardTrips.length > 0 ? <div className="d-flex flex-column gap-1" style={{ maxHeight: 150, overflowY: 'auto', paddingRight: 4 }}>
+                {dashboardTrips.length > 0 ? <div className="d-flex flex-column gap-1" style={{ paddingRight: 4 }}>
                     {dashboardTrips.map((trip, index) => <div key={`dashboard-route-trip-${trip.id || index}`} className="d-flex gap-2 small" style={{ borderTop: index === 0 ? '1px solid rgba(148, 163, 184, 0.22)' : 0, paddingTop: index === 0 ? 6 : 0 }}>
                         <Badge bg="success" pill style={{ alignSelf: 'flex-start' }}>{index + 1}</Badge>
                         <div className="d-flex flex-column" style={{ minWidth: 0 }}>
