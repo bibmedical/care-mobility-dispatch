@@ -2396,17 +2396,106 @@ const TripDashboardWorkspace = () => {
       Diarie
     </Button>;
 
+  const scannerQuickButtonStyle = {
+    minWidth: 58,
+    fontWeight: 700,
+    borderRadius: 8,
+    paddingInline: 10,
+    whiteSpace: 'nowrap'
+  };
+
+  const renderScannerQuickButton = ({
+    label,
+    onClick,
+    active = false,
+    disabled = false,
+    title,
+    minWidth
+  }) => <Button
+      variant={active ? 'success' : 'light'}
+      size="sm"
+      onClick={onClick}
+      disabled={disabled}
+      title={title || label}
+      style={{ ...scannerQuickButtonStyle, ...(minWidth ? { minWidth } : null) }}
+    >
+      {label}
+    </Button>;
+
   const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-      <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={() => {
-      if (selectedVisibleTrips.length > 0) {
-        handleOpenLiveScanConfirmation();
-        return;
-      }
-      handleToggleConfirmationTools();
-    }}>Confirmation</Button>
-      <Button variant="light" size="sm" onClick={() => router.push('/confirmation')} title="Open the separate confirmation page">
-        Confirmation Page
-      </Button>
+      {renderScannerQuickButton({
+      label: 'Color',
+      active: isDarkTheme,
+      onClick: () => changeTheme(themeMode === 'dark' ? 'light' : 'dark'),
+      title: isDarkTheme ? 'Switch to light theme' : 'Switch to dark theme'
+    })}
+      {renderScannerQuickButton({
+      label: 'Panel',
+      active: showBottomPanels,
+      onClick: () => {
+        const nextVisible = !showBottomPanels;
+        if (nextVisible) {
+          handlePanelViewChange(panelView === 'hidden' ? TRIP_DASHBOARD_PANEL_VIEWS.both : panelView);
+          setStatusMessage('Bottom panels visible in Trip Dashboard.');
+          return;
+        }
+        handlePanelViewChange('hidden');
+        setStatusMessage('Bottom panels hidden in Trip Dashboard.');
+      },
+      title: 'Toggle bottom panels'
+    })}
+      {renderScannerQuickButton({
+      label: 'Map',
+      active: showMapPane,
+      onClick: () => {
+        setShowMapPane(current => {
+          const nextVisible = !current;
+          setStatusMessage(nextVisible ? 'Map visible in Trip Dashboard.' : 'Map hidden in Trip Dashboard.');
+          return nextVisible;
+        });
+      },
+      title: 'Toggle map pane'
+    })}
+      {renderScannerQuickButton({
+      label: 'Notes',
+      active: showInfo,
+      onClick: () => {
+        setShowInfo(current => {
+          const nextVisible = !current;
+          setStatusMessage(nextVisible ? 'Trip notes overlay visible.' : 'Trip notes overlay hidden.');
+          return nextVisible;
+        });
+      },
+      title: 'Toggle notes overlay'
+    })}
+      {renderScannerQuickButton({
+      label: 'Save',
+      onClick: handleSaveToolbarLayout,
+      title: 'Save toolbar layout'
+    })}
+      {renderScannerQuickButton({
+      label: 'Reset',
+      onClick: handleResetToolbarLayout,
+      title: 'Reset toolbar layout'
+    })}
+      {renderScannerQuickButton({
+      label: 'Confirm',
+      active: showConfirmationTools,
+      onClick: () => {
+        if (selectedVisibleTrips.length > 0) {
+          handleOpenLiveScanConfirmation();
+          return;
+        }
+        handleToggleConfirmationTools();
+      },
+      title: 'Open confirmation tools'
+    })}
+      {renderScannerQuickButton({
+      label: 'Conf Page',
+      onClick: () => router.push('/confirmation'),
+      minWidth: 88,
+      title: 'Open the separate confirmation page'
+    })}
       {showConfirmationTools ? <Button variant="light" size="sm" onClick={() => {
       const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
       handleOpenConfirmationMethod(selectedTripsForConfirmation);
@@ -2415,6 +2504,31 @@ const TripDashboardWorkspace = () => {
         </Button> : null}
       {renderDispatchHistoryButton()}
       {renderHelpButton()}
+      {renderScannerQuickButton({
+      label: 'Excel',
+      onClick: () => {
+        setShowTripImportModal(true);
+        setStatusMessage('Excel Loader with scanner opened inside Trip Dashboard. Nothing changes in the tree until you import.');
+      },
+      title: 'Open Excel Loader + Scanner'
+    })}
+      {renderScannerQuickButton({
+      label: 'Focus',
+      active: layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight,
+      onClick: () => applyLayoutMode(layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight ? TRIP_DASHBOARD_LAYOUTS.normal : TRIP_DASHBOARD_LAYOUTS.focusRight),
+      title: 'Toggle focus-right layout'
+    })}
+      {renderScannerQuickButton({
+      label: 'Invert',
+      onClick: handleInvertSelectedLiveScanTrips,
+      disabled: selectedVisibleTrips.length === 0,
+      title: 'Invert selected visible trips'
+    })}
+      {renderScannerQuickButton({
+      label: 'Hide',
+      onClick: () => setShowLiveTripScanPanel(false),
+      title: 'Hide scanner panel'
+    })}
     </div>;
 
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
@@ -6386,15 +6500,7 @@ const TripDashboardWorkspace = () => {
                         {liveTripScan?.findingCount || 0}
                       </Badge>
                       {renderScannerConfirmationPanelButtons()}
-                      <Button variant="light" size="sm" onClick={() => {
-                      setShowTripImportModal(true);
-                      setStatusMessage('Excel Loader with scanner opened inside Trip Dashboard. Nothing changes in the tree until you import.');
-                    }}>
-                        Excel Loader + Scanner
-                      </Button>
-                      <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
-                      <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
-                      <Button variant="light" size="sm" onClick={() => setShowLiveTripScanPanel(false)}>Hide</Button>
+                      <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset Focus</Button>
                     </div>
                   </div>
                 </div> : null}
