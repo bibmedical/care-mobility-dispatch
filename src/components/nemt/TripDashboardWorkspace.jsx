@@ -442,8 +442,8 @@ const blueMapTabStyle = {
 };
 
 const compactMapToolbarButtonStyle = {
-  minWidth: 38,
-  width: 38,
+  minWidth: 64,
+  width: 64,
   height: 30,
   padding: 0,
   borderRadius: 6,
@@ -483,6 +483,7 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 const BLACKLIST_CATEGORY_OPTIONS = ['Do Not Schedule', 'Medical Hold', 'Deceased', 'This Week Only', 'Legal / Claim', 'Safety Risk', 'Other'];
 const TRIP_SYSTEM_NOTE_PREFIXES = ['[TRIP UPDATE]', '[SCHEDULE CHANGE]', '[DISPATCH NOTE]', '[CANCELLED]'];
 const TRIP_CONFIRMATION_OUTPUT_COLUMNS = ['tripId', 'rider', 'phone', 'pickupTime', 'pickupAddress', 'dropoffTime', 'dropoffAddress', 'leg', 'type'];
+const TRIP_CONFIRMATION_VISIBLE_COLUMNS = ['status', 'confirmation'];
 
 const createEmptyBlacklistEntryDraft = () => ({
   name: '',
@@ -532,8 +533,7 @@ const TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS = {
 
 const TRIP_DASHBOARD_LAYOUTS = {
   normal: 'normal',
-  focusRight: 'focus-right',
-  stacked: 'stacked'
+  focusRight: 'focus-right'
 };
 
 const TRIP_DASHBOARD_PANEL_VIEWS = {
@@ -1025,11 +1025,11 @@ const buildTripExcelComparisonRows = trip => {
     currentValue: trip?.rider || '-'
   }, {
     label: 'Pickup',
-    excelValue: snapshot.rawPickupTime || snapshot.pickup || '-',
+    excelValue: snapshot.pickup || snapshot.rawPickupTime || '-',
     currentValue: trip?.pickup || '-'
   }, {
     label: 'Dropoff',
-    excelValue: snapshot.rawDropoffTime || snapshot.dropoff || '-',
+    excelValue: snapshot.dropoff || snapshot.rawDropoffTime || '-',
     currentValue: trip?.dropoff || '-'
   }, {
     label: 'Pickup Address',
@@ -1200,7 +1200,8 @@ const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScale
   });
 };
 
-const TripDashboardWorkspace = () => {
+const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
+  const isTripDashboardSurface = surface === 'trip-dashboard';
   const router = useRouter();
   const { data: session } = useSession();
   const { changeTheme, themeMode } = useLayoutContext();
@@ -1274,6 +1275,7 @@ const TripDashboardWorkspace = () => {
   const [blacklistDraftTrip, setBlacklistDraftTrip] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
   const [showRoute, setShowRoute] = useState(true);
+  const [btRouteEnabled, setBtRouteEnabled] = useState(false);
   const [mapLayerPreset, setMapLayerPreset] = useState('all');
   const [showBottomPanels, setShowBottomPanels] = useState(() => getInitialTripDashboardLayoutMode() !== TRIP_DASHBOARD_LAYOUTS.normal);
   const showInlineMap = true;
@@ -1362,10 +1364,10 @@ const TripDashboardWorkspace = () => {
   const [panelView, setPanelView] = useState(TRIP_DASHBOARD_PANEL_VIEWS.both);
   const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const [tripOrderMode, setTripOrderMode] = useState('original');
+  const [tripOrderMode, setTripOrderMode] = useState('custom');
   const [routePrintColumns, setRoutePrintColumns] = useState(DEFAULT_ROUTE_PRINT_COLUMNS);
   const [tripSort, setTripSort] = useState({
-    key: 'pickup',
+    key: 'trip',
     direction: 'asc'
   });
 
@@ -1981,9 +1983,17 @@ const TripDashboardWorkspace = () => {
     return getRouteServiceDateKey(routePlan, trips) === tripDateFilter;
   }), [routePlans, tripDateFilter, trips]);
   const selectedRoute = useMemo(() => filteredRoutePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [filteredRoutePlans, selectedRouteId]);
+  const selectedDriverRouteLookupKey = useMemo(() => normalizeImportedDriverLookup(selectedDriver?.name || getDriverName(selectedDriverId)), [getDriverName, selectedDriver, selectedDriverId]);
+  const isTripInSelectedDriverRoute = trip => {
+    if (!selectedDriverId) return false;
+    if (isTripAssignedToDriver(trip, selectedDriverId)) return true;
+    const importedDriverKey = normalizeImportedDriverLookup(trip?.importedDriverName);
+    return Boolean(importedDriverKey && selectedDriverRouteLookupKey && importedDriverKey === selectedDriverRouteLookupKey);
+  };
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
   const mapLayerVisibility = useMemo(() => getTripDashboardMapLayerVisibility(mapLayerPreset), [mapLayerPreset]);
-  const hasActiveMapSelection = selectedTripIds.length > 0 || Boolean(selectedRoute);
+  const hasBtRouteDriverSelection = btRouteEnabled && Boolean(selectedDriverId);
+  const hasActiveMapSelection = selectedTripIds.length > 0 || Boolean(selectedRoute) || hasBtRouteDriverSelection;
   const showDriverMapLayer = mapLayerVisibility.drivers || hasActiveMapSelection;
   const showRouteMapLayer = hasActiveMapSelection || (mapLayerVisibility.route && showRoute);
   const showSelectedTripMapLayer = mapLayerVisibility.selectedTrips || hasActiveMapSelection;
@@ -2686,7 +2696,6 @@ const TripDashboardWorkspace = () => {
   const renderLayoutBlock = () => <Form.Select size="sm" value={layoutMode} onChange={event => applyLayoutMode(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 160 }}>
       <option value={TRIP_DASHBOARD_LAYOUTS.normal}>Layout: Normal</option>
       <option value={TRIP_DASHBOARD_LAYOUTS.focusRight}>Layout: Focus Right</option>
-      <option value={TRIP_DASHBOARD_LAYOUTS.stacked}>Layout: Stacked</option>
     </Form.Select>;
 
   const renderPanelsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
@@ -2696,7 +2705,7 @@ const TripDashboardWorkspace = () => {
     </div>;
 
   const renderTripOrderBlock = () => <Button variant={tripOrderMode === 'time' ? 'dark' : 'outline-dark'} size="sm" style={tripOrderMode === 'time' ? undefined : toolbarButtonStyle} onClick={handleTripOrderModeToggle}>
-      {tripOrderMode === 'time' ? 'Order: Time' : 'Order: Original'}
+      {tripOrderMode === 'time' ? 'Order: Time' : tripOrderMode === 'custom' && tripSort.key === 'trip' ? 'Order: Trip' : 'Order: Original'}
     </Button>;
 
   const handleToggleTimeDisplayMode = () => {
@@ -2976,12 +2985,15 @@ const TripDashboardWorkspace = () => {
     return Array.from(new Set(cityOptionTrips.filter(trip => tripMatchesCity(trip, targetPickupCity)).flatMap(trip => [getPickupCity(trip).trim(), getDropoffCity(trip).trim()]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [cityOptionTrips, puCityFilter]);
   const filteredTrips = useMemo(() => cityOptionTrips.filter(trip => {
+    if (btRouteEnabled && selectedDriverId && !isTripInSelectedDriverRoute(trip)) return false;
+    return true;
+  }).filter(trip => {
     const pickupCityValue = puCityFilter.trim().toLowerCase();
     return tripMatchesCity(trip, pickupCityValue);
   }).filter(trip => {
     const dropoffCityValue = doCityFilter.trim().toLowerCase();
     return tripMatchesCity(trip, dropoffCityValue);
-  }), [cityOptionTrips, doCityFilter, puCityFilter]);
+  }), [btRouteEnabled, cityOptionTrips, doCityFilter, puCityFilter, selectedDriverId, selectedDriverRouteLookupKey]);
   const removedSinceLastLoadScopeCount = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(trip => Boolean(trip?.missingFromLatestSafeRideImport)).length, [matchesTripDateFilter, scanAnnotatedTrips, tripDateFilter, routePlans, trips]);
   const liveScanAnalysisTrips = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(matchesTripTypeFilter).filter(matchesTripServiceAnimalFilter).filter(matchesTripSearchFilter).filter(matchesPickupZipFilter).filter(matchesDropoffZipFilter).filter(matchesAnyZipFilter).filter(trip => {
     const pickupCityValue = puCityFilter.trim().toLowerCase();
@@ -3331,9 +3343,9 @@ const TripDashboardWorkspace = () => {
   const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIdSet]);
   const selectedDriverWorkingTrips = useMemo(() => {
     if (!selectedDriver) return [];
-    const relevantTrips = filteredTrips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id) || selectedDriverCandidateTripIds.has(trip.id));
+    const relevantTrips = filteredTrips.filter(trip => isTripInSelectedDriverRoute(trip) || selectedDriverCandidateTripIds.has(trip.id));
     return sortTripsByPickupTime(relevantTrips);
-  }, [filteredTrips, selectedDriver, selectedDriverCandidateTripIds]);
+  }, [filteredTrips, selectedDriver, selectedDriverCandidateTripIds, selectedDriverRouteLookupKey]);
 
   const routeTrips = useMemo(() => {
     const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
@@ -3550,7 +3562,7 @@ const TripDashboardWorkspace = () => {
       });
     }
 
-    if (selectedRoute) {
+    if (selectedRoute || hasBtRouteDriverSelection) {
       return routeTrips.flatMap((trip, index) => {
         const pickupPosition = getTripPickupPosition(trip);
         const dropoffPosition = getTripDropoffPosition(trip);
@@ -3580,7 +3592,7 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds.length, selectedTrips, timeDisplayMode]);
+  }, [activeDateTripIdSet, hasBtRouteDriverSelection, routeTrips, selectedRoute, selectedTripIds.length, selectedTrips, timeDisplayMode]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
 
@@ -3598,11 +3610,11 @@ const TripDashboardWorkspace = () => {
     const currentSelectedDriverId = normalizeDriverId(selectedDriverId);
     if (currentSelectedDriverId) driverIds.add(currentSelectedDriverId);
     selectedTrips.forEach(addTripDrivers);
-    if (selectedRoute || selectedTripIds.length > 0) {
+    if (selectedRoute || selectedTripIds.length > 0 || hasBtRouteDriverSelection) {
       routeTrips.forEach(addTripDrivers);
     }
     return driverIds;
-  }, [routeTrips, selectedDriverId, selectedRoute, selectedTripIds.length, selectedTrips]);
+  }, [hasBtRouteDriverSelection, routeTrips, selectedDriverId, selectedRoute, selectedTripIds.length, selectedTrips]);
   const mapVisibleDriversWithRealLocation = useMemo(() => {
     if (!showInlineMap || !hasVisibleTripDashboardMap || !showDriverMapLayer) return [];
     return driversWithRealLocation.filter(driver => {
@@ -3945,8 +3957,8 @@ const TripDashboardWorkspace = () => {
   const handleOpenTripUpdateModal = trip => {
     if (!trip) return;
     setTripUpdateModal(trip);
-    setTripUpdateLegScope('single');
-    setTripUpdateConfirmMethod('call');
+    setTripUpdateLegScope(getSiblingLegTrips(trip, trips).length > 0 ? 'both' : 'single');
+    setTripUpdateConfirmMethod('sms-left-unconfirmed');
     setTripUpdatePickupTime(normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || ''));
     setTripUpdateDropoffTime(normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || ''));
     setTripUpdatePickupAddress(String(trip?.address || '').trim());
@@ -4533,12 +4545,21 @@ const TripDashboardWorkspace = () => {
   const tripTableColumnCount = orderedVisibleTripColumns.length + 2 + (showConfirmationTools ? 1 : 0);
 
   const handleToggleConfirmationTools = () => {
-    setShowConfirmationTools(current => {
-      const nextValue = !current;
-      if (!nextValue) handleCloseConfirmationMethod();
-      setStatusMessage(nextValue ? 'Confirmation mode enabled.' : 'Confirmation mode hidden.');
-      return nextValue;
-    });
+    const nextValue = !showConfirmationTools;
+    if (!nextValue) handleCloseConfirmationMethod();
+    if (isTripDashboardSurface && nextValue) {
+      const nextColumns = [...orderedVisibleTripColumns];
+      TRIP_CONFIRMATION_VISIBLE_COLUMNS.forEach(columnKey => {
+        if (!nextColumns.includes(columnKey)) nextColumns.push(columnKey);
+      });
+      setDispatcherVisibleTripColumns(nextColumns);
+      setScannerColumnsSaved(false);
+    } else if (isTripDashboardSurface) {
+      setDispatcherVisibleTripColumns(orderedVisibleTripColumns.filter(columnKey => !TRIP_CONFIRMATION_VISIBLE_COLUMNS.includes(columnKey)));
+      setScannerColumnsSaved(false);
+    }
+    setShowConfirmationTools(nextValue);
+    setStatusMessage(nextValue ? 'Confirmation mode enabled.' : 'Confirmation mode hidden.');
   };
 
   useEffect(() => {
@@ -4867,6 +4888,13 @@ const TripDashboardWorkspace = () => {
     setSelectedDriverId(nextDriverId);
     setSelectedRouteId('');
 
+    if (btRouteEnabled) {
+      setSelectedTripIds([]);
+      setShowRoute(true);
+      setShowRoutesPanel(false);
+      setShowScannerMapInRoutePanel(false);
+    }
+
     if (!nextDriverId) {
       setStatusMessage('Showing all trips again.');
       return;
@@ -4878,10 +4906,31 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
+    const nextDriverRouteLookupKey = normalizeImportedDriverLookup(driver.name);
     const assignedCount = trips.filter(trip => trip.driverId === nextDriverId || trip.secondaryDriverId === nextDriverId).length;
+    const routeCount = trips.filter(trip => trip.driverId === nextDriverId || trip.secondaryDriverId === nextDriverId || normalizeImportedDriverLookup(trip?.importedDriverName) === nextDriverRouteLookupKey).length;
     const openCount = trips.filter(trip => !trip.driverId && !trip.secondaryDriverId).length;
     const appointmentNote = getDriverTimeOffDateForUi(driver) ? ` ${driver.name} has ${getDriverTimeOffLabelForUi(driver)}.` : '';
-    setStatusMessage(`Viewing ${driver.name}: ${assignedCount} assigned and ${openCount} pending.${appointmentNote}`);
+    setStatusMessage(btRouteEnabled ? `By Route active for ${driver.name}: ${routeCount} route trip(s).${appointmentNote}` : `Viewing ${driver.name}: ${assignedCount} assigned and ${openCount} pending.${appointmentNote}`);
+  };
+
+  const handleToggleBtRoute = () => {
+    setBtRouteEnabled(currentValue => {
+      const nextValue = !currentValue;
+
+      if (nextValue) {
+        setSelectedRouteId('');
+        setSelectedTripIds([]);
+        setShowRoute(true);
+        setShowRoutesPanel(false);
+        setShowScannerMapInRoutePanel(false);
+        setStatusMessage(selectedDriver ? `By Route active for ${selectedDriver.name}.` : 'By Route active. Select a driver to view the route.');
+        return true;
+      }
+
+      setStatusMessage('By Route disabled.');
+      return false;
+    });
   };
 
   const handleSelectAll = checked => {
@@ -5323,7 +5372,8 @@ const TripDashboardWorkspace = () => {
 
     const loadRouteGeometry = async () => {
       try {
-        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
+        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}&ts=${Date.now()}`, {
+          cache: 'no-store',
           signal: abortController.signal
         });
         if (!response.ok) throw new Error('Routing service unavailable');
@@ -5411,7 +5461,7 @@ const TripDashboardWorkspace = () => {
       setRightPanelCollapsed(dashboardPreferences.rightPanelCollapsed === true);
       setShowConfirmationTools(dashboardPreferences.showConfirmationTools === true);
       setTimeDisplayMode(normalizeTripTimeDisplayMode(dashboardPreferences.timeDisplayMode));
-      setTripOrderMode(dashboardPreferences.tripOrderMode || 'original');
+      setTripOrderMode(dashboardPreferences.tripOrderMode || 'custom');
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(dashboardPreferences.columnSplit ?? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT);
       setRowSplit(dashboardPreferences.rowSplit ?? TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -5427,7 +5477,7 @@ const TripDashboardWorkspace = () => {
       setRightPanelCollapsed(true);
       setShowConfirmationTools(false);
       setTimeDisplayMode(TRIP_TIME_DISPLAY_MODES.standard);
-      setTripOrderMode('original');
+      setTripOrderMode('custom');
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(94);
       setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -5540,8 +5590,7 @@ const TripDashboardWorkspace = () => {
   };
 
   const isFocusRightLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && showBottomPanels;
-  const isStackedLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked && showBottomPanels;
-  const isStandardLayout = !isFocusRightLayout && !isStackedLayout;
+  const isStandardLayout = !isFocusRightLayout;
   const isPeekPanelMode = false;
   const hasVisibleDockPanels = showDriversPanel || showRoutesPanel;
   const focusRightColumnSplit = clamp(columnSplit, TRIP_DASHBOARD_FOCUS_RIGHT_MIN_SPLIT, TRIP_DASHBOARD_FOCUS_RIGHT_MAX_SPLIT);
@@ -5550,8 +5599,8 @@ const TripDashboardWorkspace = () => {
   const rowDividerSize = 0;
   const workspaceGridStyle = {
     display: 'grid',
-    gridTemplateColumns: isFocusRightLayout ? hasVisibleDockPanels ? `${focusRightColumnSplit}% ${columnDividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : '0px 0px minmax(0, 1fr)' : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${columnDividerSize}px - ${collapsedPanelWidth}px)) ${columnDividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${columnDividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
-    gridTemplateRows: isFocusRightLayout ? '1fr' : isStackedLayout ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : showBottomPanels ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
+    gridTemplateColumns: isFocusRightLayout ? hasVisibleDockPanels ? `${focusRightColumnSplit}% ${columnDividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : '0px 0px minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${columnDividerSize}px - ${collapsedPanelWidth}px)) ${columnDividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${columnDividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
+    gridTemplateRows: isFocusRightLayout ? '1fr' : showBottomPanels ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
     width: '100%',
     minWidth: 0,
     height: workspaceHeight,
@@ -5665,8 +5714,7 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    setRowSplit(current => clamp(current, 48, 74));
-    setStatusMessage('Stacked layout enabled in Trip Dashboard.');
+    setStatusMessage('Focus Right layout enabled in Trip Dashboard.');
   };
 
   const handlePanelViewChange = nextView => {
@@ -6279,7 +6327,7 @@ const TripDashboardWorkspace = () => {
         <div style={{
         minWidth: 0,
         minHeight: 0,
-        gridColumn: isFocusRightLayout ? 3 : showMapPane ? 3 : isStackedLayout ? 1 : '1 / span 3',
+        gridColumn: isFocusRightLayout ? 3 : showMapPane ? 3 : '1 / span 3',
         gridRow: isFocusRightLayout ? '1 / span 3' : 1,
         display: showTripsPanel ? 'block' : 'none'
       }}>
@@ -6494,6 +6542,9 @@ const TripDashboardWorkspace = () => {
             }}>
                   <Button variant="warning" size="sm" onClick={openDetachedMapScreen} style={compactMapToolbarButtonStyle}>
                     Map
+                  </Button>
+                  <Button variant={btRouteEnabled ? 'success' : 'outline-warning'} size="sm" onClick={handleToggleBtRoute} style={compactMapToolbarButtonStyle} title="Select a driver and view that driver's route">
+                    By Route
                   </Button>
                   <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={aiPlannerCollapsedTriggerStyle}>
                     AI Route
@@ -6716,12 +6767,12 @@ const TripDashboardWorkspace = () => {
                         />
                       </div>
                       <div className="d-flex align-items-center gap-1 flex-wrap">
-                        {renderScannerPowerAction({
+                        {!isTripDashboardSurface ? renderScannerPowerAction({
                           label: 'Panel',
                           checked: showRoutesPanel,
                           onToggle: handleToggleScannerRoutesPanel,
                           ariaLabel: 'Show or hide the bottom route panel'
-                        })}
+                        }) : null}
                         {renderScannerPowerAction({
                           label: 'Notes',
                           checked: showColumnPicker,
@@ -6736,14 +6787,14 @@ const TripDashboardWorkspace = () => {
                           onLabel: 'Go',
                           offLabel: 'Go'
                         })}
-                        {renderScannerPowerAction({
+                        {!isTripDashboardSurface ? renderScannerPowerAction({
                           label: 'Reset',
                           checked: scannerActionPulse.reset,
                           onToggle: handleResetScannerDockTools,
                           ariaLabel: 'Restore the bottom panel view',
                           onLabel: 'Go',
                           offLabel: 'Go'
-                        })}
+                        }) : null}
                       </div>
                       {renderScannerConfirmationPanelButtons()}
                       {renderScannerPowerAction({
@@ -6761,7 +6812,7 @@ const TripDashboardWorkspace = () => {
                         onLabel: 'Go',
                         offLabel: 'Go'
                       })}
-                      {renderScannerPowerAction({
+                      {!isTripDashboardSurface ? renderScannerPowerAction({
                         label: 'Focus',
                         checked: scannerActionPulse.focusReset,
                         onToggle: () => {
@@ -6774,7 +6825,7 @@ const TripDashboardWorkspace = () => {
                         },
                         onLabel: 'Go',
                         offLabel: 'Go'
-                      })}
+                      }) : null}
                       {renderScannerPowerAction({
                         label: 'Invert',
                         checked: scannerActionPulse.invert,
@@ -6909,7 +6960,7 @@ const TripDashboardWorkspace = () => {
         <div onMouseDown={() => showBottomPanels && !isFocusRightLayout ? setDragMode('row') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'row-resize',
-        gridColumn: isStackedLayout ? 1 : '1 / span 3',
+        gridColumn: '1 / span 3',
         gridRow: 2,
         display: showBottomPanels && !isFocusRightLayout ? 'block' : 'none'
       }}>
@@ -6956,25 +7007,6 @@ const TripDashboardWorkspace = () => {
         minHeight: 0,
         gridColumn: 1,
         gridRow: 1,
-        gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr)'
-      }}>
-            {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridRow: 1 }}>
-                {dockPanelsVisible[0].node}
-              </div> : null}
-            {dockPanelsVisible.length > 1 ? <>
-                <div style={{ gridRow: 2, display: 'none' }} />
-                <div style={{ minWidth: 0, minHeight: 0, gridRow: 3 }}>
-                  {dockPanelsVisible[1].node}
-                </div>
-              </> : null}
-          </div> : null}
-
-        {isStackedLayout ? <div style={{
-        display: 'grid',
-        minWidth: 0,
-        minHeight: 0,
-        gridColumn: 1,
-        gridRow: 3,
         gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr)'
       }}>
             {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridRow: 1 }}>
@@ -7383,7 +7415,7 @@ const TripDashboardWorkspace = () => {
             <Modal.Title>Cancel Trip</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <div className="small text-muted mb-2">Trip: {cancelNoteModal?.id}</div>
+            <div className="small text-muted mb-2">Trip: {getDisplayTripId(cancelNoteModal) || '-'}</div>
             <div className="small text-muted mb-3">Rider: {cancelNoteModal?.rider || '-'}</div>
             {cancelNoteModal && getSiblingLegTrips(cancelNoteModal, trips).length > 0 ? <>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Cancel Scope</Form.Label>
@@ -7418,7 +7450,7 @@ const TripDashboardWorkspace = () => {
                 <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Leg Scope</Form.Label>
                 <Form.Select className="mb-3" value={confirmationLegScope} onChange={event => setConfirmationLegScope(event.target.value)}>
                   <option value="">Choose one option</option>
-                  <option value="single">Only this leg ({confirmationSourceTrip?.id})</option>
+                  <option value="single">Only this leg ({getDisplayTripId(confirmationSourceTrip) || '-'})</option>
                   <option value="both">Both legs</option>
                 </Form.Select>
               </> : null}
@@ -7442,7 +7474,7 @@ const TripDashboardWorkspace = () => {
             <Modal.Title>Trip Update</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <div className="small text-muted mb-2">Trip: {tripUpdateModal?.id} | Rider: {tripUpdateModal?.rider}</div>
+            <div className="small text-muted mb-2">Trip: {getDisplayTripId(tripUpdateModal) || '-'} | Rider: {tripUpdateModal?.rider}</div>
             <Row className="g-3">
               <Col md={4}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Confirmed Via</Form.Label>
@@ -7467,7 +7499,7 @@ const TripDashboardWorkspace = () => {
               {tripUpdateSupportsBothLegs ? <Col md={12}>
                   <Form.Label className="small text-uppercase text-muted fw-semibold">Apply Confirmation To</Form.Label>
                   <Form.Select value={tripUpdateLegScope} onChange={event => setTripUpdateLegScope(event.target.value)}>
-                    <option value="single">Only this leg ({tripUpdateModal?.id})</option>
+                    <option value="single">Only this leg ({getDisplayTripId(tripUpdateModal) || '-'})</option>
                     <option value="both">Both legs</option>
                   </Form.Select>
                   <div className="small text-muted mt-1">Confirmation and notes can be applied to both legs. Time changes stay only on the current leg.</div>

@@ -8,7 +8,7 @@ export const metadata = {
 
 const TripDashboardPage = () => {
   return <div className={styles.tripDashboardPageRoot} data-trip-dashboard-page-root="true" style={{ marginBottom: -8 }}>
-      <TripDashboardWorkspace />
+      <TripDashboardWorkspace surface="trip-dashboard" />
     </div>;
 };
 
