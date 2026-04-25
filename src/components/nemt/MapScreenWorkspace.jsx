@@ -407,20 +407,20 @@ const MapScreenWorkspace = () => {
             <ViewportController coordinatesList={mapPoints} zoom={mapPoints.length > 0 ? RESULT_ZOOM : DEFAULT_ZOOM} />
             <ZoomControl position="bottomright" />
             <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
-            {originResult ? <CircleMarker center={originResult.coordinates} radius={12} pathOptions={{ color: '#065f46', fillColor: '#10b981', fillOpacity: 0.85, weight: 3 }}>
+            {originResult ? <Marker position={originResult.coordinates} icon={createRouteStopIcon('1', 'pickup')}>
                 <Popup>
                   <div className="fw-semibold mb-1">Origin</div>
                   <div>{originResult.label}</div>
                   <div className="small text-muted">{originResult.coordinates[0].toFixed(6)}, {originResult.coordinates[1].toFixed(6)}</div>
                 </Popup>
-              </CircleMarker> : null}
-            {destinationResult ? <CircleMarker center={destinationResult.coordinates} radius={12} pathOptions={{ color: '#1d4ed8', fillColor: '#60a5fa', fillOpacity: 0.9, weight: 3 }}>
+              </Marker> : null}
+            {destinationResult ? <Marker position={destinationResult.coordinates} icon={createRouteStopIcon('2', 'dropoff')}>
                 <Popup>
                   <div className="fw-semibold mb-1">Destination</div>
                   <div>{destinationResult.label}</div>
                   <div className="small text-muted">{destinationResult.coordinates[0].toFixed(6)}, {destinationResult.coordinates[1].toFixed(6)}</div>
                 </Popup>
-              </CircleMarker> : null}
+              </Marker> : null}
             {!hasManualMapSearch && dashboardDrivers.map(driver => <CircleMarker key={`dashboard-driver-${driver.id || driver.name || driver.position.join(',')}`} center={driver.position} radius={12} pathOptions={{ color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.9, weight: 3 }}>
                 <Popup>
                   <div className="fw-semibold">Driver</div>
