@@ -169,7 +169,8 @@ const readTripDashboardMapSelection = () => {
       routeWaypoints,
       routeGeometry: Array.isArray(parsedValue?.routeGeometry) ? parsedValue.routeGeometry : [],
       routeStops: Array.isArray(parsedValue?.routeStops) ? parsedValue.routeStops.filter(stop => Array.isArray(stop?.position)) : [],
-      trips: Array.isArray(parsedValue?.trips) ? parsedValue.trips : []
+      trips: Array.isArray(parsedValue?.trips) ? parsedValue.trips : [],
+      drivers: Array.isArray(parsedValue?.drivers) ? parsedValue.drivers.filter(driver => Array.isArray(driver?.position)) : []
     };
   } catch {
     return null;
@@ -207,6 +208,10 @@ const MapScreenWorkspace = () => {
       title: 'Dropoff'
     }]).filter(stop => Array.isArray(stop.position));
   }, [dashboardSelection?.routeStops, dashboardSelection?.trips]);
+  const dashboardDrivers = useMemo(() => {
+    if (dashboardSelection?.drivers?.length > 0) return dashboardSelection.drivers;
+    return dashboardSelection?.driver?.position ? [dashboardSelection.driver] : [];
+  }, [dashboardSelection?.driver, dashboardSelection?.drivers]);
   const mapPoints = useMemo(() => {
     if (routeResult?.geometry?.length > 1) return routeResult.geometry;
     if (!hasManualMapSearch && dashboardRouteGeometry.length > 0) return dashboardRouteGeometry;
@@ -367,7 +372,7 @@ const MapScreenWorkspace = () => {
                   </div> : null}
               </div> : !hasManualMapSearch && dashboardSelection?.trips?.length > 0 ? <div className="d-flex flex-column gap-2">
                 <div className="fw-semibold">Trip Dashboard route</div>
-                <div className="small text-muted">{dashboardSelection.trips.length} trip(s){dashboardSelection.driver?.name ? ` | ${dashboardSelection.driver.name}` : ''}</div>
+                <div className="small text-muted">{dashboardSelection.trips.length} trip(s){dashboardDrivers.length > 0 ? ` | ${dashboardDrivers.map(driver => driver.name || driver.id).filter(Boolean).join(', ')}` : ''}</div>
                 {dashboardRouteResult ? <div className="d-flex gap-2 flex-wrap small text-muted">
                     <span>{dashboardRouteResult.distanceMiles != null ? `${dashboardRouteResult.distanceMiles.toFixed(1)} miles` : 'Miles unavailable'}</span>
                     <span>{dashboardRouteResult.durationMinutes != null ? `${Math.round(dashboardRouteResult.durationMinutes)} min` : 'ETA unavailable'}</span>
@@ -400,12 +405,13 @@ const MapScreenWorkspace = () => {
                   <div className="small text-muted">{destinationResult.coordinates[0].toFixed(6)}, {destinationResult.coordinates[1].toFixed(6)}</div>
                 </Popup>
               </CircleMarker> : null}
-            {!hasManualMapSearch && dashboardSelection?.driver?.position ? <CircleMarker center={dashboardSelection.driver.position} radius={12} pathOptions={{ color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.9, weight: 3 }}>
+            {!hasManualMapSearch && dashboardDrivers.map(driver => <CircleMarker key={`dashboard-driver-${driver.id || driver.name || driver.position.join(',')}`} center={driver.position} radius={12} pathOptions={{ color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.9, weight: 3 }}>
                 <Popup>
                   <div className="fw-semibold">Driver</div>
-                  <div>{dashboardSelection.driver.name || dashboardSelection.driver.id || '-'}</div>
+                  <div>{driver.name || driver.id || '-'}</div>
+                  {driver.live ? <div className="small text-muted">{driver.live}</div> : null}
                 </Popup>
-              </CircleMarker> : null}
+              </CircleMarker>)}
             {!hasManualMapSearch && dashboardRouteStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
                 <Popup>
                   <div className="fw-semibold">{stop.title || (stop.variant === 'pickup' ? 'Pickup' : 'Dropoff')}</div>

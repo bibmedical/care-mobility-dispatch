@@ -3622,6 +3622,7 @@ const TripDashboardWorkspace = () => {
     return iconByDriverId;
   }, [mapVisibleDriversWithRealLocation]);
   const mapRelevantDriverPositions = useMemo(() => mapVisibleDriversWithRealLocation.filter(driver => mapRelevantDriverIds.has(normalizeDriverId(driver?.id))).map(driver => driver.position).filter(Boolean), [mapRelevantDriverIds, mapVisibleDriversWithRealLocation]);
+  const mapDetachedDrivers = useMemo(() => mapVisibleDriversWithRealLocation.filter(driver => mapRelevantDriverIds.has(normalizeDriverId(driver?.id))), [mapRelevantDriverIds, mapVisibleDriversWithRealLocation]);
   const mapDriverTripLinks = useMemo(() => {
     if (!showInlineMap || !hasVisibleTripDashboardMap || !showDriverMapLayer) return [];
     const visibleDriverById = new Map(mapVisibleDriversWithRealLocation.map(driver => [normalizeDriverId(driver?.id), driver]));
@@ -3725,6 +3726,12 @@ const TripDashboardWorkspace = () => {
           name: selectedDriver.name,
           position: selectedDriver.hasRealLocation ? selectedDriver.position : null
         } : null,
+        drivers: mapDetachedDrivers.map(driver => ({
+          id: String(driver?.id || '').trim(),
+          name: driver?.name || '',
+          live: driver?.live || '',
+          position: driver?.hasRealLocation ? driver.position : null
+        })),
         updatedAt: Date.now()
       }));
     } catch {
