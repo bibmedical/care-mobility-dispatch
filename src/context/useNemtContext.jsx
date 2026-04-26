@@ -1536,7 +1536,7 @@ export const NemtProvider = ({
   }));
 
   const assignTripsToDriver = (driverId, tripIds = []) => updateState(currentState => {
-    const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const targetTripIdSet = new Set((tripIds.length > 0 ? tripIds : currentState.selectedTripIds).map(tripId => String(tripId || '').trim()).filter(Boolean));
     const updatedAt = getMutationTimestamp();
     const selectedDriver = (Array.isArray(currentState?.drivers) ? currentState.drivers : []).find(driver => String(driver?.id || '').trim() === String(driverId || '').trim()) || null;
     const blockedDate = String(selectedDriver?.timeOffAppointment?.status || '').trim().toLowerCase() === 'active'
@@ -1546,7 +1546,7 @@ export const NemtProvider = ({
       ...currentState,
       selectedDriverId: driverId,
       trips: currentState.trips.map(trip => {
-        if (!targetTripIds.includes(trip.id)) return trip;
+        if (!targetTripIdSet.has(String(trip?.id || '').trim())) return trip;
         const serviceDate = getTripServiceDateKey(trip);
         if (blockedDate && serviceDate === blockedDate) return trip;
         return {
@@ -1570,7 +1570,7 @@ export const NemtProvider = ({
   });
 
   const assignTripsToSecondaryDriver = (driverId, tripIds = []) => updateState(currentState => {
-    const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    const targetTripIdSet = new Set((tripIds.length > 0 ? tripIds : currentState.selectedTripIds).map(tripId => String(tripId || '').trim()).filter(Boolean));
     const updatedAt = getMutationTimestamp();
     const selectedDriver = (Array.isArray(currentState?.drivers) ? currentState.drivers : []).find(driver => String(driver?.id || '').trim() === String(driverId || '').trim()) || null;
     const blockedDate = String(selectedDriver?.timeOffAppointment?.status || '').trim().toLowerCase() === 'active'
@@ -1579,7 +1579,7 @@ export const NemtProvider = ({
     return {
       ...currentState,
       trips: currentState.trips.map(trip => {
-        if (!targetTripIds.includes(trip.id)) return trip;
+        if (!targetTripIdSet.has(String(trip?.id || '').trim())) return trip;
         const serviceDate = getTripServiceDateKey(trip);
         if (blockedDate && serviceDate === blockedDate) return trip;
         return {

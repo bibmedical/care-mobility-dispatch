@@ -4,7 +4,7 @@ import { getMapTileConfig } from '@/utils/map-tiles';
 import { divIcon } from 'leaflet';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Form, Spinner } from 'react-bootstrap';
-import { CircleMarker, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
 
@@ -12,6 +12,8 @@ const DEFAULT_CENTER = [28.5383, -81.3792];
 const DEFAULT_ZOOM = 10;
 const RESULT_ZOOM = 16;
 const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
+const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const shellStyle = {
   minHeight: '100vh',
@@ -117,6 +119,22 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
   popupAnchor: [0, -14]
 });
 
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100 }) => {
+  const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
+  const normalizedScale = clamp(Number(vehicleIconScalePercent) || 100, 70, 200);
+  const shellSize = Math.round(60 * normalizedScale / 100);
+  const bodyWidth = Math.round(34 * normalizedScale / 100);
+  const bodyHeight = Math.round(48 * normalizedScale / 100);
+  const imageSizePercent = Math.round(clamp(132 * normalizedScale / 100, 110, 190));
+  return divIcon({
+    className: 'driver-live-vehicle-icon-shell',
+    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${DEFAULT_VEHICLE_ICON_URL}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" /></div></div>`,
+    iconSize: [shellSize, shellSize],
+    iconAnchor: [Math.round(shellSize / 2), Math.round(shellSize / 2)],
+    popupAnchor: [0, -Math.round(shellSize * 0.4)]
+  });
+};
+
 const searchAddress = async query => {
   const response = await fetch(`/api/maps/search?q=${encodeURIComponent(query)}`, {
     cache: 'no-store'
@@ -217,6 +235,7 @@ const MapScreenWorkspace = () => {
   }, [dashboardSelection?.driver, dashboardSelection?.drivers]);
   const dashboardDriverNames = useMemo(() => dashboardDrivers.map(driver => driver.name || driver.id).filter(Boolean), [dashboardDrivers]);
   const dashboardTrips = dashboardSelection?.trips || [];
+  const detachedSelectionLabel = dashboardSelection?.source === 'dispatcher' ? 'Dispatcher route' : 'Trip Dashboard route';
   const mapPoints = useMemo(() => {
     if (routeResult?.geometry?.length > 1) return routeResult.geometry;
     if (!hasManualMapSearch && dashboardRouteGeometry.length > 0) return dashboardRouteGeometry;
@@ -347,7 +366,7 @@ const MapScreenWorkspace = () => {
               {originResult ? <Badge bg="success">Origin: {originResult.provider}</Badge> : null}
               {destinationResult ? <Badge bg="primary">Destination: {destinationResult.provider}</Badge> : null}
               {routeResult ? <Badge bg={routeResult.isFallback ? 'warning' : 'dark'} text={routeResult.isFallback ? 'dark' : 'light'}>Route: {routeResult.provider}</Badge> : null}
-              {!hasManualMapSearch && dashboardSelection?.routeWaypoints?.length > 1 ? <Badge bg={dashboardRouteResult?.isFallback ? 'warning' : 'dark'} text={dashboardRouteResult?.isFallback ? 'dark' : 'light'}>{dashboardSelection?.routeLoading ? 'Calculating route' : 'Trip Dashboard route'}</Badge> : null}
+              {!hasManualMapSearch && dashboardSelection?.routeWaypoints?.length > 1 ? <Badge bg={dashboardRouteResult?.isFallback ? 'warning' : 'dark'} text={dashboardRouteResult?.isFallback ? 'dark' : 'light'}>{dashboardSelection?.routeLoading ? 'Calculating route' : detachedSelectionLabel}</Badge> : null}
             </div>
 
             {errorMessage ? <div className="small text-danger fw-semibold">{errorMessage}</div> : null}
@@ -376,7 +395,7 @@ const MapScreenWorkspace = () => {
                     <span>{routeResult.durationMinutes != null ? `${Math.round(routeResult.durationMinutes)} min` : 'ETA unavailable'}</span>
                   </div> : null}
               </div> : !hasManualMapSearch && dashboardSelection ? <div className="d-flex flex-column gap-2">
-                <div className="fw-semibold">Trip Dashboard route</div>
+                <div className="fw-semibold">{detachedSelectionLabel}</div>
                 <div className="small text-muted">Driver: {dashboardDriverNames.length > 0 ? dashboardDriverNames.join(', ') : 'None selected'}</div>
                 <div className="d-flex gap-2 flex-wrap small text-muted">
                   <span>{dashboardTrips.length} trip(s)</span>
@@ -424,13 +443,17 @@ const MapScreenWorkspace = () => {
                   <div className="small text-muted">{destinationResult.coordinates[0].toFixed(6)}, {destinationResult.coordinates[1].toFixed(6)}</div>
                 </Popup>
               </Marker> : null}
-            {!hasManualMapSearch && dashboardDrivers.map(driver => <CircleMarker key={`dashboard-driver-${driver.id || driver.name || driver.position.join(',')}`} center={driver.position} radius={12} pathOptions={{ color: '#b45309', fillColor: '#f59e0b', fillOpacity: 0.9, weight: 3 }}>
+            {!hasManualMapSearch && dashboardDrivers.map(driver => <Marker key={`dashboard-driver-${driver.id || driver.name || driver.position.join(',')}`} position={driver.position} icon={createLiveVehicleIcon({
+              heading: driver.heading,
+              isOnline: String(driver.live || '').trim().toLowerCase() === 'online',
+              vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+            })}>
                 <Popup>
                   <div className="fw-semibold">Driver</div>
                   <div>{driver.name || driver.id || '-'}</div>
                   {driver.live ? <div className="small text-muted">{driver.live}</div> : null}
                 </Popup>
-              </CircleMarker>)}
+              </Marker>)}
             {!hasManualMapSearch && dashboardRouteStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
                 <Popup>
                   <div className="fw-semibold">{stop.title || (stop.variant === 'pickup' ? 'Pickup' : 'Dropoff')}</div>
