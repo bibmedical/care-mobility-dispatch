@@ -56,6 +56,68 @@ const buildShellStyles = isLight => ({
 
 const DRIVER_EDITOR_TABS = [{ key: 'profile', label: 'Profile' }, { key: 'credentials', label: 'Credentials' }, { key: 'license', label: 'License' }, { key: 'compliance', label: 'Compliance' }, { key: 'documents', label: 'Documents' }, { key: 'extensions', label: 'Extensions' }];
 const formLabelClassName = 'text-uppercase small fw-semibold text-secondary mb-2';
+const API_ENVIRONMENT_OPTIONS = ['Local', 'Production', 'Staging', 'Backup'];
+const API_METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'PATCH'];
+const DRIVER_PRODUCTION_API_BASE_URL = 'https://care-mobility-dispatch-web-v2.onrender.com';
+
+const createBlankApiConfig = () => ({
+  id: `api-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+  name: '',
+  baseUrl: '',
+  environment: 'Production',
+  method: 'GET',
+  healthPath: '/api/health',
+  enabled: true,
+  notes: '',
+  lastUpdatedAt: ''
+});
+
+const normalizeApiConfigDraft = value => ({
+  ...createBlankApiConfig(),
+  ...(value || {}),
+  id: String(value?.id || '').trim() || `api-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+  name: String(value?.name || '').trim(),
+  baseUrl: String(value?.baseUrl || '').trim().replace(/\/$/, ''),
+  environment: String(value?.environment || 'Production').trim() || 'Production',
+  method: String(value?.method || 'GET').trim().toUpperCase() || 'GET',
+  healthPath: String(value?.healthPath || '').trim(),
+  enabled: value?.enabled !== false,
+  notes: String(value?.notes || '').trim(),
+  lastUpdatedAt: new Date().toISOString()
+});
+
+const getDefaultApiConfigs = () => {
+  const defaults = [{
+    id: 'api-driver-production',
+    name: 'Driver Production API',
+    baseUrl: DRIVER_PRODUCTION_API_BASE_URL,
+    environment: 'Production',
+    method: 'GET',
+    healthPath: '/api/health',
+    enabled: true,
+    notes: 'APK driver backend running on Render.',
+    lastUpdatedAt: ''
+  }];
+
+  if (typeof window !== 'undefined') {
+    const currentOrigin = String(window.location?.origin || '').trim().replace(/\/$/, '');
+    if (currentOrigin && !defaults.some(item => item.baseUrl === currentOrigin)) {
+      defaults.unshift({
+        id: 'api-current-web',
+        name: 'Current Web API',
+        baseUrl: currentOrigin,
+        environment: /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(currentOrigin) ? 'Local' : 'Production',
+        method: 'GET',
+        healthPath: '/api/health',
+        enabled: true,
+        notes: 'Current web server origin for this session.',
+        lastUpdatedAt: ''
+      });
+    }
+  }
+
+  return defaults.map(normalizeApiConfigDraft);
+};
 
 const getCollectionKey = activeTab => (activeTab === 'grouping' ? 'groupings' : activeTab);
 
@@ -148,6 +210,12 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const [operationalAlertsLoading, setOperationalAlertsLoading] = useState(true);
   const [driverTripMetricsState, setDriverTripMetricsState] = useState({});
   const [driverTripMetricsLoading, setDriverTripMetricsLoading] = useState(true);
+  const [showApiManager, setShowApiManager] = useState(false);
+  const [apiConfigs, setApiConfigs] = useState([]);
+  const [apiDraft, setApiDraft] = useState(createBlankApiConfig());
+  const [apiManagerLoading, setApiManagerLoading] = useState(false);
+  const [apiManagerSaving, setApiManagerSaving] = useState(false);
+  const [apiManagerMessage, setApiManagerMessage] = useState('');
 
   const state = useMemo(() => ({
     drivers: data?.drivers ?? defaultState.drivers,
@@ -349,6 +417,86 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
     const groupingType = getGroupingVehicleType(grouping, state);
     return !groupingType || vehicleSupportsServiceType(draftVehicle, groupingType);
   }) : state.groupings;
+
+  const loadApiConfigs = async () => {
+    setApiManagerLoading(true);
+    setApiManagerMessage('');
+    try {
+      const response = await fetch('/api/integrations/api-config', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to load API records.');
+      const savedConfigs = Array.isArray(payload?.apiConfigs) ? payload.apiConfigs : [];
+      const nextConfigs = savedConfigs.length ? savedConfigs : getDefaultApiConfigs();
+      setApiConfigs(nextConfigs);
+      setApiDraft(nextConfigs[0] ? normalizeApiConfigDraft(nextConfigs[0]) : createBlankApiConfig());
+      setApiManagerMessage(savedConfigs.length ? 'API records loaded.' : 'Showing default API records. Save to persist them.');
+    } catch (apiError) {
+      setApiManagerMessage(apiError.message || 'Unable to load API records.');
+    } finally {
+      setApiManagerLoading(false);
+    }
+  };
+
+  const openApiManager = () => {
+    setShowApiManager(true);
+    loadApiConfigs();
+  };
+
+  const updateApiDraftField = (field, value) => {
+    setApiDraft(current => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
+  const saveApiConfigs = async nextConfigs => {
+    setApiManagerSaving(true);
+    setApiManagerMessage('');
+    try {
+      const response = await fetch('/api/integrations/api-config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ apiConfigs: nextConfigs })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.error || 'Unable to save API records.');
+      const savedConfigs = Array.isArray(payload?.apiConfigs) ? payload.apiConfigs : nextConfigs;
+      setApiConfigs(savedConfigs);
+      setApiDraft(savedConfigs.find(item => item.id === apiDraft.id) || savedConfigs[0] || createBlankApiConfig());
+      setApiManagerMessage('API records saved.');
+    } catch (apiError) {
+      setApiManagerMessage(apiError.message || 'Unable to save API records.');
+      throw apiError;
+    } finally {
+      setApiManagerSaving(false);
+    }
+  };
+
+  const handleSaveApiDraft = async () => {
+    const normalizedDraft = normalizeApiConfigDraft(apiDraft);
+    if (!normalizedDraft.name) {
+      setApiManagerMessage('API name is required.');
+      return;
+    }
+    if (!/^https?:\/\//i.test(normalizedDraft.baseUrl)) {
+      setApiManagerMessage('API base URL must start with http:// or https://.');
+      return;
+    }
+
+    const nextConfigs = apiConfigs.some(item => item.id === normalizedDraft.id)
+      ? apiConfigs.map(item => item.id === normalizedDraft.id ? normalizedDraft : item)
+      : [normalizedDraft, ...apiConfigs];
+    await saveApiConfigs(nextConfigs);
+  };
+
+  const handleDeleteApiDraft = async () => {
+    if (!apiDraft?.id) return;
+    const nextConfigs = apiConfigs.filter(item => item.id !== apiDraft.id);
+    await saveApiConfigs(nextConfigs);
+    setApiDraft(nextConfigs[0] ? normalizeApiConfigDraft(nextConfigs[0]) : createBlankApiConfig());
+  };
 
   const openEditor = entity => {
     const nextDraft = entity ? JSON.parse(JSON.stringify(entity)) : activeTab === 'drivers' ? createBlankDriver() : activeTab === 'attendants' ? createBlankAttendant() : activeTab === 'vehicles' ? createBlankVehicle() : createBlankGrouping();
@@ -672,6 +820,7 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
                   <Dropdown.Item onClick={() => router.push('/settings/office')}>Office</Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown>
+              <Button style={shellStyles.toolbarButton} onClick={openApiManager}>API</Button>
               <Button style={shellStyles.toolbarButton} onClick={() => router.push('/settings/gps')}>GPS</Button>
               <Button style={shellStyles.toolbarButton} onClick={() => router.push('/billing/genius')}>Genius</Button>
               <Button style={shellStyles.toolbarButton} onClick={() => router.push('/rates')}>Rates</Button>
@@ -731,6 +880,76 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
           <div className="d-flex gap-2">
             <Button style={shellStyles.toolbarButton} onClick={() => setShowEditor(false)}>Cancel</Button>
             <Button style={shellStyles.activeTab} onClick={handleSave} disabled={saving}>Save</Button>
+          </div>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showApiManager} onHide={() => setShowApiManager(false)} size="lg" centered>
+        <Modal.Header closeButton style={shellStyles.modalHeader} className="text-white">
+          <Modal.Title>API</Modal.Title>
+        </Modal.Header>
+        <Modal.Body style={shellStyles.modalContent}>
+          <Row className="g-3">
+            <Col md={4}>
+              <div style={shellStyles.modalSection}>
+                <div className="d-flex align-items-center justify-content-between mb-3">
+                  <div className={formLabelClassName}>Saved APIs</div>
+                  <Button size="sm" style={shellStyles.toolbarButton} onClick={() => setApiDraft(createBlankApiConfig())}>New</Button>
+                </div>
+                {apiManagerLoading ? <div className="small text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading...</div> : null}
+                <div className="d-flex flex-column gap-2">
+                  {apiConfigs.length ? apiConfigs.map(item => <button key={item.id} type="button" className="btn text-start" style={apiDraft?.id === item.id ? shellStyles.activeTab : shellStyles.toolbarButton} onClick={() => setApiDraft(normalizeApiConfigDraft(item))}>
+                    <div className="fw-semibold">{item.name || 'Unnamed API'}</div>
+                    <div className="small text-secondary text-truncate">{item.baseUrl || 'No URL'}</div>
+                  </button>) : <div className="small text-secondary">No APIs saved.</div>}
+                </div>
+              </div>
+            </Col>
+            <Col md={8}>
+              <div style={shellStyles.modalSection}>
+                <Row className="g-3">
+                  <Col md={7}>
+                    <Form.Label className={formLabelClassName}>Name</Form.Label>
+                    <Form.Control value={apiDraft.name || ''} style={shellStyles.modalInput} placeholder="Driver Production API" onChange={event => updateApiDraftField('name', event.target.value)} />
+                  </Col>
+                  <Col md={5}>
+                    <Form.Label className={formLabelClassName}>Environment</Form.Label>
+                    <Form.Select value={apiDraft.environment || 'Production'} style={shellStyles.modalInput} onChange={event => updateApiDraftField('environment', event.target.value)}>
+                      {API_ENVIRONMENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                    </Form.Select>
+                  </Col>
+                  <Col md={12}>
+                    <Form.Label className={formLabelClassName}>Base URL</Form.Label>
+                    <Form.Control value={apiDraft.baseUrl || ''} style={shellStyles.modalInput} placeholder="https://care-mobility-dispatch-web-v2.onrender.com" onChange={event => updateApiDraftField('baseUrl', event.target.value)} />
+                  </Col>
+                  <Col md={4}>
+                    <Form.Label className={formLabelClassName}>Check Method</Form.Label>
+                    <Form.Select value={apiDraft.method || 'GET'} style={shellStyles.modalInput} onChange={event => updateApiDraftField('method', event.target.value)}>
+                      {API_METHOD_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                    </Form.Select>
+                  </Col>
+                  <Col md={8}>
+                    <Form.Label className={formLabelClassName}>Health Path</Form.Label>
+                    <Form.Control value={apiDraft.healthPath || ''} style={shellStyles.modalInput} placeholder="/api/health" onChange={event => updateApiDraftField('healthPath', event.target.value)} />
+                  </Col>
+                  <Col md={12}>
+                    <Form.Check label="Enabled" checked={apiDraft.enabled !== false} onChange={event => updateApiDraftField('enabled', event.target.checked)} />
+                  </Col>
+                  <Col md={12}>
+                    <Form.Label className={formLabelClassName}>Notes</Form.Label>
+                    <Form.Control as="textarea" rows={3} value={apiDraft.notes || ''} style={shellStyles.modalInput} placeholder="What this API is used for" onChange={event => updateApiDraftField('notes', event.target.value)} />
+                  </Col>
+                </Row>
+              </div>
+            </Col>
+          </Row>
+          {apiManagerMessage ? <Alert variant={apiManagerMessage.toLowerCase().includes('unable') || apiManagerMessage.toLowerCase().includes('required') || apiManagerMessage.toLowerCase().includes('must') ? 'warning' : 'secondary'} className="py-2 mt-3 mb-0">{apiManagerMessage}</Alert> : null}
+        </Modal.Body>
+        <Modal.Footer style={{ ...shellStyles.modalHeader, justifyContent: 'space-between' }}>
+          <Button style={shellStyles.dangerButton} onClick={handleDeleteApiDraft} disabled={apiManagerSaving || !apiConfigs.some(item => item.id === apiDraft?.id)}>Delete API</Button>
+          <div className="d-flex gap-2">
+            <Button style={shellStyles.toolbarButton} onClick={() => setShowApiManager(false)}>Close</Button>
+            <Button style={shellStyles.activeTab} onClick={handleSaveApiDraft} disabled={apiManagerSaving}>{apiManagerSaving ? 'Saving...' : 'Save API'}</Button>
           </div>
         </Modal.Footer>
       </Modal>

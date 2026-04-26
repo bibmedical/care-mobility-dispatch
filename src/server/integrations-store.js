@@ -45,6 +45,7 @@ const DEFAULT_STATE = {
   branding: {
     ...DEFAULT_BRANDING_SETTINGS
   },
+  customApis: [],
   sms: {
     activeProvider: 'disabled',
     defaultCountryCode: '1',
@@ -173,6 +174,28 @@ const normalizeAiState = value => ({
 
 const normalizeBrandingState = value => normalizeBrandingSettings(value);
 
+const normalizeCustomApiEntry = (value, index = 0) => {
+  const name = String(value?.name ?? '').trim();
+  const baseUrl = String(value?.baseUrl ?? '').trim().replace(/\/$/, '');
+  const generatedId = name || baseUrl ? `api-${`${name}-${baseUrl}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}` : `api-${index + 1}`;
+
+  return {
+    id: String(value?.id ?? generatedId).trim() || generatedId,
+    name,
+    baseUrl,
+    environment: String(value?.environment ?? 'Production').trim() || 'Production',
+    method: String(value?.method ?? 'GET').trim().toUpperCase() || 'GET',
+    healthPath: String(value?.healthPath ?? '/api/health').trim(),
+    enabled: value?.enabled !== false,
+    notes: String(value?.notes ?? ''),
+    lastUpdatedAt: String(value?.lastUpdatedAt ?? '')
+  };
+};
+
+const normalizeCustomApisState = value => (Array.isArray(value) ? value : [])
+  .map(normalizeCustomApiEntry)
+  .filter(entry => entry.name || entry.baseUrl);
+
 const normalizeSmsOptOutEntry = value => ({
   id: String(value?.id ?? `${String(value?.phone ?? '').replace(/\D/g, '') || String(value?.name ?? '').trim().toLowerCase().replace(/\s+/g, '-')}`),
   name: String(value?.name ?? ''),
@@ -227,6 +250,7 @@ const normalizeState = value => ({
   uber: normalizeUberState(value?.uber),
   ai: normalizeAiState(value?.ai),
   branding: normalizeBrandingState(value?.branding),
+  customApis: normalizeCustomApisState(value?.customApis),
   sms: normalizeSmsState(value?.sms)
 });
 
