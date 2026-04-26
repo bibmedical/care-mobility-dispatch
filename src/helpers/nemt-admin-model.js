@@ -2,7 +2,7 @@ import { SYSTEM_USERS, isDriverRole, normalizePhoneDigits, normalizeAuthValue } 
 
 const ORLANDO_CENTER = [28.5383, -81.3792];
 const ALERT_WINDOW_DAYS = 30;
-const ONLINE_WINDOW_MINUTES = 5;
+const ONLINE_WINDOW_MINUTES = 10;
 export const PASSWORD_MAX_AGE_DAYS = 90;
 const ROUTE_ROSTER_DEFAULT_START = '12:00 AM';
 const ROUTE_ROSTER_DEFAULT_END = '11:59 PM';

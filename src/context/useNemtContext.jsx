@@ -581,6 +581,18 @@ const getTomorrowDateKey = () => {
 };
 
 const mergeDispatchThreadsForSync = (localThreads, serverThreads) => {
+  const getMessageSortKey = message => {
+    const timestamp = new Date(message?.timestamp || 0).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  };
+
+  const sortMessages = messages => (Array.isArray(messages) ? [...messages] : [])
+    .sort((left, right) => {
+      const timeDelta = getMessageSortKey(left) - getMessageSortKey(right);
+      if (timeDelta !== 0) return timeDelta;
+      return String(left?.id || '').localeCompare(String(right?.id || ''));
+    });
+
   const localList = Array.isArray(localThreads) ? localThreads.map(normalizeDispatchThreadRecord) : [];
   const serverList = Array.isArray(serverThreads) ? serverThreads.map(normalizeDispatchThreadRecord) : [];
   const localThreadsByDriverId = new Map(localList.map(thread => [String(thread?.driverId || '').trim(), thread]));
@@ -614,7 +626,7 @@ const mergeDispatchThreadsForSync = (localThreads, serverThreads) => {
 
     return normalizeDispatchThreadRecord({
       ...serverThread,
-      messages: [...mergedMessages, ...localOnlyMessages]
+      messages: sortMessages([...mergedMessages, ...localOnlyMessages])
     });
   });
 

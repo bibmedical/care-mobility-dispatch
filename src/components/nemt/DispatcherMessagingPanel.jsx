@@ -411,6 +411,17 @@ const DispatcherMessagingPanel = ({
   const activeDriverAlerts = useMemo(() => driverAlerts.filter(alert => normalizeDriverId(alert?.driverId) === activeDriverId && alert.status !== 'resolved'), [activeDriverId, driverAlerts]);
   const dispatcherSenderName = String(session?.user?.name || session?.user?.email || 'Dispatch').trim() || 'Dispatch';
   const selectedChatTheme = useMemo(() => resolveChatThemeColors(chatTheme, isDarkMode), [chatTheme, isDarkMode]);
+  const sortedActiveMessages = useMemo(() => {
+    const items = Array.isArray(activeThread?.messages) ? [...activeThread.messages] : [];
+    return items.sort((left, right) => {
+      const leftTime = new Date(left?.timestamp || 0).getTime();
+      const rightTime = new Date(right?.timestamp || 0).getTime();
+      const leftValue = Number.isFinite(leftTime) ? leftTime : 0;
+      const rightValue = Number.isFinite(rightTime) ? rightTime : 0;
+      if (leftValue !== rightValue) return leftValue - rightValue;
+      return String(left?.id || '').localeCompare(String(right?.id || ''));
+    });
+  }, [activeThread?.messages]);
   const gpsOnlineCount = useMemo(() => allDrivers.filter(driver => {
     const isOnline = String(driver?.live || '').trim().toLowerCase() === 'online';
     const hasGps = driver?.hasRealLocation || (Array.isArray(driver?.position) && driver.position.length === 2 && driver.position.every(value => Number.isFinite(Number(value))));
@@ -1374,7 +1385,7 @@ const DispatcherMessagingPanel = ({
                     </div>
                   </div>)}
               </div> : null}
-            {activeThread?.messages?.length ? activeThread.messages.map(message => (
+            {sortedActiveMessages.length ? sortedActiveMessages.map(message => (
               <div key={message.id} className={`d-flex mb-3 ${message.direction === 'outgoing' ? 'justify-content-end' : 'justify-content-start'}`}>
                 <div
                   className="rounded-3 px-3 py-2"
