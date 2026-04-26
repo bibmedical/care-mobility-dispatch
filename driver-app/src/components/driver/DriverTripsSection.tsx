@@ -290,22 +290,29 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     || String(workflow?.status || '').toLowerCase() === 'to-destination'
   );
   const hasArrivedDestination = Boolean(displayedFocusTrip?.arrivedDestinationAt || workflow?.arrivedDestinationAt || workflow?.destinationArrivalAt);
+  const hasDelayReported = Boolean(
+    displayedFocusTrip?.delayReportedAt
+    || workflow?.delayReportedAt
+    || String(displayedFocusTrip?.status || '').trim().toLowerCase() === 'delayed'
+  );
 
   const canAcceptTrip = !hasAcceptedState;
   const canStartRoute = hasAcceptedState && !hasStartedRouteToPickup;
   const canArrivePickup = hasStartedRouteToPickup && !hasArrivedPickup;
   const canMarkPatientOnboard = hasArrivedPickup && !hasPatientOnboard;
-  const canStartTripToDestination = hasPatientOnboard && !hasStartedTripToDestination;
+  const canStartTripToDestination = (hasPatientOnboard || hasArrivedPickup) && !hasStartedTripToDestination;
   const canArriveDestination = hasStartedTripToDestination && !hasArrivedDestination;
-  const canCompleteTrip = hasArrivedDestination;
+  const canReportDelay = hasStartedRouteToPickup && !hasArrivedPickup;
+  const canCompleteTrip = hasArrivedDestination || hasStartedTripToDestination;
 
   const showAcceptAction = !hasAcceptedState;
   const showStartRouteAction = hasAcceptedState && !hasStartedRouteToPickup;
   const showArrivedPickupAction = hasStartedRouteToPickup && !hasArrivedPickup;
   const showPatientOnboardAction = hasArrivedPickup && !hasPatientOnboard;
-  const showStartTripAction = hasPatientOnboard && !hasStartedTripToDestination;
+  const showStartTripAction = (hasPatientOnboard || hasArrivedPickup) && !hasStartedTripToDestination;
   const showArrivedDestinationAction = hasStartedTripToDestination && !hasArrivedDestination;
-  const showCompleteAction = hasArrivedDestination;
+  const showDelayAction = hasStartedRouteToPickup && !hasArrivedPickup && !hasDelayReported;
+  const showCompleteAction = hasArrivedDestination || hasStartedTripToDestination;
   const showDirectionsAction = hasStartedRouteToPickup && !Boolean(focusTrip?.completedAt || workflow?.completedAt);
 
   const routeStartedAt = hasStartedRouteToPickup && !hasArrivedPickup
@@ -849,6 +856,10 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
             {showArrivedPickupAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canArrivePickup || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('arrived', { tripId: displayedFocusTrip.id })} disabled={!canArrivePickup || runtime.activeTripAction.length > 0}>
                 <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'arrived' ? 'Sending...' : 'Arrived Pickup'}</Text>
+              </Pressable> : null}
+
+            {showDelayAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canReportDelay || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('delay', { tripId: displayedFocusTrip.id })} disabled={!canReportDelay || runtime.activeTripAction.length > 0}>
+                <Text style={driverSharedStyles.secondaryButtonText}>{runtime.activeTripAction === 'delay' ? 'Sending...' : 'Report Delay'}</Text>
               </Pressable> : null}
 
             {showPatientOnboardAction ? <Pressable style={[driverSharedStyles.secondaryButton, !canMarkPatientOnboard || runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void runtime.submitTripAction('patient-onboard', { tripId: displayedFocusTrip.id })} disabled={!canMarkPatientOnboard || runtime.activeTripAction.length > 0}>

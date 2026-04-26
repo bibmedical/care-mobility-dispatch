@@ -7,7 +7,7 @@ export type LocationSnapshot = {
   timestamp: number;
 };
 
-export type DriverTripActionName = 'accept' | 'activate-willcall' | 'en-route' | 'arrived' | 'patient-onboard' | 'start-trip' | 'arrived-destination' | 'complete' | 'cancel';
+export type DriverTripActionName = 'accept' | 'activate-willcall' | 'en-route' | 'arrived' | 'patient-onboard' | 'start-trip' | 'arrived-destination' | 'delay' | 'complete' | 'cancel';
 
 export type DriverPendingTripAction = {
   id: string;
@@ -140,6 +140,7 @@ export type DriverTrip = {
   patientOnboardAt?: number | null;
   startTripAt?: number | null;
   arrivedDestinationAt?: number | null;
+  delayReportedAt?: number | null;
   completedAt?: number | null;
   riderSignatureName?: string;
   riderSignedAt?: number | null;
@@ -179,6 +180,9 @@ export type DriverTrip = {
     destinationArrivalAt?: number | null;
     destinationArrivalTimeLabel?: string;
     destinationArrivalLocationSnapshot?: LocationSnapshot | null;
+    delayReportedAt?: number | null;
+    delayReportedTimeLabel?: string;
+    delayLateMinutes?: number | null;
     completedAt?: number | null;
     completedTimeLabel?: string;
     completionLocationSnapshot?: LocationSnapshot | null;

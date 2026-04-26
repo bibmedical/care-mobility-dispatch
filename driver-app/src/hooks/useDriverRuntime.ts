@@ -423,6 +423,11 @@ export const useDriverRuntime = () => {
       workflow.arrivedDestinationAt = now;
       workflow.arrivedDestinationTimeLabel = formatDateTime(now);
     }
+    if (action === 'delay') {
+      patch.delayReportedAt = now;
+      workflow.delayReportedAt = now;
+      workflow.delayReportedTimeLabel = formatDateTime(now);
+    }
     if (action === 'complete') {
       patch.completedAt = now;
       patch.completionPhotoDataUrl = String(options.completionPhotoDataUrl || '').trim() || undefined;
@@ -609,7 +614,7 @@ export const useDriverRuntime = () => {
           let { response, payload } = await sendTripActionRequest();
           if (await handleDriverSessionFailure(response, payload, 'Your driver session ended. Sign in again.')) return false;
 
-          const actionAllowsSignatureBypass = ['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination'].includes(queuedAction.action);
+          const actionAllowsSignatureBypass = ['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination', 'delay'].includes(queuedAction.action);
           const backendSignatureError = /signature|firma/i.test(String(payload?.error || ''));
 
           if (!response.ok && actionAllowsSignatureBypass && backendSignatureError) {
