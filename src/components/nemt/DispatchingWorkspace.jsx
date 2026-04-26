@@ -139,17 +139,17 @@ const DispatchingWorkspace = ({ title = 'Dispatching', advancedLayouts = false }
             gridTemplateRows: activePreset.gridTemplateRows
           }}>
               {showBoardA ? <div style={{ gridArea: activePreset.boardAArea, minHeight: 0, overflow: 'auto' }}>
-                  <TripDashboardWorkspace key={`${title}-workspace-board-a`} />
+                  <TripDashboardWorkspace key={`${title}-workspace-board-a`} surface="dispatcher" />
                 </div> : null}
               {showBoardB ? <div style={{ gridArea: activePreset.boardBArea, minHeight: 0, overflow: 'auto' }}>
-                  <TripDashboardWorkspace key={`${title}-workspace-board-b`} />
+                  <TripDashboardWorkspace key={`${title}-workspace-board-b`} surface="dispatcher" />
                 </div> : null}
               {showMessages ? <div style={{ gridArea: activePreset.messagesArea, minHeight: 0, overflow: 'auto' }}>
                   <DispatchingMessageHub key={`${title}-workspace-messages`} />
                 </div> : null}
             </div>
           </CardBody>
-        </Card> : activeView === 'messages' ? <DispatchingMessageHub key={`${title}-messages`} /> : <TripDashboardWorkspace key={`${title}-${activeView}`} />}
+        </Card> : activeView === 'messages' ? <DispatchingMessageHub key={`${title}-messages`} /> : <TripDashboardWorkspace key={`${title}-${activeView}`} surface="dispatcher" />}
 
       {advancedLayouts ? <Modal show={showLayoutModal} onHide={() => setShowLayoutModal(false)} centered>
           <Modal.Header closeButton>

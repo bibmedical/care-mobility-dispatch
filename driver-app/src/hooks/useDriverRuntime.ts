@@ -46,7 +46,14 @@ const getNotificationsModule = () => {
 };
 
 const buildLoginApiBaseCandidates = () => {
-  const candidates = [DRIVER_APP_CONFIG.apiBaseUrl, DRIVER_RENDER_API_BASE_URL]
+  if (DRIVER_APP_CONFIG.requiresExplicitApiBaseUrl && !DRIVER_APP_CONFIG.apiBaseUrl) {
+    return [];
+  }
+
+  const candidates = [
+    DRIVER_APP_CONFIG.apiBaseUrl,
+    DRIVER_APP_CONFIG.requiresExplicitApiBaseUrl ? '' : DRIVER_RENDER_API_BASE_URL
+  ]
     .map(value => String(value || '').trim().replace(/\/$/, ''))
     .filter(Boolean);
 
@@ -92,6 +99,10 @@ const fetchJsonWithTimeout = async (input: string, init?: RequestInit, timeoutMs
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('The server took too long to respond. Check your connection and try again.');
+    }
+
+    if (DRIVER_APP_CONFIG.requiresExplicitApiBaseUrl && !DRIVER_APP_CONFIG.apiBaseUrl) {
+      throw new Error(DRIVER_APP_CONFIG.missingApiBaseUrlMessage);
     }
 
     if (error instanceof Error && /failed to fetch|network request failed/i.test(error.message)) {
@@ -429,78 +440,6 @@ export const useDriverRuntime = () => {
     return patch;
   };
 
-  const isTripClosed = (trip?: DriverTrip | null) => {
-    if (!trip) return false;
-    const normalizedStatus = String(trip.status || '').trim().toLowerCase();
-    const workflowStatus = String(trip.driverWorkflow?.status || '').trim().toLowerCase();
-    return Boolean(
-      trip.completedAt
-      || trip.canceledAt
-      || trip.driverWorkflow?.completedAt
-      || normalizedStatus.includes('completed')
-      || normalizedStatus.includes('cancelled')
-      || normalizedStatus.includes('canceled')
-      || workflowStatus === 'complete'
-      || workflowStatus === 'completed'
-      || workflowStatus === 'cancel'
-      || workflowStatus === 'cancelled'
-      || workflowStatus === 'canceled'
-    );
-  };
-
-  const isTripInProgress = (trip?: DriverTrip | null) => {
-    if (!trip || isTripClosed(trip)) return false;
-    return Boolean(
-      trip.driverWorkflow?.acceptedAt
-      || trip.driverWorkflow?.departureAt
-      || trip.driverWorkflow?.departureToPickupAt
-      || trip.driverWorkflow?.arrivalAt
-      || trip.driverWorkflow?.arrivedPickupAt
-      || trip.driverWorkflow?.patientOnboardAt
-      || trip.driverWorkflow?.startTripAt
-      || trip.driverWorkflow?.destinationDepartureAt
-      || trip.driverWorkflow?.arrivedDestinationAt
-      || trip.enRouteAt
-      || trip.arrivedAt
-      || trip.patientOnboardAt
-      || trip.startTripAt
-      || trip.arrivedDestinationAt
-    );
-  };
-
-  const findPreferredActiveTrip = (trips: DriverTrip[]) => {
-    const safeTrips = Array.isArray(trips) ? trips.filter(trip => !isTripClosed(trip)) : [];
-    return safeTrips.find(trip => isTripInProgress(trip)) || null;
-  };
-
-  const mergeRemoteTripWithLocalClosure = (remoteTrip: DriverTrip, localTrip?: DriverTrip | null) => {
-    if (!localTrip || !isTripClosed(localTrip) || isTripClosed(remoteTrip)) {
-      return remoteTrip;
-    }
-
-    return {
-      ...remoteTrip,
-      status: localTrip.status || remoteTrip.status,
-      completedAt: localTrip.completedAt || remoteTrip.completedAt || null,
-      canceledAt: localTrip.canceledAt || remoteTrip.canceledAt || null,
-      completionPhotoDataUrl: localTrip.completionPhotoDataUrl || remoteTrip.completionPhotoDataUrl || '',
-      cancellationReason: localTrip.cancellationReason || remoteTrip.cancellationReason || '',
-      cancellationPhotoDataUrl: localTrip.cancellationPhotoDataUrl || remoteTrip.cancellationPhotoDataUrl || '',
-      driverWorkflow: {
-        ...(remoteTrip.driverWorkflow || {}),
-        ...(localTrip.driverWorkflow || {})
-      }
-    };
-  };
-
-  const mergeTripsWithLocalClosures = (remoteTrips: DriverTrip[], localTrips: DriverTrip[]) => {
-    if (!Array.isArray(remoteTrips) || !remoteTrips.length) return [];
-    return remoteTrips.map(remoteTrip => {
-      const localTrip = (Array.isArray(localTrips) ? localTrips : []).find(item => String(item?.id || '').trim() === String(remoteTrip?.id || '').trim()) || null;
-      return mergeRemoteTripWithLocalClosure(remoteTrip, localTrip);
-    });
-  };
-
   const applyOptimisticTripAction = (tripId: string, action: DriverTripActionName, options: {
     eventTimestamp?: number;
     cancellationReason?: string;
@@ -522,10 +461,6 @@ export const useDriverRuntime = () => {
     setActiveTrip(currentTrip => {
       if (!currentTrip || String(currentTrip.id || '').trim() !== normalizedTripId) {
         return currentTrip;
-      }
-
-      if (action === 'cancel' || action === 'complete') {
-        return null;
       }
 
       return {
@@ -568,27 +503,6 @@ export const useDriverRuntime = () => {
           return currentTrip;
         }
 
-        const normalizedStatus = String(currentTrip?.status || '').trim().toLowerCase();
-        const workflowStatus = String(currentTrip?.driverWorkflow?.status || '').trim().toLowerCase();
-        const isAlreadyCompleted = queuedAction.action === 'complete' && (
-          normalizedStatus.includes('completed')
-          || workflowStatus === 'complete'
-          || workflowStatus === 'completed'
-          || Boolean(currentTrip?.completedAt || currentTrip?.driverWorkflow?.completedAt)
-        );
-        const isAlreadyCancelled = queuedAction.action === 'cancel' && (
-          normalizedStatus.includes('cancelled')
-          || normalizedStatus.includes('canceled')
-          || workflowStatus === 'cancel'
-          || workflowStatus === 'cancelled'
-          || workflowStatus === 'canceled'
-          || Boolean(currentTrip?.canceledAt)
-        );
-
-        if (isAlreadyCompleted || isAlreadyCancelled) {
-          return currentTrip;
-        }
-
         const optimisticPatch = buildOptimisticTripPatch(queuedAction.action, {
           eventTimestamp: queuedAction.eventTimestamp,
           cancellationReason: queuedAction.cancellationReason,
@@ -621,30 +535,19 @@ export const useDriverRuntime = () => {
 
       const pendingActions = await readStoredPendingTripActions();
       const fetchedTrips: DriverTrip[] = Array.isArray(payload?.trips) ? payload.trips : [];
-      const optimisticTrips = applyPendingActionsToTrips(fetchedTrips, pendingActions);
-      let mergedTrips: DriverTrip[] = optimisticTrips;
-      setAssignedTrips(currentTrips => {
-        mergedTrips = mergeTripsWithLocalClosures(optimisticTrips, currentTrips);
-        return mergedTrips;
-      });
+      const nextTrips = applyPendingActionsToTrips(fetchedTrips, pendingActions);
+      setAssignedTrips(nextTrips);
       setActiveTrip(currentTrip => {
         if (currentTrip) {
-          const refreshedCurrentTrip = mergedTrips.find(trip => trip.id === currentTrip.id);
-          if (refreshedCurrentTrip) return isTripClosed(refreshedCurrentTrip) ? null : refreshedCurrentTrip;
+          const refreshedCurrentTrip = nextTrips.find(trip => trip.id === currentTrip.id);
+          if (refreshedCurrentTrip) return refreshedCurrentTrip;
         }
 
         const payloadActiveTrip = payload?.activeTrip && typeof payload.activeTrip === 'object'
-          ? mergeRemoteTripWithLocalClosure(
-              applyPendingActionsToTrips([payload.activeTrip], pendingActions)[0],
-              mergedTrips.find(trip => String(trip.id || '').trim() === String(payload?.activeTrip?.id || '').trim()) || null
-            )
+          ? applyPendingActionsToTrips([payload.activeTrip], pendingActions)[0]
           : null;
 
-        if (payloadActiveTrip && !isTripClosed(payloadActiveTrip)) {
-          return payloadActiveTrip;
-        }
-
-        return findPreferredActiveTrip(mergedTrips);
+        return payloadActiveTrip ?? nextTrips[0] ?? null;
       });
       setTripSyncError('');
       setLastTripSyncAt(Date.now());
@@ -1503,6 +1406,9 @@ export const useDriverRuntime = () => {
     try {
       const deviceId = await readOrCreateDriverDeviceId();
       const loginApiBaseCandidates = buildLoginApiBaseCandidates();
+      if (!loginApiBaseCandidates.length) {
+        throw new Error(DRIVER_APP_CONFIG.missingApiBaseUrlMessage);
+      }
       let response: Response | null = null;
       let payload: any = null;
       let lastError: Error | null = null;

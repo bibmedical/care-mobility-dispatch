@@ -12,6 +12,11 @@ export const MENU_ITEMS = [{
   icon: 'iconoir:gas-tank',
   url: '/fuel-requests'
 }, {
+  key: 'all-screens-menu',
+  label: 'All',
+  icon: 'iconoir:view-grid',
+  url: '/dispatcher/screens'
+}, {
   key: 'transportation-menu',
   label: 'Transportation',
   icon: 'iconoir:bus',

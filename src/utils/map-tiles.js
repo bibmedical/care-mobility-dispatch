@@ -25,6 +25,8 @@ export const MAP_PROVIDER_OPTIONS = [{
 
 export const hasLocalMapTilesConfigured = Boolean(localTileUrl);
 
+export const hasMapboxConfigured = false;
+
 export const getMapTileConfig = providerPreference => {
   const normalized = String(providerPreference ?? 'auto').trim().toLowerCase();
   if (normalized === 'local' && hasLocalMapTilesConfigured) {

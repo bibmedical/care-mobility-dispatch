@@ -1,5 +1,6 @@
 'use client';
 
+import PowerToggleButton from '@/components/form/PowerToggleButton';
 import IconifyIcon from '@/components/wrappers/IconifyIcon';
 import ManualTripModal from '@/components/nemt/ManualTripModal';
 import { useLayoutContext } from '@/context/useLayoutContext';
@@ -19,7 +20,7 @@ import { getMapTileConfig } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
-import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleMarker, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
@@ -36,6 +37,51 @@ const darkToolbarButtonStyle = {
   color: '#e5e7eb',
   borderColor: 'rgba(226, 232, 240, 0.34)',
   backgroundColor: 'transparent'
+};
+
+const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
+
+const TRIP_DASHBOARD_MAP_LAYER_OPTIONS = [{
+  value: 'all',
+  label: 'Layers: All'
+}, {
+  value: 'driver-route',
+  label: 'Layers: Driver + Route'
+}, {
+  value: 'driver-selected',
+  label: 'Layers: Driver + Trip'
+}, {
+  value: 'route-selected',
+  label: 'Layers: Route + Trip'
+}, {
+  value: 'route-only',
+  label: 'Layers: Route Only'
+}, {
+  value: 'selected-only',
+  label: 'Layers: Trip Only'
+}, {
+  value: 'driver-only',
+  label: 'Layers: Driver Only'
+}];
+
+const getTripDashboardMapLayerVisibility = preset => {
+  switch (String(preset || '').trim()) {
+    case 'driver-route':
+      return { drivers: true, route: true, selectedTrips: false };
+    case 'driver-selected':
+      return { drivers: true, route: false, selectedTrips: true };
+    case 'route-selected':
+      return { drivers: false, route: true, selectedTrips: true };
+    case 'route-only':
+      return { drivers: false, route: true, selectedTrips: false };
+    case 'selected-only':
+      return { drivers: false, route: false, selectedTrips: true };
+    case 'driver-only':
+      return { drivers: true, route: false, selectedTrips: false };
+    case 'all':
+    default:
+      return { drivers: true, route: true, selectedTrips: true };
+  }
 };
 
 const TripDashboardMapResizer = ({ resizeKey }) => {
@@ -56,6 +102,33 @@ const TripDashboardMapResizer = ({ resizeKey }) => {
       window.clearTimeout(timeoutId);
     };
   }, [map, resizeKey]);
+
+  return null;
+};
+
+const TripDashboardMapViewportController = ({ focusPoints, focusKey }) => {
+  const map = useMap();
+  const lastAppliedFocusKeyRef = useRef('');
+
+  useEffect(() => {
+    if (!Array.isArray(focusPoints) || focusPoints.length === 0) return;
+    if (focusKey && lastAppliedFocusKeyRef.current === focusKey) return;
+
+    if (focusPoints.length === 1) {
+      map.setView(focusPoints[0], Math.max(map.getZoom(), 12), {
+        animate: false
+      });
+      lastAppliedFocusKeyRef.current = focusKey;
+      return;
+    }
+
+    map.fitBounds(focusPoints, {
+      padding: [36, 36],
+      maxZoom: 13,
+      animate: false
+    });
+    lastAppliedFocusKeyRef.current = focusKey;
+  }, [focusKey, map]);
 
   return null;
 };
@@ -369,8 +442,8 @@ const blueMapTabStyle = {
 };
 
 const compactMapToolbarButtonStyle = {
-  minWidth: 38,
-  width: 38,
+  minWidth: 64,
+  width: 64,
   height: 30,
   padding: 0,
   borderRadius: 6,
@@ -410,6 +483,14 @@ const TRIP_COLUMN_MIN_WIDTHS = {
 const BLACKLIST_CATEGORY_OPTIONS = ['Do Not Schedule', 'Medical Hold', 'Deceased', 'This Week Only', 'Legal / Claim', 'Safety Risk', 'Other'];
 const TRIP_SYSTEM_NOTE_PREFIXES = ['[TRIP UPDATE]', '[SCHEDULE CHANGE]', '[DISPATCH NOTE]', '[CANCELLED]'];
 const TRIP_CONFIRMATION_OUTPUT_COLUMNS = ['tripId', 'rider', 'phone', 'pickupTime', 'pickupAddress', 'dropoffTime', 'dropoffAddress', 'leg', 'type'];
+const TRIP_CONFIRMATION_VISIBLE_COLUMNS = ['status', 'confirmation'];
+const TRIP_DASHBOARD_DEFAULT_HIDDEN_TRIP_COLUMNS = ['status', 'confirmation', 'notes', 'vehicle', 'assistLevel', 'punctuality', 'lateMinutes'];
+const getTripDashboardDefaultVisibleTripColumns = () => DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key).filter(columnKey => !TRIP_DASHBOARD_DEFAULT_HIDDEN_TRIP_COLUMNS.includes(columnKey));
+const normalizeTripDashboardVisibleTripColumns = value => {
+  const allowedColumnKeys = new Set(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key));
+  const uniqueColumnKeys = Array.from(new Set(Array.isArray(value) ? value : [])).filter(columnKey => allowedColumnKeys.has(columnKey));
+  return uniqueColumnKeys.length > 0 ? uniqueColumnKeys : getTripDashboardDefaultVisibleTripColumns();
+};
 
 const createEmptyBlacklistEntryDraft = () => ({
   name: '',
@@ -459,8 +540,7 @@ const TRIP_DASHBOARD_TOOLBAR_BLOCK_LABELS = {
 
 const TRIP_DASHBOARD_LAYOUTS = {
   normal: 'normal',
-  focusRight: 'focus-right',
-  stacked: 'stacked'
+  focusRight: 'focus-right'
 };
 
 const TRIP_DASHBOARD_PANEL_VIEWS = {
@@ -481,7 +561,7 @@ const TRIP_TIME_DISPLAY_MODES = {
 
 const normalizeTripTimeDisplayMode = value => String(value || '').trim() === TRIP_TIME_DISPLAY_MODES.military ? TRIP_TIME_DISPLAY_MODES.military : TRIP_TIME_DISPLAY_MODES.standard;
 
-const getInitialTripDashboardLayoutMode = () => TRIP_DASHBOARD_LAYOUTS.focusRight;
+const getInitialTripDashboardLayoutMode = () => TRIP_DASHBOARD_LAYOUTS.normal;
 
 const getStatusBadge = status => {
   if (status === 'Assigned') return 'primary';
@@ -816,10 +896,18 @@ const compareNormalizedTripSortValues = (leftValue, rightValue, direction = 'asc
   return direction === 'asc' ? result : -result;
 };
 
+const getCompactTripIdText = value => {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue) return '';
+  const pipeSegment = normalizedValue.split('|').map(part => String(part || '').trim()).find(Boolean) || normalizedValue;
+  const firstToken = pipeSegment.split(/\s+/).find(Boolean) || pipeSegment;
+  return firstToken.replace(/[|,;]+$/g, '').trim();
+};
+
 const getTripSortValue = (trip, sortKey, getDriverName) => {
   switch (sortKey) {
     case 'trip':
-      return trip.brokerTripId || trip.id;
+      return getDisplayTripId(trip) || trip.id;
     case 'status':
       return getEffectiveTripStatus(trip);
     case 'driver':
@@ -862,15 +950,15 @@ const getTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDr
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const getDisplayTripId = trip => {
-  const rideId = String(trip?.rideId || '').trim();
-  if (rideId) return rideId;
   const brokerTripId = String(trip?.brokerTripId || '').trim();
-  if (brokerTripId) return brokerTripId;
+  const compactBrokerTripId = getCompactTripIdText(brokerTripId);
+  if (compactBrokerTripId) return compactBrokerTripId;
+  const rideId = String(trip?.rideId || '').trim();
+  const compactRideId = getCompactTripIdText(rideId);
+  if (compactRideId) return compactRideId;
   const tripId = String(trip?.id || '').trim();
-  if (!tripId) return '';
-  if (tripId.includes('|')) {
-    return tripId.split('|').map(part => String(part || '').trim()).find(Boolean) || tripId;
-  }
+  const compactTripId = getCompactTripIdText(tripId);
+  if (compactTripId) return compactTripId;
   return tripId.split('-')[0] || tripId;
 };
 
@@ -944,11 +1032,11 @@ const buildTripExcelComparisonRows = trip => {
     currentValue: trip?.rider || '-'
   }, {
     label: 'Pickup',
-    excelValue: snapshot.rawPickupTime || snapshot.pickup || '-',
+    excelValue: snapshot.pickup || snapshot.rawPickupTime || '-',
     currentValue: trip?.pickup || '-'
   }, {
     label: 'Dropoff',
-    excelValue: snapshot.rawDropoffTime || snapshot.dropoff || '-',
+    excelValue: snapshot.dropoff || snapshot.rawDropoffTime || '-',
     currentValue: trip?.dropoff || '-'
   }, {
     label: 'Pickup Address',
@@ -1094,7 +1182,7 @@ const buildInlineTripUpdatePayload = ({ trip, columnKey, value, routePlans, trip
 
 const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
   className: 'route-stop-icon-shell',
-  html: `<div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:${variant === 'pickup' ? '#16a34a' : '#ef4444'};border:2px solid #ffffff;box-shadow:0 6px 18px rgba(15,23,42,0.28);color:#ffffff;font-size:13px;font-weight:700;line-height:1;">${label}</div>`,
+  html: `<div style="width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:${variant === 'pickup' ? '#16a34a' : '#ef4444'};border:2px solid #ffffff;box-shadow:0 6px 18px rgba(15,23,42,0.34);color:#ffffff;font-size:13px;font-weight:800;line-height:1;">${label}</div>`,
   iconSize: [28, 28],
   iconAnchor: [14, 14],
   popupAnchor: [0, -14]
@@ -1119,7 +1207,8 @@ const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScale
   });
 };
 
-const TripDashboardWorkspace = () => {
+const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
+  const isTripDashboardSurface = surface === 'trip-dashboard';
   const router = useRouter();
   const { data: session } = useSession();
   const { changeTheme, themeMode } = useLayoutContext();
@@ -1131,13 +1220,16 @@ const TripDashboardWorkspace = () => {
     drivers,
     trips,
     routePlans,
+    selectedTripIds,
+    setSelectedTripIds,
     selectedDriverId,
     setSelectedDriverId,
+    selectedRouteId,
+    setSelectedRouteId,
     assignTripsToDriver,
     assignTripsToSecondaryDriver,
     unassignTrips,
     upsertImportedTrips,
-    previewImportedTripRoutingChanges,
     cancelTrips,
     reinstateTrips,
     createRoute,
@@ -1156,16 +1248,23 @@ const TripDashboardWorkspace = () => {
     setMapProvider,
   } = useNemtContext();
   const { showNotification } = useNotificationContext();
+  const [tripDashboardVisibleTripColumns, setTripDashboardVisibleTripColumns] = useState(() => getTripDashboardDefaultVisibleTripColumns());
+  const setSurfaceVisibleTripColumns = useCallback(nextColumns => {
+    if (isTripDashboardSurface) {
+      setTripDashboardVisibleTripColumns(nextColumns);
+      return;
+    }
+    setDispatcherVisibleTripColumns(nextColumns);
+  }, [isTripDashboardSurface, setDispatcherVisibleTripColumns]);
   const [routeName, setRouteName] = useState('');
   const [routeNotes, setRouteNotes] = useState('');
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripDateFilter, setTripDateFilter] = useState('all');
-  const [selectedTripIds, setSelectedTripIds] = useState([]);
-  const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [selectedSecondaryDriverId, setSelectedSecondaryDriverId] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
+  const [showScannerRowColors, setShowScannerRowColors] = useState(true);
   const [serviceAnimalOnly, setServiceAnimalOnly] = useState(false);
   const [mapCityQuickFilter, setMapCityQuickFilter] = useState('');
   const [mapZipQuickFilter, setMapZipQuickFilter] = useState('');
@@ -1191,9 +1290,25 @@ const TripDashboardWorkspace = () => {
   const [blacklistDraftTrip, setBlacklistDraftTrip] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
   const [showRoute, setShowRoute] = useState(true);
+  const [btRouteEnabled, setBtRouteEnabled] = useState(false);
+  const [mapLayerPreset, setMapLayerPreset] = useState('all');
   const [showBottomPanels, setShowBottomPanels] = useState(() => getInitialTripDashboardLayoutMode() !== TRIP_DASHBOARD_LAYOUTS.normal);
   const showInlineMap = true;
   const [showMapPane, setShowMapPane] = useState(() => getInitialTripDashboardLayoutMode() === TRIP_DASHBOARD_LAYOUTS.normal);
+  const [showScannerMapInRoutePanel, setShowScannerMapInRoutePanel] = useState(false);
+  const [scannerColumnsSaved, setScannerColumnsSaved] = useState(true);
+  const [scannerActionPulse, setScannerActionPulse] = useState({
+    save: false,
+    reset: false,
+    confirmationPage: false,
+    sendSelected: false,
+    history: false,
+    diarie: false,
+    excel: false,
+    focusReset: false,
+    invert: false,
+    hide: false
+  });
   const [mapLocked, setMapLocked] = useState(false);
     const handleFocusLiveScanTrip = (tripId, riderName = '') => {
       const normalizedTripId = normalizeTripId(tripId);
@@ -1234,35 +1349,6 @@ const TripDashboardWorkspace = () => {
       showNotification({ message: `${selectedVisibleTrips.length} selected visible trip(s) inverted.`, variant: 'success' });
     };
 
-    const handleAutoRepairLiveScan = () => {
-      if (liveTripAutoRepairableFindings.length === 0) {
-        setStatusMessage('Scanner checked the visible trips. No auto-repairable issues were found.');
-        showNotification({ message: 'No simple repeated-direction issues are available for auto-repair in the visible trips.', variant: 'warning' });
-        return;
-      }
-
-      const targetTripIds = new Set();
-      liveTripAutoRepairableFindings.forEach(finding => {
-        finding.tripIds.slice(1).forEach(tripId => targetTripIds.add(normalizeTripId(tripId)));
-      });
-
-      const targetTrips = filteredTrips.filter(trip => targetTripIds.has(normalizeTripId(trip?.id)));
-      if (targetTrips.length === 0) {
-        showNotification({ message: 'Scanner found issues, but the target trips were not available for repair in the current visible list.', variant: 'warning' });
-        return;
-      }
-
-      targetTrips.forEach(trip => {
-        updateTripRecord(trip.id, invertDashboardTripDirection(trip));
-      });
-      setSelectedTripIds(targetTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean));
-      const riderSummary = Array.from(new Set(targetTrips.map(trip => String(trip?.rider || '').trim()).filter(Boolean))).slice(0, 3);
-      const riderSuffix = riderSummary.length > 0 ? ` Affected rider(s): ${riderSummary.join(', ')}${riderSummary.length < new Set(targetTrips.map(trip => String(trip?.rider || '').trim()).filter(Boolean)).size ? ', ...' : ''}.` : '';
-      const repairSummary = `Scanner auto-repair inverted direction for ${targetTrips.length} visible trip(s). Pickup, dropoff, and ZIP codes were swapped together.${riderSuffix}`;
-      setStatusMessage(repairSummary);
-      showNotification({ message: repairSummary, variant: 'success' });
-    };
-
     const handleOpenLiveScanConfirmation = () => {
       if (selectedVisibleTrips.length === 0) {
         setStatusMessage('Select at least one visible scanner trip before opening confirmation.');
@@ -1293,27 +1379,39 @@ const TripDashboardWorkspace = () => {
   const [panelView, setPanelView] = useState(TRIP_DASHBOARD_PANEL_VIEWS.both);
   const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const [tripOrderMode, setTripOrderMode] = useState('original');
+  const [tripOrderMode, setTripOrderMode] = useState('custom');
   const [routePrintColumns, setRoutePrintColumns] = useState(DEFAULT_ROUTE_PRINT_COLUMNS);
   const [tripSort, setTripSort] = useState({
-    key: 'pickup',
+    key: 'trip',
     direction: 'asc'
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedPreference = window.localStorage.getItem('trip-dashboard-scanner-row-colors');
+    if (storedPreference === 'off') {
+      setShowScannerRowColors(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('trip-dashboard-scanner-row-colors', showScannerRowColors ? 'on' : 'off');
+  }, [showScannerRowColors]);
   const [columnWidths, setColumnWidths] = useState({});
-  const [statusMessage, setStatusMessage] = useState('Trip dashboard ready in focus-right layout with dock panels open.');
+  const [statusMessage, setStatusMessage] = useState('Trip dashboard ready.');
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
   const [columnSplit, setColumnSplit] = useState(() => getInitialTripDashboardLayoutMode() === TRIP_DASHBOARD_LAYOUTS.focusRight ? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT : TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT);
   const [rowSplit, setRowSplit] = useState(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
   const [dragMode, setDragMode] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [routeMetrics, setRouteMetrics] = useState(null);
+  const [routeGeometryLoading, setRouteGeometryLoading] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [importPendingTrips, setImportPendingTrips] = useState([]);
   const [importedServiceDateKeys, setImportedServiceDateKeys] = useState([]);
   const [selectedImportFileName, setSelectedImportFileName] = useState('');
   const [importScan, setImportScan] = useState(null);
-  const [importRoutingChanges, setImportRoutingChanges] = useState([]);
-  const [showImportRoutingChangeModal, setShowImportRoutingChangeModal] = useState(false);
   const [pendingImportAction, setPendingImportAction] = useState('');
   const [isImportParsing, setIsImportParsing] = useState(false);
   const [localImportPath, setLocalImportPath] = useState('');
@@ -1424,22 +1522,17 @@ const TripDashboardWorkspace = () => {
       setImportPendingTrips(parsedImport.trips);
       setImportedServiceDateKeys(parsedImport.serviceDateKeys);
       setImportScan(parsedImport.scan || null);
-      const routingChanges = previewImportedTripRoutingChanges(parsedImport.trips);
-      setImportRoutingChanges(routingChanges);
       if (parsedImport.trips.length === 0) {
         setStatusMessage('The selected file does not contain trips to import.');
         showNotification({ message: 'The selected file does not contain trips to import.', variant: 'warning' });
         return;
       }
-      const routingChangeCount = routingChanges.length;
       const scanSuffix = parsedImport.scan?.findingCount ? ` Scanner found ${parsedImport.scan.blockingCount} blocking issue(s) and ${parsedImport.scan.warningCount} warning(s).` : '';
-      const routingSuffix = routingChangeCount > 0 ? ` ${routingChangeCount} trip(s) have a new address change waiting for review.` : '';
-      setStatusMessage(`${parsedImport.trips.length} trip(s) ready to import from ${file.name}.${scanSuffix}${routingSuffix}`);
+      setStatusMessage(`${parsedImport.trips.length} trip(s) ready to import from ${file.name}.${scanSuffix}`);
     } catch (error) {
       setImportPendingTrips([]);
       setImportedServiceDateKeys([]);
       setImportScan(null);
-      setImportRoutingChanges([]);
       const message = error?.message || `Could not read ${file.name}. Use a valid .xlsx, .xls, or .csv import file.`;
       setStatusMessage(message);
       showNotification({ message, variant: 'danger' });
@@ -1482,8 +1575,6 @@ const TripDashboardWorkspace = () => {
       setImportPendingTrips(Array.isArray(payload?.trips) ? payload.trips : []);
       setImportedServiceDateKeys(Array.isArray(payload?.serviceDateKeys) ? payload.serviceDateKeys : []);
       setImportScan(payload?.scan || null);
-      const routingChanges = previewImportedTripRoutingChanges(payload.trips);
-      setImportRoutingChanges(routingChanges);
 
       if (!Array.isArray(payload?.trips) || payload.trips.length === 0) {
         const message = 'The selected local file does not contain trips to import.';
@@ -1492,15 +1583,12 @@ const TripDashboardWorkspace = () => {
         return;
       }
 
-      const routingChangeCount = routingChanges.length;
       const scanSuffix = payload?.scan?.findingCount ? ` Scanner found ${payload.scan.blockingCount} blocking issue(s) and ${payload.scan.warningCount} warning(s).` : '';
-      const routingSuffix = routingChangeCount > 0 ? ` ${routingChangeCount} trip(s) have a new address change waiting for review.` : '';
-      setStatusMessage(`${payload.trips.length} trip(s) ready to import from ${trimmedPath}.${scanSuffix}${routingSuffix}`);
+      setStatusMessage(`${payload.trips.length} trip(s) ready to import from ${trimmedPath}.${scanSuffix}`);
     } catch (error) {
       setImportPendingTrips([]);
       setImportedServiceDateKeys([]);
       setImportScan(null);
-      setImportRoutingChanges([]);
       const message = error?.message || 'Could not read the local file path.';
       setStatusMessage(message);
       showNotification({ message, variant: 'danger' });
@@ -1515,24 +1603,13 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    const routingChanges = previewImportedTripRoutingChanges(importPendingTrips);
-    let applyRoutingChanges = true;
-    if (routingChanges.length > 0) {
-      const previewLines = routingChanges.slice(0, 5).map(change => `${change.rider || change.rideId || change.brokerTripId || change.id}: ${change.currentAddress || '-'} -> ${change.importedAddress || '-'} | ${change.currentDestination || '-'} -> ${change.importedDestination || '-'}`).join('\n');
-      applyRoutingChanges = window.confirm(`The new import changed the route on ${routingChanges.length} trip(s).\n\nPress OK to apply the new address(es).\nPress Cancel to keep the current system address(es) and import everything else.\n\n${previewLines}${routingChanges.length > 5 ? '\n...' : ''}`);
-    }
-
-    upsertImportedTrips(importPendingTrips, {
-      applyRoutingChanges
-    });
+    upsertImportedTrips(importPendingTrips);
     setShowTripImportModal(false);
-    const importMessage = routingChanges.length > 0
-      ? applyRoutingChanges
-        ? `${importPendingTrips.length} trip(s) imported into Trip Dashboard. ${routingChanges.length} route change(s) were applied.`
-        : `${importPendingTrips.length} trip(s) imported into Trip Dashboard. ${routingChanges.length} route change(s) were kept as warning only and current addresses stayed in place. Use the Address Review filter to see them later.`
+    const importMessage = importScan?.findingCount > 0
+      ? `${importPendingTrips.length} trip(s) imported into Trip Dashboard. Scanner warnings stay highlighted so you can review and invert manually if needed.`
       : `${importPendingTrips.length} trip(s) imported into Trip Dashboard.`;
     setStatusMessage(importMessage);
-    showNotification({ message: importMessage, variant: routingChanges.length > 0 && !applyRoutingChanges ? 'warning' : 'success' });
+    showNotification({ message: importMessage, variant: importScan?.findingCount > 0 ? 'warning' : 'success' });
     setImportPendingTrips([]);
     setImportedServiceDateKeys([]);
     setSelectedImportFileName('');
@@ -1701,16 +1778,7 @@ const TripDashboardWorkspace = () => {
 
       const routePlan = buildRouteImportPlan(importPendingTrips, availableDrivers, effectiveAssignments);
 
-      const routingChanges = previewImportedTripRoutingChanges(importPendingTrips);
-      let applyRoutingChanges = true;
-      if (routingChanges.length > 0) {
-        const previewLines = routingChanges.slice(0, 5).map(change => `${change.rider || change.rideId || change.brokerTripId || change.id}: ${change.currentAddress || '-'} -> ${change.importedAddress || '-'} | ${change.currentDestination || '-'} -> ${change.importedDestination || '-'}`).join('\n');
-        applyRoutingChanges = window.confirm(`The new import changed the route on ${routingChanges.length} trip(s).\n\nPress OK to apply the new address(es).\nPress Cancel to keep the current system address(es) and import everything else.\n\n${previewLines}${routingChanges.length > 5 ? '\n...' : ''}`);
-      }
-
-      upsertImportedTrips(importPendingTrips, {
-        applyRoutingChanges
-      });
+      upsertImportedTrips(importPendingTrips);
 
       if (routePlan.routeSpecs.length > 0) {
         setPendingRouteImportPlan(routePlan.routeSpecs);
@@ -1930,7 +1998,21 @@ const TripDashboardWorkspace = () => {
     return getRouteServiceDateKey(routePlan, trips) === tripDateFilter;
   }), [routePlans, tripDateFilter, trips]);
   const selectedRoute = useMemo(() => filteredRoutePlans.find(routePlan => routePlan.id === selectedRouteId) ?? null, [filteredRoutePlans, selectedRouteId]);
+  const selectedDriverRouteLookupKey = useMemo(() => normalizeImportedDriverLookup(selectedDriver?.name || getDriverName(selectedDriverId)), [getDriverName, selectedDriver, selectedDriverId]);
+  const isTripInSelectedDriverRoute = trip => {
+    if (!selectedDriverId) return false;
+    if (isTripAssignedToDriver(trip, selectedDriverId)) return true;
+    const importedDriverKey = normalizeImportedDriverLookup(trip?.importedDriverName);
+    return Boolean(importedDriverKey && selectedDriverRouteLookupKey && importedDriverKey === selectedDriverRouteLookupKey);
+  };
   const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const mapLayerVisibility = useMemo(() => getTripDashboardMapLayerVisibility(mapLayerPreset), [mapLayerPreset]);
+  const hasBtRouteDriverSelection = btRouteEnabled && Boolean(selectedDriverId);
+  const hasActiveMapSelection = selectedTripIds.length > 0 || Boolean(selectedRoute) || hasBtRouteDriverSelection;
+  const showDriverMapLayer = mapLayerVisibility.drivers || hasActiveMapSelection;
+  const showRouteMapLayer = hasActiveMapSelection || (mapLayerVisibility.route && showRoute);
+  const showSelectedTripMapLayer = mapLayerVisibility.selectedTrips || hasActiveMapSelection;
+  const hasVisibleTripDashboardMap = showMapPane || showScannerMapInRoutePanel;
   const isDarkTheme = themeMode === 'dark';
   const mapQuickFilterControlStyle = themeMode === 'dark'
     ? {
@@ -2035,18 +2117,22 @@ const TripDashboardWorkspace = () => {
       border: '1px solid #64748b'
     }
     : undefined;
-  const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
+  const dispatcherVisibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
+  const visibleTripColumns = isTripDashboardSurface ? tripDashboardVisibleTripColumns : dispatcherVisibleTripColumns;
   const allTripColumnKeys = useMemo(() => DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key), []);
+  const tripDashboardColumnPickerOptions = useMemo(() => {
+    if (!isTripDashboardSurface) return DISPATCH_TRIP_COLUMN_OPTIONS;
+    const priorityColumnKeys = ['status', 'confirmation', 'notes', 'punctuality', 'lateMinutes'];
+    const priorityColumns = priorityColumnKeys.map(columnKey => DISPATCH_TRIP_COLUMN_OPTIONS.find(option => option.key === columnKey)).filter(Boolean);
+    const remainingColumns = DISPATCH_TRIP_COLUMN_OPTIONS.filter(option => !priorityColumnKeys.includes(option.key));
+    return [...priorityColumns, ...remainingColumns];
+  }, [isTripDashboardSurface]);
   const tripColumnMeta = useMemo(() => Object.fromEntries(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => [option.key, {
     label: option.label,
     width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' ? 150 : option.key === 'rider' ? 180 : undefined,
     sortable: option.key !== 'notes'
   }])), []);
-  const orderedVisibleTripColumns = useMemo(() => {
-    const normalizedVisibleColumns = visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey]));
-    if (normalizedVisibleColumns.includes('notes')) return normalizedVisibleColumns;
-    return ['notes', ...normalizedVisibleColumns];
-  }, [tripColumnMeta, visibleTripColumns]);
+  const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
   const isAllTripColumnsSelected = orderedVisibleTripColumns.length === allTripColumnKeys.length && allTripColumnKeys.every(columnKey => orderedVisibleTripColumns.includes(columnKey));
   const hasTripNotesColumn = orderedVisibleTripColumns.includes('notes');
   const orderedVisibleTripColumnsWithoutNotes = useMemo(() => orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes'), [orderedVisibleTripColumns]);
@@ -2112,26 +2198,31 @@ const TripDashboardWorkspace = () => {
     });
   }, [serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
 
-  const tripDashboardPreferenceState = useMemo(() => ({
-    storageVersion: 1,
-    layoutMode,
-    panelView,
-    panelOrder,
-    showBottomPanels,
-    showMapPane,
-    showDriversPanel,
-    showRoutesPanel,
-    showTripsPanel,
-    rightPanelCollapsed,
-    showConfirmationTools,
-    timeDisplayMode,
-    tripOrderMode,
-    printColumns: routePrintColumns,
-    columnSplit: Math.round(columnSplit * 100) / 100,
-    rowSplit: Math.round(rowSplit * 100) / 100,
-    columnWidths,
-    closedRouteStateByKey
-  }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, routePrintColumns, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showTripsPanel, timeDisplayMode, tripOrderMode]);
+  const tripDashboardPreferenceState = useMemo(() => {
+    const state = {
+      storageVersion: 1,
+      layoutMode,
+      panelView,
+      panelOrder,
+      showBottomPanels,
+      showMapPane,
+      showScannerMapInRoutePanel,
+      showDriversPanel,
+      showRoutesPanel,
+      showTripsPanel,
+      rightPanelCollapsed,
+      showConfirmationTools,
+      timeDisplayMode,
+      tripOrderMode,
+      printColumns: routePrintColumns,
+      columnSplit: Math.round(columnSplit * 100) / 100,
+      rowSplit: Math.round(rowSplit * 100) / 100,
+      columnWidths,
+      closedRouteStateByKey
+    };
+    if (isTripDashboardSurface) state.visibleTripColumns = tripDashboardVisibleTripColumns;
+    return state;
+  }, [closedRouteStateByKey, columnSplit, columnWidths, isTripDashboardSurface, layoutMode, panelOrder, panelView, rightPanelCollapsed, routePrintColumns, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showScannerMapInRoutePanel, showTripsPanel, timeDisplayMode, tripDashboardVisibleTripColumns, tripOrderMode]);
 
   useEffect(() => {
     if (!todayDateKey) return;
@@ -2340,7 +2431,7 @@ const TripDashboardWorkspace = () => {
       <Button variant="outline-dark" size="sm" style={toolbarButtonStyle} onClick={() => handleShiftTripDate(1)} title="Next day">→</Button>
     </div>;
 
-  const renderColumnsButton = () => <Button
+    const renderColumnsButton = () => <Button
       variant={showColumnPicker ? 'dark' : 'outline-dark'}
       size="sm"
       style={{ ...toolbarButtonStyle, minWidth: 86, fontWeight: 600 }}
@@ -2379,17 +2470,186 @@ const TripDashboardWorkspace = () => {
       Diarie
     </Button>;
 
-  const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-      <Button variant={showConfirmationTools ? 'warning' : 'light'} size="sm" onClick={handleToggleConfirmationTools}>Confirmation</Button>
-      {showConfirmationTools ? <Button variant="light" size="sm" onClick={() => {
-      const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
-      handleOpenConfirmationMethod(selectedTripsForConfirmation);
-    }}>
-          Send Selected
-        </Button> : null}
-      {renderDispatchHistoryButton()}
-      {renderHelpButton()}
+  const scannerMiniControlShellStyle = {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    border: '1px solid rgba(255, 255, 255, 0.24)',
+    minWidth: 70,
+    minHeight: 26,
+    whiteSpace: 'nowrap'
+  };
+
+  const renderScannerPowerAction = ({
+    label,
+    checked = false,
+    onToggle,
+    ariaLabel,
+    shellStyle,
+    onLabel = 'On',
+    offLabel = 'Off'
+  }) => <div className="d-inline-flex align-items-center gap-1 px-1 py-0 rounded-3 justify-content-between" style={{ ...scannerMiniControlShellStyle, ...shellStyle }}>
+      <span className="small fw-semibold" style={{ color: '#ffffff', letterSpacing: '0.02em', fontSize: 9, lineHeight: 1 }}>{label}</span>
+      <PowerToggleButton
+        checked={checked}
+        onToggle={onToggle}
+        onLabel={onLabel}
+        offLabel={offLabel}
+        offVariant="neutral"
+        size="xs"
+        style={{ transform: 'scale(0.68)', transformOrigin: 'right center' }}
+        aria-label={ariaLabel || label}
+      />
     </div>;
+
+  const renderScannerConfirmationPanelButtons = () => <div className="d-flex align-items-center gap-1 flex-wrap justify-content-end">
+      {renderScannerPowerAction({
+      label: 'Confirm',
+      checked: showConfirmationTools,
+      onToggle: handleToggleConfirmationTools,
+      ariaLabel: 'Confirmation controls',
+      shellStyle: {
+        minWidth: 84
+      }
+    })}
+      {renderScannerPowerAction({
+      label: 'Conf Page',
+      checked: false,
+      onToggle: () => {
+        pulseScannerActionControl('confirmationPage');
+        router.push('/confirmation');
+      },
+      ariaLabel: 'Open the separate confirmation page',
+      shellStyle: {
+        minWidth: 96
+      },
+      onLabel: 'Go',
+      offLabel: 'Go'
+    })}
+      {showConfirmationTools ? renderScannerPowerAction({
+      label: 'Send',
+      checked: scannerActionPulse.sendSelected,
+      onToggle: () => {
+        pulseScannerActionControl('sendSelected');
+        const selectedTripsForConfirmation = trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)));
+        handleOpenConfirmationMethod(selectedTripsForConfirmation);
+      },
+      ariaLabel: 'Send selected trips',
+      shellStyle: {
+        minWidth: 74
+      },
+      onLabel: 'Go',
+      offLabel: 'Go'
+    }) : null}
+      {renderScannerPowerAction({
+      label: 'H',
+      checked: scannerActionPulse.history,
+      onToggle: () => {
+        pulseScannerActionControl('history');
+        router.push('/dispatch-history');
+      },
+      ariaLabel: 'Open dispatch history',
+      shellStyle: {
+        minWidth: 52
+      },
+      onLabel: 'Go',
+      offLabel: 'Go'
+    })}
+      {renderScannerPowerAction({
+      label: 'Diarie',
+      checked: scannerActionPulse.diarie,
+      onToggle: () => {
+        pulseScannerActionControl('diarie');
+        setStatusMessage('Opening Diarie workspace.');
+        router.push('/help');
+      },
+      ariaLabel: 'Open Diarie',
+      shellStyle: {
+        minWidth: 84
+      },
+      onLabel: 'Go',
+      offLabel: 'Go'
+    })}
+    </div>;
+
+  const pulseScannerActionControl = key => {
+    setScannerActionPulse(current => ({ ...current, [key]: true }));
+    window.setTimeout(() => {
+      setScannerActionPulse(current => ({ ...current, [key]: false }));
+    }, 700);
+  };
+
+  const handleToggleScannerRoutesPanel = () => {
+    setShowBottomPanels(true);
+    setShowRoutesPanel(current => {
+      const nextValue = !current;
+      if (!nextValue) {
+        setShowScannerMapInRoutePanel(false);
+      }
+      setStatusMessage(nextValue ? 'Bottom route panel shown.' : 'Bottom route panel hidden.');
+      return nextValue;
+    });
+  };
+
+  const handleToggleScannerMapInRoutePanel = () => {
+    setShowBottomPanels(true);
+    setShowRoutesPanel(true);
+    setShowScannerMapInRoutePanel(current => {
+      const nextValue = !current;
+      if (nextValue) {
+        setShowMapPane(false);
+        setStatusMessage('Small map moved into the bottom route panel.');
+      } else {
+        setStatusMessage('Bottom route panel restored.');
+      }
+      return nextValue;
+    });
+  };
+
+  const handleOpenScannerColumnOrder = () => {
+    const nextColumns = hasTripNotesColumn ? orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes') : ['notes', ...orderedVisibleTripColumns];
+    setScannerColumnsSaved(false);
+    setSurfaceVisibleTripColumns(nextColumns);
+    setStatusMessage(hasTripNotesColumn ? 'Notes column hidden.' : 'Notes column shown.');
+  };
+
+  const handleSaveScannerColumnOrder = () => {
+    const nextColumns = [...orderedVisibleTripColumns];
+    pulseScannerActionControl('save');
+    setSurfaceVisibleTripColumns(nextColumns);
+    setScannerColumnsSaved(true);
+    if (isTripDashboardSurface) {
+      void saveUserPreferences({
+        ...userPreferences,
+        tripDashboard: {
+          ...userPreferences?.tripDashboard,
+          visibleTripColumns: nextColumns
+        }
+      }).catch(() => {
+        setScannerColumnsSaved(false);
+        setStatusMessage('Could not save the Trip Dashboard column order.');
+      });
+      setStatusMessage('Trip Dashboard column order saved. It will reopen the same way next time.');
+      return;
+    }
+    void saveUserPreferences({
+      ...userPreferences,
+      nemtUiPreferences: {
+        ...userPreferences?.nemtUiPreferences,
+        dispatcherVisibleTripColumns: nextColumns
+      }
+    }).catch(() => {
+      setScannerColumnsSaved(false);
+      setStatusMessage('Could not save the column order.');
+    });
+    setStatusMessage('Column order saved. It will reopen the same way next time.');
+  };
+
+  const handleResetScannerDockTools = () => {
+    pulseScannerActionControl('reset');
+    setShowBottomPanels(true);
+    setShowRoutesPanel(true);
+    setShowScannerMapInRoutePanel(false);
+    setStatusMessage('Bottom panel restored.');
+  };
 
   const renderRouteUtilityButtonsBlock = () => <div className="d-flex align-items-center gap-2 flex-nowrap">
       <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, minWidth: 36, width: 36, paddingInline: 0, fontWeight: 800 }} onClick={handlePrintRoute} title="Print Route" aria-label="Print Route">P</Button>
@@ -2415,6 +2675,7 @@ const TripDashboardWorkspace = () => {
       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
       <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
       <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+      <Button variant="outline-danger" size="sm" onClick={handleDeleteSelectedTrips} title="Delete selected trips" disabled={selectedTripIds.length === 0}>D</Button>
     </div>;
 
   const renderLegButtonsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
@@ -2463,24 +2724,23 @@ const TripDashboardWorkspace = () => {
       {showMapPane ? 'Hide Map' : 'Show Map'}
     </Button>;
 
-  const renderToolbarEditBlock = () => <Button variant={isToolbarEditMode ? 'dark' : 'outline-dark'} size="sm" style={isToolbarEditMode ? undefined : toolbarButtonStyle} onClick={() => setIsToolbarEditMode(current => !current)}>
-      {isToolbarEditMode ? 'Done' : 'Edit toolbar'}
+  const renderToolbarEditBlock = () => <Button variant="outline-dark" size="sm" style={toolbarButtonStyle} onClick={() => router.push('/dispatcher')}>
+      Dispatch
     </Button>;
 
   const renderLayoutBlock = () => <Form.Select size="sm" value={layoutMode} onChange={event => applyLayoutMode(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 160 }}>
       <option value={TRIP_DASHBOARD_LAYOUTS.normal}>Layout: Normal</option>
       <option value={TRIP_DASHBOARD_LAYOUTS.focusRight}>Layout: Focus Right</option>
-      <option value={TRIP_DASHBOARD_LAYOUTS.stacked}>Layout: Stacked</option>
     </Form.Select>;
 
   const renderPanelsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
       <Button variant={showDriversPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showDriversPanel ? undefined : toolbarButtonStyle} onClick={() => setShowDriversPanel(current => !current)}>Drivers</Button>
       <Button variant={showRoutesPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showRoutesPanel ? undefined : toolbarButtonStyle} onClick={() => setShowRoutesPanel(current => !current)}>Routes</Button>
-      <Button variant={showTripsPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showTripsPanel ? undefined : toolbarButtonStyle} onClick={() => setShowTripsPanel(current => !current)}>Trips</Button>
+      {!isTripDashboardSurface ? <Button variant={showTripsPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showTripsPanel ? undefined : toolbarButtonStyle} onClick={() => setShowTripsPanel(current => !current)}>Trips</Button> : null}
     </div>;
 
-  const renderTripOrderBlock = () => <Button variant={tripOrderMode === 'time' ? 'dark' : 'outline-dark'} size="sm" style={tripOrderMode === 'time' ? undefined : toolbarButtonStyle} onClick={handleTripOrderModeToggle}>
-      {tripOrderMode === 'time' ? 'Order: Time' : 'Order: Original'}
+  const renderTripOrderBlock = () => isTripDashboardSurface ? null : <Button variant={tripOrderMode === 'time' ? 'dark' : 'outline-dark'} size="sm" style={tripOrderMode === 'time' ? undefined : toolbarButtonStyle} onClick={handleTripOrderModeToggle}>
+      {tripOrderMode === 'time' ? 'Order: Time' : tripOrderMode === 'custom' && tripSort.key === 'trip' ? 'Order: Trip' : 'Order: Original'}
     </Button>;
 
   const handleToggleTimeDisplayMode = () => {
@@ -2760,13 +3020,23 @@ const TripDashboardWorkspace = () => {
     return Array.from(new Set(cityOptionTrips.filter(trip => tripMatchesCity(trip, targetPickupCity)).flatMap(trip => [getPickupCity(trip).trim(), getDropoffCity(trip).trim()]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [cityOptionTrips, puCityFilter]);
   const filteredTrips = useMemo(() => cityOptionTrips.filter(trip => {
+    if (btRouteEnabled && selectedDriverId && !isTripInSelectedDriverRoute(trip)) return false;
+    return true;
+  }).filter(trip => {
     const pickupCityValue = puCityFilter.trim().toLowerCase();
     return tripMatchesCity(trip, pickupCityValue);
   }).filter(trip => {
     const dropoffCityValue = doCityFilter.trim().toLowerCase();
     return tripMatchesCity(trip, dropoffCityValue);
-  }), [cityOptionTrips, doCityFilter, puCityFilter]);
+  }), [btRouteEnabled, cityOptionTrips, doCityFilter, puCityFilter, selectedDriverId, selectedDriverRouteLookupKey]);
   const removedSinceLastLoadScopeCount = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(trip => Boolean(trip?.missingFromLatestSafeRideImport)).length, [matchesTripDateFilter, scanAnnotatedTrips, tripDateFilter, routePlans, trips]);
+  const liveScanAnalysisTrips = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(matchesTripTypeFilter).filter(matchesTripServiceAnimalFilter).filter(matchesTripSearchFilter).filter(matchesPickupZipFilter).filter(matchesDropoffZipFilter).filter(matchesAnyZipFilter).filter(trip => {
+    const pickupCityValue = puCityFilter.trim().toLowerCase();
+    return tripMatchesCity(trip, pickupCityValue);
+  }).filter(trip => {
+    const dropoffCityValue = doCityFilter.trim().toLowerCase();
+    return tripMatchesCity(trip, dropoffCityValue);
+  }), [doCityFilter, matchesAnyZipFilter, matchesPickupZipFilter, matchesDropoffZipFilter, matchesTripDateFilter, matchesTripSearchFilter, matchesTripServiceAnimalFilter, matchesTripTypeFilter, puCityFilter, scanAnnotatedTrips]);
   const liveScanScopeTrips = useMemo(() => scanAnnotatedTrips.filter(matchesTripDateFilter).filter(matchesTripLegFilter).filter(matchesTripTypeFilter).filter(matchesTripServiceAnimalFilter).filter(matchesTripSearchFilter).filter(matchesPickupZipFilter).filter(matchesDropoffZipFilter).filter(matchesAnyZipFilter).filter(trip => {
     const pickupCityValue = puCityFilter.trim().toLowerCase();
     return tripMatchesCity(trip, pickupCityValue);
@@ -2775,9 +3045,9 @@ const TripDashboardWorkspace = () => {
     return tripMatchesCity(trip, dropoffCityValue);
   }), [doCityFilter, matchesAnyZipFilter, matchesPickupZipFilter, matchesDropoffZipFilter, matchesTripDateFilter, matchesTripLegFilter, matchesTripSearchFilter, matchesTripServiceAnimalFilter, matchesTripTypeFilter, puCityFilter, scanAnnotatedTrips]);
   const visibleFilteredTripIdSet = useMemo(() => new Set(filteredTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean)), [filteredTrips]);
-  const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanScopeTrips).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanScopeTrips]);
+  const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanAnalysisTrips).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanAnalysisTrips]);
   const liveTripScan = useMemo(() => {
-    const scanResult = analyzeImportedTrips(liveScanScopeTrips);
+    const scanResult = analyzeImportedTrips(liveScanAnalysisTrips);
     const visibleFindings = (scanResult?.findings || []).filter(finding => (Array.isArray(finding?.tripIds) ? finding.tripIds : []).some(tripId => visibleFilteredTripIdSet.has(String(tripId || '').trim())));
     return {
       ...scanResult,
@@ -2786,7 +3056,7 @@ const TripDashboardWorkspace = () => {
       blockingCount: visibleFindings.filter(finding => finding.severity === 'blocking').length,
       findings: visibleFindings
     };
-  }, [liveScanScopeTrips, visibleFilteredTripIdSet]);
+  }, [liveScanAnalysisTrips, visibleFilteredTripIdSet]);
   const liveTripFieldErrorMap = useMemo(() => {
     const errorMap = new Map();
 
@@ -2937,8 +3207,39 @@ const TripDashboardWorkspace = () => {
   const selectedTrips = useMemo(() => trips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))), [selectedTripIdSet, trips]);
   const selectedVisibleTrips = useMemo(() => sortTripsByPickupTime(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)))), [filteredTrips, selectedTripIdSet]);
   const getMapTripTargetPosition = trip => trip?.status === 'In Progress' ? getTripDropoffPosition(trip) : getTripPickupPosition(trip);
+  const mapQuickTripPoints = useMemo(() => {
+    if (!showSelectedTripMapLayer || selectedTrips.length > 0) return [];
+
+    return mapQuickTrips.flatMap(trip => {
+      const pickupPosition = getTripPickupPosition(trip);
+      const dropoffPosition = getTripDropoffPosition(trip);
+      const points = [];
+
+      if (pickupPosition) {
+        points.push({
+          key: `${trip.id}-pickup-mapquick`,
+          tripId: trip.id,
+          position: pickupPosition,
+          color: '#0ea5e9',
+          label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
+        });
+      }
+
+      if (dropoffPosition) {
+        points.push({
+          key: `${trip.id}-dropoff-mapquick`,
+          tripId: trip.id,
+          position: dropoffPosition,
+          color: '#22c55e',
+          label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
+        });
+      }
+
+      return points;
+    });
+  }, [mapQuickTrips, selectedTrips.length, showSelectedTripMapLayer, timeDisplayMode]);
   const selectedTripMapPoints = useMemo(() => {
-    if (selectedTrips.length === 0 || showRoute) return [];
+    if (selectedTrips.length === 0 || !showSelectedTripMapLayer) return [];
     const scopedSelectedTrips = activeDateTripIdSet ? selectedTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : selectedTrips;
     return sortTripsByPickupTime(scopedSelectedTrips).flatMap(trip => {
       const pickupPosition = getTripPickupPosition(trip);
@@ -2966,7 +3267,7 @@ const TripDashboardWorkspace = () => {
       }
       return points;
     });
-  }, [activeDateTripIdSet, selectedTrips, showRoute]);
+  }, [activeDateTripIdSet, selectedTrips, showSelectedTripMapLayer, timeDisplayMode]);
   const aiPlannerBaseScopeTrips = useMemo(() => {
     if (selectedVisibleTrips.length > 0) return selectedVisibleTrips;
     return sortTripsByPickupTime(filteredTrips).slice(0, 200);
@@ -3077,9 +3378,9 @@ const TripDashboardWorkspace = () => {
   const selectedDriverCandidateTripIds = useMemo(() => new Set(filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id)) && (!trip.driverId || isTripAssignedToDriver(trip, selectedDriverId))).map(trip => trip.id)), [filteredTrips, selectedDriverId, selectedTripIdSet]);
   const selectedDriverWorkingTrips = useMemo(() => {
     if (!selectedDriver) return [];
-    const relevantTrips = filteredTrips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id) || selectedDriverCandidateTripIds.has(trip.id));
+    const relevantTrips = filteredTrips.filter(trip => isTripInSelectedDriverRoute(trip) || selectedDriverCandidateTripIds.has(trip.id));
     return sortTripsByPickupTime(relevantTrips);
-  }, [filteredTrips, selectedDriver, selectedDriverCandidateTripIds]);
+  }, [filteredTrips, selectedDriver, selectedDriverCandidateTripIds, selectedDriverRouteLookupKey]);
 
   const routeTrips = useMemo(() => {
     const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
@@ -3263,15 +3564,10 @@ const TripDashboardWorkspace = () => {
   };
 
   const routeStops = useMemo(() => {
-    if (!showRoute) return [];
-
     if (selectedTripIds.length > 0) {
-      const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
-      const selectedTripsForMap = trips.filter(trip => {
-        const tripId = String(trip?.id || '').trim();
-        if (!selectedTripIdSet.has(tripId)) return false;
+      const selectedTripsForMap = selectedTrips.filter(trip => {
         if (!activeDateTripIdSet) return true;
-        return activeDateTripIdSet.has(tripId);
+        return activeDateTripIdSet.has(String(trip?.id || '').trim());
       });
       return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
         const pickupPosition = getTripPickupPosition(trip);
@@ -3301,7 +3597,7 @@ const TripDashboardWorkspace = () => {
       });
     }
 
-    if (selectedRoute) {
+    if (selectedRoute || hasBtRouteDriverSelection) {
       return routeTrips.flatMap((trip, index) => {
         const pickupPosition = getTripPickupPosition(trip);
         const dropoffPosition = getTripDropoffPosition(trip);
@@ -3331,17 +3627,36 @@ const TripDashboardWorkspace = () => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, selectedDriverCandidateTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, hasBtRouteDriverSelection, routeTrips, selectedRoute, selectedTripIds.length, selectedTrips, timeDisplayMode]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
-  const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
 
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
   const driversWithRealLocation = useMemo(() => drivers.filter(driver => driver.hasRealLocation), [drivers]);
+  const mapRelevantDriverIds = useMemo(() => {
+    const driverIds = new Set();
+    const addTripDrivers = trip => {
+      const primaryDriverId = normalizeDriverId(trip?.driverId);
+      const secondaryDriverId = normalizeDriverId(trip?.secondaryDriverId);
+      if (primaryDriverId) driverIds.add(primaryDriverId);
+      if (secondaryDriverId) driverIds.add(secondaryDriverId);
+    };
+
+    const currentSelectedDriverId = normalizeDriverId(selectedDriverId);
+    if (currentSelectedDriverId) driverIds.add(currentSelectedDriverId);
+    selectedTrips.forEach(addTripDrivers);
+    if (selectedRoute || selectedTripIds.length > 0 || hasBtRouteDriverSelection) {
+      routeTrips.forEach(addTripDrivers);
+    }
+    return driverIds;
+  }, [hasBtRouteDriverSelection, routeTrips, selectedDriverId, selectedRoute, selectedTripIds.length, selectedTrips]);
   const mapVisibleDriversWithRealLocation = useMemo(() => {
-    if (!showInlineMap || !showMapPane) return [];
-    return driversWithRealLocation.filter(driver => String(driver?.live || '').trim().toLowerCase() === 'online' || String(driver?.id || '').trim() === String(selectedDriverId || '').trim());
-  }, [driversWithRealLocation, selectedDriverId, showInlineMap, showMapPane]);
+    if (!showInlineMap || !hasVisibleTripDashboardMap || !showDriverMapLayer) return [];
+    return driversWithRealLocation.filter(driver => {
+      const driverId = normalizeDriverId(driver?.id);
+      return String(driver?.live || '').trim().toLowerCase() === 'online' || mapRelevantDriverIds.has(driverId);
+    });
+  }, [driversWithRealLocation, hasVisibleTripDashboardMap, mapRelevantDriverIds, showDriverMapLayer, showInlineMap]);
   const liveVehicleIconByDriverId = useMemo(() => {
     const iconByDriverId = new Map();
     for (const driver of mapVisibleDriversWithRealLocation) {
@@ -3353,7 +3668,123 @@ const TripDashboardWorkspace = () => {
     }
     return iconByDriverId;
   }, [mapVisibleDriversWithRealLocation]);
+  const mapRelevantDriverPositions = useMemo(() => mapVisibleDriversWithRealLocation.filter(driver => mapRelevantDriverIds.has(normalizeDriverId(driver?.id))).map(driver => driver.position).filter(Boolean), [mapRelevantDriverIds, mapVisibleDriversWithRealLocation]);
+  const mapDetachedDrivers = useMemo(() => mapVisibleDriversWithRealLocation.filter(driver => mapRelevantDriverIds.has(normalizeDriverId(driver?.id))), [mapRelevantDriverIds, mapVisibleDriversWithRealLocation]);
+  const mapDriverTripLinks = useMemo(() => {
+    if (!showInlineMap || !hasVisibleTripDashboardMap || !showDriverMapLayer) return [];
+    const visibleDriverById = new Map(mapVisibleDriversWithRealLocation.map(driver => [normalizeDriverId(driver?.id), driver]));
+    const tripsForLinks = selectedTrips.length > 0 ? selectedTrips : routeTrips;
+
+    return tripsForLinks.flatMap(trip => {
+      const targetPosition = getMapTripTargetPosition(trip);
+      if (!targetPosition) return [];
+      return [trip?.driverId, trip?.secondaryDriverId].map(normalizeDriverId).filter(Boolean).flatMap(driverId => {
+        const driver = visibleDriverById.get(driverId);
+        if (!driver?.position) return [];
+        return [{
+          key: `${driverId}-${trip.id}-driver-trip-link`,
+          positions: [driver.position, targetPosition]
+        }];
+      });
+    });
+  }, [getMapTripTargetPosition, hasVisibleTripDashboardMap, mapVisibleDriversWithRealLocation, routeTrips, selectedTrips, showDriverMapLayer, showInlineMap]);
+  const mapRouteWaypointPositions = useMemo(() => {
+    const waypoints = [];
+    const seenPoints = new Set();
+    const addPoint = point => {
+      if (!Array.isArray(point) || point.length < 2) return;
+      const latitude = Number(point[0]);
+      const longitude = Number(point[1]);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+      const pointKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+      if (seenPoints.has(pointKey)) return;
+      seenPoints.add(pointKey);
+      waypoints.push([latitude, longitude]);
+    };
+
+    const selectedDriverPosition = selectedDriver?.hasRealLocation ? selectedDriver.position : null;
+    const firstRelevantDriverPosition = mapRelevantDriverPositions[0] || null;
+    addPoint(selectedDriverPosition || firstRelevantDriverPosition);
+    if (routeStops.length > 0) {
+      routeStops.map(stop => stop.position).forEach(addPoint);
+    } else {
+      selectedTripMapPoints.map(point => point.position).forEach(addPoint);
+    }
+    return waypoints;
+  }, [mapRelevantDriverPositions, routeStops, selectedDriver, selectedTripMapPoints]);
+  const mapDetachedTrips = useMemo(() => selectedTrips.length > 0 ? selectedTrips : routeTrips, [routeTrips, selectedTrips]);
+  const routePath = routeGeometry.length > 1 ? routeGeometry : routeGeometryLoading ? [] : mapRouteWaypointPositions.length > 1 ? mapRouteWaypointPositions : fallbackRoutePath;
+  const mapViewportFocusPoints = useMemo(() => {
+    const uniquePoints = [];
+    const seenPoints = new Set();
+    const addPoint = point => {
+      if (!Array.isArray(point) || point.length < 2) return;
+      const pointKey = `${Number(point[0] || 0).toFixed(5)},${Number(point[1] || 0).toFixed(5)}`;
+      if (seenPoints.has(pointKey)) return;
+      seenPoints.add(pointKey);
+      uniquePoints.push(point);
+    };
+
+    if (routeStops.length > 0 || selectedTripMapPoints.length > 0) {
+      routeStops.map(stop => stop.position).forEach(addPoint);
+      selectedTripMapPoints.map(point => point.position).forEach(addPoint);
+      mapRelevantDriverPositions.forEach(addPoint);
+      return uniquePoints;
+    }
+    if (mapQuickTripPoints.length > 0) {
+      mapQuickTripPoints.map(point => point.position).forEach(addPoint);
+      return uniquePoints;
+    }
+    mapRelevantDriverPositions.forEach(addPoint);
+    if (uniquePoints.length > 0) return uniquePoints;
+    return [];
+  }, [mapQuickTripPoints, mapRelevantDriverPositions, routeStops, selectedTripMapPoints]);
+  const mapViewportFocusKey = useMemo(() => mapViewportFocusPoints.map(point => `${Number(point?.[0] || 0).toFixed(5)},${Number(point?.[1] || 0).toFixed(5)}`).join('|'), [mapViewportFocusPoints]);
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      window.localStorage.setItem(DETACHED_MAP_SELECTION_STORAGE_KEY, JSON.stringify({
+        selectedTripIds: mapDetachedTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
+        selectedDriverId: selectedDriverId || null,
+        selectedRouteId: selectedRouteId || null,
+        routeWaypoints: mapRouteWaypointPositions,
+        routeGeometry,
+        routeMetrics,
+        routeLoading: routeGeometryLoading,
+        routeStops: routeStops.map(stop => ({
+          key: stop.key,
+          label: stop.label,
+          variant: stop.variant,
+          position: stop.position,
+          title: stop.title
+        })),
+        trips: mapDetachedTrips.map(trip => ({
+          id: String(trip?.id || '').trim(),
+          rider: trip?.rider || '',
+          pickup: trip?.address || '',
+          dropoff: trip?.destination || '',
+          pickupPosition: getTripPickupPosition(trip),
+          dropoffPosition: getTripDropoffPosition(trip)
+        })),
+        driver: selectedDriver ? {
+          id: selectedDriver.id,
+          name: selectedDriver.name,
+          position: selectedDriver.hasRealLocation ? selectedDriver.position : null
+        } : null,
+        drivers: mapDetachedDrivers.map(driver => ({
+          id: String(driver?.id || '').trim(),
+          name: driver?.name || '',
+          live: driver?.live || '',
+          position: driver?.hasRealLocation ? driver.position : null
+        })),
+        updatedAt: Date.now()
+      }));
+    } catch {
+      // Ignore detached map payload write failures.
+    }
+  });
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const remainingVisibleTripCount = filteredTrips.length;
@@ -3561,8 +3992,8 @@ const TripDashboardWorkspace = () => {
   const handleOpenTripUpdateModal = trip => {
     if (!trip) return;
     setTripUpdateModal(trip);
-    setTripUpdateLegScope('single');
-    setTripUpdateConfirmMethod('call');
+    setTripUpdateLegScope(getSiblingLegTrips(trip, trips).length > 0 ? 'both' : 'single');
+    setTripUpdateConfirmMethod('sms-left-unconfirmed');
     setTripUpdatePickupTime(normalizeTripTimeDisplay(trip?.scheduledPickup || trip?.pickup || ''));
     setTripUpdateDropoffTime(normalizeTripTimeDisplay(trip?.scheduledDropoff || trip?.dropoff || ''));
     setTripUpdatePickupAddress(String(trip?.address || '').trim());
@@ -4149,19 +4580,29 @@ const TripDashboardWorkspace = () => {
   const tripTableColumnCount = orderedVisibleTripColumns.length + 2 + (showConfirmationTools ? 1 : 0);
 
   const handleToggleConfirmationTools = () => {
-    setShowConfirmationTools(current => {
-      const nextValue = !current;
-      if (!nextValue) handleCloseConfirmationMethod();
-      setStatusMessage(nextValue ? 'Confirmation mode enabled.' : 'Confirmation mode hidden.');
-      return nextValue;
-    });
+    const nextValue = !showConfirmationTools;
+    if (!nextValue) handleCloseConfirmationMethod();
+    if (isTripDashboardSurface && nextValue) {
+      const nextColumns = [
+        ...TRIP_CONFIRMATION_VISIBLE_COLUMNS,
+        ...orderedVisibleTripColumns.filter(columnKey => !TRIP_CONFIRMATION_VISIBLE_COLUMNS.includes(columnKey))
+      ];
+      setSurfaceVisibleTripColumns(nextColumns);
+      setScannerColumnsSaved(false);
+    } else if (isTripDashboardSurface) {
+      setSurfaceVisibleTripColumns(orderedVisibleTripColumns.filter(columnKey => !TRIP_CONFIRMATION_VISIBLE_COLUMNS.includes(columnKey)));
+      setScannerColumnsSaved(false);
+    }
+    setShowConfirmationTools(nextValue);
+    setStatusMessage(nextValue ? 'Confirmation mode enabled.' : 'Confirmation mode hidden.');
   };
 
   useEffect(() => {
+    if (isTripDashboardSurface) return;
     if (!hasLoadedUserUiPreferences) return;
     if (visibleTripColumns.includes('mobility')) return;
-    setDispatcherVisibleTripColumns([...visibleTripColumns, 'mobility']);
-  }, [hasLoadedUserUiPreferences, setDispatcherVisibleTripColumns, visibleTripColumns]);
+    setSurfaceVisibleTripColumns([...visibleTripColumns, 'mobility']);
+  }, [hasLoadedUserUiPreferences, isTripDashboardSurface, setSurfaceVisibleTripColumns, visibleTripColumns]);
 
   const handleToggleTripColumn = columnKey => {
     const nextColumns = orderedVisibleTripColumns.includes(columnKey) ? orderedVisibleTripColumns.filter(item => item !== columnKey) : [...orderedVisibleTripColumns, columnKey];
@@ -4169,17 +4610,20 @@ const TripDashboardWorkspace = () => {
       setStatusMessage('At least one column must remain visible.');
       return;
     }
-    setDispatcherVisibleTripColumns(nextColumns);
+    setScannerColumnsSaved(false);
+    setSurfaceVisibleTripColumns(nextColumns);
     setStatusMessage('Column view updated.');
   };
 
   const handleShowAllTripColumns = () => {
-    setDispatcherVisibleTripColumns(allTripColumnKeys);
+    setScannerColumnsSaved(false);
+    setSurfaceVisibleTripColumns(allTripColumnKeys);
     setStatusMessage('All trip columns are now visible.');
   };
 
   const handleResetTripColumns = () => {
-    setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
+    setScannerColumnsSaved(false);
+    setSurfaceVisibleTripColumns(isTripDashboardSurface ? getTripDashboardDefaultVisibleTripColumns() : DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
     setStatusMessage('Trip columns reset to default view.');
   };
 
@@ -4191,7 +4635,8 @@ const TripDashboardWorkspace = () => {
     const nextColumns = [...orderedVisibleTripColumns];
     const [movedColumn] = nextColumns.splice(sourceIndex, 1);
     nextColumns.splice(targetIndex, 0, movedColumn);
-    setDispatcherVisibleTripColumns(nextColumns);
+    setScannerColumnsSaved(false);
+    setSurfaceVisibleTripColumns(nextColumns);
     setStatusMessage(`Column order saved: ${draggingTripColumnKey} moved.`);
   };
 
@@ -4295,6 +4740,35 @@ const TripDashboardWorkspace = () => {
     }
 
     openCancelModalForTrips(targetTripIds);
+  };
+
+  const handleDeleteSelectedTrips = () => {
+    const targetTripIdSet = new Set(selectedTripIds.map(normalizeTripId).filter(Boolean));
+    const targetTrips = trips.filter(trip => targetTripIdSet.has(normalizeTripId(trip.id)));
+    if (targetTrips.length === 0) {
+      setStatusMessage('Select at least one trip to delete.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete ${targetTrips.length} selected trip(s)? This will remove them from the dashboard and any route that contains them.`);
+    if (!confirmed) return;
+
+    targetTrips.forEach(trip => {
+      deleteTripRecord(trip.id);
+    });
+
+    if (noteModalTripId && targetTripIdSet.has(normalizeTripId(noteModalTripId))) {
+      handleCloseTripNote();
+    }
+
+    if (tripExcelCompareModalId && targetTripIdSet.has(normalizeTripId(tripExcelCompareModalId))) {
+      handleCloseTripExcelCompare();
+    }
+
+    setSelectedTripIds([]);
+    setSelectedRouteId(null);
+    setStatusMessage(`${targetTrips.length} trip(s) deleted.`);
+    showNotification({ message: `${targetTrips.length} trip(s) deleted.`, variant: 'success' });
   };
 
   const handleReinstateTrip = tripId => {
@@ -4450,6 +4924,13 @@ const TripDashboardWorkspace = () => {
     setSelectedDriverId(nextDriverId);
     setSelectedRouteId('');
 
+    if (btRouteEnabled) {
+      setSelectedTripIds([]);
+      setShowRoute(true);
+      setShowRoutesPanel(false);
+      setShowScannerMapInRoutePanel(false);
+    }
+
     if (!nextDriverId) {
       setStatusMessage('Showing all trips again.');
       return;
@@ -4461,10 +4942,31 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
+    const nextDriverRouteLookupKey = normalizeImportedDriverLookup(driver.name);
     const assignedCount = trips.filter(trip => trip.driverId === nextDriverId || trip.secondaryDriverId === nextDriverId).length;
+    const routeCount = trips.filter(trip => trip.driverId === nextDriverId || trip.secondaryDriverId === nextDriverId || normalizeImportedDriverLookup(trip?.importedDriverName) === nextDriverRouteLookupKey).length;
     const openCount = trips.filter(trip => !trip.driverId && !trip.secondaryDriverId).length;
     const appointmentNote = getDriverTimeOffDateForUi(driver) ? ` ${driver.name} has ${getDriverTimeOffLabelForUi(driver)}.` : '';
-    setStatusMessage(`Viewing ${driver.name}: ${assignedCount} assigned and ${openCount} pending.${appointmentNote}`);
+    setStatusMessage(btRouteEnabled ? `By Route active for ${driver.name}: ${routeCount} route trip(s).${appointmentNote}` : `Viewing ${driver.name}: ${assignedCount} assigned and ${openCount} pending.${appointmentNote}`);
+  };
+
+  const handleToggleBtRoute = () => {
+    setBtRouteEnabled(currentValue => {
+      const nextValue = !currentValue;
+
+      if (nextValue) {
+        setSelectedRouteId('');
+        setSelectedTripIds([]);
+        setShowRoute(true);
+        setShowRoutesPanel(false);
+        setShowScannerMapInRoutePanel(false);
+        setStatusMessage(selectedDriver ? `By Route active for ${selectedDriver.name}.` : 'By Route active. Select a driver to view the route.');
+        return true;
+      }
+
+      setStatusMessage('By Route disabled.');
+      return false;
+    });
   };
 
   const handleSelectAll = checked => {
@@ -4888,9 +5390,10 @@ const TripDashboardWorkspace = () => {
   };
 
   useEffect(() => {
-    if (!showInlineMap || !showMapPane || !showRoute || routeStops.length < 2) {
+    if (!showInlineMap || !hasVisibleTripDashboardMap || !showRouteMapLayer || mapRouteWaypointPositions.length < 2) {
       setRouteGeometry([]);
       setRouteMetrics(null);
+      setRouteGeometryLoading(false);
       return;
     }
 
@@ -4898,13 +5401,15 @@ const TripDashboardWorkspace = () => {
     // while the next geometry request is loading.
     setRouteGeometry([]);
     setRouteMetrics(null);
+    setRouteGeometryLoading(true);
 
     const abortController = new AbortController();
-    const coordinates = routeStops.map(stop => `${stop.position[0]},${stop.position[1]}`).join(';');
+    const coordinates = mapRouteWaypointPositions.map(position => `${position[0]},${position[1]}`).join(';');
 
     const loadRouteGeometry = async () => {
       try {
-        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
+        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}&ts=${Date.now()}`, {
+          cache: 'no-store',
           signal: abortController.signal
         });
         if (!response.ok) throw new Error('Routing service unavailable');
@@ -4916,10 +5421,12 @@ const TripDashboardWorkspace = () => {
           distanceMiles: Number.isFinite(payload?.distanceMiles) ? payload.distanceMiles : null,
           durationMinutes: Number.isFinite(payload?.durationMinutes) ? payload.durationMinutes : null
         });
+        setRouteGeometryLoading(false);
       } catch {
         if (abortController.signal.aborted) return;
-        setRouteGeometry(routeStops.map(stop => stop.position));
+        setRouteGeometry(mapRouteWaypointPositions);
         setRouteMetrics(null);
+        setRouteGeometryLoading(false);
       }
     };
 
@@ -4928,7 +5435,7 @@ const TripDashboardWorkspace = () => {
     return () => {
       abortController.abort();
     };
-  }, [routeStops, showInlineMap, showMapPane, showRoute]);
+  }, [hasVisibleTripDashboardMap, mapRouteWaypointPositions, showInlineMap, showRouteMapLayer]);
 
   useEffect(() => {
     if (!dragMode) return;
@@ -4967,24 +5474,34 @@ const TripDashboardWorkspace = () => {
     if (userPreferencesLoading || detailedDashboardHydratedRef.current) return;
 
     const dashboardPreferences = userPreferences?.tripDashboard || {};
-    const resolvedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(dashboardPreferences.layoutMode) ? dashboardPreferences.layoutMode : TRIP_DASHBOARD_LAYOUTS.focusRight;
+    const hasSavedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(dashboardPreferences.layoutMode);
+    const hasSavedShowMapPane = Object.prototype.hasOwnProperty.call(dashboardPreferences, 'showMapPane');
+    const resolvedLayoutMode = hasSavedLayoutMode ? dashboardPreferences.layoutMode : TRIP_DASHBOARD_LAYOUTS.normal;
+    const effectiveLayoutMode = resolvedLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && !hasSavedShowMapPane
+      ? TRIP_DASHBOARD_LAYOUTS.normal
+      : resolvedLayoutMode;
     const resolvedPanelView = Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(dashboardPreferences.panelView) ? dashboardPreferences.panelView : TRIP_DASHBOARD_PANEL_VIEWS.both;
     const resolvedPanelOrder = Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(dashboardPreferences.panelOrder) ? dashboardPreferences.panelOrder : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst;
 
-    setLayoutMode(resolvedLayoutMode);
+    if (isTripDashboardSurface) {
+      setTripDashboardVisibleTripColumns(normalizeTripDashboardVisibleTripColumns(dashboardPreferences.visibleTripColumns));
+    }
+    setLayoutMode(effectiveLayoutMode);
     setPanelView(resolvedPanelView);
     setPanelOrder(resolvedPanelOrder);
 
-    if (resolvedLayoutMode !== TRIP_DASHBOARD_LAYOUTS.normal) {
+    if (effectiveLayoutMode !== TRIP_DASHBOARD_LAYOUTS.normal) {
       setShowBottomPanels(dashboardPreferences.showBottomPanels !== false);
       setShowMapPane(dashboardPreferences.showMapPane === true);
+      setShowScannerMapInRoutePanel(dashboardPreferences.showScannerMapInRoutePanel === true);
       setShowDriversPanel(dashboardPreferences.showDriversPanel !== false);
       setShowRoutesPanel(dashboardPreferences.showRoutesPanel !== false);
       setShowTripsPanel(dashboardPreferences.showTripsPanel !== false);
       setRightPanelCollapsed(dashboardPreferences.rightPanelCollapsed === true);
       setShowConfirmationTools(dashboardPreferences.showConfirmationTools === true);
       setTimeDisplayMode(normalizeTripTimeDisplayMode(dashboardPreferences.timeDisplayMode));
-      setTripOrderMode(dashboardPreferences.tripOrderMode || 'original');
+      setTripOrderMode(isTripDashboardSurface ? 'custom' : dashboardPreferences.tripOrderMode || 'custom');
+      if (isTripDashboardSurface) setTripSort({ key: 'trip', direction: 'asc' });
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(dashboardPreferences.columnSplit ?? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT);
       setRowSplit(dashboardPreferences.rowSplit ?? TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -4993,13 +5510,15 @@ const TripDashboardWorkspace = () => {
     } else {
       setShowMapPane(true);
       setShowBottomPanels(false);
+      setShowScannerMapInRoutePanel(false);
       setShowDriversPanel(true);
       setShowRoutesPanel(true);
       setShowTripsPanel(true);
       setRightPanelCollapsed(true);
       setShowConfirmationTools(false);
       setTimeDisplayMode(TRIP_TIME_DISPLAY_MODES.standard);
-      setTripOrderMode('original');
+      setTripOrderMode('custom');
+      if (isTripDashboardSurface) setTripSort({ key: 'trip', direction: 'asc' });
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(94);
       setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -5011,7 +5530,7 @@ const TripDashboardWorkspace = () => {
     panelViewHydratedRef.current = true;
     panelOrderHydratedRef.current = true;
     detailedDashboardHydratedRef.current = true;
-  }, [userPreferences?.tripDashboard, userPreferencesLoading]);
+  }, [isTripDashboardSurface, userPreferences?.tripDashboard, userPreferencesLoading]);
 
   useEffect(() => {
     if (userPreferencesLoading || !detailedDashboardHydratedRef.current) return;
@@ -5112,8 +5631,7 @@ const TripDashboardWorkspace = () => {
   };
 
   const isFocusRightLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && showBottomPanels;
-  const isStackedLayout = layoutMode === TRIP_DASHBOARD_LAYOUTS.stacked && showBottomPanels;
-  const isStandardLayout = !isFocusRightLayout && !isStackedLayout;
+  const isStandardLayout = !isFocusRightLayout;
   const isPeekPanelMode = false;
   const hasVisibleDockPanels = showDriversPanel || showRoutesPanel;
   const focusRightColumnSplit = clamp(columnSplit, TRIP_DASHBOARD_FOCUS_RIGHT_MIN_SPLIT, TRIP_DASHBOARD_FOCUS_RIGHT_MAX_SPLIT);
@@ -5122,8 +5640,8 @@ const TripDashboardWorkspace = () => {
   const rowDividerSize = 0;
   const workspaceGridStyle = {
     display: 'grid',
-    gridTemplateColumns: isFocusRightLayout ? hasVisibleDockPanels ? `${focusRightColumnSplit}% ${columnDividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : '0px 0px minmax(0, 1fr)' : isStackedLayout ? 'minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${columnDividerSize}px - ${collapsedPanelWidth}px)) ${columnDividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${columnDividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
-    gridTemplateRows: isFocusRightLayout ? '1fr' : isStackedLayout ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : showBottomPanels ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
+    gridTemplateColumns: isFocusRightLayout ? hasVisibleDockPanels ? `${focusRightColumnSplit}% ${columnDividerSize}px minmax(0, ${100 - focusRightColumnSplit}%)` : '0px 0px minmax(0, 1fr)' : showMapPane ? isPeekPanelMode ? `minmax(0, calc(100% - ${columnDividerSize}px - ${collapsedPanelWidth}px)) ${columnDividerSize}px ${collapsedPanelWidth}px` : `${columnSplit}% ${columnDividerSize}px minmax(0, ${100 - columnSplit}%)` : `0px 0px minmax(0, 1fr)`,
+    gridTemplateRows: isFocusRightLayout ? '1fr' : showBottomPanels ? `${rowSplit}% ${rowDividerSize}px minmax(0, ${100 - rowSplit}%)` : '1fr 0px 0px',
     width: '100%',
     minWidth: 0,
     height: workspaceHeight,
@@ -5237,8 +5755,7 @@ const TripDashboardWorkspace = () => {
       return;
     }
 
-    setRowSplit(current => clamp(current, 48, 74));
-    setStatusMessage('Stacked layout enabled in Trip Dashboard.');
+    setStatusMessage('Focus Right layout enabled in Trip Dashboard.');
   };
 
   const handlePanelViewChange = nextView => {
@@ -5261,7 +5778,7 @@ const TripDashboardWorkspace = () => {
       case 'trip':
         return <td key={`${trip.id}-trip`} style={{ whiteSpace: 'nowrap', ...(getFieldErrorStyle('trip') || {}) }} title={getFieldErrorDetail('trip') || undefined}>
             <div className="fw-semibold">{getDisplayTripId(trip)}</div>
-            {!orderedVisibleTripColumns.includes('rider') && trip.rider ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1, whiteSpace: 'normal', maxWidth: 180 }}>{trip.rider}</div> : null}
+          {!orderedVisibleTripColumns.includes('rider') && trip.rider ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1, whiteSpace: 'normal', maxWidth: 180 }}>{trip.rider}</div> : null}
             {getLegBadge(displayTrip) ? <Badge bg={getLegBadge(displayTrip).variant} className="mt-1 me-1">{getLegBadge(displayTrip).label}</Badge> : null}
             {trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
           </td>;
@@ -5626,6 +6143,7 @@ const TripDashboardWorkspace = () => {
             <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver" disabled={selectedRoutePanelTripIds.length === 0}>A2</Button>
             <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={handleRoutePanelUnassign} title="Unassign selected trips" disabled={selectedRoutePanelTripIds.length === 0}>U</Button>
             {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
+            <Button variant={showScannerMapInRoutePanel ? 'warning' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleToggleScannerMapInRoutePanel} title="Show map in this panel">Map</Button>
             
             </div>
           </div>
@@ -5678,9 +6196,19 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
-  const renderTripMapPanel = () => <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
+  const tripDashboardMapResizeKey = [showMapPane ? 'open' : 'closed', layoutMode, Math.round(columnSplit), rightPanelCollapsed ? 'collapsed' : 'expanded', showBottomPanels ? 'bottom' : 'solo', showDriversPanel ? 'drivers' : 'no-drivers', showRoutesPanel ? 'routes' : 'no-routes', showTripsPanel ? 'trips' : 'no-trips'].join('|');
+
+  const renderTripMapPanel = ({ docked = false } = {}) => <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
       <CardBody className="p-0 d-flex flex-column h-100 position-relative">
         {showInlineMap ? <div className="position-relative h-100">
+            {docked ? <div className="position-absolute top-0 end-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 660, maxWidth: '100%', overflowX: 'auto', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
+                <Button variant="light" size="sm" onClick={() => {
+              setShowScannerMapInRoutePanel(false);
+              setStatusMessage('Bottom route panel restored.');
+            }}>
+                  Route Panel
+                </Button>
+              </div> : <>
             <Button variant="warning" type="button" onClick={() => {
           setShowMapPane(false);
           setStatusMessage('Map hidden in Trip Dashboard.');
@@ -5693,9 +6221,18 @@ const TripDashboardWorkspace = () => {
             <Button variant="primary" type="button" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)} style={blueMapTabStyle}>
                 Panels Anchored
               </Button>
-            <div className="position-absolute top-0 start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'hidden', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
+              </>}
+            {!docked ? <div className="position-absolute start-0 p-2 d-flex align-items-center gap-2 flex-nowrap" style={{ top: 0, zIndex: 650, maxWidth: '100%', minHeight: 48, overflowX: 'hidden', overflowY: 'hidden', whiteSpace: 'nowrap' }}>
               <>
                   <Button variant="dark" size="sm" onClick={() => setSelectedTripIds([])}>Clear</Button>
+                  <Form.Select size="sm" value={mapLayerPreset} onChange={event => {
+                const nextPreset = event.target.value;
+                const nextOption = TRIP_DASHBOARD_MAP_LAYER_OPTIONS.find(option => option.value === nextPreset);
+                setMapLayerPreset(nextPreset);
+                setStatusMessage(`${nextOption?.label || 'Map layers'} ready.`);
+              }} style={mapQuickFilterControlStyle}>
+                    {TRIP_DASHBOARD_MAP_LAYER_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </Form.Select>
                   <Form.Select size="sm" value={mapCityQuickFilter} onChange={event => setMapCityQuickFilter(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="">City</option>
                     {mapQuickCityOptions.map(city => <option key={city} value={city}>{city}</option>)}
@@ -5707,10 +6244,11 @@ const TripDashboardWorkspace = () => {
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
+                    <option value="local">Map: Local</option>
                   </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)}>Panels anchored</Button>
                 </>
-            </div>
+            </div> : null}
             {activeInfoTrip && showInfo && selectedTripIds.length === 0 ? <div className="position-absolute top-0 start-50 translate-middle-x rounded shadow-sm px-3 py-2" style={{
           zIndex: 500,
           minWidth: 260,
@@ -5728,10 +6266,11 @@ const TripDashboardWorkspace = () => {
               </div> : null}
             <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
               <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
+              <TripDashboardMapViewportController focusPoints={mapViewportFocusPoints} focusKey={mapViewportFocusKey} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               <ZoomControl position="bottomleft" />
-              {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-              {selectedDriver?.hasRealLocation && selectedDriverActiveTrip && getMapTripTargetPosition(selectedDriverActiveTrip) ? <Polyline positions={[selectedDriver.position, getMapTripTargetPosition(selectedDriverActiveTrip)]} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8' }} /> : null}
+              {showRouteMapLayer && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
+              {mapDriverTripLinks.map(link => <Polyline key={link.key} positions={link.positions} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8', opacity: 0.82 }} />)}
               {mapVisibleDriversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
@@ -5743,36 +6282,13 @@ const TripDashboardWorkspace = () => {
                     <div>{getDriverCheckpoint(driver)}</div>
                   </Popup>
                 </Marker>)}
-              {selectedTrips.length === 0 ? mapQuickTrips.flatMap(trip => {
-            const pickupPosition = getTripPickupPosition(trip);
-            const dropoffPosition = getTripDropoffPosition(trip);
-            const points = [];
-            if (pickupPosition) {
-              points.push({
-                key: `${trip.id}-pickup-mapquick`,
-                tripId: trip.id,
-                position: pickupPosition,
-                color: '#0ea5e9',
-                label: `PU ${getTripDisplayTimeText(trip, 'pickup', timeDisplayMode) || '-'}`
-              });
-            }
-            if (dropoffPosition) {
-              points.push({
-                key: `${trip.id}-dropoff-mapquick`,
-                tripId: trip.id,
-                position: dropoffPosition,
-                color: '#22c55e',
-                label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
-              });
-            }
-            return points;
-          }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
+              {mapQuickTripPoints.map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
             click: () => {
               toggleTripSelection(point.tripId);
             }
           }}>
                   <Popup>{point.label}</Popup>
-                </CircleMarker>) : null}
+                </CircleMarker>)}
               {selectedTripMapPoints.map(point => <CircleMarker key={point.key} center={point.position} radius={7} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.92, weight: 2 }}>
                   <Popup>
                     <div className="fw-semibold">{point.label}</div>
@@ -5780,7 +6296,7 @@ const TripDashboardWorkspace = () => {
                     <div>{point.detail}</div>
                   </Popup>
                 </CircleMarker>)}
-              {routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
+              {routeStops.map(stop => <Marker key={stop.key} position={stop.position} zIndexOffset={900} icon={createRouteStopIcon(stop.label, stop.variant)}>
                   <Popup>
                     <div className="fw-semibold">{stop.title}</div>
                     <div>{stop.detail}</div>
@@ -5791,17 +6307,19 @@ const TripDashboardWorkspace = () => {
       </CardBody>
     </Card>;
 
+  const routeDockNode = showScannerMapInRoutePanel ? renderTripMapPanel({ docked: true }) : routePanelCard;
+
   const dockPanelsOrdered = panelOrder === TRIP_DASHBOARD_PANEL_ORDERS.driversFirst ? [{
     key: 'drivers',
     node: driverPanelCard,
     visible: showDriversPanel
   }, {
     key: 'routes',
-    node: routePanelCard,
+    node: routeDockNode,
     visible: showRoutesPanel
   }] : [{
     key: 'routes',
-    node: routePanelCard,
+    node: routeDockNode,
     visible: showRoutesPanel
   }, {
     key: 'drivers',
@@ -5810,7 +6328,6 @@ const TripDashboardWorkspace = () => {
   }];
 
   const dockPanelsVisible = dockPanelsOrdered.filter(panel => panel.visible);
-  const tripDashboardMapResizeKey = [showMapPane ? 'open' : 'closed', layoutMode, Math.round(columnSplit), rightPanelCollapsed ? 'collapsed' : 'expanded', showBottomPanels ? 'bottom' : 'solo', showDriversPanel ? 'drivers' : 'no-drivers', showRoutesPanel ? 'routes' : 'no-routes', showTripsPanel ? 'trips' : 'no-trips'].join('|');
 
   return <>
       {(!showDriversPanel || !showRoutesPanel || !showTripsPanel) && <div style={{
@@ -5851,7 +6368,7 @@ const TripDashboardWorkspace = () => {
         <div style={{
         minWidth: 0,
         minHeight: 0,
-        gridColumn: isFocusRightLayout ? 3 : showMapPane ? 3 : isStackedLayout ? 1 : '1 / span 3',
+        gridColumn: isFocusRightLayout ? 3 : showMapPane ? 3 : '1 / span 3',
         gridRow: isFocusRightLayout ? '1 / span 3' : 1,
         display: showTripsPanel ? 'block' : 'none'
       }}>
@@ -6067,6 +6584,9 @@ const TripDashboardWorkspace = () => {
                   <Button variant="warning" size="sm" onClick={openDetachedMapScreen} style={compactMapToolbarButtonStyle}>
                     Map
                   </Button>
+                  <Button variant={btRouteEnabled ? 'success' : 'outline-warning'} size="sm" onClick={handleToggleBtRoute} style={compactMapToolbarButtonStyle} title="Select a driver and view that driver's route">
+                    By Route
+                  </Button>
                   <button type="button" onClick={() => setAiPlannerCollapsed(false)} style={aiPlannerCollapsedTriggerStyle}>
                     AI Route
                   </button>
@@ -6259,10 +6779,6 @@ const TripDashboardWorkspace = () => {
                   paddingBottom: '1rem'
                 }}>
                     <div className="d-flex flex-column gap-2" style={{ minWidth: 0 }}>
-                      <strong>System Trip Scanner</strong>
-                      <div className="small" style={{ color: 'rgba(255, 255, 255, 0.92)', maxWidth: 760 }}>
-                        You can open Excel Loader with scanner here. Nothing enters the tree until you press Import Trips or Load Route.
-                      </div>
                       {liveTripScanAttentionGroups.length > 0 ? <div className="d-flex flex-wrap gap-2">
                           {liveTripScanAttentionGroups.map(group => <Button
                               key={`live-scan-${group.rider}-${group.tripId}`}
@@ -6272,29 +6788,121 @@ const TripDashboardWorkspace = () => {
                             >
                               {group.rider}{group.count > 1 ? ` (${group.count})` : ''}
                             </Button>)}
-                        </div> : <div className="small" style={{ color: 'rgba(255, 255, 255, 0.92)' }}>No riders need attention in the visible system trips.</div>}
+                        </div> : null}
                     </div>
-                    <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+                    <div className="d-flex align-items-center gap-1 flex-wrap justify-content-end">
                       <Badge bg={liveTripScan?.blockingCount > 0 ? 'danger' : liveTripScan?.warningCount > 0 ? 'warning' : 'light'} text={liveTripScan?.blockingCount > 0 ? undefined : 'dark'}>
                         {liveTripScan?.findingCount || 0}
                       </Badge>
+                      <div className="d-inline-flex align-items-center gap-1 px-1 py-0 rounded-3" style={{ backgroundColor: 'rgba(255, 255, 255, 0.16)', border: '1px solid rgba(255, 255, 255, 0.24)', minHeight: 26 }}>
+                        <span className="small fw-semibold" style={{ color: '#ffffff', letterSpacing: '0.02em', fontSize: 9, lineHeight: 1 }}>Colors</span>
+                        <PowerToggleButton
+                          checked={showScannerRowColors}
+                          onToggle={setShowScannerRowColors}
+                          onLabel="On"
+                          offLabel="Off"
+                          offVariant="neutral"
+                          size="xs"
+                          style={{ transform: 'scale(0.68)', transformOrigin: 'right center' }}
+                          aria-label="Toggle scanner row background colors"
+                        />
+                      </div>
+                      <div className="d-flex align-items-center gap-1 flex-wrap">
+                        {!isTripDashboardSurface ? renderScannerPowerAction({
+                          label: 'Panel',
+                          checked: showRoutesPanel,
+                          onToggle: handleToggleScannerRoutesPanel,
+                          ariaLabel: 'Show or hide the bottom route panel'
+                        }) : null}
+                        {renderScannerPowerAction({
+                          label: 'Notes',
+                          checked: showColumnPicker,
+                          onToggle: handleOpenScannerColumnOrder,
+                          ariaLabel: 'Open trip columns'
+                        })}
+                        {renderScannerPowerAction({
+                          label: 'Save',
+                          checked: scannerColumnsSaved,
+                          onToggle: handleSaveScannerColumnOrder,
+                          ariaLabel: 'Save current column order',
+                          onLabel: 'Go',
+                          offLabel: 'Go'
+                        })}
+                        {!isTripDashboardSurface ? renderScannerPowerAction({
+                          label: 'Reset',
+                          checked: scannerActionPulse.reset,
+                          onToggle: handleResetScannerDockTools,
+                          ariaLabel: 'Restore the bottom panel view',
+                          onLabel: 'Go',
+                          offLabel: 'Go'
+                        }) : null}
+                      </div>
                       {renderScannerConfirmationPanelButtons()}
-                      <Button variant="light" size="sm" onClick={() => {
-                      setShowTripImportModal(true);
-                      setStatusMessage('Excel Loader with scanner opened inside Trip Dashboard. Nothing changes in the tree until you import.');
-                    }}>
-                        Excel Loader + Scanner
-                      </Button>
-                      <Button variant="light" size="sm" onClick={handleResetLiveScanFocus}>Reset</Button>
-                      <Button variant="light" size="sm" onClick={handleInvertSelectedLiveScanTrips} disabled={selectedVisibleTrips.length === 0}>Invert Selected</Button>
-                      <Button variant="light" size="sm" onClick={handleAutoRepairLiveScan}>Auto Repair</Button>
-                      <Button variant="light" size="sm" onClick={() => setShowLiveTripScanPanel(false)}>Hide</Button>
+                      {renderScannerPowerAction({
+                        label: 'Excel',
+                        checked: scannerActionPulse.excel,
+                        onToggle: () => {
+                          pulseScannerActionControl('excel');
+                          setShowTripImportModal(true);
+                          setStatusMessage('Excel Loader with scanner opened inside Trip Dashboard. Nothing changes in the tree until you import.');
+                        },
+                        ariaLabel: 'Excel Loader plus scanner',
+                        shellStyle: {
+                          minWidth: 86
+                        },
+                        onLabel: 'Go',
+                        offLabel: 'Go'
+                      })}
+                      {!isTripDashboardSurface ? renderScannerPowerAction({
+                        label: 'Focus',
+                        checked: scannerActionPulse.focusReset,
+                        onToggle: () => {
+                          pulseScannerActionControl('focusReset');
+                          handleResetLiveScanFocus();
+                        },
+                        ariaLabel: 'Reset scanner focus',
+                        shellStyle: {
+                          minWidth: 76
+                        },
+                        onLabel: 'Go',
+                        offLabel: 'Go'
+                      }) : null}
+                      {renderScannerPowerAction({
+                        label: 'Invert',
+                        checked: scannerActionPulse.invert,
+                        onToggle: () => {
+                          if (selectedVisibleTrips.length === 0) return;
+                          pulseScannerActionControl('invert');
+                          handleInvertSelectedLiveScanTrips();
+                        },
+                        ariaLabel: 'Invert selected trips',
+                        shellStyle: {
+                          minWidth: 84,
+                          opacity: selectedVisibleTrips.length === 0 ? 0.55 : 1
+                        },
+                        onLabel: 'Go',
+                        offLabel: 'Go'
+                      })}
+                      {renderScannerPowerAction({
+                        label: 'Hide',
+                        checked: scannerActionPulse.hide,
+                        onToggle: () => {
+                          pulseScannerActionControl('hide');
+                          setShowLiveTripScanPanel(false);
+                        },
+                        ariaLabel: 'Hide scanner panel',
+                        shellStyle: {
+                          minWidth: 70
+                        },
+                        onLabel: 'Go',
+                        offLabel: 'Go'
+                      })}
                     </div>
                   </div>
                 </div> : null}
                   {filteredTrips.length > 0 ? null : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1 trip-dashboard-sheet-wrap" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, height: '100%', maxHeight: '100%', overflowX: 'auto', overflowY: 'auto', scrollbarGutter: 'auto', scrollbarWidth: 'thin', msOverflowStyle: 'auto', paddingBottom: 0 }}>
-                <Table ref={tripTableElementRef} hover className="align-middle mb-0 trip-dashboard-sheet-table" data-bs-theme={themeMode} style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
+                <Table ref={tripTableElementRef} hover className={`align-middle mb-0 trip-dashboard-sheet-table ${showScannerRowColors ? 'trip-dashboard-sheet-table--scanner-colors' : ''}`.trim()} data-bs-theme={themeMode} style={{ whiteSpace: 'nowrap', minWidth: 'max-content', width: 'max-content', borderCollapse: 'separate', borderSpacing: 0 }}>
                   <thead className={themeMode === 'dark' ? 'table-dark' : ''} style={{ position: 'sticky', top: 0, backgroundColor: tripTableHeaderStyle.backgroundColor, color: tripTableHeaderStyle.color }}>
                     <tr>
                       <th style={{ ...tripHeaderCellStyle, width: 48 }}>
@@ -6327,11 +6935,17 @@ const TripDashboardWorkspace = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.filter(row => row.type === 'trip').map(row => <tr key={row.trip.id} className={selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? 'table-primary' : isTripAssignedToSelectedDriver(row.trip) ? 'table-success' : ''}>
+                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.filter(row => row.type === 'trip').map(row => {
+                    const tripLegKey = getTripLegFilterKey(row.trip);
+                    const isSelectedTripRow = selectedTripIdSet.has(normalizeTripId(row.trip.id));
+                    const isAssignedTripRow = isTripAssignedToSelectedDriver(row.trip);
+                    const scannerRowTone = tripLegKey === 'BL' ? 'bl' : tripLegKey === 'AL' ? 'al' : undefined;
+                    const tripRowClassName = [isSelectedTripRow ? 'trip-dashboard-sheet-row--selected' : '', isAssignedTripRow ? 'trip-dashboard-sheet-row--assigned' : ''].filter(Boolean).join(' ');
+                    return <tr key={row.trip.id} className={tripRowClassName} data-trip-row={scannerRowTone}>
                         <td>
                           <input
                             type="checkbox"
-                            checked={selectedTripIdSet.has(normalizeTripId(row.trip.id))}
+                            checked={isSelectedTripRow}
                             onChange={() => handleTripSelectionToggle(row.trip.id)}
                             style={{
                               width: 16,
@@ -6373,7 +6987,8 @@ const TripDashboardWorkspace = () => {
                           </div>
                         </td> : null}
                         {orderedVisibleTripColumnsWithoutNotes.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
-                      </tr>) : <tr>
+                      </tr>;
+                  }) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center text-muted py-4">No activity found for that day. If a route was saved, check the same day in Trip Route to view related trips and drivers.</td>
                       </tr>}
                   </tbody>
@@ -6386,7 +7001,7 @@ const TripDashboardWorkspace = () => {
         <div onMouseDown={() => showBottomPanels && !isFocusRightLayout ? setDragMode('row') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'row-resize',
-        gridColumn: isStackedLayout ? 1 : '1 / span 3',
+        gridColumn: '1 / span 3',
         gridRow: 2,
         display: showBottomPanels && !isFocusRightLayout ? 'block' : 'none'
       }}>
@@ -6433,25 +7048,6 @@ const TripDashboardWorkspace = () => {
         minHeight: 0,
         gridColumn: 1,
         gridRow: 1,
-        gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr)'
-      }}>
-            {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridRow: 1 }}>
-                {dockPanelsVisible[0].node}
-              </div> : null}
-            {dockPanelsVisible.length > 1 ? <>
-                <div style={{ gridRow: 2, display: 'none' }} />
-                <div style={{ minWidth: 0, minHeight: 0, gridRow: 3 }}>
-                  {dockPanelsVisible[1].node}
-                </div>
-              </> : null}
-          </div> : null}
-
-        {isStackedLayout ? <div style={{
-        display: 'grid',
-        minWidth: 0,
-        minHeight: 0,
-        gridColumn: 1,
-        gridRow: 3,
         gridTemplateRows: dockPanelsVisible.length > 1 ? 'minmax(0, 1fr) 0px minmax(0, 1fr)' : 'minmax(0, 1fr)'
       }}>
             {dockPanelsVisible.length > 0 ? <div style={{ minWidth: 0, minHeight: 0, gridRow: 1 }}>
@@ -6516,11 +7112,6 @@ const TripDashboardWorkspace = () => {
             <div className="small text-muted mb-2">{selectedImportFileName ? `Selected file: ${selectedImportFileName}` : 'No file selected.'}</div>
             <div className="small text-muted mb-2">{importedServiceDateKeys.length > 0 ? `Detected service dates: ${importedServiceDateKeys.join(', ')}` : 'Detected service dates: -'}</div>
             <div className="small text-muted mb-3">{importPendingTrips.length > 0 ? `${importPendingTrips.length} trip(s) ready to import.` : 'Choose an import file to load trips here.'}</div>
-            {importRoutingChanges.length > 0 ? <Alert variant="warning" className="mb-3">
-                <div className="fw-semibold mb-1">Address changes found</div>
-                <div className="small mb-2">{importRoutingChanges.length} trip(s) in this file do not match the current system address.</div>
-                <Button variant="outline-dark" size="sm" onClick={() => setShowImportRoutingChangeModal(true)}>Review Address Changes</Button>
-              </Alert> : null}
             {importScan?.findingCount > 0 ? <Alert variant={importScan.blockingCount > 0 ? 'danger' : 'warning'} className="mb-3">
                 <div className="fw-semibold mb-1">File scanner findings</div>
                 <div className="small mb-2">Found {importScan.findingCount} issue(s): {importScan.blockingCount} blocking and {importScan.warningCount} warning.</div>
@@ -6583,56 +7174,6 @@ const TripDashboardWorkspace = () => {
             <Button variant="outline-secondary" onClick={() => setShowTripImportModal(false)}>Close</Button>
             <Button variant="success" onClick={handleImportTripsIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing}>Import Trips</Button>
             <Button variant="primary" onClick={handleLoadRoutesIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing || isRouteImporting}>{isRouteImporting ? 'Loading Route...' : 'Load Route'}</Button>
-          </Modal.Footer>
-        </Modal>
-
-        <Modal show={showImportRoutingChangeModal} onHide={() => setShowImportRoutingChangeModal(false)} size="xl" centered scrollable>
-          <Modal.Header closeButton>
-            <Modal.Title>Address Change Review</Modal.Title>
-          </Modal.Header>
-          <Modal.Body>
-            <div className="small text-muted mb-3">Review every trip where the new import does not match the current system address.</div>
-            <div className="table-responsive">
-              <Table bordered hover className="align-middle mb-0" data-bs-theme={themeMode}>
-                <thead>
-                  <tr>
-                    <th>Trip</th>
-                    <th>Rider</th>
-                    <th>Current Pickup</th>
-                    <th>Imported Pickup</th>
-                    <th>Current Dropoff</th>
-                    <th>Imported Dropoff</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importRoutingChanges.length > 0 ? importRoutingChanges.map(change => <tr key={`routing-change-${change.id}`}>
-                      <td style={{ whiteSpace: 'nowrap' }}>{change.rideId || change.brokerTripId || change.id || '-'}</td>
-                      <td>{change.rider || '-'}</td>
-                      <td style={{ minWidth: 220, whiteSpace: 'normal' }}>
-                        <div>{change.currentAddress || '-'}</div>
-                        <div className="small text-muted">ZIP: {change.currentFromZipcode || '-'}</div>
-                      </td>
-                      <td style={{ minWidth: 220, whiteSpace: 'normal' }} className="table-warning">
-                        <div>{change.importedAddress || '-'}</div>
-                        <div className="small text-muted">ZIP: {change.importedFromZipcode || '-'}</div>
-                      </td>
-                      <td style={{ minWidth: 220, whiteSpace: 'normal' }}>
-                        <div>{change.currentDestination || '-'}</div>
-                        <div className="small text-muted">ZIP: {change.currentToZipcode || '-'}</div>
-                      </td>
-                      <td style={{ minWidth: 220, whiteSpace: 'normal' }} className="table-warning">
-                        <div>{change.importedDestination || '-'}</div>
-                        <div className="small text-muted">ZIP: {change.importedToZipcode || '-'}</div>
-                      </td>
-                    </tr>) : <tr>
-                      <td colSpan={6} className="text-center text-muted py-4">No address changes are waiting for review.</td>
-                    </tr>}
-                </tbody>
-              </Table>
-            </div>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowImportRoutingChangeModal(false)}>Close</Button>
           </Modal.Footer>
         </Modal>
 
@@ -6705,7 +7246,8 @@ const TripDashboardWorkspace = () => {
                   <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default setup</Button>
                 </div>
                 <div className="d-flex flex-column gap-2" style={{ maxHeight: '52vh', overflowY: 'auto', paddingRight: 4 }}>
-                  {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+                  {isTripDashboardSurface ? <Form.Check key="trip-column-picker-confirm-tools" type="switch" id="trip-column-picker-confirm-tools" label="Confirm" checked={showConfirmationTools} onChange={handleToggleConfirmationTools} /> : null}
+                  {tripDashboardColumnPickerOptions.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
                 </div>
               </div>
               <div className="col-12 col-xl-6">
@@ -6915,7 +7457,7 @@ const TripDashboardWorkspace = () => {
             <Modal.Title>Cancel Trip</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <div className="small text-muted mb-2">Trip: {cancelNoteModal?.id}</div>
+            <div className="small text-muted mb-2">Trip: {getDisplayTripId(cancelNoteModal) || '-'}</div>
             <div className="small text-muted mb-3">Rider: {cancelNoteModal?.rider || '-'}</div>
             {cancelNoteModal && getSiblingLegTrips(cancelNoteModal, trips).length > 0 ? <>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Cancel Scope</Form.Label>
@@ -6950,7 +7492,7 @@ const TripDashboardWorkspace = () => {
                 <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Leg Scope</Form.Label>
                 <Form.Select className="mb-3" value={confirmationLegScope} onChange={event => setConfirmationLegScope(event.target.value)}>
                   <option value="">Choose one option</option>
-                  <option value="single">Only this leg ({confirmationSourceTrip?.id})</option>
+                  <option value="single">Only this leg ({getDisplayTripId(confirmationSourceTrip) || '-'})</option>
                   <option value="both">Both legs</option>
                 </Form.Select>
               </> : null}
@@ -6974,7 +7516,7 @@ const TripDashboardWorkspace = () => {
             <Modal.Title>Trip Update</Modal.Title>
           </Modal.Header>
           <Modal.Body>
-            <div className="small text-muted mb-2">Trip: {tripUpdateModal?.id} | Rider: {tripUpdateModal?.rider}</div>
+            <div className="small text-muted mb-2">Trip: {getDisplayTripId(tripUpdateModal) || '-'} | Rider: {tripUpdateModal?.rider}</div>
             <Row className="g-3">
               <Col md={4}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Confirmed Via</Form.Label>
@@ -6999,7 +7541,7 @@ const TripDashboardWorkspace = () => {
               {tripUpdateSupportsBothLegs ? <Col md={12}>
                   <Form.Label className="small text-uppercase text-muted fw-semibold">Apply Confirmation To</Form.Label>
                   <Form.Select value={tripUpdateLegScope} onChange={event => setTripUpdateLegScope(event.target.value)}>
-                    <option value="single">Only this leg ({tripUpdateModal?.id})</option>
+                    <option value="single">Only this leg ({getDisplayTripId(tripUpdateModal) || '-'})</option>
                     <option value="both">Both legs</option>
                   </Form.Select>
                   <div className="small text-muted mt-1">Confirmation and notes can be applied to both legs. Time changes stay only on the current leg.</div>
@@ -7083,6 +7625,78 @@ const TripDashboardWorkspace = () => {
             background: #f9fcf9;
           }
 
+          .trip-dashboard-sheet-table tbody tr.trip-dashboard-sheet-row--assigned td:first-child {
+            box-shadow: inset 3px 0 0 rgba(22, 163, 74, 0.78);
+          }
+
+          .trip-dashboard-sheet-table tbody tr.trip-dashboard-sheet-row--selected td {
+            box-shadow: inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+          }
+
+          .trip-dashboard-sheet-table tbody tr.trip-dashboard-sheet-row--selected td:first-child {
+            box-shadow: inset 3px 0 0 #2563eb, inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+          }
+
+          .trip-dashboard-sheet-table tbody tr.trip-dashboard-sheet-row--selected td:last-child {
+            box-shadow: inset -3px 0 0 #2563eb, inset 0 2px 0 #2563eb, inset 0 -2px 0 #2563eb;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] td {
+            background: #43bfa3 !important;
+            color: #f8fafc !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .text-muted,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .small.text-muted {
+            color: rgba(248, 250, 252, 0.9) !important;
+            opacity: 1 !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-secondary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-success,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-primary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-info,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] .btn-outline-danger {
+            --bs-btn-color: #f8fafc;
+            --bs-btn-border-color: rgba(248, 250, 252, 0.28);
+            --bs-btn-hover-color: #f8fafc;
+            --bs-btn-hover-bg: rgba(255, 255, 255, 0.16);
+            --bs-btn-hover-border-color: rgba(248, 250, 252, 0.28);
+            --bs-btn-active-color: #f8fafc;
+            --bs-btn-active-bg: rgba(255, 255, 255, 0.16);
+            --bs-btn-active-border-color: rgba(248, 250, 252, 0.28);
+            background-color: rgba(255, 255, 255, 0.16);
+            box-shadow: 0 0 0 1px rgba(248, 250, 252, 0.28) inset;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] td {
+            background: #ffe25a !important;
+            color: #18212a !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .text-muted,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .small.text-muted {
+            color: rgba(24, 33, 42, 0.78) !important;
+            opacity: 1 !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-secondary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-success,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-primary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-info,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-danger {
+            --bs-btn-color: #18212a;
+            --bs-btn-border-color: rgba(24, 33, 42, 0.2);
+            --bs-btn-hover-color: #18212a;
+            --bs-btn-hover-bg: rgba(255, 255, 255, 0.2);
+            --bs-btn-hover-border-color: rgba(24, 33, 42, 0.28);
+            --bs-btn-active-color: #18212a;
+            --bs-btn-active-bg: rgba(255, 255, 255, 0.28);
+            --bs-btn-active-border-color: rgba(24, 33, 42, 0.28);
+            background-color: rgba(255, 255, 255, 0.18);
+            box-shadow: 0 0 0 1px rgba(24, 33, 42, 0.14) inset;
+          }
+
           .trip-dashboard-selector {
             margin-bottom: 0;
           }
@@ -7137,6 +7751,39 @@ const TripDashboardWorkspace = () => {
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table tbody tr:nth-child(even) td {
             background: #111c31;
           }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] td {
+            background: #2f9f89 !important;
+            color: #f8fafc !important;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] td {
+            background: #d9b733 !important;
+            color: #111827 !important;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .text-muted,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .small.text-muted {
+            color: rgba(17, 24, 39, 0.78) !important;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-secondary,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-success,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-primary,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-info,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-danger {
+            --bs-btn-color: #111827;
+            --bs-btn-border-color: rgba(17, 24, 39, 0.18);
+            --bs-btn-hover-color: #111827;
+            --bs-btn-hover-bg: rgba(255, 255, 255, 0.22);
+            --bs-btn-hover-border-color: rgba(17, 24, 39, 0.28);
+            --bs-btn-active-color: #111827;
+            --bs-btn-active-bg: rgba(255, 255, 255, 0.3);
+            --bs-btn-active-border-color: rgba(17, 24, 39, 0.28);
+            background-color: rgba(255, 255, 255, 0.14);
+            box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.12) inset;
+          }
+
         `}</style>
       </div>
     </>;

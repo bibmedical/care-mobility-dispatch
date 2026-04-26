@@ -56,32 +56,37 @@ const pool = new Pool({
       console.log('⚠️  dispatch_state table not found:', e.message);
     }
 
-    // Test 4: Write a test value
-    console.log('\n✅ Step 4: Writing test data...');
+    // Test 4: Write and read inside a rollback-only transaction
+    console.log('\n✅ Step 4: Writing test data in rollback transaction...');
+    const testId = '__connection_test__';
     const testData = { test: 'value', timestamp: new Date().toISOString() };
+    await client.query('BEGIN');
     await client.query(
-      'INSERT INTO admin_state (id, state) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET state = $2',
-      [999, JSON.stringify(testData)]
+      'INSERT INTO admin_state (id, version, data) VALUES ($1, $2, $3::jsonb) ON CONFLICT (id) DO UPDATE SET version = EXCLUDED.version, data = EXCLUDED.data, updated_at = NOW()',
+      [testId, 2, JSON.stringify(testData)]
     );
     console.log('✅ Test data written');
 
     // Test 5: Read it back
     console.log('\n✅ Step 5: Reading test data back...');
-    const readResult = await client.query('SELECT * FROM admin_state WHERE id = 999');
+    const readResult = await client.query('SELECT id, version, data FROM admin_state WHERE id = $1', [testId]);
     if (readResult.rows.length > 0) {
       console.log('✅ Test data persisted correctly:');
       console.log('  ', JSON.stringify(readResult.rows[0], null, 2));
     }
 
-    // Test 6: Clean up
-    await client.query('DELETE FROM admin_state WHERE id = 999');
-    console.log('✅ Cleanup complete');
+    // Test 6: Roll back so the validation does not mutate the database
+    await client.query('ROLLBACK');
+    console.log('✅ Rollback complete');
 
     client.release();
     console.log('\n✅ ALL TESTS PASSED - SQL IS WORKING!');
     process.exit(0);
 
   } catch (error) {
+    try {
+      await pool.query('ROLLBACK');
+    } catch {}
     console.error('\n❌ ERROR:', error.message);
     console.error('Full error:', error);
     process.exit(1);

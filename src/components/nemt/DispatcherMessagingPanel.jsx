@@ -264,6 +264,7 @@ const DispatcherMessagingPanel = ({
   onLocateDriver,
   onOpenLayout,
   openFullChat,
+  routeToolbarActions = null,
   hideThreadList = false
 }) => {
   const { themeMode } = useLayoutContext();
@@ -337,7 +338,6 @@ const DispatcherMessagingPanel = ({
     }))
   ], [drivers, dailyDrivers]);
   const allDriversById = useMemo(() => new Map(allDrivers.map(driver => [normalizeDriverId(driver?.id), driver])), [allDrivers]);
-  const allDriverIds = useMemo(() => allDrivers.map(driver => normalizeDriverId(driver?.id)).filter(Boolean), [allDrivers]);
 
   const normalizedThreads = useMemo(() => mergeThreads(dispatchThreads, allDrivers), [allDrivers, dispatchThreads]);
   const hiddenDriverIdSet = useMemo(() => new Set((Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []).map(normalizeDriverId).filter(Boolean)), [hiddenDriverIds]);
@@ -371,19 +371,6 @@ const DispatcherMessagingPanel = ({
   }, [userPreferences?.dispatcherMessaging?.chatTheme, userPreferences?.dispatcherMessaging?.customNotificationSoundDataUrl, userPreferences?.dispatcherMessaging?.customNotificationSoundName, userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferences?.dispatcherMessaging?.notificationTone, userPreferencesLoading]);
 
   useEffect(() => {
-    if (!hasHydratedMessagingPrefsRef.current) return;
-    if (allDriverIds.length === 0) return;
-
-    const normalizedHiddenIds = (Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []).map(normalizeDriverId).filter(Boolean);
-    if (normalizedHiddenIds.length === 0) return;
-
-    const hasAnyVisibleDriver = allDriverIds.some(driverId => !normalizedHiddenIds.includes(driverId));
-    if (hasAnyVisibleDriver) return;
-
-    setHiddenDriverIds([]);
-  }, [allDriverIds, hiddenDriverIds]);
-
-  useEffect(() => {
     if (userPreferencesLoading || !hasHydratedMessagingPrefsRef.current) return;
     const nextDispatcherMessaging = {
       ...latestUserPreferencesRef.current?.dispatcherMessaging,
@@ -412,8 +399,9 @@ const DispatcherMessagingPanel = ({
   const activeDriverId = useMemo(() => {
     const normalizedSelectedDriverId = normalizeDriverId(selectedDriverId);
     if (normalizedSelectedDriverId && visibleThreads.some(thread => normalizeDriverId(thread?.driverId) === normalizedSelectedDriverId)) return normalizedSelectedDriverId;
+    if (hideThreadList) return null;
     return normalizeDriverId(visibleThreads[0]?.driverId) || null;
-  }, [selectedDriverId, visibleThreads]);
+  }, [hideThreadList, selectedDriverId, visibleThreads]);
   const activeThread = normalizedThreads.find(thread => normalizeDriverId(thread?.driverId) === activeDriverId) ?? null;
   const activeAlertCounts = useMemo(() => driverAlerts.reduce((accumulator, alert) => {
     const driverId = normalizeDriverId(alert?.driverId);
@@ -1126,6 +1114,7 @@ const DispatcherMessagingPanel = ({
           <Badge bg="success">{gpsOnlineCount} live GPS</Badge>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => onOpenLayout?.()}>Layout</Button>
           <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowPanelSettings(true)}>Sound</Button>
+          {routeToolbarActions ? <div className="d-flex align-items-center gap-1 flex-wrap">{routeToolbarActions}</div> : null}
           {!hideThreadList ? <Button variant="outline-dark" size="sm" style={messagingSurfaceStyles.button} onClick={() => setShowAddDriver(current => !current)}>{showAddDriver ? 'Cancel Add Driver' : 'Add Driver'}</Button> : null}
           {!hideThreadList ? <Button variant="dark" size="sm" onClick={() => setShowAddOfficialDriver(current => !current)}>{showAddOfficialDriver ? 'Cancel Official Driver' : 'Official Driver'}</Button> : null}
         </div>
@@ -1433,7 +1422,7 @@ const DispatcherMessagingPanel = ({
                   <div style={{ fontSize: 12, marginTop: 4, color: message.direction === 'outgoing' ? selectedChatTheme.outgoingMeta : selectedChatTheme.incomingMeta }}>{formatDispatchTime(message.timestamp, uiPreferences?.timeZone)} {message.direction === 'outgoing' ? `| ${message.status === 'sending' ? 'sending...' : message.status}` : ''}</div>
                 </div>
               </div>
-            )) : <div className="text-center py-5" style={{ color: messagingSurfaceStyles.secondaryText }}>No messages yet for this driver.</div>}
+            )) : <div className="text-center py-5" style={{ color: messagingSurfaceStyles.secondaryText }}>{activeDriver ? 'No messages yet for this driver.' : 'Select a driver first.'}</div>}
           </div>
           <div className="p-3 border-top" style={messagingSurfaceStyles.footer}>
             <input ref={photoInputRef} type="file" accept="image/*" className="d-none" onChange={event => {

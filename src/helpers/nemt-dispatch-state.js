@@ -458,6 +458,23 @@ export const getTripSupportMetadata = trip => {
   };
 };
 
+export const DISPATCHER_TRIP_CONTROL_COLUMN_OPTIONS = [{
+  key: 'selectTrips',
+  label: 'Select'
+}, {
+  key: 'tripAction',
+  label: 'ACT'
+}, {
+  key: 'tripNoteAction',
+  label: 'Notes'
+}, {
+  key: 'willCallAction',
+  label: 'WC'
+}, {
+  key: 'driverAlertAction',
+  label: 'Alert'
+}];
+
 export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   key: 'trip',
   label: 'Trip / Ride'
@@ -502,7 +519,7 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   label: 'Vehicle'
 }, {
   key: 'mobility',
-  label: 'Type'
+  label: 'Type A/W/STR'
 }, {
   key: 'assistLevel',
   label: 'Assist'
@@ -523,8 +540,10 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   label: 'Late Minutes'
 }];
 
+const DISPATCHER_TRIP_TABLE_COLUMN_OPTIONS = [...DISPATCHER_TRIP_CONTROL_COLUMN_OPTIONS, ...DISPATCH_TRIP_COLUMN_OPTIONS];
 const LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['notes', 'miles', 'status', 'rider', 'address', 'destination'];
-export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key);
+const LEGACY_ALL_DISPATCHER_VISIBLE_TRIP_COLUMNS = DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key);
+export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = DISPATCHER_TRIP_TABLE_COLUMN_OPTIONS.map(option => option.key);
 
 export const normalizeMapProviderPreference = value => {
   const normalized = String(value ?? 'auto').trim().toLowerCase();
@@ -532,10 +551,13 @@ export const normalizeMapProviderPreference = value => {
 };
 
 export const normalizeDispatcherVisibleTripColumns = value => {
-  const allowedKeys = new Set(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key));
+  const allowedKeys = new Set(DISPATCHER_TRIP_TABLE_COLUMN_OPTIONS.map(option => option.key));
   const cleanedColumns = Array.isArray(value) ? value.filter(columnKey => allowedKeys.has(columnKey)) : [];
   const uniqueColumns = Array.from(new Set(cleanedColumns));
   if (uniqueColumns.length === LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS.length && uniqueColumns.every((columnKey, index) => columnKey === LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS[index])) {
+    return [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
+  }
+  if (uniqueColumns.length === LEGACY_ALL_DISPATCHER_VISIBLE_TRIP_COLUMNS.length && uniqueColumns.every((columnKey, index) => columnKey === LEGACY_ALL_DISPATCHER_VISIBLE_TRIP_COLUMNS[index])) {
     return [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
   }
   return uniqueColumns.length > 0 ? uniqueColumns : [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];

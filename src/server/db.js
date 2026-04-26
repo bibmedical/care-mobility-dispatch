@@ -4,6 +4,28 @@ const { Pool } = pg;
 
 let pool = null;
 
+const getSslConfig = connectionString => {
+  const normalized = String(connectionString || '').trim();
+  if (!normalized) return false;
+
+  const explicitMode = String(process.env.PGSSLMODE || '').trim().toLowerCase();
+  if (['disable', 'allow', 'prefer'].includes(explicitMode)) {
+    return false;
+  }
+
+  if (['require', 'verify-ca', 'verify-full'].includes(explicitMode)) {
+    return { rejectUnauthorized: false };
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return { rejectUnauthorized: false };
+  }
+
+  return normalized.includes('.render.com/') || normalized.includes('.render.com:')
+    ? { rejectUnauthorized: false }
+    : false;
+};
+
 export const getDb = () => {
   if (pool) return pool;
 
@@ -15,7 +37,7 @@ export const getDb = () => {
 
   pool = new Pool({
     connectionString,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: getSslConfig(connectionString),
     max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000

@@ -8,7 +8,6 @@ import { buildMobileCorsPreflightResponse, jsonWithMobileCors } from '@/server/m
 
 const normalizeLookupValue = value => normalizeAuthValue(value);
 const isLocalPasswordlessDriverLoginEnabled = () => process.env.NODE_ENV !== 'production';
-const shouldRequireDriverPasswordReset = driver => process.env.NODE_ENV === 'production' && isDriverPasswordResetRequired(driver);
 
 const buildDriverCode = (driver, state) => {
   const dispatchDriver = mapAdminDataToDispatchDrivers({
@@ -225,7 +224,7 @@ export async function POST(request) {
           address: String(driver.address || driver.baseAddress || '').trim(),
           timeOffAppointment: driver.timeOffAppointment || null,
           vehicleId: driver.vehicleId || '',
-          passwordResetRequired: shouldRequireDriverPasswordReset(driver),
+          passwordResetRequired: isDriverPasswordResetRequired(driver),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
         }, deviceId, {
           forceTakeover: true
@@ -304,7 +303,7 @@ export async function POST(request) {
           address: String(driver.address || driver.baseAddress || '').trim(),
           timeOffAppointment: driver.timeOffAppointment || null,
           vehicleId: driver.vehicleId || '',
-          passwordResetRequired: shouldRequireDriverPasswordReset(driver),
+          passwordResetRequired: isDriverPasswordResetRequired(driver),
           gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
         }, deviceId, {
           forceTakeover: true
@@ -358,7 +357,7 @@ export async function POST(request) {
         address: String(driver.address || driver.baseAddress || '').trim(),
         timeOffAppointment: driver.timeOffAppointment || null,
         vehicleId: driver.vehicleId || '',
-        passwordResetRequired: shouldRequireDriverPasswordReset(driver),
+        passwordResetRequired: isDriverPasswordResetRequired(driver),
         gpsSettings: normalizeDriverGpsSettings(driver?.gpsSettings)
       }, deviceId, {
         forceTakeover: true

@@ -121,7 +121,7 @@ export async function GET(request) {
         alternatives,
         isFallback: false
       }, {
-        headers: { 'Cache-Control': 'public, max-age=1800, s-maxage=1800' }
+        headers: { 'Cache-Control': 'no-store' }
       });
     } catch {
       // Try the next provider.
@@ -139,7 +139,7 @@ export async function GET(request) {
         alternatives: [],
         isFallback: segmentedRoute.usedFallbackSegment
       }, {
-        headers: { 'Cache-Control': 'public, max-age=1800, s-maxage=1800' }
+        headers: { 'Cache-Control': 'no-store' }
       });
     }
   } catch {
@@ -154,6 +154,6 @@ export async function GET(request) {
     alternatives: [],
     isFallback: true
   }, {
-    headers: { 'Cache-Control': 'public, max-age=300, s-maxage=300' }
+    headers: { 'Cache-Control': 'no-store' }
   });
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { readNemtAdminDriversPayload } from '@/server/nemt-admin-store';
+import { readSystemUsersState } from '@/server/system-users-store';
 
 const buildUnauthorizedResponse = () => NextResponse.json({
   error: 'Authentication required'
@@ -16,6 +17,7 @@ export async function GET() {
     const session = await getServerSession(options);
     if (!session?.user?.id) return buildUnauthorizedResponse();
 
+    await readSystemUsersState();
     const payload = await readNemtAdminDriversPayload();
     return NextResponse.json(payload);
   } catch (error) {

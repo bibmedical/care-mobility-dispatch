@@ -85,6 +85,34 @@ That is still a starter endpoint and will need expansion in later versions.
 npm start
 ```
 
+## Clone Server APK
+
+There is now a dedicated Expo/EAS profile for a test APK labeled `Florida Mobility Driver Diario Clone Server`.
+
+Build it with:
+
+```bash
+npx eas build --platform android --profile clone-server
+```
+
+If you want that APK to hit a specific backend instead of the default Render URL, pass the API base when building:
+
+```bash
+EXPO_PUBLIC_DRIVER_API_BASE_URL=https://your-public-clone-server-url npx eas build --platform android --profile clone-server
+```
+
+Clone Server no longer falls back to production. If `EXPO_PUBLIC_DRIVER_API_BASE_URL` is missing, sign-in will stop with a config error instead of hitting the live Render server.
+
+Use a public `https` URL for phone testing. A real Android device cannot use local `localhost` from your computer.
+
+You can validate the resolved Expo config before building:
+
+```bash
+$env:DRIVER_APP_VARIANT='clone-server'
+$env:EXPO_PUBLIC_DRIVER_API_BASE_URL='https://your-public-clone-server-url'
+npx expo config --type public
+```
+
 Then use one of:
 
 ```bash

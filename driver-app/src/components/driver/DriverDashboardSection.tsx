@@ -43,11 +43,6 @@ const normalizeServiceDateKey = (value?: string | null) => {
   return '';
 };
 
-const isOpenTrip = (status?: string | null) => {
-  const normalized = String(status || '').trim().toLowerCase();
-  return !normalized.includes('completed') && !normalized.includes('cancelled') && !normalized.includes('canceled');
-};
-
 export const DriverDashboardSection = ({ runtime }: Props) => {
   const driverName = runtime.driverSession?.name || runtime.driverCode || 'Driver';
   const driverAccent = getDriverAccentColor({ id: runtime.driverSession?.driverId, name: driverName });
@@ -56,9 +51,8 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const todayKey = toDateKey(today);
   const tomorrowKey = toDateKey(tomorrow);
-  const openAssignedTrips = runtime.assignedTrips.filter(trip => isOpenTrip(trip.status));
-  const todayTripCount = openAssignedTrips.filter(trip => normalizeServiceDateKey(trip.serviceDate) === todayKey).length;
-  const nextDayTripCount = openAssignedTrips.filter(trip => normalizeServiceDateKey(trip.serviceDate) === tomorrowKey || trip.isNextDayTrip).length;
+  const todayTripCount = runtime.assignedTrips.filter(trip => normalizeServiceDateKey(trip.serviceDate) === todayKey).length;
+  const nextDayTripCount = runtime.assignedTrips.filter(trip => normalizeServiceDateKey(trip.serviceDate) === tomorrowKey || trip.isNextDayTrip).length;
 
   const incomingMessages = runtime.messages.filter(message => String(message.source || '').toLowerCase() !== 'mobile-driver-app');
   const unreadIncomingCount = Number(runtime.unreadIncomingMessageCount || 0);
@@ -136,14 +130,14 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
       </View>
 
       <Pressable style={[styles.primaryCard, styles.tripsPrimaryCard]} onPress={() => {
-        runtime.setTripDateFilter('all');
+        runtime.setTripDateFilter('today');
         runtime.setActiveTab('trips');
       }}>
         <View style={styles.primaryCardCopy}>
           <Text style={styles.primaryLabel}>Today Trips</Text>
           <View style={styles.tripSplitRow}>
             <Pressable style={styles.tripSplitBlock} onPress={() => {
-              runtime.setTripDateFilter('all');
+              runtime.setTripDateFilter('today');
               runtime.setActiveTab('trips');
             }}>
               <Text style={styles.tripSplitLabel}>Today</Text>
@@ -169,7 +163,7 @@ export const DriverDashboardSection = ({ runtime }: Props) => {
 
       <View style={styles.quickGrid}>
         {QUICK_ITEMS.map(item => <Pressable key={item.key} style={styles.quickCard} onPress={() => {
-          if (item.key === 'trips') runtime.setTripDateFilter('all');
+            if (item.key === 'trips') runtime.setTripDateFilter('next-day');
             runtime.setActiveTab(item.key);
           }}>
             <Text style={styles.quickCardTitle}>{item.label}</Text>

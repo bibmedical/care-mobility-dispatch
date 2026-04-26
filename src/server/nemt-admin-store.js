@@ -54,48 +54,6 @@ const mergeDriverDocuments = (currentDriver, nextDriver) => {
   };
 };
 
-const parseTrackingTimestamp = value => {
-  const timestamp = new Date(value || 0).getTime();
-  return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : 0;
-};
-
-const hasCoordinatePair = value => Array.isArray(value)
-  && value.length === 2
-  && Number.isFinite(Number(value[0]))
-  && Number.isFinite(Number(value[1]));
-
-const mergeDriverRuntimeState = (currentDriver, nextDriver) => {
-  const currentTrackingTimestamp = parseTrackingTimestamp(currentDriver?.trackingLastSeen);
-  const nextTrackingTimestamp = parseTrackingTimestamp(nextDriver?.trackingLastSeen);
-  const preferCurrentRuntime = currentTrackingTimestamp > nextTrackingTimestamp;
-
-  const currentTracking = currentDriver?.tracking && typeof currentDriver.tracking === 'object' ? currentDriver.tracking : null;
-  const nextTracking = nextDriver?.tracking && typeof nextDriver.tracking === 'object' ? nextDriver.tracking : null;
-  const resolvedTracking = preferCurrentRuntime
-    ? currentTracking || nextTracking
-    : nextTracking || currentTracking;
-
-  return {
-    ...nextDriver,
-    tracking: resolvedTracking,
-    trackingSource: preferCurrentRuntime
-      ? String(currentDriver?.trackingSource || nextDriver?.trackingSource || '').trim()
-      : String(nextDriver?.trackingSource || currentDriver?.trackingSource || '').trim(),
-    trackingLastSeen: preferCurrentRuntime
-      ? String(currentDriver?.trackingLastSeen || nextDriver?.trackingLastSeen || '').trim()
-      : String(nextDriver?.trackingLastSeen || currentDriver?.trackingLastSeen || '').trim(),
-    checkpoint: preferCurrentRuntime
-      ? String(currentDriver?.checkpoint || nextDriver?.checkpoint || '').trim()
-      : String(nextDriver?.checkpoint || currentDriver?.checkpoint || '').trim(),
-    position: preferCurrentRuntime
-      ? (hasCoordinatePair(currentDriver?.position) ? currentDriver.position : nextDriver?.position)
-      : (hasCoordinatePair(nextDriver?.position) ? nextDriver.position : currentDriver?.position),
-    heading: preferCurrentRuntime && currentDriver?.heading != null ? currentDriver.heading : nextDriver?.heading ?? currentDriver?.heading ?? null,
-    speed: preferCurrentRuntime && currentDriver?.speed != null ? currentDriver.speed : nextDriver?.speed ?? currentDriver?.speed ?? null,
-    accuracy: preferCurrentRuntime && currentDriver?.accuracy != null ? currentDriver.accuracy : nextDriver?.accuracy ?? currentDriver?.accuracy ?? null
-  };
-};
-
 const mergePreservedDriverData = (currentState, nextState) => {
   const currentDrivers = Array.isArray(currentState?.drivers) ? currentState.drivers : [];
   const nextDrivers = Array.isArray(nextState?.drivers) ? nextState.drivers : [];
@@ -109,9 +67,7 @@ const mergePreservedDriverData = (currentState, nextState) => {
       const currentById = currentDriversById.get(String(nextDriver?.id || '').trim());
       const currentByStableId = currentDriversByStableId.get(buildStableDriverId(nextDriver));
       const currentDriver = currentById || currentByStableId || null;
-      return currentDriver
-        ? mergeDriverRuntimeState(currentDriver, mergeDriverDocuments(currentDriver, nextDriver))
-        : nextDriver;
+      return currentDriver ? mergeDriverDocuments(currentDriver, nextDriver) : nextDriver;
     })
   };
 };

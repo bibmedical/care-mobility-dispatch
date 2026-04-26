@@ -123,10 +123,10 @@ const isTripAssignedToDriver = (trip, driverMatch) => {
 };
 
 const formatClockTime = value => new Date(value).toLocaleTimeString('en-US', {
-  timeZone: DEFAULT_DISPATCH_TIME_ZONE,
+    timeZone: DEFAULT_DISPATCH_TIME_ZONE,
   hour: 'numeric',
-  minute: '2-digit',
-  hour12: true
+    minute: '2-digit',
+    hour12: true
 });
 
 const normalizeLocationSnapshot = value => {

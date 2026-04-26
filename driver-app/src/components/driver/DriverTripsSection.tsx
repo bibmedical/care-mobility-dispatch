@@ -86,6 +86,7 @@ const formatWillCallActivatedLabel = (value?: string | null) => {
 
 const isTripActivatedForCancellation = (trip?: DriverRuntime['activeTrip'] | null) => {
   if (!trip) return false;
+  const normalizedStatus = String(trip.status || '').trim().toLowerCase();
   return Boolean(
     trip.driverWorkflow?.acceptedAt
     || trip.enRouteAt
@@ -93,6 +94,11 @@ const isTripActivatedForCancellation = (trip?: DriverRuntime['activeTrip'] | nul
     || trip.patientOnboardAt
     || trip.startTripAt
     || trip.arrivedDestinationAt
+    || normalizedStatus === 'accepted'
+    || normalizedStatus.includes('progress')
+    || normalizedStatus.includes('route')
+    || normalizedStatus.includes('arrived')
+    || normalizedStatus.includes('destination')
   );
 };
 
@@ -100,11 +106,8 @@ const isInProgressTrip = (trip?: DriverTrip | null) => {
   if (!trip) return false;
   const normalizedStatus = String(trip.status || '').trim().toLowerCase();
   const workflowStatus = String(trip.driverWorkflow?.status || '').trim().toLowerCase();
-  const isClosed = Boolean(
-    trip.completedAt
-    || trip.canceledAt
-    || trip.driverWorkflow?.completedAt
-    || normalizedStatus.includes('completed')
+  if (
+    normalizedStatus.includes('completed')
     || normalizedStatus.includes('cancelled')
     || normalizedStatus.includes('canceled')
     || workflowStatus === 'complete'
@@ -112,8 +115,7 @@ const isInProgressTrip = (trip?: DriverTrip | null) => {
     || workflowStatus === 'cancel'
     || workflowStatus === 'cancelled'
     || workflowStatus === 'canceled'
-  );
-  if (isClosed) {
+  ) {
     return false;
   }
   return Boolean(
@@ -131,25 +133,17 @@ const isInProgressTrip = (trip?: DriverTrip | null) => {
     || trip.patientOnboardAt
     || trip.startTripAt
     || trip.arrivedDestinationAt
-  );
-};
-
-const isClosedTrip = (trip?: DriverTrip | null) => {
-  if (!trip) return false;
-  const normalizedStatus = String(trip.status || '').trim().toLowerCase();
-  const workflowStatus = String(trip.driverWorkflow?.status || '').trim().toLowerCase();
-  return Boolean(
-    trip.completedAt
-    || trip.canceledAt
-    || trip.driverWorkflow?.completedAt
-    || normalizedStatus.includes('completed')
-    || normalizedStatus.includes('cancelled')
-    || normalizedStatus.includes('canceled')
-    || workflowStatus === 'complete'
-    || workflowStatus === 'completed'
-    || workflowStatus === 'cancel'
-    || workflowStatus === 'cancelled'
-    || workflowStatus === 'canceled'
+    || normalizedStatus === 'accepted'
+    || normalizedStatus.includes('en-route')
+    || normalizedStatus.includes('arrived')
+    || normalizedStatus.includes('progress')
+    || normalizedStatus.includes('destination')
+    || workflowStatus === 'accepted'
+    || workflowStatus === 'en-route'
+    || workflowStatus === 'arrived-pickup'
+    || workflowStatus === 'patient-onboard'
+    || workflowStatus === 'to-destination'
+    || workflowStatus === 'arrived-destination'
   );
 };
 
@@ -157,11 +151,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const OUTSIDE_SMS_TEMPLATE = 'Hi this is Care Mobility. Your driver is outside waiting for you.';
   const isAndroidDevice = Platform.OS === 'android';
   const hasPersistedInProgressTrip = runtime.assignedTrips.some(trip => isInProgressTrip(trip));
-  const hasScheduledOpenTrip = runtime.assignedTrips.some(trip => !isClosedTrip(trip) && !isInProgressTrip(trip));
-  const [queueMode, setQueueMode] = useState<QueueMode>(() => {
-    if (hasScheduledOpenTrip) return 'scheduled';
-    return hasPersistedInProgressTrip ? 'in-progress' : 'scheduled';
-  });
+  const [queueMode, setQueueMode] = useState<QueueMode>(() => hasPersistedInProgressTrip ? 'in-progress' : 'scheduled');
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [showCancelComposer, setShowCancelComposer] = useState(false);
   const [cancelComposerMode, setCancelComposerMode] = useState<CancelComposerMode>('full');
@@ -171,25 +161,27 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const [completionPhotoDataUrl, setCompletionPhotoDataUrl] = useState('');
   const lateAlertSentRef = useRef<string>('');
 
-  const openTrips = useMemo(() => runtime.assignedTrips.filter(trip => !isClosedTrip(trip)), [runtime.assignedTrips]);
+  const isClosedTrip = (status?: string) => {
+    const normalized = String(status || '').toLowerCase();
+    return normalized.includes('completed') || normalized.includes('cancelled') || normalized.includes('canceled');
+  };
+
+  const openTrips = useMemo(() => runtime.assignedTrips.filter(trip => !isClosedTrip(trip.status)), [runtime.assignedTrips]);
   const focusTrip = openTrips.find(trip => trip.id === runtime.activeTrip?.id) || null;
   const isDriverLockedIntoTrip = (trip?: typeof openTrips[number] | null) => {
     if (!trip) return false;
+    const normalizedStatus = String(trip.status || '').toLowerCase();
     return Boolean(
-      trip.enRouteAt
+      trip.driverWorkflow?.acceptedAt
+      || trip.enRouteAt
       || trip.arrivedAt
       || trip.patientOnboardAt
       || trip.startTripAt
       || trip.arrivedDestinationAt
-      || trip.driverWorkflow?.acceptedAt
-      || trip.driverWorkflow?.departureAt
-      || trip.driverWorkflow?.departureToPickupAt
-      || trip.driverWorkflow?.arrivalAt
-      || trip.driverWorkflow?.arrivedPickupAt
-      || trip.driverWorkflow?.patientOnboardAt
-      || trip.driverWorkflow?.startTripAt
-      || trip.driverWorkflow?.destinationDepartureAt
-      || trip.driverWorkflow?.arrivedDestinationAt
+      || normalizedStatus === 'accepted'
+      || normalizedStatus.includes('progress')
+      || normalizedStatus.includes('route')
+      || normalizedStatus.includes('arrived')
     );
   };
   const blockingTrip = useMemo(() => openTrips.find(trip => isDriverLockedIntoTrip(trip)) || null, [openTrips]);
@@ -204,18 +196,6 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     if (hasPersistedInProgressTrip || queueMode !== 'in-progress') return;
     setQueueMode('scheduled');
   }, [hasPersistedInProgressTrip, queueMode]);
-
-  useEffect(() => {
-    if (queueMode !== 'in-progress') return;
-    if (!hasScheduledOpenTrip) return;
-    setQueueMode('scheduled');
-  }, [hasScheduledOpenTrip, queueMode]);
-
-  useEffect(() => {
-    if (queueMode !== 'in-progress' || !inProgressFocusTrip?.id) return;
-    if (String(runtime.activeTrip?.id || '').trim() === String(inProgressFocusTrip.id || '').trim()) return;
-    runtime.setActiveTrip(inProgressFocusTrip);
-  }, [inProgressFocusTrip, queueMode, runtime]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -289,53 +269,13 @@ export const DriverTripsSection = ({ runtime }: Props) => {
 
   const displayedScheduledTrips = queueMode === 'scheduled' ? filteredTrips : [];
   const displayedFocusTrip = queueMode === 'in-progress' ? inProgressFocusTrip : null;
-  const scheduledQueueTrips = useMemo(() => {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const todayKey = toDateKey(today);
-    const tomorrowKey = toDateKey(tomorrow);
-    const matchesDateFilter = (trip: (typeof openTrips)[number]) => {
-      const serviceDateKey = normalizeServiceDateKey(trip.serviceDate);
-      if (!serviceDateKey) return true;
-      if (runtime.tripDateFilter === 'today') return serviceDateKey === todayKey;
-      if (runtime.tripDateFilter === 'next-day') return serviceDateKey === tomorrowKey || Boolean(trip.isNextDayTrip);
-      return serviceDateKey === todayKey || serviceDateKey === tomorrowKey || Boolean(trip.isNextDayTrip);
-    };
-
-    return openTrips.filter(trip => !isInProgressTrip(trip)).filter(matchesDateFilter);
-  }, [openTrips, runtime.tripDateFilter]);
-  const inProgressQueueTrips = useMemo(() => {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const todayKey = toDateKey(today);
-    const tomorrowKey = toDateKey(tomorrow);
-    const matchesDateFilter = (trip: (typeof openTrips)[number]) => {
-      const serviceDateKey = normalizeServiceDateKey(trip.serviceDate);
-      if (!serviceDateKey) return true;
-      if (runtime.tripDateFilter === 'today') return serviceDateKey === todayKey;
-      if (runtime.tripDateFilter === 'next-day') return serviceDateKey === tomorrowKey || Boolean(trip.isNextDayTrip);
-      return serviceDateKey === todayKey || serviceDateKey === tomorrowKey || Boolean(trip.isNextDayTrip);
-    };
-
-    return openTrips.filter(trip => isInProgressTrip(trip)).filter(matchesDateFilter);
-  }, [openTrips, runtime.tripDateFilter]);
-
-  useEffect(() => {
-    if (queueMode !== 'scheduled') return;
-    if (scheduledQueueTrips.length > 0) return;
-    if (inProgressQueueTrips.length === 0) return;
-    setQueueMode('in-progress');
-    if (inProgressFocusTrip) {
-      runtime.setActiveTrip(inProgressFocusTrip);
-    }
-  }, [inProgressFocusTrip, inProgressQueueTrips.length, queueMode, runtime, scheduledQueueTrips.length]);
 
   const workflow = displayedFocusTrip?.driverWorkflow || null;
   const hasAcceptedState = Boolean(
     displayedFocusTrip && (
       Boolean(workflow?.acceptedAt)
+      || String(workflow?.status || '').toLowerCase() === 'accepted'
+      || String(displayedFocusTrip.status || '').toLowerCase().includes('progress')
     )
   );
   const hasStartedRouteToPickup = Boolean(displayedFocusTrip?.enRouteAt || workflow?.departureToPickupAt || workflow?.departureAt);
@@ -634,15 +574,14 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     });
     if (ok) {
       setCompletionPhotoDataUrl('');
-      runtime.setActiveTrip(null);
-      setQueueMode('scheduled');
     }
   };
 
   const activateWillCallTrip = async (trip: typeof openTrips[number]) => {
     const activationTime = formatWillCallActivatedLabel(trip.willCallActivatedAt);
     if (activationTime) {
-      Alert.alert('WillCall already activated', `WillCall was recorded at ${activationTime}. Tap the trip card to activate the full trip when the driver is ready to run it.`);
+      runtime.setActiveTrip(trip);
+      setQueueMode('in-progress');
       return;
     }
 
@@ -699,7 +638,13 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     const tripStatus = String(trip.status || '').toLowerCase();
     const isWillCall = Boolean(trip.isWillCall) || tripStatus.trim() === 'willcall';
     const hasActivatedWillCall = Boolean(formatWillCallActivatedLabel(trip.willCallActivatedAt));
-    const tripHasAccepted = queueMode === 'scheduled' ? false : isInProgressTrip(trip);
+    const tripHasAccepted = Boolean(
+      trip.driverWorkflow?.acceptedAt
+      || tripStatus.includes('progress')
+      || tripStatus === 'accepted'
+      || tripStatus.includes('route')
+      || tripStatus.includes('arrived')
+    );
     const hasOtherBlockingTrip = blockingTrip && String(blockingTrip.id || '').trim() !== String(trip.id || '').trim();
 
     if (isWillCall && !tripHasAccepted && !hasActivatedWillCall) {
@@ -720,12 +665,12 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       }
 
       Alert.alert(
-        'Activate trip?',
+        'Accept trip?',
         `${trip.rider || 'Patient'}\n${trip.address || ''}${trip.scheduledPickup ? `\nPickup: ${trip.scheduledPickup}` : ''}`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Activate',
+            text: 'Accept',
             onPress: () => {
               runtime.setActiveTrip(trip);
               void runtime.submitTripAction('accept', { tripId: trip.id });
@@ -800,7 +745,7 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                   <Text style={styles.smsBadgeText}>{getTripPatientPhone(trip) ? `${isAndroidDevice ? 'Text' : 'SMS'} ${formatActionPhone(getTripPatientPhone(trip))}` : (isAndroidDevice ? 'Text' : 'SMS')}</Text>
                 </Pressable>
                 {isWillCallTrip ? <Pressable style={[styles.willCallBadge, isAndroidDevice ? styles.androidQuickActionButton : null, runtime.activeTripAction ? styles.actionDisabled : null, willCallActivatedLabel ? styles.willCallBadgeActive : null]} onPress={() => void activateWillCallTrip(trip)} disabled={runtime.activeTripAction.length > 0}>
-                  <Text style={styles.willCallBadgeText}>{runtime.activeTripAction === 'activate-willcall' && runtime.activeTrip?.id === trip.id ? 'Sending...' : willCallActivatedLabel ? `WillCall ${willCallActivatedLabel}` : 'Activate WillCall'}</Text>
+                  <Text style={styles.willCallBadgeText}>{runtime.activeTripAction === 'activate-willcall' && runtime.activeTrip?.id === trip.id ? 'Sending...' : willCallActivatedLabel ? `Open Trip ${willCallActivatedLabel}` : 'Activate WillCall'}</Text>
                   </Pressable> : null}
                 <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(trip, 'quick')}>
                   <Text style={styles.cancelBadgeText}>Cancel</Text>

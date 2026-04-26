@@ -1,7 +1,0 @@
-.dispatcherPageRoot :global(.page-wrapper .page-content) {
-  padding-bottom: 8px !important;
-}
-
-.dispatcherPageRoot :global(.page-wrapper .page-content .container-fluid) {
-  padding-bottom: 0 !important;
-}

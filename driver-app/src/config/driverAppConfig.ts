@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { RoadmapVersion } from '../types/driver';
 
 const normalizeApiBaseUrl = (value?: string) => {
@@ -5,11 +6,28 @@ const normalizeApiBaseUrl = (value?: string) => {
   return normalizedValue.replace(/\/$/, '');
 };
 
+const normalizeVariant = (value?: string) => String(value || '').trim().toLowerCase();
+
+const expoExtra = (Constants.expoConfig?.extra || {}) as {
+  apiBaseUrl?: string;
+  appVariant?: string;
+  requiresExplicitApiBaseUrl?: boolean;
+};
+
+const defaultProductionApiBaseUrl = 'https://care-mobility-dispatch-web-v2.onrender.com';
+const appVariant = normalizeVariant(process.env.DRIVER_APP_VARIANT || expoExtra.appVariant);
+const isCloneServerVariant = appVariant === 'clone-server';
+const requiresExplicitApiBaseUrl = Boolean(expoExtra.requiresExplicitApiBaseUrl) || isCloneServerVariant;
 const resolvedApiBaseUrl = normalizeApiBaseUrl(process.env.EXPO_PUBLIC_DRIVER_API_BASE_URL)
-  || 'https://care-mobility-dispatch-web-v2.onrender.com';
+  || normalizeApiBaseUrl(expoExtra.apiBaseUrl)
+  || (requiresExplicitApiBaseUrl ? '' : defaultProductionApiBaseUrl);
+const missingApiBaseUrlMessage = 'Clone Server requires EXPO_PUBLIC_DRIVER_API_BASE_URL. Set a public HTTPS clone backend before signing in or building the APK.';
 
 export const DRIVER_APP_CONFIG = {
+  appVariant: isCloneServerVariant ? 'clone-server' : 'default',
   apiBaseUrl: resolvedApiBaseUrl,
+  requiresExplicitApiBaseUrl,
+  missingApiBaseUrlMessage,
   enableBackgroundTracking: true,
   // Trip updates should reach drivers quickly after dispatcher changes.
   tripSyncIntervalMs: 8000,

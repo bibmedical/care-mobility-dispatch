@@ -17,14 +17,6 @@ const Login = () => {
             </Link>
           </div>
           <LoginForm />
-          <div className="text-center mt-3 small text-muted">
-            <Link href="/privacy-policy" className="text-decoration-none me-3">
-              Privacy Policy
-            </Link>
-            <Link href="/terms-and-conditions" className="text-decoration-none">
-              Terms and Conditions
-            </Link>
-          </div>
         </CardBody>
       </Card>
     </Col>;
