@@ -14,7 +14,7 @@ export const authorizeMobileDriverRequest = async (request, driverId, options = 
   const sessionTokenHeader = String(request.headers.get('x-driver-session-token') || '').trim();
   const allowLegacyWithoutSession = options.allowLegacyWithoutSession === true;
 
-  if (allowLegacyWithoutSession && normalizedDriverId && (!deviceIdHeader || !sessionTokenHeader)) {
+  if (allowLegacyWithoutSession && normalizedDriverId) {
     return {
       session: {
         driverId: normalizedDriverId,
