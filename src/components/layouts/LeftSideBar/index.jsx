@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Badge, Form } from 'react-bootstrap';
 import { useNemtContext } from '@/context/useNemtContext';
 import { usePathname } from 'next/navigation';
@@ -80,15 +80,6 @@ const LeftSideBar = () => {
 
     return counts;
   }, [trips]);
-
-  useEffect(() => {
-    if (!isDispatcherPage) return;
-    if (selectedDriverId) return;
-    const firstThreadDriverId = filteredThreads[0]?.driverId ?? null;
-    if (firstThreadDriverId) {
-      setSelectedDriverId(firstThreadDriverId);
-    }
-  }, [filteredThreads, isDispatcherPage, selectedDriverId, setSelectedDriverId]);
 
   const filteredDrivers = useMemo(() => {
     const term = driverSearch.trim().toLowerCase();

@@ -34,8 +34,8 @@ const TRIP_COLUMN_MIN_WIDTHS = {
   lateMinutes: 68
 };
 
-const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'day-summary', 'route-actions'];
-const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'actions', 'columns'];
+const DISPATCHER_ROW1_DEFAULT_BLOCKS = ['status-filter', 'date-controls', 'trip-search', 'day-summary'];
+const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'route-actions', 'actions', 'columns'];
 const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['table-view-mode', 'metric-miles', 'metric-duration'];
 const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
 const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
@@ -53,20 +53,6 @@ const DISPATCHER_TOOLBAR_BLOCK_LABELS = {
   'metric-miles': 'Miles metric',
   'metric-duration': 'Duration metric'
 };
-
-const buildDispatcherHelpButton = (router, setStatusMessage, buttonStyle) => <Button variant="outline-dark" size="sm" style={buttonStyle} onClick={() => {
-  setStatusMessage('Opening Help workspace.');
-  router.push('/help');
-}}>
-    Help
-  </Button>;
-
-const buildDispatcherScreensButton = (router, setStatusMessage, buttonStyle) => <Button variant="outline-dark" size="sm" style={buttonStyle} onClick={() => {
-  setStatusMessage('Opening dispatcher screens registry.');
-  router.push('/dispatcher/screens');
-}}>
-    All
-  </Button>;
 
 const getActiveTimeOffAppointment = driver => {
   const appointment = driver?.timeOffAppointment;
@@ -149,6 +135,15 @@ const normalizeDispatcherToolbarRows = (row1Value, row2Value, row3Value) => {
     row3.push(blockId);
   }
 
+  const routeActionsIndex = row1.indexOf('route-actions');
+  if (routeActionsIndex >= 0) row1.splice(routeActionsIndex, 1);
+  const routeActionsRow3Index = row3.indexOf('route-actions');
+  if (routeActionsRow3Index >= 0) row3.splice(routeActionsRow3Index, 1);
+  if (!row2.includes('route-actions')) {
+    const statsIndex = row2.indexOf('stats');
+    row2.splice(statsIndex >= 0 ? statsIndex + 1 : 0, 0, 'route-actions');
+  }
+
   return { row1, row2, row3 };
 };
 
@@ -206,6 +201,8 @@ const DEFAULT_DISPATCHER_LAYOUT = {
   messagingVisible: true,
   actionsVisible: true
 };
+const DEFAULT_DISPATCHER_COLUMN_SPLIT = 40;
+const DEFAULT_DISPATCHER_ROW_SPLIT = 35;
 
 const MOBILE_DISPATCHER_LAYOUT = {
   preset: 'custom',
@@ -992,8 +989,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   const [timeOffActionKey, setTimeOffActionKey] = useState('');
   const adminDriversById = useMemo(() => new Map((Array.isArray(adminData?.drivers) ? adminData.drivers : []).map(driver => [String(driver?.id || '').trim(), driver])), [adminData?.drivers]);
   const adminVehiclesById = useMemo(() => new Map((Array.isArray(adminData?.vehicles) ? adminData.vehicles : []).map(vehicle => [String(vehicle?.id || '').trim(), vehicle])), [adminData?.vehicles]);
-  const [columnSplit, setColumnSplit] = useState(50);
-  const [rowSplit, setRowSplit] = useState(50);
+  const [columnSplit, setColumnSplit] = useState(DEFAULT_DISPATCHER_COLUMN_SPLIT);
+  const [rowSplit, setRowSplit] = useState(DEFAULT_DISPATCHER_ROW_SPLIT);
   const [dragMode, setDragMode] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [routeMetrics, setRouteMetrics] = useState(null);
@@ -1151,6 +1148,9 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     setSelectedRouteId('');
     setSelectedDriverId(null);
     setIsManualDriverScope(false);
+    setIsRoutePanelCollapsed(true);
+    setFollowSelectedDriver(false);
+    setMapFocusRequest(null);
   };
   const exitCancelledPanelMode = (message = 'Vista normal de viajes restaurada.') => {
     setRightPanelMode('default');
@@ -1342,6 +1342,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
     dispatcherTableViewBackupRef.current = null;
     setDispatcherTableViewMode('default');
+    setColumnSplit(DEFAULT_DISPATCHER_COLUMN_SPLIT);
+    setRowSplit(DEFAULT_DISPATCHER_ROW_SPLIT);
     setStatusMessage('Dispatcher restaurado a fábrica: 4 bloques + mapa, columnas originales, control de mapa reintegrado.');
   };
 
@@ -1600,8 +1602,11 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   };
 
   const renderRouteToolbarActions = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
-      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print Route</Button>
-      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleShareRouteWhatsapp} disabled={mapLocked}>WhatsApp</Button>
+      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print</Button>
+      <Button variant="success" size="sm" onClick={handleShareRouteWhatsapp} disabled={mapLocked}>W</Button>
+    </div>;
+
+  const renderRouteReassignActions = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
       <Form.Select size="sm" value={quickReassignDriverId} onChange={event => setQuickReassignDriverId(event.target.value)} disabled={mapLocked} style={{ width: 210 }}>
         <option value="">Reassign to driver</option>
         {quickReassignDrivers.map(driver => <option key={`toolbar-${driver.id}`} value={driver.id}>{driver.name}{getDriverTimeOffLabel(driver) ? ` (${getDriverTimeOffLabel(driver)})` : ''}{String(driver?.live || '').trim().toLowerCase() === 'online' ? '' : ' (offline)'}</option>)}
@@ -1644,7 +1649,10 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
               <option value="">Select driver</option>
               {drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name}{getDriverTimeOffLabel(driver) ? ` (${getDriverTimeOffLabel(driver)})` : ''}</option>)}
             </Form.Select>
-            <Button variant={selectedDriverId ? 'outline-dark' : 'dark'} size="sm" onClick={() => handleDriverSelectionChange('')} disabled={mapLocked} style={selectedDriverId ? greenToolbarButtonStyle : undefined}>All drivers</Button>
+            <Button variant={selectedDriverId ? 'outline-dark' : 'dark'} size="sm" onClick={() => {
+            resetDispatcherSelectionScope();
+            setStatusMessage('Mostrando todos los trips otra vez. GPS en descanso.');
+          }} disabled={mapLocked} style={selectedDriverId ? greenToolbarButtonStyle : undefined}>All rides</Button>
             {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-dark'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked} style={followSelectedDriver ? undefined : greenToolbarButtonStyle}>{followSelectedDriver ? 'Following' : 'Follow'}</Button> : null}
           </div>;
       case 'secondary-driver':
@@ -1665,7 +1673,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       case 'day-summary':
         return null;
       case 'route-actions':
-        return null;
+        return renderRouteReassignActions();
       default:
         return null;
     }
@@ -1797,9 +1805,6 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         return null;
     }
   };
-
-  const renderHelpButton = () => buildDispatcherHelpButton(router, setStatusMessage, greenToolbarButtonStyle);
-  const renderScreensButton = () => buildDispatcherScreensButton(router, setStatusMessage, greenToolbarButtonStyle);
 
   const handleCreateManualTrip = async draft => {
     const createdTrip = createManualTripRecord({
@@ -1933,6 +1938,9 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     return Array.from(new Set(cityOptionTrips.filter(trip => !targetPickupCity || getPickupCity(trip).toLowerCase() === targetPickupCity).map(trip => getDropoffCity(trip).trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [cityOptionTrips, puCityFilter]);
   const filteredTrips = useMemo(() => cityOptionTrips.filter(trip => {
+    if (!selectedDriverId) return true;
+    return isTripAssignedToDriver(trip, selectedDriverId);
+  }).filter(trip => {
     const pickupCityValue = puCityFilter.trim().toLowerCase();
     if (!pickupCityValue) return true;
     return getPickupCity(trip).toLowerCase() === pickupCityValue;
@@ -1940,7 +1948,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     const dropoffCityValue = doCityFilter.trim().toLowerCase();
     if (!dropoffCityValue) return true;
     return getDropoffCity(trip).toLowerCase() === dropoffCityValue;
-  }), [cityOptionTrips, doCityFilter, puCityFilter]);
+  }), [cityOptionTrips, doCityFilter, puCityFilter, selectedDriverId]);
   const getCurrentLateMinutesForTrip = trip => {
     const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
     if (!tripDateKey || tripDateKey !== todayDateKey) return null;
@@ -1987,7 +1995,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     tokens.push(isCancelledPanelMode ? isCancelledRoutesMode ? 'Mode: Day trips by driver' : 'Mode: Cancelled' : 'Mode: Normal');
     tokens.push(`Date: ${tripDateFilter === 'all' ? daySummaryMetrics.dateKey : tripDateFilter}`);
     if (tripStatusFilter !== 'all') tokens.push(`Status: ${tripStatusFilter}`);
-    if (selectedDriver?.name) tokens.push(`Driver: ${selectedDriver.name}`);
+    tokens.push(selectedDriver?.name ? `Driver: ${selectedDriver.name}` : 'Driver: All rides');
     if (selectedRoute?.name) tokens.push(`Route: ${selectedRoute.name}`);
     if (selectedTripIds.length > 0) tokens.push(`Selected: ${selectedTripIds.length}`);
     return tokens;
@@ -2038,6 +2046,12 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     accumulator[option.key] = option;
     return accumulator;
   }, {}), []);
+  const dispatcherColumnPickerOptions = useMemo(() => {
+    const priorityColumnKeys = ['notes', 'leg', 'punctuality', 'lateMinutes'];
+    const priorityColumns = priorityColumnKeys.map(columnKey => DISPATCH_TRIP_COLUMN_OPTIONS.find(option => option.key === columnKey)).filter(Boolean);
+    const remainingColumns = DISPATCH_TRIP_COLUMN_OPTIONS.filter(option => !priorityColumnKeys.includes(option.key));
+    return [...priorityColumns, ...remainingColumns];
+  }, []);
   const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
   const filteredDrivers = drivers;
   const tripOriginalOrderLookup = useMemo(() => new Map(trips.map((trip, index) => [trip.id, index])), [trips]);
@@ -2860,13 +2874,12 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
 
   const handleDriverSelectionChange = nextDriverId => {
     const normalizedDriverId = String(nextDriverId || '').trim();
-    const preferredRouteId = getPreferredRouteIdForDriver(normalizedDriverId);
     const driver = drivers.find(item => String(item?.id || '').trim() === normalizedDriverId) || null;
     setSelectedTripIds([]);
     setSelectedDriverId(normalizedDriverId || null);
     setIsManualDriverScope(Boolean(normalizedDriverId));
-    setSelectedRouteId(preferredRouteId || '');
-    setIsRoutePanelCollapsed(false);
+    setSelectedRouteId('');
+    setIsRoutePanelCollapsed(true);
 
     if (!normalizedDriverId) {
       setFollowSelectedDriver(false);
@@ -2891,7 +2904,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     const assignedCount = trips.filter(trip => trip.driverId === normalizedDriverId || trip.secondaryDriverId === normalizedDriverId).length;
     const openCount = trips.filter(trip => !trip.driverId && !trip.secondaryDriverId).length;
     const appointmentNote = getDriverTimeOffDate(driver) ? ` ${driver.name} has ${getDriverTimeOffLabel(driver)}.` : '';
-    setStatusMessage(preferredRouteId ? `Viendo ${driver.name}: ${assignedCount} asignados, ${openCount} pendientes y ruta cargada.${appointmentNote}` : `Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.${appointmentNote}`);
+    setStatusMessage(`Viendo ${driver.name}: ${assignedCount} asignados y ${openCount} pendientes.${appointmentNote}`);
   };
 
   const handleOpenLateTrip = (event, trip) => {
@@ -3568,14 +3581,18 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   const workspaceHeightNoBottomPanels = 'calc(100dvh - 12px)';
   const dividerSize = 10;
   const inlineMapVisible = dispatcherLayout.mapVisible && showInlineMap;
-  const actionsPanelVisible = dispatcherLayout.actionsVisible && !isRoutePanelCollapsed && !isCancelledPanelMode;
+  const hasRouteDetailsScope = Boolean(selectedRoute) || selectedTripIds.length > 0;
+  const actionsPanelVisible = dispatcherLayout.actionsVisible && hasRouteDetailsScope && !isRoutePanelCollapsed && !isCancelledPanelMode;
   const hasLeftColumn = inlineMapVisible || dispatcherLayout.messagingVisible;
   const hasRightColumn = dispatcherLayout.tripsVisible || actionsPanelVisible;
   const hasTopRow = inlineMapVisible || dispatcherLayout.tripsVisible;
   const hasBottomRow = dispatcherLayout.messagingVisible || actionsPanelVisible;
   const hasColumnSplit = hasLeftColumn && hasRightColumn;
-  const hasRowSplit = inlineMapVisible && dispatcherLayout.messagingVisible || dispatcherLayout.tripsVisible && actionsPanelVisible;
+  const hasLeftRowSplit = inlineMapVisible && dispatcherLayout.messagingVisible;
+  const hasRightRowSplit = dispatcherLayout.tripsVisible && actionsPanelVisible;
+  const hasRowSplit = hasLeftRowSplit || hasRightRowSplit;
   const rightOnlySplitMode = !inlineMapVisible && dispatcherLayout.tripsVisible && actionsPanelVisible;
+  const rowDividerGridColumn = hasLeftRowSplit && hasRightRowSplit ? '1 / span 3' : hasRightRowSplit ? 3 : 1;
   const effectiveRowSplit = rightOnlySplitMode ? 70 : rowSplit;
   const gridTemplateColumns = hasColumnSplit ? `${columnSplit}% ${dividerSize}px minmax(0, ${100 - columnSplit}%)` : hasLeftColumn ? '1fr 0px 0px' : '0px 0px 1fr';
   const gridTemplateRows = hasRowSplit ? `${effectiveRowSplit}% ${dividerSize}px minmax(0, ${100 - effectiveRowSplit}%)` : hasTopRow ? '1fr 0px 0px' : hasBottomRow ? '0px 0px 1fr' : '1fr 0px 0px';
@@ -3770,8 +3787,16 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           </div>
           <div className="d-flex flex-column gap-2 mt-3">
             <div className="d-flex gap-2 flex-wrap">
-                <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => handleDriverSelectionChange(event.target.value)} style={{ flex: '1 1 180px', minWidth: 180 }}>
-                  <option value="">All drivers</option>
+                <Form.Select size="sm" value={selectedDriverId ?? ''} onChange={event => {
+                const nextDriverId = event.target.value;
+                if (nextDriverId) {
+                  handleDriverSelectionChange(nextDriverId);
+                  return;
+                }
+                resetDispatcherSelectionScope();
+                setStatusMessage('Mostrando todos los trips otra vez. GPS en descanso.');
+              }} style={{ flex: '1 1 180px', minWidth: 180 }}>
+                  <option value="">All rides</option>
                   {drivers.map(driver => <option key={`mobile-driver-${driver.id}`} value={driver.id}>{driver.name}</option>)}
                 </Form.Select>
                 <Form.Select size="sm" value={tripStatusFilter} onChange={event => setTripStatusFilter(event.target.value)} style={{ width: 140, minWidth: 140 }}>
@@ -3798,6 +3823,10 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
 
         {activeDispatcherContextTokens.length > 0 ? <div className="px-3 py-2 border-bottom d-flex align-items-center gap-2 flex-wrap" style={{ backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.92)' }}>
             {activeDispatcherContextTokens.map(token => <Badge key={`mobile-${token}`} bg="secondary">{token}</Badge>)}
+            <Button variant={selectedDriverId ? 'dark' : 'outline-dark'} size="sm" onClick={() => {
+            resetDispatcherSelectionScope();
+            setStatusMessage('Mostrando todos los trips otra vez. GPS en descanso.');
+          }} disabled={mapLocked}>All rides</Button>
             <Button variant="outline-dark" size="sm" onClick={() => {
             exitCancelledPanelMode('Vista móvil restaurada.');
             setTripStatusFilter('all');
@@ -4013,7 +4042,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 moveToolbarBlockAcrossRows(draggedBlockId, 'row2');
                 clearDraggingToolbarBlockIds();
               }}>
-                  {toolbarRow2Order.filter(blockId => isToolbarEditMode || isToolbarBlockEnabled(blockId)).map(blockId => <div
+                  {toolbarRow2Order.filter(blockId => !['actions', 'columns'].includes(canonicalizeToolbarBlockId(blockId))).filter(blockId => isToolbarEditMode || isToolbarBlockEnabled(blockId)).map(blockId => <div
                     key={blockId}
                     draggable={isToolbarEditMode}
                     onDragStart={() => {
@@ -4041,14 +4070,6 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   >
                       {renderToolbarBlock(blockId) || isToolbarEditMode ? renderToolbarBlock(blockId) || <Badge bg="secondary">{blockId}</Badge> : null}
                     </div>)}
-                  <div className="d-flex align-items-center gap-2">
-                    <div>
-                      {renderScreensButton()}
-                    </div>
-                    <div>
-                      {renderHelpButton()}
-                    </div>
-                  </div>
                 </div>
                 
                 {/* Row 3: Leg/Type filters and misc buttons */}
@@ -4096,6 +4117,14 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 }}>
                     <div className="d-flex align-items-center gap-2 flex-wrap">
                       {activeDispatcherContextTokens.map(token => <Badge key={token} bg={isCancelledPanelMode ? 'danger' : 'secondary'}>{token}</Badge>)}
+                      <Button variant={selectedDriverId ? 'dark' : 'outline-dark'} size="sm" onClick={() => {
+                      resetDispatcherSelectionScope();
+                      setStatusMessage('Mostrando todos los trips otra vez. GPS en descanso.');
+                    }} disabled={mapLocked}>All rides</Button>
+                      <div className="d-flex align-items-center gap-1 flex-nowrap ms-2">
+                        {renderToolbarBlock('actions')}
+                        {renderToolbarBlock('columns')}
+                      </div>
                     </div>
                     {hasScopedDispatcherContext ? <Button variant="outline-dark" size="sm" onClick={() => {
                   exitCancelledPanelMode('Vista limpiada y restaurada.');
@@ -4292,7 +4321,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         <div onMouseDown={() => hasRowSplit && !isCancelledPanelMode ? setDragMode('row') : undefined} style={{
         ...dividerBaseStyle,
         cursor: 'row-resize',
-        gridColumn: rightOnlySplitMode ? 3 : '1 / span 3',
+        gridColumn: rowDividerGridColumn,
         gridRow: 2,
         display: hasRowSplit && !isCancelledPanelMode ? 'block' : 'none'
       }}>
@@ -4318,16 +4347,16 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         <div style={{ minWidth: 0, minHeight: 0, overflow: 'hidden', display: dispatcherLayout.messagingVisible ? 'block' : 'none', gridColumn: 1, gridRow: messagingPanelGridRow }}>
           <Card className="h-100 overflow-hidden" style={dispatcherSurfaceStyles.card}>
             <CardBody className="p-0 h-100">
-              <DispatcherMessagingPanel hideThreadList drivers={filteredDrivers} driverSequencePreviewById={driverSequencePreviewById} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
+              <DispatcherMessagingPanel hideThreadList routeToolbarActions={renderRouteToolbarActions()} drivers={filteredDrivers} driverSequencePreviewById={driverSequencePreviewById} selectedDriverId={selectedDriverId} setSelectedDriverId={nextDriverId => {
               const normalizedDriverId = String(nextDriverId || '').trim();
               if (rightPanelMode === 'cancelled') {
                 setRightPanelMode('default');
                 setCancelledDetailMode('names');
               }
-              setIsManualDriverScope(false);
+              setIsManualDriverScope(Boolean(normalizedDriverId));
               setSelectedDriverId(normalizedDriverId || null);
-              setSelectedRouteId(getPreferredRouteIdForDriver(normalizedDriverId) || '');
-              setIsRoutePanelCollapsed(false);
+              setSelectedRouteId('');
+              setIsRoutePanelCollapsed(true);
             }} onLocateDriver={driverId => {
               const normalizedDriverId = String(driverId || '').trim();
               const driver = drivers.find(item => String(item?.id || '').trim() === normalizedDriverId) || null;
@@ -4335,10 +4364,10 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 setRightPanelMode('default');
                 setCancelledDetailMode('names');
               }
-              setIsManualDriverScope(false);
+              setIsManualDriverScope(Boolean(normalizedDriverId));
               setSelectedDriverId(normalizedDriverId || null);
-              setSelectedRouteId(getPreferredRouteIdForDriver(normalizedDriverId) || '');
-              setIsRoutePanelCollapsed(false);
+              setSelectedRouteId('');
+              setIsRoutePanelCollapsed(true);
               setFollowSelectedDriver(false);
               if (Array.isArray(driver?.position) && driver.position.length === 2) {
                 setMapFocusRequest({
@@ -4365,9 +4394,6 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 <div className="d-flex flex-column gap-1">
                   <strong>{selectedRoute?.name || (selectedDriver ? `Route for ${selectedDriver.name}` : 'Route details')}</strong>
                   <span className="small text-muted">{routeTrips.length} trip(s) shown</span>
-                </div>
-                <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
-                  {renderRouteToolbarActions()}
                 </div>
               </div>
               <div className="table-responsive flex-grow-1" style={{ minHeight: 0 }}>
@@ -4431,7 +4457,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   <Button variant="outline-dark" size="sm" onClick={handleResetTripColumns}>Default</Button>
                 </div>
                 <div className="d-flex flex-column gap-2" style={{ maxHeight: '54vh', overflowY: 'auto', paddingRight: 4 }}>
-                  {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`dispatcher-column-modal-${option.key}`} type="switch" id={`dispatcher-column-modal-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
+                  {dispatcherColumnPickerOptions.map(option => <Form.Check key={`dispatcher-column-modal-${option.key}`} type="switch" id={`dispatcher-column-modal-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} disabled={mapLocked} />)}
                 </div>
               </div>
               <div className="col-12 col-xl-6">
