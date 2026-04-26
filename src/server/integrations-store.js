@@ -7,6 +7,12 @@ import { getStorageFilePath } from '@/server/storage-paths';
 
 const DEFAULT_STATE = {
   version: 1,
+  driverApp: {
+    apiBaseUrl: '',
+    notes: '',
+    updatedAt: '',
+    updatedBy: ''
+  },
   uber: {
     organizationName: '',
     accountEmail: '',
@@ -103,6 +109,28 @@ const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !h
 let localMigrationPromise = null;
 
 const getIntegrationsStorageFile = () => getStorageFilePath('integrations-state.json');
+
+const normalizeManagedUrl = value => {
+  const normalizedValue = String(value ?? '').trim().replace(/\/$/, '');
+  if (!normalizedValue) return '';
+
+  try {
+    const parsed = new URL(normalizedValue);
+    const isHttps = parsed.protocol === 'https:';
+    const isLocalHttp = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+    if (!isHttps && !isLocalHttp) return '';
+    return normalizedValue;
+  } catch {
+    return '';
+  }
+};
+
+const normalizeDriverAppState = value => ({
+  apiBaseUrl: normalizeManagedUrl(value?.apiBaseUrl),
+  notes: String(value?.notes ?? ''),
+  updatedAt: String(value?.updatedAt ?? ''),
+  updatedBy: String(value?.updatedBy ?? '')
+});
 
 const normalizeUberState = value => ({
   organizationName: String(value?.organizationName ?? ''),
@@ -224,6 +252,7 @@ const normalizeSmsState = value => ({
 
 const normalizeState = value => ({
   version: 1,
+  driverApp: normalizeDriverAppState(value?.driverApp),
   uber: normalizeUberState(value?.uber),
   ai: normalizeAiState(value?.ai),
   branding: normalizeBrandingState(value?.branding),
