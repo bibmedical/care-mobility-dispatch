@@ -8,7 +8,7 @@ import { getStorageFilePath } from '@/server/storage-paths';
 const DEFAULT_STATE = {
   version: 1,
   driverApp: {
-    apiBaseUrl: '',
+    configuredApiBaseUrl: '',
     notes: '',
     updatedAt: '',
     updatedBy: ''
@@ -109,28 +109,6 @@ const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !h
 let localMigrationPromise = null;
 
 const getIntegrationsStorageFile = () => getStorageFilePath('integrations-state.json');
-
-const normalizeManagedUrl = value => {
-  const normalizedValue = String(value ?? '').trim().replace(/\/$/, '');
-  if (!normalizedValue) return '';
-
-  try {
-    const parsed = new URL(normalizedValue);
-    const isHttps = parsed.protocol === 'https:';
-    const isLocalHttp = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
-    if (!isHttps && !isLocalHttp) return '';
-    return normalizedValue;
-  } catch {
-    return '';
-  }
-};
-
-const normalizeDriverAppState = value => ({
-  apiBaseUrl: normalizeManagedUrl(value?.apiBaseUrl),
-  notes: String(value?.notes ?? ''),
-  updatedAt: String(value?.updatedAt ?? ''),
-  updatedBy: String(value?.updatedBy ?? '')
-});
 
 const normalizeUberState = value => ({
   organizationName: String(value?.organizationName ?? ''),
@@ -248,6 +226,26 @@ const normalizeSmsState = value => ({
   telnyx: normalizeTelnyxSmsState(value?.telnyx),
   ringcentral: normalizeRingCentralSmsState(value?.ringcentral),
   mock: normalizeMockSmsState(value?.mock)
+});
+
+const normalizeManagedUrl = value => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  try {
+    const normalizedInput = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const url = new URL(normalizedInput);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return '';
+  }
+};
+
+const normalizeDriverAppState = value => ({
+  configuredApiBaseUrl: normalizeManagedUrl(value?.configuredApiBaseUrl),
+  notes: String(value?.notes ?? ''),
+  updatedAt: String(value?.updatedAt ?? ''),
+  updatedBy: String(value?.updatedBy ?? '')
 });
 
 const normalizeState = value => ({

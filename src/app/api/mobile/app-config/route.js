@@ -5,22 +5,19 @@ const normalizeUrl = value => String(value || '').trim().replace(/\/$/, '');
 
 const resolvePublicOrigin = request => {
   const forwardedHost = normalizeUrl(request.headers.get('x-forwarded-host'));
-  const forwardedProto = normalizeUrl(request.headers.get('x-forwarded-proto')) || 'https';
-  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
+  const forwardedProto = normalizeUrl(request.headers.get('x-forwarded-proto'));
+  const host = forwardedHost || normalizeUrl(request.headers.get('host'));
 
-  const host = normalizeUrl(request.headers.get('host'));
-  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-  if (host) return `${protocol}://${host}`;
+  if (!host) return '';
 
-  try {
-    return normalizeUrl(new URL(request.url).origin);
-  } catch {
-    return '';
-  }
+  const normalizedHost = host.toLowerCase();
+  const isLocalHost = normalizedHost.startsWith('localhost') || normalizedHost.startsWith('127.0.0.1');
+  const protocol = isLocalHost ? 'http' : (forwardedProto || 'https');
+  return `${protocol}://${host}`;
 };
 
 const resolveDriverAppApiBaseUrl = (request, state) => {
-  const configuredApiBaseUrl = normalizeUrl(state?.driverApp?.apiBaseUrl);
+  const configuredApiBaseUrl = normalizeUrl(state?.driverApp?.configuredApiBaseUrl);
   if (configuredApiBaseUrl) return configuredApiBaseUrl;
 
   return resolvePublicOrigin(request);
@@ -34,10 +31,10 @@ export async function GET(request) {
     ok: true,
     driverApp: {
       apiBaseUrl,
-      configuredApiBaseUrl: normalizeUrl(state?.driverApp?.apiBaseUrl),
+      configuredApiBaseUrl: normalizeUrl(state?.driverApp?.configuredApiBaseUrl),
       updatedAt: String(state?.driverApp?.updatedAt || ''),
       updatedBy: String(state?.driverApp?.updatedBy || ''),
-      source: normalizeUrl(state?.driverApp?.apiBaseUrl) ? 'configured' : 'service-origin'
+      source: normalizeUrl(state?.driverApp?.configuredApiBaseUrl) ? 'configured' : 'service-origin'
     }
   }, {
     headers: {
