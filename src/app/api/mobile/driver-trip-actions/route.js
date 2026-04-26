@@ -553,7 +553,9 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'tripId, driverId, and action are required.' }, { status: 400 });
   }
 
-  const authResult = await authorizeMobileDriverRequest(request, driverId);
+  const authResult = await authorizeMobileDriverRequest(request, driverId, {
+    allowLegacyWithoutSession: true
+  });
   if (authResult.response) return withMobileCors(authResult.response, request);
 
   const adminPayload = await readNemtAdminPayload();
