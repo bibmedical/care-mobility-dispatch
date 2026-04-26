@@ -588,7 +588,14 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived Pickup before Patient Onboard.' }, { status: 400 });
   }
 
-  if (action === 'start-trip' && !currentTrip?.patientOnboardAt && !currentTrip?.actualPickup) {
+  if (
+    action === 'start-trip'
+    && !currentTrip?.patientOnboardAt
+    && !currentTrip?.actualPickup
+    && !currentTrip?.arrivedAt
+    && !currentTrip?.driverWorkflow?.arrivedPickupAt
+    && !currentTrip?.driverWorkflow?.arrivalAt
+  ) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Patient Onboard before Start Trip.' }, { status: 400 });
   }
 
@@ -596,8 +603,14 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Start Trip before Arrived Destination.' }, { status: 400 });
   }
 
-  if (action === 'complete' && !currentTrip?.arrivedDestinationAt && !currentTrip?.driverWorkflow?.destinationArrivalAt) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived Destination before Complete.' }, { status: 400 });
+  if (
+    action === 'complete'
+    && !currentTrip?.arrivedDestinationAt
+    && !currentTrip?.driverWorkflow?.destinationArrivalAt
+    && !currentTrip?.startTripAt
+    && !currentTrip?.driverWorkflow?.destinationDepartureAt
+  ) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Start Trip before Complete.' }, { status: 400 });
   }
 
   if (action === 'complete' && !completionPhotoDataUrl) {

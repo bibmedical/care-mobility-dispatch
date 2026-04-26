@@ -673,9 +673,11 @@ export const useDriverRuntime = () => {
     return await processPendingTripActions();
   };
 
-  const loadMessages = async (signalActive = true) => {
+  const loadMessages = async (signalActive = true, showLoadingIndicator = true) => {
     if (!loggedIn || !driverSession?.driverId || requiresPasswordReset) return;
-    setIsLoadingMessages(true);
+    if (showLoadingIndicator) {
+      setIsLoadingMessages(true);
+    }
     try {
       const requestUrl = `${DRIVER_APP_CONFIG.apiBaseUrl}/api/mobile/driver-messages?driverId=${encodeURIComponent(driverSession.driverId)}&t=${Date.now()}`;
       const { response, payload } = await fetchDriverMessagesWithLegacyFallback(requestUrl, {
@@ -693,7 +695,7 @@ export const useDriverRuntime = () => {
       setMessages([]);
       setMessagesError(error instanceof Error ? error.message : 'Unable to load messages.');
     } finally {
-      if (signalActive) setIsLoadingMessages(false);
+      if (signalActive && showLoadingIndicator) setIsLoadingMessages(false);
     }
   };
 
@@ -1164,9 +1166,9 @@ export const useDriverRuntime = () => {
 
     let active = true;
 
-    void loadMessages(active);
+    void loadMessages(active, false);
     const intervalId = setInterval(() => {
-      void loadMessages(active);
+      void loadMessages(active, false);
     }, DRIVER_APP_CONFIG.messageSyncIntervalMs);
     return () => {
       active = false;
@@ -2327,7 +2329,7 @@ export const useDriverRuntime = () => {
     uploadDriverDocumentFile,
     reloadDriverDocuments: () => loadDriverDocuments(true),
     reloadDriverReviewSummary: () => loadDriverReviewSummary(true),
-    reloadMessages: () => loadMessages(true),
+    reloadMessages: () => loadMessages(true, true),
     fuelReceipts,
     isSubmittingFuelReceipt,
     fuelReceiptError,
