@@ -3,15 +3,27 @@ import { readIntegrationsState } from '@/server/integrations-store';
 
 const normalizeUrl = value => String(value || '').trim().replace(/\/$/, '');
 
-const resolveDriverAppApiBaseUrl = (request, state) => {
-  const configuredApiBaseUrl = normalizeUrl(state?.driverApp?.apiBaseUrl);
-  if (configuredApiBaseUrl) return configuredApiBaseUrl;
+const resolvePublicOrigin = request => {
+  const forwardedHost = normalizeUrl(request.headers.get('x-forwarded-host'));
+  const forwardedProto = normalizeUrl(request.headers.get('x-forwarded-proto')) || 'https';
+  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
+
+  const host = normalizeUrl(request.headers.get('host'));
+  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+  if (host) return `${protocol}://${host}`;
 
   try {
     return normalizeUrl(new URL(request.url).origin);
   } catch {
     return '';
   }
+};
+
+const resolveDriverAppApiBaseUrl = (request, state) => {
+  const configuredApiBaseUrl = normalizeUrl(state?.driverApp?.apiBaseUrl);
+  if (configuredApiBaseUrl) return configuredApiBaseUrl;
+
+  return resolvePublicOrigin(request);
 };
 
 export async function GET(request) {

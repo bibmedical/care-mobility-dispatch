@@ -6,6 +6,22 @@ import { readIntegrationsState, writeIntegrationsState } from '@/server/integrat
 
 const normalizeUrl = value => String(value || '').trim().replace(/\/$/, '');
 
+const resolvePublicOrigin = request => {
+  const forwardedHost = normalizeUrl(request.headers.get('x-forwarded-host'));
+  const forwardedProto = normalizeUrl(request.headers.get('x-forwarded-proto')) || 'https';
+  if (forwardedHost) return `${forwardedProto}://${forwardedHost}`;
+
+  const host = normalizeUrl(request.headers.get('host'));
+  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+  if (host) return `${protocol}://${host}`;
+
+  try {
+    return normalizeUrl(new URL(request.url).origin);
+  } catch {
+    return '';
+  }
+};
+
 const normalizeManagedUrl = value => {
   const normalizedValue = normalizeUrl(value);
   if (!normalizedValue) return '';
@@ -26,13 +42,7 @@ const normalizeManagedUrl = value => {
 
 const buildPayload = (request, state) => {
   const configuredApiBaseUrl = normalizeUrl(state?.driverApp?.apiBaseUrl);
-  const currentServiceOrigin = (() => {
-    try {
-      return normalizeUrl(new URL(request.url).origin);
-    } catch {
-      return '';
-    }
-  })();
+  const currentServiceOrigin = resolvePublicOrigin(request);
 
   return {
     ok: true,

@@ -12,23 +12,123 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CardBody, Col, Dropdown, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 
 const OPERATIONAL_ALERT_TYPES = new Set(['no-departure', 'late-start', 'late-pickup', 'late-dropoff']);
-const getStartOfDay = reference => { const nextDate = new Date(reference); nextDate.setHours(0, 0, 0, 0); return nextDate; };
+
+const getStartOfDay = reference => {
+  const nextDate = new Date(reference);
+  nextDate.setHours(0, 0, 0, 0);
+  return nextDate;
+};
+
 const getStartOfMonth = reference => new Date(reference.getFullYear(), reference.getMonth(), 1);
-const toTimestamp = value => { const timestamp = new Date(value || 0).getTime(); return Number.isFinite(timestamp) ? timestamp : 0; };
+
+const toTimestamp = value => {
+  const timestamp = new Date(value || 0).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
 const clampDisciplineScore = value => Math.max(0, Math.min(100, Math.round(value)));
+
 const computeDisciplineScore = ({ documentAlerts = 0, activeFaults = 0, faultsToday = 0, faultsMonth = 0 }) => clampDisciplineScore(100 - documentAlerts * 5 - activeFaults * 25 - faultsToday * 10 - faultsMonth * 3);
-const buildShellStyles = isLight => ({ windowHeader: { backgroundColor: '#343a40' }, body: { backgroundColor: isLight ? '#ffffff' : '#171b27' }, toolbarButton: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 }, toolbarDropdownMenu: { borderColor: isLight ? '#c8d4e6' : '#2a3144', borderRadius: 4, minWidth: 210 }, activeTab: { backgroundColor: isLight ? '#dbe7f5' : '#24324a', borderColor: isLight ? '#9fb3cc' : '#3a4f74', color: isLight ? '#10212b' : '#f8fbff', borderRadius: 4 }, inactiveTab: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#d7deef', borderRadius: 4 }, search: { width: 230, paddingLeft: 38, backgroundColor: isLight ? '#f8fbff' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 }, dangerButton: { backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff', borderRadius: 4 }, tableShell: { borderColor: isLight ? '#d5deea' : '#2a3144', backgroundColor: isLight ? '#ffffff' : '#171b27' }, tableHead: { position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#343a40', color: '#ffffff' }, tableHeadCell: { backgroundColor: '#343a40', color: '#ffffff', borderColor: 'rgba(255,255,255,0.14)' }, pageBadge: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 }, modalContent: { backgroundColor: isLight ? '#ffffff' : '#171b27', color: isLight ? '#0f172a' : '#e6ecff', borderColor: isLight ? '#c8d4e6' : '#2a3144' }, modalHeader: { backgroundColor: '#343a40', borderColor: isLight ? '#c8d4e6' : '#2a3144' }, modalSection: { backgroundColor: isLight ? '#f8fbff' : '#101521', border: `1px solid ${isLight ? '#c8d4e6' : '#2a3144'}`, borderRadius: 4, padding: 16 }, modalInput: { backgroundColor: isLight ? '#f8fbff' : '#0c111b', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' }, rowBackground: { selected: isLight ? '#e8f2ff' : '#202c42', default: isLight ? '#ffffff' : '#171b27' }, rowTextColor: isLight ? '#0f172a' : '#e6ecff' });
+
+const buildShellStyles = isLight => ({
+  windowHeader: { backgroundColor: '#343a40' },
+  body: { backgroundColor: isLight ? '#ffffff' : '#171b27' },
+  toolbarButton: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 },
+  toolbarDropdownMenu: { borderColor: isLight ? '#c8d4e6' : '#2a3144', borderRadius: 4, minWidth: 210 },
+  activeTab: { backgroundColor: isLight ? '#dbe7f5' : '#24324a', borderColor: isLight ? '#9fb3cc' : '#3a4f74', color: isLight ? '#10212b' : '#f8fbff', borderRadius: 4 },
+  inactiveTab: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#d7deef', borderRadius: 4 },
+  search: { width: 230, paddingLeft: 38, backgroundColor: isLight ? '#f8fbff' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 },
+  dangerButton: { backgroundColor: '#ff4d4f', borderColor: '#ff4d4f', color: '#fff', borderRadius: 4 },
+  tableShell: { borderColor: isLight ? '#d5deea' : '#2a3144', backgroundColor: isLight ? '#ffffff' : '#171b27' },
+  tableHead: { position: 'sticky', top: 0, zIndex: 1, backgroundColor: '#343a40', color: '#ffffff' },
+  tableHeadCell: { backgroundColor: '#343a40', color: '#ffffff', borderColor: 'rgba(255,255,255,0.14)' },
+  pageBadge: { backgroundColor: isLight ? '#f3f7fc' : '#101521', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff', borderRadius: 4 },
+  modalContent: { backgroundColor: isLight ? '#ffffff' : '#171b27', color: isLight ? '#0f172a' : '#e6ecff', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
+  modalHeader: { backgroundColor: '#343a40', borderColor: isLight ? '#c8d4e6' : '#2a3144' },
+  modalSection: { backgroundColor: isLight ? '#f8fbff' : '#101521', border: `1px solid ${isLight ? '#c8d4e6' : '#2a3144'}`, borderRadius: 4, padding: 16 },
+  modalInput: { backgroundColor: isLight ? '#f8fbff' : '#0c111b', borderColor: isLight ? '#c8d4e6' : '#2a3144', color: isLight ? '#0f172a' : '#e6ecff' },
+  rowBackground: {
+    selected: isLight ? '#e8f2ff' : '#202c42',
+    default: isLight ? '#ffffff' : '#171b27'
+  },
+  rowTextColor: isLight ? '#0f172a' : '#e6ecff'
+});
+
 const DRIVER_EDITOR_TABS = [{ key: 'profile', label: 'Profile' }, { key: 'credentials', label: 'Credentials' }, { key: 'license', label: 'License' }, { key: 'compliance', label: 'Compliance' }, { key: 'documents', label: 'Documents' }, { key: 'extensions', label: 'Extensions' }];
 const formLabelClassName = 'text-uppercase small fw-semibold text-secondary mb-2';
+
 const getCollectionKey = activeTab => (activeTab === 'grouping' ? 'groupings' : activeTab);
-const defaultState = { drivers: [], attendants: [], vehicles: [], groupings: [] };
-const defaultDriverTripMetrics = { serviceMinutes: 0, totalTrips: 0, activeTrips: 0 };
-const readFileAsDataUrl = file => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); });
-const toLocalFileProxyUrl = rawPath => { const normalized = String(rawPath || '').replace(/\\/g, '/').replace(/^\/+/, ''); return normalized ? `/api/files/local?path=${encodeURIComponent(normalized)}` : null; };
-const resolveDocumentAsset = value => { if (!value) return null; if (typeof value === 'string') { const normalized = value.replace(/\\/g, '/'); const isDataUrl = normalized.startsWith('data:'); const name = normalized.split('/').pop() || 'uploaded-file'; return { name, type: '', dataUrl: isDataUrl ? normalized : toLocalFileProxyUrl(normalized), source: 'path' }; } if (typeof value === 'object') { const name = value.name || value.fileName || 'uploaded-file'; const dataUrl = value.dataUrl || value.url || (typeof value.path === 'string' ? toLocalFileProxyUrl(value.path) : null); return dataUrl ? { ...value, name, dataUrl, source: value.source || 'object' } : null; } return null; };
+
+const defaultState = {
+  drivers: [],
+  attendants: [],
+  vehicles: [],
+  groupings: []
+};
+
+const defaultDriverTripMetrics = {
+  serviceMinutes: 0,
+  totalTrips: 0,
+  activeTrips: 0
+};
+
+const readFileAsDataUrl = file => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+
+const toLocalFileProxyUrl = rawPath => {
+  const normalized = String(rawPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  return normalized ? `/api/files/local?path=${encodeURIComponent(normalized)}` : null;
+};
+
+const resolveDocumentAsset = value => {
+  if (!value) return null;
+
+  if (typeof value === 'string') {
+    const normalized = value.replace(/\\/g, '/');
+    const isDataUrl = normalized.startsWith('data:');
+    const name = normalized.split('/').pop() || 'uploaded-file';
+
+    return {
+      name,
+      type: '',
+      dataUrl: isDataUrl ? normalized : toLocalFileProxyUrl(normalized),
+      source: 'path'
+    };
+  }
+
+  if (typeof value === 'object') {
+    const name = value.name || value.fileName || 'uploaded-file';
+    const dataUrl = value.dataUrl || value.url || (typeof value.path === 'string' ? toLocalFileProxyUrl(value.path) : null);
+    return dataUrl ? {
+      ...value,
+      name,
+      dataUrl,
+      source: value.source || 'object'
+    } : null;
+  }
+
+  return null;
+};
+
 const isImageAsset = asset => Boolean(asset?.dataUrl) && !String(asset.dataUrl).toLowerCase().endsWith('.pdf');
-const fetchOperationalAlerts = async () => { const response = await fetch('/api/nemt/driver-discipline', { cache: 'no-store' }); if (!response.ok) throw new Error('Unable to load operational alerts'); const payload = await response.json(); return (Array.isArray(payload?.events) ? payload.events : []).filter(event => OPERATIONAL_ALERT_TYPES.has(String(event?.eventType || '').trim())); };
-const fetchDriverTripMetrics = async () => { const response = await fetch('/api/nemt/driver-metrics', { cache: 'no-store' }); const payload = await response.json(); if (!response.ok) throw new Error(payload?.error || 'Unable to load driver metrics'); return payload?.metrics && typeof payload.metrics === 'object' ? payload.metrics : {}; };
+
+const fetchOperationalAlerts = async () => {
+  const response = await fetch('/api/nemt/driver-discipline', { cache: 'no-store' });
+  if (!response.ok) throw new Error('Unable to load operational alerts');
+  const payload = await response.json();
+  return (Array.isArray(payload?.events) ? payload.events : []).filter(event => OPERATIONAL_ALERT_TYPES.has(String(event?.eventType || '').trim()));
+};
+
+const fetchDriverTripMetrics = async () => {
+  const response = await fetch('/api/nemt/driver-metrics', { cache: 'no-store' });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload?.error || 'Unable to load driver metrics');
+  return payload?.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
+};
 
 const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const { themeMode } = useLayoutContext();
@@ -48,51 +148,594 @@ const DriversManagementWorkspace = ({ activeTab = 'drivers' }) => {
   const [operationalAlertsLoading, setOperationalAlertsLoading] = useState(true);
   const [driverTripMetricsState, setDriverTripMetricsState] = useState({});
   const [driverTripMetricsLoading, setDriverTripMetricsLoading] = useState(true);
-  const state = useMemo(() => ({ drivers: data?.drivers ?? defaultState.drivers, attendants: data?.attendants ?? defaultState.attendants, vehicles: data?.vehicles ?? defaultState.vehicles, groupings: data?.groupings ?? defaultState.groupings }), [data]);
-  useEffect(() => { if (activeTab !== 'drivers') { setOperationalAlerts([]); setOperationalAlertsLoading(false); return undefined; } let isMounted = true; const loadOperationalAlerts = async () => { try { const nextAlerts = await fetchOperationalAlerts(); if (isMounted) setOperationalAlerts(nextAlerts); } catch { if (isMounted) setOperationalAlerts([]); } finally { if (isMounted) setOperationalAlertsLoading(false); } }; loadOperationalAlerts(); const intervalId = window.setInterval(loadOperationalAlerts, 60000); return () => { isMounted = false; window.clearInterval(intervalId); }; }, [activeTab]);
-  useEffect(() => { if (activeTab !== 'drivers') { setDriverTripMetricsState({}); setDriverTripMetricsLoading(false); return undefined; } let isMounted = true; const loadDriverTripMetrics = async () => { try { const nextMetrics = await fetchDriverTripMetrics(); if (isMounted) setDriverTripMetricsState(nextMetrics); } catch { if (isMounted) setDriverTripMetricsState({}); } finally { if (isMounted) setDriverTripMetricsLoading(false); } }; loadDriverTripMetrics(); const intervalId = window.setInterval(loadDriverTripMetrics, 60000); return () => { isMounted = false; window.clearInterval(intervalId); }; }, [activeTab]);
-  const config = useMemo(() => { if (activeTab === 'drivers') return { rows: buildDriversRows(state), pageSize: 14, columns: ['№', 'Ctrl', 'Info', 'Vehicle Assignment', 'Hours', 'Trips', 'Discipline', 'Notes'], title: 'Users' }; if (activeTab === 'attendants') return { rows: buildAttendantsRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Attendant', 'Phone', 'Certification', 'Assigned Drivers', 'Notes'], title: 'VDR Change' }; if (activeTab === 'vehicles') return { rows: buildVehiclesRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Info', 'Capacity', 'Driver Assignment', 'Driver Name', 'Notes'], title: 'VDR Change' }; return { rows: buildGroupingRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Group', 'Drivers', 'Vehicles', 'Notes'], title: 'VDR Change' }; }, [activeTab, state]);
-  const driverOperationsMetrics = useMemo(() => { const now = new Date(); const startOfDay = getStartOfDay(now).getTime(); const startOfMonth = getStartOfMonth(now).getTime(); const groupedAlerts = operationalAlerts.reduce((accumulator, alert) => { const key = String(alert?.driverId || '').trim(); if (!key) return accumulator; accumulator[key] = accumulator[key] || []; accumulator[key].push(alert); return accumulator; }, {}); return new Map(state.drivers.map(driver => { const alerts = groupedAlerts[String(driver.id || '').trim()] || []; const activeFaults = alerts.filter(alert => String(alert?.status || '').trim().toLowerCase() === 'active').length; const faultsToday = alerts.filter(alert => toTimestamp(alert?.createdAt) >= startOfDay).length; const faultsMonth = alerts.filter(alert => toTimestamp(alert?.createdAt) >= startOfMonth).length; const documentAlerts = getDocumentAlerts(driver).length; return [driver.id, { activeFaults, faultsToday, faultsMonth, documentAlerts, disciplineScore: computeDisciplineScore({ documentAlerts, activeFaults, faultsToday, faultsMonth }) }]; })); }, [operationalAlerts, state.drivers]);
-  const driverTripMetrics = useMemo(() => new Map(state.drivers.map(driver => { const metrics = driverTripMetricsState?.[driver.id]; return [driver.id, { serviceMinutes: Number(metrics?.serviceMinutes) || 0, totalTrips: Number(metrics?.totalTrips) || 0, activeTrips: Number(metrics?.activeTrips) || 0 }]; })), [driverTripMetricsState, state.drivers]);
-  const handleRefresh = async () => { if (activeTab !== 'drivers') { await refresh(); return; } setOperationalAlertsLoading(true); setDriverTripMetricsLoading(true); const [adminResult, alertsResult, metricsResult] = await Promise.allSettled([refresh(), fetchOperationalAlerts(), fetchDriverTripMetrics()]); if (alertsResult.status === 'fulfilled') { setOperationalAlerts(alertsResult.value); } else { setOperationalAlerts([]); } if (metricsResult.status === 'fulfilled') { setDriverTripMetricsState(metricsResult.value); } else { setDriverTripMetricsState({}); } setOperationalAlertsLoading(false); setDriverTripMetricsLoading(false); if (adminResult.status === 'rejected') { setMessage(adminResult.reason?.message || 'Unable to refresh driver records.'); return; } if (alertsResult.status === 'rejected' || metricsResult.status === 'rejected') { setMessage('Driver records refreshed. Some operational metrics could not be updated.'); return; } setMessage('Driver records and metrics refreshed.'); };
-  const filteredRows = useMemo(() => { const term = search.trim().toLowerCase(); if (!term) return config.rows; return config.rows.filter(row => Object.values(row).some(value => String(typeof value === 'object' ? JSON.stringify(value) : value).toLowerCase().includes(term))); }, [config.rows, search]);
+
+  const state = useMemo(() => ({
+    drivers: data?.drivers ?? defaultState.drivers,
+    attendants: data?.attendants ?? defaultState.attendants,
+    vehicles: data?.vehicles ?? defaultState.vehicles,
+    groupings: data?.groupings ?? defaultState.groupings
+  }), [data]);
+
+  useEffect(() => {
+    if (activeTab !== 'drivers') {
+      setOperationalAlerts([]);
+      setOperationalAlertsLoading(false);
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    const loadOperationalAlerts = async () => {
+      try {
+        const nextAlerts = await fetchOperationalAlerts();
+        if (isMounted) setOperationalAlerts(nextAlerts);
+      } catch {
+        if (isMounted) setOperationalAlerts([]);
+      } finally {
+        if (isMounted) setOperationalAlertsLoading(false);
+      }
+    };
+
+    loadOperationalAlerts();
+    const intervalId = window.setInterval(loadOperationalAlerts, 60000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'drivers') {
+      setDriverTripMetricsState({});
+      setDriverTripMetricsLoading(false);
+      return undefined;
+    }
+
+    let isMounted = true;
+
+    const loadDriverTripMetrics = async () => {
+      try {
+        const nextMetrics = await fetchDriverTripMetrics();
+        if (isMounted) setDriverTripMetricsState(nextMetrics);
+      } catch {
+        if (isMounted) setDriverTripMetricsState({});
+      } finally {
+        if (isMounted) setDriverTripMetricsLoading(false);
+      }
+    };
+
+    loadDriverTripMetrics();
+    const intervalId = window.setInterval(loadDriverTripMetrics, 60000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab]);
+
+  const config = useMemo(() => {
+    if (activeTab === 'drivers') return { rows: buildDriversRows(state), pageSize: 14, columns: ['№', 'Ctrl', 'Info', 'Vehicle Assignment', 'Hours', 'Trips', 'Discipline', 'Notes'], title: 'Users' };
+    if (activeTab === 'attendants') return { rows: buildAttendantsRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Attendant', 'Phone', 'Certification', 'Assigned Drivers', 'Notes'], title: 'VDR Change' };
+    if (activeTab === 'vehicles') return { rows: buildVehiclesRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Info', 'Capacity', 'Driver Assignment', 'Driver Name', 'Notes'], title: 'VDR Change' };
+    return { rows: buildGroupingRows(state), pageSize: 12, columns: ['№', 'Ctrl', 'Group', 'Drivers', 'Vehicles', 'Notes'], title: 'VDR Change' };
+  }, [activeTab, state]);
+
+  const driverOperationsMetrics = useMemo(() => {
+    const now = new Date();
+    const startOfDay = getStartOfDay(now).getTime();
+    const startOfMonth = getStartOfMonth(now).getTime();
+    const groupedAlerts = operationalAlerts.reduce((accumulator, alert) => {
+      const key = String(alert?.driverId || '').trim();
+      if (!key) return accumulator;
+      accumulator[key] = accumulator[key] || [];
+      accumulator[key].push(alert);
+      return accumulator;
+    }, {});
+
+    return new Map(state.drivers.map(driver => {
+      const alerts = groupedAlerts[String(driver.id || '').trim()] || [];
+      const activeFaults = alerts.filter(alert => String(alert?.status || '').trim().toLowerCase() === 'active').length;
+      const faultsToday = alerts.filter(alert => toTimestamp(alert?.createdAt) >= startOfDay).length;
+      const faultsMonth = alerts.filter(alert => toTimestamp(alert?.createdAt) >= startOfMonth).length;
+      const documentAlerts = getDocumentAlerts(driver).length;
+
+      return [driver.id, {
+        activeFaults,
+        faultsToday,
+        faultsMonth,
+        documentAlerts,
+        disciplineScore: computeDisciplineScore({
+          documentAlerts,
+          activeFaults,
+          faultsToday,
+          faultsMonth
+        })
+      }];
+    }));
+  }, [operationalAlerts, state.drivers]);
+
+  const driverTripMetrics = useMemo(() => new Map(state.drivers.map(driver => {
+    const metrics = driverTripMetricsState?.[driver.id];
+    return [driver.id, {
+      serviceMinutes: Number(metrics?.serviceMinutes) || 0,
+      totalTrips: Number(metrics?.totalTrips) || 0,
+      activeTrips: Number(metrics?.activeTrips) || 0
+    }];
+  })), [driverTripMetricsState, state.drivers]);
+
+  const handleRefresh = async () => {
+    if (activeTab !== 'drivers') {
+      await refresh();
+      return;
+    }
+
+    setOperationalAlertsLoading(true);
+    setDriverTripMetricsLoading(true);
+
+    const [adminResult, alertsResult, metricsResult] = await Promise.allSettled([
+      refresh(),
+      fetchOperationalAlerts(),
+      fetchDriverTripMetrics()
+    ]);
+
+    if (alertsResult.status === 'fulfilled') {
+      setOperationalAlerts(alertsResult.value);
+    } else {
+      setOperationalAlerts([]);
+    }
+
+    if (metricsResult.status === 'fulfilled') {
+      setDriverTripMetricsState(metricsResult.value);
+    } else {
+      setDriverTripMetricsState({});
+    }
+
+    setOperationalAlertsLoading(false);
+    setDriverTripMetricsLoading(false);
+
+    if (adminResult.status === 'rejected') {
+      setMessage(adminResult.reason?.message || 'Unable to refresh driver records.');
+      return;
+    }
+
+    if (alertsResult.status === 'rejected' || metricsResult.status === 'rejected') {
+      setMessage('Driver records refreshed. Some operational metrics could not be updated.');
+      return;
+    }
+
+    setMessage('Driver records and metrics refreshed.');
+  };
+
+  const filteredRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return config.rows;
+    return config.rows.filter(row => Object.values(row).some(value => String(typeof value === 'object' ? JSON.stringify(value) : value).toLowerCase().includes(term)));
+  }, [config.rows, search]);
+
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / config.pageSize));
   const safePageIndex = Math.min(pageIndex, totalPages - 1);
   const visibleRows = filteredRows.slice(safePageIndex * config.pageSize, safePageIndex * config.pageSize + config.pageSize);
-  useEffect(() => { setPageIndex(0); setSelectedRowId(null); setShowEditor(false); setValidationErrors([]); }, [activeTab]);
-  useEffect(() => { if (selectedRowId && filteredRows.some(row => row.id === selectedRowId)) return; setSelectedRowId(filteredRows[0]?.id ?? null); }, [filteredRows, selectedRowId]);
+
+  useEffect(() => {
+    setPageIndex(0);
+    setSelectedRowId(null);
+    setShowEditor(false);
+    setValidationErrors([]);
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (selectedRowId && filteredRows.some(row => row.id === selectedRowId)) return;
+    setSelectedRowId(filteredRows[0]?.id ?? null);
+  }, [filteredRows, selectedRowId]);
+
   const collectionKey = getCollectionKey(activeTab);
   const selectedEntity = state[collectionKey].find(entity => entity.id === selectedRowId) ?? null;
   const driverAlerts = activeTab === 'drivers' && draftEntity ? getDocumentAlerts(draftEntity) : [];
-  const selectedDriverOperationalMetrics = activeTab === 'drivers' && draftEntity ? driverOperationsMetrics.get(draftEntity.id) ?? { activeFaults: 0, faultsToday: 0, faultsMonth: 0, documentAlerts: driverAlerts.length, disciplineScore: computeDisciplineScore({ documentAlerts: driverAlerts.length }) } : null;
+  const selectedDriverOperationalMetrics = activeTab === 'drivers' && draftEntity ? driverOperationsMetrics.get(draftEntity.id) ?? {
+    activeFaults: 0,
+    faultsToday: 0,
+    faultsMonth: 0,
+    documentAlerts: driverAlerts.length,
+    disciplineScore: computeDisciplineScore({ documentAlerts: driverAlerts.length })
+  } : null;
   const profilePhotoAsset = resolveDocumentAsset(draftEntity?.documents?.profilePhoto);
   const licenseFrontAsset = resolveDocumentAsset(draftEntity?.documents?.licenseFront);
   const primaryPhotoAsset = profilePhotoAsset || licenseFrontAsset;
   const getVehicleById = vehicleId => state.vehicles.find(vehicle => vehicle.id === vehicleId) || null;
   const draftVehicle = activeTab === 'drivers' ? getVehicleById(draftEntity?.vehicleId) : null;
   const draftVehicleType = activeTab === 'drivers' ? getVehicleCapabilityTokens(draftVehicle).join(', ') : '';
-  const availableGroupings = activeTab === 'drivers' && draftVehicle ? state.groupings.filter(grouping => { const groupingType = getGroupingVehicleType(grouping, state); return !groupingType || vehicleSupportsServiceType(draftVehicle, groupingType); }) : state.groupings;
-  const openEditor = entity => { const nextDraft = entity ? JSON.parse(JSON.stringify(entity)) : activeTab === 'drivers' ? createBlankDriver() : activeTab === 'attendants' ? createBlankAttendant() : activeTab === 'vehicles' ? createBlankVehicle() : createBlankGrouping(); setDraftEntity(nextDraft); setEditorTab('profile'); setValidationErrors([]); setShowEditor(true); };
-  const updateDraftField = (field, value) => { setDraftEntity(current => { if (!current) return current; if (activeTab === 'drivers' && field === 'vehicleId') { const nextVehicle = getVehicleById(value); const currentGrouping = state.groupings.find(grouping => grouping.id === current.groupingId); const currentGroupingType = currentGrouping ? getGroupingVehicleType(currentGrouping, state) : ''; return { ...current, vehicleId: value, groupingId: nextVehicle && currentGroupingType && !vehicleSupportsServiceType(nextVehicle, currentGroupingType) ? '' : current.groupingId }; } return { ...current, [field]: value }; }); };
-  const updateDraftDocument = async (field, file) => { if (!file) return; const dataUrl = await readFileAsDataUrl(file); setDraftEntity(current => ({ ...current, documents: { ...current.documents, [field]: { name: file.name, type: file.type, dataUrl } } })); };
-  const persistNextState = async nextState => { await saveData(nextState); await refresh(); };
-  const buildNormalizedEntity = entity => { if (activeTab === 'drivers') { const fallbackUsername = [entity.firstName, entity.lastName].filter(Boolean).join('.').toLowerCase().replace(/\s+/g, '.'); return { ...entity, displayName: getFullName(entity), username: entity.username || entity.portalUsername || fallbackUsername, portalUsername: entity.portalUsername || entity.username || fallbackUsername, portalEmail: entity.portalEmail || entity.email, mobilePin: String(entity.mobilePin || '').replace(/\D+/g, '').slice(0, 12), checkpoint: entity.checkpoint || (entity.vehicleId ? 'Vehicle ready' : 'Needs assignment') }; } return entity; };
-  const getValidationErrors = entity => { if (activeTab === 'drivers') return validateDriver(entity, state); if (activeTab === 'attendants') return validateAttendant(entity); if (activeTab === 'vehicles') return validateVehicle(entity, state); return validateGrouping(entity, state); };
-  const handleSave = async () => { if (!draftEntity) return; const normalizedEntity = buildNormalizedEntity(draftEntity); const errors = getValidationErrors(normalizedEntity); setValidationErrors(errors); if (errors.length > 0) { setMessage(errors[0]); return; } const nextCollection = state[collectionKey].some(entity => entity.id === normalizedEntity.id) ? state[collectionKey].map(entity => entity.id === normalizedEntity.id ? normalizedEntity : entity) : [normalizedEntity, ...state[collectionKey]]; const nextState = { ...state, [collectionKey]: nextCollection }; if (activeTab === 'grouping') { const selectedVehicleIds = new Set((Array.isArray(normalizedEntity?.assignedVehicleIds) ? normalizedEntity.assignedVehicleIds : []).filter(Boolean).map(id => String(id))); nextState.groupings = nextState.groupings.map(grouping => grouping.id === normalizedEntity.id ? normalizedEntity : { ...grouping, assignedVehicleIds: Array.isArray(grouping.assignedVehicleIds) ? grouping.assignedVehicleIds.filter(vehicleId => !selectedVehicleIds.has(String(vehicleId || ''))) : [] }); } await persistNextState(nextState); setSelectedRowId(normalizedEntity.id); setShowEditor(false); setDraftEntity(null); setMessage(`${activeTab.slice(0, 1).toUpperCase()}${activeTab.slice(1)} record saved.`); };
-  const handleDelete = async () => { if (!selectedEntity) { setMessage('Selecciona un registro para borrar.'); return; } let nextState = { ...state }; if (activeTab === 'drivers') { nextState.drivers = state.drivers.filter(driver => driver.id !== selectedEntity.id); } if (activeTab === 'attendants') { nextState.attendants = state.attendants.filter(attendant => attendant.id !== selectedEntity.id); nextState.drivers = state.drivers.map(driver => driver.attendantId === selectedEntity.id ? { ...driver, attendantId: '' } : driver); } if (activeTab === 'vehicles') { nextState.vehicles = state.vehicles.filter(vehicle => vehicle.id !== selectedEntity.id); nextState.drivers = state.drivers.map(driver => driver.vehicleId === selectedEntity.id ? { ...driver, vehicleId: '', checkpoint: 'Needs assignment' } : driver); } if (activeTab === 'grouping') { nextState.groupings = state.groupings.filter(grouping => grouping.id !== selectedEntity.id); nextState.drivers = state.drivers.map(driver => driver.groupingId === selectedEntity.id ? { ...driver, groupingId: '' } : driver); } await persistNextState(nextState); setSelectedRowId(null); setMessage('Registro eliminado y dependencias actualizadas.'); };
-  const renderRowCells = row => { if (activeTab === 'drivers') { const metrics = driverTripMetrics.get(row.raw.id) ?? defaultDriverTripMetrics; const operations = driverOperationsMetrics.get(row.raw.id) ?? { activeFaults: 0, faultsToday: 0, faultsMonth: 0, disciplineScore: 100 }; return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => { event.stopPropagation(); openEditor(row.raw); }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="info"><div>{row.info}</div><div className="small text-secondary">Username: {row.raw.username}</div></td>, <td key="assignment">{row.assignment}</td>, <td key="hours">{formatMinutesAsHours(metrics.serviceMinutes)}</td>, <td key="trips"><div>{metrics.totalTrips} total</div><div className="small text-secondary">{metrics.activeTrips} active</div></td>, <td key="discipline"><div className="d-flex align-items-center gap-2 flex-wrap"><Badge bg={operations.disciplineScore >= 90 ? 'success' : operations.disciplineScore >= 70 ? 'warning' : 'danger'} text={operations.disciplineScore >= 70 ? 'dark' : undefined}>{operations.disciplineScore}</Badge><span className="small text-secondary">Today {operations.faultsToday} | Month {operations.faultsMonth} | Active {operations.activeFaults}</span></div></td>, <td key="notes"><div className="d-flex align-items-center gap-2 flex-wrap"><span>{row.notes}</span>{row.alertCount > 0 ? <Badge bg="warning" text="dark">{row.alertCount} alerts</Badge> : null}</div></td>]; }
-    if (activeTab === 'attendants') return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => { event.stopPropagation(); openEditor(row.raw); }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="name">{row.name}</td>, <td key="phone">{row.phone}</td>, <td key="cert">{row.certification}</td>, <td key="assigned">{row.assignedDrivers}</td>, <td key="notes">{row.notes}</td>];
-    if (activeTab === 'vehicles') return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => { event.stopPropagation(); openEditor(row.raw); }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="info"><div>{row.info.split('\n')[0]}</div><div className="small text-secondary">{row.info.split('\n')[1]}</div></td>, <td key="capacity"><div>Type: {row.capacity.type}</div><div className="d-flex flex-wrap gap-2 small mt-1">{getVehicleCapabilityTokens(row.raw).map(token => <span key={`${row.id}-${token}`}>{token}</span>)}</div></td>, <td key="assignment">{row.assignment}</td>, <td key="driverNames" style={{ maxWidth: 260, whiteSpace: 'normal' }}>{row.driverNames}</td>, <td key="notes">{row.notes}</td>];
-    return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => { event.stopPropagation(); openEditor(row.raw); }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="group">{row.group}</td>, <td key="drivers">{row.drivers}</td>, <td key="vehicles" style={{ maxWidth: 280, whiteSpace: 'normal' }}><div>{row.vehicles}</div>{Array.isArray(row.vehicleLabels) && row.vehicleLabels.length ? <div className="small text-secondary mt-1">{row.vehicleLabels.join(', ')}</div> : <div className="small text-secondary mt-1">No vehicles assigned</div>}</td>, <td key="notes">{row.notes}</td>]; };
-  const renderDriverEditor = () => { if (!draftEntity) return null; if (editorTab === 'profile') { return <Row className="g-3"><Col lg={4}><div style={shellStyles.modalSection}><div className={formLabelClassName}>Driver Photo</div><div className="d-flex flex-column align-items-center gap-3"><div className="rounded-circle overflow-hidden border" style={{ width: 120, height: 120, borderColor: '#2a3144' }}>{isImageAsset(primaryPhotoAsset) ? <img src={primaryPhotoAsset.dataUrl} alt="Driver profile" style={profilePhotoAsset ? { width: '100%', height: '100%', objectFit: 'cover' } : { width: '100%', height: '100%', objectFit: 'cover', objectPosition: '22% 38%', transform: 'scale(1.45)', transformOrigin: '22% 38%' }} /> : <div className="w-100 h-100 d-flex align-items-center justify-content-center text-secondary bg-dark-subtle"><IconifyIcon icon="iconoir:user" className="fs-32" /></div>}</div>{!profilePhotoAsset && isImageAsset(licenseFrontAsset) ? <div className="small text-warning text-center">Primary photo usando License Front (face zoom).</div> : null}<Form.Control type="file" accept="image/*" style={shellStyles.modalInput} onChange={async event => updateDraftDocument('profilePhoto', event.target.files?.[0])} /></div></div></Col><Col lg={8}><div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>First Name</Form.Label><Form.Control value={draftEntity.firstName} style={shellStyles.modalInput} onChange={event => updateDraftField('firstName', event.target.value)} /></Col><Col md={2}><Form.Label className={formLabelClassName}>MI</Form.Label><Form.Control value={draftEntity.middleInitial} style={shellStyles.modalInput} onChange={event => updateDraftField('middleInitial', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Last Name</Form.Label><Form.Control value={draftEntity.lastName} style={shellStyles.modalInput} onChange={event => updateDraftField('lastName', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Username</Form.Label><Form.Control value={draftEntity.username} style={shellStyles.modalInput} onChange={event => updateDraftField('username', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Phone</Form.Label><Form.Control value={draftEntity.phone} style={shellStyles.modalInput} onChange={event => updateDraftField('phone', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>License Number</Form.Label><Form.Control value={draftEntity.licenseNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Role</Form.Label><Form.Control value={draftEntity.role} style={shellStyles.modalInput} onChange={event => updateDraftField('role', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>License State</Form.Label><Form.Control value={draftEntity.licenseState} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseState', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>License Exp.</Form.Label><Form.Control type="date" value={draftEntity.licenseExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseExpirationDate', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Email</Form.Label><Form.Control value={draftEntity.email} style={shellStyles.modalInput} onChange={event => updateDraftField('email', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Vehicle</Form.Label><Form.Select value={draftEntity.vehicleId} style={shellStyles.modalInput} onChange={event => updateDraftField('vehicleId', event.target.value)}><option value="">Select vehicle</option>{state.vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.label}</option>)}</Form.Select></Col><Col md={6}><Form.Label className={formLabelClassName}>Attendant</Form.Label><Form.Select value={draftEntity.attendantId} style={shellStyles.modalInput} onChange={event => updateDraftField('attendantId', event.target.value)}><option value="">No attendant</option>{state.attendants.map(attendant => <option key={attendant.id} value={attendant.id}>{attendant.name}</option>)}</Form.Select></Col><Col md={3}><Form.Label className={formLabelClassName}>Grouping</Form.Label><Form.Select value={draftEntity.groupingId} style={shellStyles.modalInput} onChange={event => updateDraftField('groupingId', event.target.value)}><option value="">No group</option>{availableGroupings.map(grouping => <option key={grouping.id} value={grouping.id}>{grouping.name}{getGroupingVehicleType(grouping, state) ? ` (${getGroupingVehicleType(grouping, state)})` : ''}</option>)}</Form.Select><div className="small text-secondary mt-2">Vehicle type: {draftVehicleType || 'Select a vehicle first'}</div></Col><Col md={3}><Form.Label className={formLabelClassName}>Checkpoint</Form.Label><Form.Control value={draftEntity.checkpoint} style={shellStyles.modalInput} onChange={event => updateDraftField('checkpoint', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div></Col></Row>; }
-    if (editorTab === 'credentials') { return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Portal Username</Form.Label><Form.Control value={draftEntity.portalUsername} style={shellStyles.modalInput} onChange={event => updateDraftField('portalUsername', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Portal Email</Form.Label><Form.Control value={draftEntity.portalEmail} style={shellStyles.modalInput} onChange={event => updateDraftField('portalEmail', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Broker ID</Form.Label><Form.Control value={draftEntity.brokerId} style={shellStyles.modalInput} onChange={event => updateDraftField('brokerId', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Mobile PIN</Form.Label><Form.Control value={draftEntity.mobilePin || ''} inputMode="numeric" style={shellStyles.modalInput} placeholder="Last 4 digits by default" onChange={event => updateDraftField('mobilePin', event.target.value.replace(/\D+/g, '').slice(0, 12))} /><div className="small text-secondary mt-2">If empty, the driver app uses the last 4 digits of the driver phone as the PIN.</div></Col><Col md={3}><Form.Check label="MFA Enabled" checked={draftEntity.mfaEnabled} onChange={event => updateDraftField('mfaEnabled', event.target.checked)} /></Col><Col md={3}><Form.Check label="Password Reset Required" checked={draftEntity.passwordResetRequired} onChange={event => updateDraftField('passwordResetRequired', event.target.checked)} /></Col><Col md={3}><Form.Check label="Background Check Clear" checked={draftEntity.backgroundCheckStatus === 'Clear'} onChange={event => updateDraftField('backgroundCheckStatus', event.target.checked ? 'Clear' : 'Pending')} /></Col><Col md={3}><Form.Check label="Drug Screen Clear" checked={draftEntity.drugScreenStatus === 'Clear'} onChange={event => updateDraftField('drugScreenStatus', event.target.checked ? 'Clear' : 'Pending')} /></Col><Col md={3}><Form.Check label="CPR Certified" checked={draftEntity.cprCertified} onChange={event => updateDraftField('cprCertified', event.target.checked)} /></Col><Col md={3}><Form.Check label="Defensive Driving" checked={draftEntity.defensiveDrivingCertified} onChange={event => updateDraftField('defensiveDrivingCertified', event.target.checked)} /></Col><Col md={3}><Form.Check label="HIPAA Certified" checked={draftEntity.hipaaCertified} onChange={event => updateDraftField('hipaaCertified', event.target.checked)} /></Col><Col md={3}><Form.Check label="NEMT Certified" checked={draftEntity.nemtCertified} onChange={event => updateDraftField('nemtCertified', event.target.checked)} /></Col></Row></div>; }
-    if (editorTab === 'license') { return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>License Number</Form.Label><Form.Control value={draftEntity.licenseNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseNumber', event.target.value)} /></Col><Col md={2}><Form.Label className={formLabelClassName}>Class</Form.Label><Form.Control value={draftEntity.licenseClass} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseClass', event.target.value)} /></Col><Col md={2}><Form.Label className={formLabelClassName}>State</Form.Label><Form.Control value={draftEntity.licenseState} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseState', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Chauffeur Permit</Form.Label><Form.Control value={draftEntity.chauffeurPermit} style={shellStyles.modalInput} onChange={event => updateDraftField('chauffeurPermit', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Issue Date</Form.Label><Form.Control type="date" value={draftEntity.licenseIssueDate} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseIssueDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Expiration Date</Form.Label><Form.Control type="date" value={draftEntity.licenseExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Medical Card Exp.</Form.Label><Form.Control type="date" value={draftEntity.medCardExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('medCardExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Check label="DMV Verified" checked={draftEntity.dmvVerified} onChange={event => updateDraftField('dmvVerified', event.target.checked)} /></Col></Row></div>; }
-    if (editorTab === 'compliance') { return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Discipline Score</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.disciplineScore ?? 100}</div><div className="small text-secondary">Weighted from compliance plus driver faults.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Active Faults</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.activeFaults ?? 0}</div><div className="small text-secondary">Open operational escalations.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Faults Today</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.faultsToday ?? 0}</div><div className="small text-secondary">Misses logged since midnight.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Faults This Month</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.faultsMonth ?? 0}</div><div className="small text-secondary">Rolling monthly discipline trend.</div></div></Col><Col md={4}><Form.Label className={formLabelClassName}>Insurance Carrier</Form.Label><Form.Control value={draftEntity.insuranceCarrier} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceCarrier', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Number</Form.Label><Form.Control value={draftEntity.insurancePolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('insurancePolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Expiration</Form.Label><Form.Control type="date" value={draftEntity.insuranceExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Policy</Form.Label><Form.Control value={draftEntity.workersCompPolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompPolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Exp.</Form.Label><Form.Control type="date" value={draftEntity.workersCompExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Company Tax ID</Form.Label><Form.Control value={draftEntity.taxId} style={shellStyles.modalInput} onChange={event => updateDraftField('taxId', event.target.value)} /></Col><Col md={3}><Form.Check label="Insurance Accredited" checked={draftEntity.insuranceAccredited} onChange={event => updateDraftField('insuranceAccredited', event.target.checked)} /></Col><Col md={3}><Form.Check label="Tax ID Verified" checked={draftEntity.taxIdVerified} onChange={event => updateDraftField('taxIdVerified', event.target.checked)} /></Col><Col md={3}><Form.Check label="W9 On File" checked={draftEntity.w9OnFile} onChange={event => updateDraftField('w9OnFile', event.target.checked)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Tracking</Form.Label><div className="small text-secondary pt-2">Android only. Web admin cannot mark drivers online manually.</div></Col></Row></div>; }
-    if (editorTab === 'extensions') { return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={12}><Form.Label className={formLabelClassName}>Communication Extensions</Form.Label><div className="small text-secondary mb-3">Add communication channels to contact drivers via WhatsApp, Telegram, SMS, and other platforms</div></Col><Col md={6}><Form.Label className={formLabelClassName}>WhatsApp Number</Form.Label><Form.Control value={draftEntity.whatsappNumber || ''} style={shellStyles.modalInput} placeholder="+1 (555) 123-4567" onChange={event => updateDraftField('whatsappNumber', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>WhatsApp Enabled</Form.Label><Form.Check label="Allow WhatsApp messaging from web" checked={draftEntity.whatsappEnabled || false} onChange={event => updateDraftField('whatsappEnabled', event.target.checked)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Telegram Handle</Form.Label><Form.Control value={draftEntity.telegramHandle || ''} style={shellStyles.modalInput} placeholder="@driver_username" onChange={event => updateDraftField('telegramHandle', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Telegram Enabled</Form.Label><Form.Check label="Allow Telegram messaging from web" checked={draftEntity.telegramEnabled || false} onChange={event => updateDraftField('telegramEnabled', event.target.checked)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Viber ID</Form.Label><Form.Control value={draftEntity.viberNumber || ''} style={shellStyles.modalInput} placeholder="+1 (555) 123-4567" onChange={event => updateDraftField('viberNumber', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Viber Enabled</Form.Label><Form.Check label="Allow Viber messaging from web" checked={draftEntity.viberEnabled || false} onChange={event => updateDraftField('viberEnabled', event.target.checked)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Signal Number</Form.Label><Form.Control value={draftEntity.signalNumber || ''} style={shellStyles.modalInput} placeholder="+1 (555) 123-4567" onChange={event => updateDraftField('signalNumber', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Signal Enabled</Form.Label><Form.Check label="Allow Signal messaging from web" checked={draftEntity.signalEnabled || false} onChange={event => updateDraftField('signalEnabled', event.target.checked)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Email for Extensions</Form.Label><Form.Control value={draftEntity.alternateEmail || ''} style={shellStyles.modalInput} placeholder="driver@email.com" onChange={event => updateDraftField('alternateEmail', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>SMS Alerts</Form.Label><Form.Check label="Send SMS alerts to all numbers above" checked={draftEntity.smsAlertsEnabled || false} onChange={event => updateDraftField('smsAlertsEnabled', event.target.checked)} /></Col></Row></div>; }
-    return <div style={shellStyles.modalSection}><Row className="g-3">{[['profilePhoto', 'Profile Photo', 'image/*'], ['licenseFront', 'License Front', 'image/*,.pdf'], ['licenseBack', 'License Back', 'image/*,.pdf'], ['insuranceCertificate', 'Insurance Certificate', 'image/*,.pdf'], ['w9Document', 'W9 / Tax Document', '.pdf,image/*'], ['form1099Document', '1099 Tax Form', '.pdf,image/*'], ['trainingCertificate', 'Training Certificate', '.pdf,image/*'], ['trainingCertificate2', 'Training Certificate (2)', '.pdf,image/*'], ['trainingCertificate3', 'Training Certificate (3)', '.pdf,image/*'], ['trainingCertificate4', 'Training Certificate (4)', '.pdf,image/*']].map(([field, label, accept]) => { const asset = resolveDocumentAsset(draftEntity.documents[field]); const isPdf = String(asset?.name || '').toLowerCase().endsWith('.pdf'); return <Col md={6} key={field}><Form.Label className={formLabelClassName}>{label}</Form.Label><Form.Control type="file" accept={accept} style={shellStyles.modalInput} onChange={async event => updateDraftDocument(field, event.target.files?.[0])} /><div className="small text-secondary mt-2">{asset?.name ?? 'No file uploaded'}</div>{isImageAsset(asset) ? <div className="mt-2 border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 140, backgroundColor: '#0c111b' }}><img src={asset.dataUrl} alt={label} style={{ width: '100%', height: '100%', objectFit: field === 'profilePhoto' ? 'cover' : 'contain' }} /></div> : null}{isPdf && asset?.dataUrl ? <div className="small mt-2"><a href={asset.dataUrl} target="_blank" rel="noreferrer">Open PDF</a></div> : null}</Col>; })}</Row></div>; };
-  const renderGenericEditor = () => { if (!draftEntity) return null; if (activeTab === 'attendants') return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={6}><Form.Label className={formLabelClassName}>Name</Form.Label><Form.Control value={draftEntity.name} style={shellStyles.modalInput} onChange={event => updateDraftField('name', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Phone</Form.Label><Form.Control value={draftEntity.phone} style={shellStyles.modalInput} onChange={event => updateDraftField('phone', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Certification</Form.Label><Form.Select value={draftEntity.certification} style={shellStyles.modalInput} onChange={event => updateDraftField('certification', event.target.value)}><option>Basic</option><option>Wheelchair</option><option>Stretcher</option><option>ALS</option></Form.Select></Col><Col md={4}><Form.Label className={formLabelClassName}>Email</Form.Label><Form.Control value={draftEntity.email} style={shellStyles.modalInput} onChange={event => updateDraftField('email', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Status</Form.Label><Form.Select value={draftEntity.status} style={shellStyles.modalInput} onChange={event => updateDraftField('status', event.target.value)}><option>Active</option><option>Inactive</option><option>On Leave</option></Form.Select></Col><Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
-    if (activeTab === 'vehicles') { const supportsAmbulatory = Number(draftEntity.ambulatoryCapacity || 0) > 0; const supportsWheelchair = Number(draftEntity.wheelchairCapacity || 0) > 0; const supportsWheelchairXl = Number(draftEntity.wheelchairXlCapacity || 0) > 0; const supportsWheelchairElectric = Number(draftEntity.wheelchairElectricCapacity || 0) > 0; const supportsWalker = Number(draftEntity.walkerCapacity || 0) > 0; const supportsStretcher = Number(draftEntity.stretcherCapacity || 0) > 0; return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Vehicle Label</Form.Label><Form.Control value={draftEntity.label} style={shellStyles.modalInput} onChange={event => updateDraftField('label', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>VIN</Form.Label><Form.Control value={draftEntity.vin} style={shellStyles.modalInput} onChange={event => updateDraftField('vin', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Plate</Form.Label><Form.Control value={draftEntity.plate} style={shellStyles.modalInput} onChange={event => updateDraftField('plate', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Unit Number</Form.Label><Form.Control value={draftEntity.unitNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('unitNumber', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Capabilities</Form.Label><div className="d-flex flex-wrap gap-3"><Form.Check type="checkbox" label="A" checked={supportsAmbulatory} onChange={event => updateDraftField('ambulatoryCapacity', event.target.checked ? Math.max(1, Number(draftEntity.ambulatoryCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="W" checked={supportsWheelchair} onChange={event => updateDraftField('wheelchairCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="WXL" checked={supportsWheelchairXl} onChange={event => updateDraftField('wheelchairXlCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairXlCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="EW" checked={supportsWheelchairElectric} onChange={event => updateDraftField('wheelchairElectricCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairElectricCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="Walker" checked={supportsWalker} onChange={event => updateDraftField('walkerCapacity', event.target.checked ? Math.max(1, Number(draftEntity.walkerCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="STR" checked={supportsStretcher} onChange={event => updateDraftField('stretcherCapacity', event.target.checked ? Math.max(1, Number(draftEntity.stretcherCapacity || 0)) : 0)} /></div><div className="small text-secondary mt-2">Marca todo lo que este carro puede hacer.</div></Col><Col md={2}><Form.Label className={formLabelClassName}>A</Form.Label><Form.Control type="number" min="0" value={draftEntity.ambulatoryCapacity} disabled={!supportsAmbulatory} style={shellStyles.modalInput} onChange={event => updateDraftField('ambulatoryCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>W</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairCapacity} disabled={!supportsWheelchair} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>WXL</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairXlCapacity || 0} disabled={!supportsWheelchairXl} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairXlCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>EW</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairElectricCapacity || 0} disabled={!supportsWheelchairElectric} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairElectricCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>Walker</Form.Label><Form.Control type="number" min="0" value={draftEntity.walkerCapacity || 0} disabled={!supportsWalker} style={shellStyles.modalInput} onChange={event => updateDraftField('walkerCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>STR</Form.Label><Form.Control type="number" min="0" value={draftEntity.stretcherCapacity} disabled={!supportsStretcher} style={shellStyles.modalInput} onChange={event => updateDraftField('stretcherCapacity', Number(event.target.value))} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Vehicle Image URL</Form.Label><Form.Control value={draftEntity.imageUrl || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('imageUrl', event.target.value)} placeholder="https://..." /></Col>{String(draftEntity.imageUrl || '').trim() ? <Col md={12}><div className="border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 190, backgroundColor: '#0c111b' }}><img src={String(draftEntity.imageUrl || '').trim()} alt={draftEntity.label || 'Vehicle'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div></Col> : null}<Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>; }
-    return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={6}><Form.Label className={formLabelClassName}>Grouping Name</Form.Label><Form.Control value={draftEntity.name} style={shellStyles.modalInput} onChange={event => updateDraftField('name', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Grouping Type</Form.Label><Form.Select value={draftEntity.vehicleType || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('vehicleType', event.target.value)}><option value="">Select type</option>{GROUPING_SERVICE_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</Form.Select></Col><Col md={3}><Form.Label className={formLabelClassName}>Status</Form.Label><Form.Select value={draftEntity.status} style={shellStyles.modalInput} onChange={event => updateDraftField('status', event.target.value)}><option>Active</option><option>Attention</option><option>Pending</option></Form.Select></Col><Col md={4}><Form.Label className={formLabelClassName}>Dispatch Tag</Form.Label><Form.Control value={draftEntity.dispatchTag} style={shellStyles.modalInput} onChange={event => updateDraftField('dispatchTag', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>ATD</Form.Label><Form.Control value={draftEntity.atd || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('atd', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Billing Code</Form.Label><Form.Control value={draftEntity.billingCode || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('billingCode', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Assigned Vehicles</Form.Label><Form.Select multiple value={Array.isArray(draftEntity.assignedVehicleIds) ? draftEntity.assignedVehicleIds.map(id => String(id)) : []} style={{ ...shellStyles.modalInput, minHeight: 150 }} onChange={event => updateDraftField('assignedVehicleIds', Array.from(event.target.selectedOptions || []).map(option => option.value).filter(Boolean))}>{state.vehicles.filter(vehicle => !draftEntity.vehicleType || vehicleSupportsServiceType(vehicle, draftEntity.vehicleType)).map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.label} | {getVehicleCapabilityTokens(vehicle).join(', ') || 'No capabilities'}</option>)}</Form.Select><div className="small text-secondary mt-2">Aqui es donde asignas los carros a este grouping.</div></Col><Col md={12}><Form.Label className={formLabelClassName}>Description</Form.Label><Form.Control as="textarea" rows={2} value={draftEntity.description} style={shellStyles.modalInput} onChange={event => updateDraftField('description', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Work Hours</Form.Label><Form.Control value={draftEntity.workHours || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('workHours', event.target.value)} /></Col><Col md={6}><div className="small text-secondary pt-4">Assigned grouping type: {getGroupingVehicleType(draftEntity, state) || 'No type selected yet'}</div></Col><Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>; };
-  return <><Card className="border-0 shadow-sm overflow-hidden"><div className="d-flex align-items-center justify-content-between px-3 py-2 text-white" style={shellStyles.windowHeader}><strong>{config.title}</strong><button type="button" className="btn btn-link text-white p-0 text-decoration-none"><IconifyIcon icon="iconoir:xmark" className="fs-18" /></button></div><CardBody className="p-2" style={shellStyles.body}><div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-2"><div className="d-flex flex-wrap align-items-center gap-2"><Button style={shellStyles.toolbarButton} onClick={handleRefresh} disabled={loading || saving || operationalAlertsLoading || driverTripMetricsLoading}><IconifyIcon icon="iconoir:refresh-double" /></Button><div className="vr text-secondary" /><VdrTabsBar onNavigate={() => { setSearch(''); setPageIndex(0); }} /><div className="vr text-secondary" /><Button style={shellStyles.toolbarButton} onClick={() => openEditor(null)}><IconifyIcon icon="iconoir:plus" className="me-2" />Add</Button><Button style={shellStyles.toolbarButton} onClick={() => selectedEntity ? openEditor(selectedEntity) : setMessage('Selecciona un registro para editar.') }><IconifyIcon icon="iconoir:edit-pencil" className="me-2" />Edit</Button></div><div className="d-flex align-items-center gap-2 ms-auto"><Button style={shellStyles.toolbarButton} onClick={() => router.push('/integrations/driver-app')}>Driver App</Button><Dropdown align="end"><Dropdown.Toggle as={Button} style={shellStyles.toolbarButton}><IconifyIcon icon="iconoir:settings" className="me-2" />Settings<IconifyIcon icon="iconoir:nav-arrow-down" className="ms-2" /></Dropdown.Toggle><Dropdown.Menu style={shellStyles.toolbarDropdownMenu}><Dropdown.Item onClick={() => router.push('/settings/email-templates')}>Email Templates</Dropdown.Item><Dropdown.Item onClick={() => router.push('/settings/page-memory')}>Page Memory</Dropdown.Item><Dropdown.Item onClick={() => router.push('/settings/gps')}>GPS</Dropdown.Item><Dropdown.Item onClick={() => router.push('/settings/office')}>Office</Dropdown.Item></Dropdown.Menu></Dropdown><Button style={shellStyles.toolbarButton} onClick={() => router.push('/settings/gps')}>GPS</Button><Button style={shellStyles.toolbarButton} onClick={() => router.push('/billing/genius')}>Genius</Button><Button style={shellStyles.toolbarButton} onClick={() => router.push('/rates')}>Rates</Button><div className="position-relative"><IconifyIcon icon="iconoir:search" className="position-absolute top-50 start-0 translate-middle-y ms-3 text-success" /><Form.Control value={search} onChange={event => { setSearch(event.target.value); setPageIndex(0); }} placeholder="Search" style={shellStyles.search} /></div><Button style={shellStyles.dangerButton} onClick={handleDelete} disabled={saving}><IconifyIcon icon="iconoir:trash" className="me-2" />Delete</Button></div></div><div className="small text-secondary mb-3 d-flex align-items-center gap-2 flex-wrap">{saving ? <><Spinner animation="border" size="sm" /> Saving...</> : operationalAlertsLoading || driverTripMetricsLoading ? <><Spinner animation="border" size="sm" /> Refreshing driver metrics...</> : message}</div>{error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}<div className="border overflow-hidden" style={shellStyles.tableShell}><div className="table-responsive" style={{ maxHeight: 680 }}><Table className="align-middle mb-0 text-white"><thead style={shellStyles.tableHead}><tr><th style={{ width: 34 }}><Form.Check /></th>{config.columns.map(column => <th key={column} className="fw-normal" style={shellStyles.tableHeadCell}>{column}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={config.columns.length + 1} className="text-center py-5 text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading records...</td></tr> : visibleRows.length ? visibleRows.map(row => <tr key={row.id} onClick={() => setSelectedRowId(row.id)} style={{ cursor: 'pointer', backgroundColor: selectedRowId === row.id ? shellStyles.rowBackground.selected : shellStyles.rowBackground.default, color: shellStyles.rowTextColor }}><td><Form.Check checked={selectedRowId === row.id} onChange={() => setSelectedRowId(row.id)} /></td>{renderRowCells(row)}</tr>) : <tr><td colSpan={config.columns.length + 1} className="text-center py-5 text-secondary">No records yet. Usa Add para crear el primer expediente.</td></tr>}</tbody></Table></div></div><div className="d-flex align-items-center gap-2 mt-3"><Button style={shellStyles.toolbarButton} disabled={safePageIndex === 0} onClick={() => setPageIndex(current => Math.max(0, current - 1))}><IconifyIcon icon="iconoir:nav-arrow-left" /></Button><div className="px-3 py-2 border" style={shellStyles.pageBadge}>{safePageIndex + 1} of {totalPages}</div><Button style={shellStyles.toolbarButton} disabled={safePageIndex >= totalPages - 1} onClick={() => setPageIndex(current => Math.min(totalPages - 1, current + 1))}><IconifyIcon icon="iconoir:nav-arrow-right" /></Button></div></CardBody></Card><Modal show={showEditor} onHide={() => setShowEditor(false)} size="xl" centered><Modal.Header closeButton style={shellStyles.modalHeader} className="text-white"><Modal.Title>{activeTab === 'drivers' ? draftEntity?.displayName || getFullName(draftEntity || {}) || 'New Driver Record' : activeTab === 'attendants' ? draftEntity?.name || 'New Attendant' : activeTab === 'vehicles' ? draftEntity?.label || 'New Vehicle' : draftEntity?.name || 'New Grouping'}</Modal.Title></Modal.Header><Modal.Body style={shellStyles.modalContent}>{validationErrors.length > 0 ? <Alert variant="danger"><ul className="mb-0">{validationErrors.map(item => <li key={item}>{item}</li>)}</ul></Alert> : null}{activeTab === 'drivers' ? <>{driverAlerts.length > 0 ? <Alert variant="warning">{driverAlerts.map(alert => <div key={alert.text}>{alert.text}</div>)}</Alert> : null}{operationalAlertsLoading ? <Alert variant="secondary" className="py-2">Loading driver fault history...</Alert> : null}<div className="d-flex flex-wrap gap-2 mb-3">{DRIVER_EDITOR_TABS.map(tab => <Button key={tab.key} style={editorTab === tab.key ? shellStyles.activeTab : shellStyles.toolbarButton} onClick={() => setEditorTab(tab.key)}>{tab.label}</Button>)}</div>{renderDriverEditor()}</> : renderGenericEditor()}</Modal.Body><Modal.Footer style={{ ...shellStyles.modalHeader, justifyContent: 'space-between' }}><div className="small text-secondary">Los cambios se guardan en la API local del proyecto y alimentan Dispatcher.</div><div className="d-flex gap-2"><Button style={shellStyles.toolbarButton} onClick={() => setShowEditor(false)}>Cancel</Button><Button style={shellStyles.activeTab} onClick={handleSave} disabled={saving}>Save</Button></div></Modal.Footer></Modal></>; };
+  const availableGroupings = activeTab === 'drivers' && draftVehicle ? state.groupings.filter(grouping => {
+    const groupingType = getGroupingVehicleType(grouping, state);
+    return !groupingType || vehicleSupportsServiceType(draftVehicle, groupingType);
+  }) : state.groupings;
+
+  const openEditor = entity => {
+    const nextDraft = entity ? JSON.parse(JSON.stringify(entity)) : activeTab === 'drivers' ? createBlankDriver() : activeTab === 'attendants' ? createBlankAttendant() : activeTab === 'vehicles' ? createBlankVehicle() : createBlankGrouping();
+    setDraftEntity(nextDraft);
+    setEditorTab('profile');
+    setValidationErrors([]);
+    setShowEditor(true);
+  };
+
+  const updateDraftField = (field, value) => {
+    setDraftEntity(current => {
+      if (!current) return current;
+
+      if (activeTab === 'drivers' && field === 'vehicleId') {
+        const nextVehicle = getVehicleById(value);
+        const currentGrouping = state.groupings.find(grouping => grouping.id === current.groupingId);
+        const currentGroupingType = currentGrouping ? getGroupingVehicleType(currentGrouping, state) : '';
+        return {
+          ...current,
+          vehicleId: value,
+          groupingId: nextVehicle && currentGroupingType && !vehicleSupportsServiceType(nextVehicle, currentGroupingType) ? '' : current.groupingId
+        };
+      }
+
+      return { ...current, [field]: value };
+    });
+  };
+
+  const updateDraftDocument = async (field, file) => {
+    if (!file) return;
+    const dataUrl = await readFileAsDataUrl(file);
+    setDraftEntity(current => ({
+      ...current,
+      documents: {
+        ...current.documents,
+        [field]: { name: file.name, type: file.type, dataUrl }
+      }
+    }));
+  };
+
+  const persistNextState = async nextState => {
+    await saveData(nextState);
+    await refresh();
+  };
+
+  const buildNormalizedEntity = entity => {
+    if (activeTab === 'drivers') {
+      const fallbackUsername = [entity.firstName, entity.lastName].filter(Boolean).join('.').toLowerCase().replace(/\s+/g, '.');
+      return {
+        ...entity,
+        displayName: getFullName(entity),
+        username: entity.username || entity.portalUsername || fallbackUsername,
+        portalUsername: entity.portalUsername || entity.username || fallbackUsername,
+        portalEmail: entity.portalEmail || entity.email,
+        mobilePin: String(entity.mobilePin || '').replace(/\D+/g, '').slice(0, 12),
+        checkpoint: entity.checkpoint || (entity.vehicleId ? 'Vehicle ready' : 'Needs assignment')
+      };
+    }
+    return entity;
+  };
+
+  const getValidationErrors = entity => {
+    if (activeTab === 'drivers') return validateDriver(entity, state);
+    if (activeTab === 'attendants') return validateAttendant(entity);
+    if (activeTab === 'vehicles') return validateVehicle(entity, state);
+    return validateGrouping(entity, state);
+  };
+
+  const handleSave = async () => {
+    if (!draftEntity) return;
+    const normalizedEntity = buildNormalizedEntity(draftEntity);
+    const errors = getValidationErrors(normalizedEntity);
+    setValidationErrors(errors);
+    if (errors.length > 0) {
+      setMessage(errors[0]);
+      return;
+    }
+
+    const nextCollection = state[collectionKey].some(entity => entity.id === normalizedEntity.id) ? state[collectionKey].map(entity => entity.id === normalizedEntity.id ? normalizedEntity : entity) : [normalizedEntity, ...state[collectionKey]];
+    const nextState = { ...state, [collectionKey]: nextCollection };
+
+    if (activeTab === 'grouping') {
+      const selectedVehicleIds = new Set((Array.isArray(normalizedEntity?.assignedVehicleIds) ? normalizedEntity.assignedVehicleIds : []).filter(Boolean).map(id => String(id)));
+      nextState.groupings = nextState.groupings.map(grouping => grouping.id === normalizedEntity.id ? normalizedEntity : {
+        ...grouping,
+        assignedVehicleIds: Array.isArray(grouping.assignedVehicleIds) ? grouping.assignedVehicleIds.filter(vehicleId => !selectedVehicleIds.has(String(vehicleId || ''))) : []
+      });
+    }
+
+    await persistNextState(nextState);
+    setSelectedRowId(normalizedEntity.id);
+    setShowEditor(false);
+    setDraftEntity(null);
+    setMessage(`${activeTab.slice(0, 1).toUpperCase()}${activeTab.slice(1)} record saved.`);
+  };
+
+  const handleDelete = async () => {
+    if (!selectedEntity) {
+      setMessage('Selecciona un registro para borrar.');
+      return;
+    }
+
+    let nextState = { ...state };
+
+    if (activeTab === 'drivers') {
+      nextState.drivers = state.drivers.filter(driver => driver.id !== selectedEntity.id);
+    }
+
+    if (activeTab === 'attendants') {
+      nextState.attendants = state.attendants.filter(attendant => attendant.id !== selectedEntity.id);
+      nextState.drivers = state.drivers.map(driver => driver.attendantId === selectedEntity.id ? { ...driver, attendantId: '' } : driver);
+    }
+
+    if (activeTab === 'vehicles') {
+      nextState.vehicles = state.vehicles.filter(vehicle => vehicle.id !== selectedEntity.id);
+      nextState.drivers = state.drivers.map(driver => driver.vehicleId === selectedEntity.id ? { ...driver, vehicleId: '', checkpoint: 'Needs assignment' } : driver);
+    }
+
+    if (activeTab === 'grouping') {
+      nextState.groupings = state.groupings.filter(grouping => grouping.id !== selectedEntity.id);
+      nextState.drivers = state.drivers.map(driver => driver.groupingId === selectedEntity.id ? { ...driver, groupingId: '' } : driver);
+    }
+
+    await persistNextState(nextState);
+    setSelectedRowId(null);
+    setMessage('Registro eliminado y dependencias actualizadas.');
+  };
+
+  const renderRowCells = row => {
+    if (activeTab === 'drivers') {
+      const metrics = driverTripMetrics.get(row.raw.id) ?? defaultDriverTripMetrics;
+      const operations = driverOperationsMetrics.get(row.raw.id) ?? {
+        activeFaults: 0,
+        faultsToday: 0,
+        faultsMonth: 0,
+        disciplineScore: 100
+      };
+      return [<td key="number">{row.order}</td>, <td key="ctrl">
+            <button type="button" className="btn btn-link p-0 text-info" onClick={event => {
+              event.stopPropagation();
+              openEditor(row.raw);
+            }}>
+              <IconifyIcon icon="iconoir:edit-pencil" />
+            </button>
+          </td>, <td key="info">
+            <div>{row.info}</div>
+            <div className="small text-secondary">Username: {row.raw.username}</div>
+          </td>, <td key="assignment">{row.assignment}</td>, <td key="hours">{formatMinutesAsHours(metrics.serviceMinutes)}</td>, <td key="trips"><div>{metrics.totalTrips} total</div><div className="small text-secondary">{metrics.activeTrips} active</div></td>, <td key="discipline"><div className="d-flex align-items-center gap-2 flex-wrap"><Badge bg={operations.disciplineScore >= 90 ? 'success' : operations.disciplineScore >= 70 ? 'warning' : 'danger'} text={operations.disciplineScore >= 70 ? 'dark' : undefined}>{operations.disciplineScore}</Badge><span className="small text-secondary">Today {operations.faultsToday} | Month {operations.faultsMonth} | Active {operations.activeFaults}</span></div></td>, <td key="notes"><div className="d-flex align-items-center gap-2 flex-wrap"><span>{row.notes}</span>{row.alertCount > 0 ? <Badge bg="warning" text="dark">{row.alertCount} alerts</Badge> : null}</div></td>];
+    }
+
+    if (activeTab === 'attendants') {
+      return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => {
+            event.stopPropagation();
+            openEditor(row.raw);
+          }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="name">{row.name}</td>, <td key="phone">{row.phone}</td>, <td key="cert">{row.certification}</td>, <td key="assigned">{row.assignedDrivers}</td>, <td key="notes">{row.notes}</td>];
+    }
+
+    if (activeTab === 'vehicles') {
+      return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => {
+            event.stopPropagation();
+            openEditor(row.raw);
+          }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="info"><div>{row.info.split('\n')[0]}</div><div className="small text-secondary">{row.info.split('\n')[1]}</div></td>, <td key="capacity"><div>Type: {row.capacity.type}</div><div className="d-flex flex-wrap gap-2 small mt-1">{getVehicleCapabilityTokens(row.raw).map(token => <span key={`${row.id}-${token}`}>{token}</span>)}</div></td>, <td key="assignment">{row.assignment}</td>, <td key="driverNames" style={{ maxWidth: 260, whiteSpace: 'normal' }}>{row.driverNames}</td>, <td key="notes">{row.notes}</td>];
+    }
+
+    return [<td key="number">{row.order}</td>, <td key="ctrl"><button type="button" className="btn btn-link p-0 text-info" onClick={event => {
+          event.stopPropagation();
+          openEditor(row.raw);
+      }}><IconifyIcon icon="iconoir:edit-pencil" /></button></td>, <td key="group">{row.group}</td>, <td key="drivers">{row.drivers}</td>, <td key="vehicles" style={{ maxWidth: 280, whiteSpace: 'normal' }}><div>{row.vehicles}</div>{Array.isArray(row.vehicleLabels) && row.vehicleLabels.length ? <div className="small text-secondary mt-1">{row.vehicleLabels.join(', ')}</div> : <div className="small text-secondary mt-1">No vehicles assigned</div>}</td>, <td key="notes">{row.notes}</td>];
+  };
+
+  const renderDriverEditor = () => {
+    if (!draftEntity) return null;
+    if (editorTab === 'profile') {
+      return <Row className="g-3">
+          <Col lg={4}>
+            <div style={shellStyles.modalSection}>
+              <div className={formLabelClassName}>Driver Photo</div>
+              <div className="d-flex flex-column align-items-center gap-3">
+                <div className="rounded-circle overflow-hidden border" style={{ width: 120, height: 120, borderColor: '#2a3144' }}>
+                  {isImageAsset(primaryPhotoAsset) ? <img src={primaryPhotoAsset.dataUrl} alt="Driver profile" style={profilePhotoAsset ? {
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                } : {
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  objectPosition: '22% 38%',
+                  transform: 'scale(1.45)',
+                  transformOrigin: '22% 38%'
+                }} /> : <div className="w-100 h-100 d-flex align-items-center justify-content-center text-secondary bg-dark-subtle"><IconifyIcon icon="iconoir:user" className="fs-32" /></div>}
+                </div>
+                {!profilePhotoAsset && isImageAsset(licenseFrontAsset) ? <div className="small text-warning text-center">Primary photo usando License Front (face zoom).</div> : null}
+                <Form.Control type="file" accept="image/*" style={shellStyles.modalInput} onChange={async event => updateDraftDocument('profilePhoto', event.target.files?.[0])} />
+              </div>
+            </div>
+          </Col>
+          <Col lg={8}>
+            <div style={shellStyles.modalSection}>
+              <Row className="g-3">
+                <Col md={4}><Form.Label className={formLabelClassName}>First Name</Form.Label><Form.Control value={draftEntity.firstName} style={shellStyles.modalInput} onChange={event => updateDraftField('firstName', event.target.value)} /></Col>
+                <Col md={2}><Form.Label className={formLabelClassName}>MI</Form.Label><Form.Control value={draftEntity.middleInitial} style={shellStyles.modalInput} onChange={event => updateDraftField('middleInitial', event.target.value)} /></Col>
+                <Col md={6}><Form.Label className={formLabelClassName}>Last Name</Form.Label><Form.Control value={draftEntity.lastName} style={shellStyles.modalInput} onChange={event => updateDraftField('lastName', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>Username</Form.Label><Form.Control value={draftEntity.username} style={shellStyles.modalInput} onChange={event => updateDraftField('username', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>Phone</Form.Label><Form.Control value={draftEntity.phone} style={shellStyles.modalInput} onChange={event => updateDraftField('phone', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>License Number</Form.Label><Form.Control value={draftEntity.licenseNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseNumber', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>Role</Form.Label><Form.Control value={draftEntity.role} style={shellStyles.modalInput} onChange={event => updateDraftField('role', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>License State</Form.Label><Form.Control value={draftEntity.licenseState} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseState', event.target.value)} /></Col>
+                <Col md={4}><Form.Label className={formLabelClassName}>License Exp.</Form.Label><Form.Control type="date" value={draftEntity.licenseExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseExpirationDate', event.target.value)} /></Col>
+                <Col md={6}><Form.Label className={formLabelClassName}>Email</Form.Label><Form.Control value={draftEntity.email} style={shellStyles.modalInput} onChange={event => updateDraftField('email', event.target.value)} /></Col>
+                <Col md={6}><Form.Label className={formLabelClassName}>Vehicle</Form.Label><Form.Select value={draftEntity.vehicleId} style={shellStyles.modalInput} onChange={event => updateDraftField('vehicleId', event.target.value)}><option value="">Select vehicle</option>{state.vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.label}</option>)}</Form.Select></Col>
+                <Col md={6}><Form.Label className={formLabelClassName}>Attendant</Form.Label><Form.Select value={draftEntity.attendantId} style={shellStyles.modalInput} onChange={event => updateDraftField('attendantId', event.target.value)}><option value="">No attendant</option>{state.attendants.map(attendant => <option key={attendant.id} value={attendant.id}>{attendant.name}</option>)}</Form.Select></Col>
+                <Col md={3}>
+                  <Form.Label className={formLabelClassName}>Grouping</Form.Label>
+                  <Form.Select value={draftEntity.groupingId} style={shellStyles.modalInput} onChange={event => updateDraftField('groupingId', event.target.value)}>
+                    <option value="">No group</option>
+                    {availableGroupings.map(grouping => <option key={grouping.id} value={grouping.id}>{grouping.name}{getGroupingVehicleType(grouping, state) ? ` (${getGroupingVehicleType(grouping, state)})` : ''}</option>)}
+                  </Form.Select>
+                  <div className="small text-secondary mt-2">Vehicle type: {draftVehicleType || 'Select a vehicle first'}</div>
+                </Col>
+                <Col md={3}><Form.Label className={formLabelClassName}>Checkpoint</Form.Label><Form.Control value={draftEntity.checkpoint} style={shellStyles.modalInput} onChange={event => updateDraftField('checkpoint', event.target.value)} /></Col>
+                <Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col>
+              </Row>
+            </div>
+          </Col>
+        </Row>;
+    }
+
+    if (editorTab === 'credentials') {
+      return <div style={shellStyles.modalSection}>
+          <Row className="g-3">
+            <Col md={4}><Form.Label className={formLabelClassName}>Portal Username</Form.Label><Form.Control value={draftEntity.portalUsername} style={shellStyles.modalInput} onChange={event => updateDraftField('portalUsername', event.target.value)} /></Col>
+            <Col md={4}><Form.Label className={formLabelClassName}>Portal Email</Form.Label><Form.Control value={draftEntity.portalEmail} style={shellStyles.modalInput} onChange={event => updateDraftField('portalEmail', event.target.value)} /></Col>
+            <Col md={4}><Form.Label className={formLabelClassName}>Broker ID</Form.Label><Form.Control value={draftEntity.brokerId} style={shellStyles.modalInput} onChange={event => updateDraftField('brokerId', event.target.value)} /></Col>
+            <Col md={4}>
+              <Form.Label className={formLabelClassName}>Mobile PIN</Form.Label>
+              <Form.Control value={draftEntity.mobilePin || ''} inputMode="numeric" style={shellStyles.modalInput} placeholder="Last 4 digits by default" onChange={event => updateDraftField('mobilePin', event.target.value.replace(/\D+/g, '').slice(0, 12))} />
+              <div className="small text-secondary mt-2">If empty, the driver app uses the last 4 digits of the driver phone as the PIN.</div>
+            </Col>
+            <Col md={3}><Form.Check label="MFA Enabled" checked={draftEntity.mfaEnabled} onChange={event => updateDraftField('mfaEnabled', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="Password Reset Required" checked={draftEntity.passwordResetRequired} onChange={event => updateDraftField('passwordResetRequired', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="Background Check Clear" checked={draftEntity.backgroundCheckStatus === 'Clear'} onChange={event => updateDraftField('backgroundCheckStatus', event.target.checked ? 'Clear' : 'Pending')} /></Col>
+            <Col md={3}><Form.Check label="Drug Screen Clear" checked={draftEntity.drugScreenStatus === 'Clear'} onChange={event => updateDraftField('drugScreenStatus', event.target.checked ? 'Clear' : 'Pending')} /></Col>
+            <Col md={3}><Form.Check label="CPR Certified" checked={draftEntity.cprCertified} onChange={event => updateDraftField('cprCertified', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="Defensive Driving" checked={draftEntity.defensiveDrivingCertified} onChange={event => updateDraftField('defensiveDrivingCertified', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="HIPAA Certified" checked={draftEntity.hipaaCertified} onChange={event => updateDraftField('hipaaCertified', event.target.checked)} /></Col>
+            <Col md={3}><Form.Check label="NEMT Certified" checked={draftEntity.nemtCertified} onChange={event => updateDraftField('nemtCertified', event.target.checked)} /></Col>
+          </Row>
+        </div>;
+    }
+
+    if (editorTab === 'license') {
+      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>License Number</Form.Label><Form.Control value={draftEntity.licenseNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseNumber', event.target.value)} /></Col><Col md={2}><Form.Label className={formLabelClassName}>Class</Form.Label><Form.Control value={draftEntity.licenseClass} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseClass', event.target.value)} /></Col><Col md={2}><Form.Label className={formLabelClassName}>State</Form.Label><Form.Control value={draftEntity.licenseState} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseState', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Chauffeur Permit</Form.Label><Form.Control value={draftEntity.chauffeurPermit} style={shellStyles.modalInput} onChange={event => updateDraftField('chauffeurPermit', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Issue Date</Form.Label><Form.Control type="date" value={draftEntity.licenseIssueDate} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseIssueDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Expiration Date</Form.Label><Form.Control type="date" value={draftEntity.licenseExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('licenseExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Medical Card Exp.</Form.Label><Form.Control type="date" value={draftEntity.medCardExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('medCardExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Check label="DMV Verified" checked={draftEntity.dmvVerified} onChange={event => updateDraftField('dmvVerified', event.target.checked)} /></Col></Row></div>;
+    }
+
+    if (editorTab === 'compliance') {
+      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Discipline Score</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.disciplineScore ?? 100}</div><div className="small text-secondary">Weighted from compliance plus driver faults.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Active Faults</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.activeFaults ?? 0}</div><div className="small text-secondary">Open operational escalations.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Faults Today</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.faultsToday ?? 0}</div><div className="small text-secondary">Misses logged since midnight.</div></div></Col><Col md={3}><div className="rounded-3 border p-3 h-100" style={{ borderColor: '#2a3144' }}><div className="small text-secondary">Faults This Month</div><div className="h3 mb-1">{selectedDriverOperationalMetrics?.faultsMonth ?? 0}</div><div className="small text-secondary">Rolling monthly discipline trend.</div></div></Col><Col md={4}><Form.Label className={formLabelClassName}>Insurance Carrier</Form.Label><Form.Control value={draftEntity.insuranceCarrier} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceCarrier', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Number</Form.Label><Form.Control value={draftEntity.insurancePolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('insurancePolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Policy Expiration</Form.Label><Form.Control type="date" value={draftEntity.insuranceExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('insuranceExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Policy</Form.Label><Form.Control value={draftEntity.workersCompPolicyNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompPolicyNumber', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Workers Comp Exp.</Form.Label><Form.Control type="date" value={draftEntity.workersCompExpirationDate} style={shellStyles.modalInput} onChange={event => updateDraftField('workersCompExpirationDate', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Company Tax ID</Form.Label><Form.Control value={draftEntity.taxId} style={shellStyles.modalInput} onChange={event => updateDraftField('taxId', event.target.value)} /></Col><Col md={3}><Form.Check label="Insurance Accredited" checked={draftEntity.insuranceAccredited} onChange={event => updateDraftField('insuranceAccredited', event.target.checked)} /></Col><Col md={3}><Form.Check label="Tax ID Verified" checked={draftEntity.taxIdVerified} onChange={event => updateDraftField('taxIdVerified', event.target.checked)} /></Col><Col md={3}><Form.Check label="W9 On File" checked={draftEntity.w9OnFile} onChange={event => updateDraftField('w9OnFile', event.target.checked)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Tracking</Form.Label><div className="small text-secondary pt-2">Android only. Web admin cannot mark drivers online manually.</div></Col></Row></div>;
+    }
+
+    if (editorTab === 'extensions') {
+      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={12}><Form.Label className={formLabelClassName}>Communication Extensions</Form.Label><div className="small text-secondary mb-3">Add communication channels to contact drivers via WhatsApp, Telegram, SMS, and other platforms</div></Col><Col md={6}><Form.Label className={formLabelClassName}>WhatsApp Number</Form.Label><Form.Control value={draftEntity.whatsappNumber || ''} style={shellStyles.modalInput} placeholder="+1 (555) 123-4567" onChange={event => updateDraftField('whatsappNumber', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>WhatsApp Enabled</Form.Label><Form.Check label="Allow WhatsApp messaging from web" checked={draftEntity.whatsappEnabled || false} onChange={event => updateDraftField('whatsappEnabled', event.target.checked)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Telegram Handle</Form.Label><Form.Control value={draftEntity.telegramHandle || ''} style={shellStyles.modalInput} placeholder="@driver_username" onChange={event => updateDraftField('telegramHandle', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Telegram Enabled</Form.Label><Form.Check label="Allow Telegram messaging from web" checked={draftEntity.telegramEnabled || false} onChange={event => updateDraftField('telegramEnabled', event.target.checked)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Viber ID</Form.Label><Form.Control value={draftEntity.viberNumber || ''} style={shellStyles.modalInput} placeholder="+1 (555) 123-4567" onChange={event => updateDraftField('viberNumber', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Viber Enabled</Form.Label><Form.Check label="Allow Viber messaging from web" checked={draftEntity.viberEnabled || false} onChange={event => updateDraftField('viberEnabled', event.target.checked)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Signal Number</Form.Label><Form.Control value={draftEntity.signalNumber || ''} style={shellStyles.modalInput} placeholder="+1 (555) 123-4567" onChange={event => updateDraftField('signalNumber', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Signal Enabled</Form.Label><Form.Check label="Allow Signal messaging from web" checked={draftEntity.signalEnabled || false} onChange={event => updateDraftField('signalEnabled', event.target.checked)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Email for Extensions</Form.Label><Form.Control value={draftEntity.alternateEmail || ''} style={shellStyles.modalInput} placeholder="driver@email.com" onChange={event => updateDraftField('alternateEmail', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>SMS Alerts</Form.Label><Form.Check label="Send SMS alerts to all numbers above" checked={draftEntity.smsAlertsEnabled || false} onChange={event => updateDraftField('smsAlertsEnabled', event.target.checked)} /></Col></Row></div>;
+    }
+
+    return <div style={shellStyles.modalSection}><Row className="g-3">{[['profilePhoto', 'Profile Photo', 'image/*'], ['licenseFront', 'License Front', 'image/*,.pdf'], ['licenseBack', 'License Back', 'image/*,.pdf'], ['insuranceCertificate', 'Insurance Certificate', 'image/*,.pdf'], ['w9Document', 'W9 / Tax Document', '.pdf,image/*'], ['form1099Document', '1099 Tax Form', '.pdf,image/*'], ['trainingCertificate', 'Training Certificate', '.pdf,image/*'], ['trainingCertificate2', 'Training Certificate (2)', '.pdf,image/*'], ['trainingCertificate3', 'Training Certificate (3)', '.pdf,image/*'], ['trainingCertificate4', 'Training Certificate (4)', '.pdf,image/*']].map(([field, label, accept]) => {
+      const asset = resolveDocumentAsset(draftEntity.documents[field]);
+      const isPdf = String(asset?.name || '').toLowerCase().endsWith('.pdf');
+      return <Col md={6} key={field}><Form.Label className={formLabelClassName}>{label}</Form.Label><Form.Control type="file" accept={accept} style={shellStyles.modalInput} onChange={async event => updateDraftDocument(field, event.target.files?.[0])} /><div className="small text-secondary mt-2">{asset?.name ?? 'No file uploaded'}</div>{isImageAsset(asset) ? <div className="mt-2 border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 140, backgroundColor: '#0c111b' }}><img src={asset.dataUrl} alt={label} style={{ width: '100%', height: '100%', objectFit: field === 'profilePhoto' ? 'cover' : 'contain' }} /></div> : null}{isPdf && asset?.dataUrl ? <div className="small mt-2"><a href={asset.dataUrl} target="_blank" rel="noreferrer">Open PDF</a></div> : null}</Col>;
+    })}</Row></div>;
+  };
+
+  const renderGenericEditor = () => {
+    if (!draftEntity) return null;
+
+    if (activeTab === 'attendants') {
+      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={6}><Form.Label className={formLabelClassName}>Name</Form.Label><Form.Control value={draftEntity.name} style={shellStyles.modalInput} onChange={event => updateDraftField('name', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Phone</Form.Label><Form.Control value={draftEntity.phone} style={shellStyles.modalInput} onChange={event => updateDraftField('phone', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Certification</Form.Label><Form.Select value={draftEntity.certification} style={shellStyles.modalInput} onChange={event => updateDraftField('certification', event.target.value)}><option>Basic</option><option>Wheelchair</option><option>Stretcher</option><option>ALS</option></Form.Select></Col><Col md={4}><Form.Label className={formLabelClassName}>Email</Form.Label><Form.Control value={draftEntity.email} style={shellStyles.modalInput} onChange={event => updateDraftField('email', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Status</Form.Label><Form.Select value={draftEntity.status} style={shellStyles.modalInput} onChange={event => updateDraftField('status', event.target.value)}><option>Active</option><option>Inactive</option><option>On Leave</option></Form.Select></Col><Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
+    }
+
+    if (activeTab === 'vehicles') {
+      const supportsAmbulatory = Number(draftEntity.ambulatoryCapacity || 0) > 0;
+      const supportsWheelchair = Number(draftEntity.wheelchairCapacity || 0) > 0;
+      const supportsWheelchairXl = Number(draftEntity.wheelchairXlCapacity || 0) > 0;
+      const supportsWheelchairElectric = Number(draftEntity.wheelchairElectricCapacity || 0) > 0;
+      const supportsWalker = Number(draftEntity.walkerCapacity || 0) > 0;
+      const supportsStretcher = Number(draftEntity.stretcherCapacity || 0) > 0;
+      return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={4}><Form.Label className={formLabelClassName}>Vehicle Label</Form.Label><Form.Control value={draftEntity.label} style={shellStyles.modalInput} onChange={event => updateDraftField('label', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>VIN</Form.Label><Form.Control value={draftEntity.vin} style={shellStyles.modalInput} onChange={event => updateDraftField('vin', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Plate</Form.Label><Form.Control value={draftEntity.plate} style={shellStyles.modalInput} onChange={event => updateDraftField('plate', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Unit Number</Form.Label><Form.Control value={draftEntity.unitNumber} style={shellStyles.modalInput} onChange={event => updateDraftField('unitNumber', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Capabilities</Form.Label><div className="d-flex flex-wrap gap-3"><Form.Check type="checkbox" label="A" checked={supportsAmbulatory} onChange={event => updateDraftField('ambulatoryCapacity', event.target.checked ? Math.max(1, Number(draftEntity.ambulatoryCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="W" checked={supportsWheelchair} onChange={event => updateDraftField('wheelchairCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="WXL" checked={supportsWheelchairXl} onChange={event => updateDraftField('wheelchairXlCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairXlCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="EW" checked={supportsWheelchairElectric} onChange={event => updateDraftField('wheelchairElectricCapacity', event.target.checked ? Math.max(1, Number(draftEntity.wheelchairElectricCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="Walker" checked={supportsWalker} onChange={event => updateDraftField('walkerCapacity', event.target.checked ? Math.max(1, Number(draftEntity.walkerCapacity || 0)) : 0)} /><Form.Check type="checkbox" label="STR" checked={supportsStretcher} onChange={event => updateDraftField('stretcherCapacity', event.target.checked ? Math.max(1, Number(draftEntity.stretcherCapacity || 0)) : 0)} /></div><div className="small text-secondary mt-2">Marca todo lo que este carro puede hacer.</div></Col><Col md={2}><Form.Label className={formLabelClassName}>A</Form.Label><Form.Control type="number" min="0" value={draftEntity.ambulatoryCapacity} disabled={!supportsAmbulatory} style={shellStyles.modalInput} onChange={event => updateDraftField('ambulatoryCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>W</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairCapacity} disabled={!supportsWheelchair} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>WXL</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairXlCapacity || 0} disabled={!supportsWheelchairXl} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairXlCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>EW</Form.Label><Form.Control type="number" min="0" value={draftEntity.wheelchairElectricCapacity || 0} disabled={!supportsWheelchairElectric} style={shellStyles.modalInput} onChange={event => updateDraftField('wheelchairElectricCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>Walker</Form.Label><Form.Control type="number" min="0" value={draftEntity.walkerCapacity || 0} disabled={!supportsWalker} style={shellStyles.modalInput} onChange={event => updateDraftField('walkerCapacity', Number(event.target.value))} /></Col><Col md={2}><Form.Label className={formLabelClassName}>STR</Form.Label><Form.Control type="number" min="0" value={draftEntity.stretcherCapacity} disabled={!supportsStretcher} style={shellStyles.modalInput} onChange={event => updateDraftField('stretcherCapacity', Number(event.target.value))} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Vehicle Image URL</Form.Label><Form.Control value={draftEntity.imageUrl || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('imageUrl', event.target.value)} placeholder="https://..." /></Col>{String(draftEntity.imageUrl || '').trim() ? <Col md={12}><div className="border rounded overflow-hidden" style={{ borderColor: '#2a3144', height: 190, backgroundColor: '#0c111b' }}><img src={String(draftEntity.imageUrl || '').trim()} alt={draftEntity.label || 'Vehicle'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div></Col> : null}<Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
+    }
+
+    return <div style={shellStyles.modalSection}><Row className="g-3"><Col md={6}><Form.Label className={formLabelClassName}>Grouping Name</Form.Label><Form.Control value={draftEntity.name} style={shellStyles.modalInput} onChange={event => updateDraftField('name', event.target.value)} /></Col><Col md={3}><Form.Label className={formLabelClassName}>Grouping Type</Form.Label><Form.Select value={draftEntity.vehicleType || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('vehicleType', event.target.value)}><option value="">Select type</option>{GROUPING_SERVICE_TYPE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</Form.Select></Col><Col md={3}><Form.Label className={formLabelClassName}>Status</Form.Label><Form.Select value={draftEntity.status} style={shellStyles.modalInput} onChange={event => updateDraftField('status', event.target.value)}><option>Active</option><option>Attention</option><option>Pending</option></Form.Select></Col><Col md={4}><Form.Label className={formLabelClassName}>Dispatch Tag</Form.Label><Form.Control value={draftEntity.dispatchTag} style={shellStyles.modalInput} onChange={event => updateDraftField('dispatchTag', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>ATD</Form.Label><Form.Control value={draftEntity.atd || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('atd', event.target.value)} /></Col><Col md={4}><Form.Label className={formLabelClassName}>Billing Code</Form.Label><Form.Control value={draftEntity.billingCode || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('billingCode', event.target.value)} /></Col><Col md={12}><Form.Label className={formLabelClassName}>Assigned Vehicles</Form.Label><Form.Select multiple value={Array.isArray(draftEntity.assignedVehicleIds) ? draftEntity.assignedVehicleIds.map(id => String(id)) : []} style={{ ...shellStyles.modalInput, minHeight: 150 }} onChange={event => updateDraftField('assignedVehicleIds', Array.from(event.target.selectedOptions || []).map(option => option.value).filter(Boolean))}>{state.vehicles.filter(vehicle => !draftEntity.vehicleType || vehicleSupportsServiceType(vehicle, draftEntity.vehicleType)).map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.label} | {getVehicleCapabilityTokens(vehicle).join(', ') || 'No capabilities'}</option>)}</Form.Select><div className="small text-secondary mt-2">Aqui es donde asignas los carros a este grouping.</div></Col><Col md={12}><Form.Label className={formLabelClassName}>Description</Form.Label><Form.Control as="textarea" rows={2} value={draftEntity.description} style={shellStyles.modalInput} onChange={event => updateDraftField('description', event.target.value)} /></Col><Col md={6}><Form.Label className={formLabelClassName}>Work Hours</Form.Label><Form.Control value={draftEntity.workHours || ''} style={shellStyles.modalInput} onChange={event => updateDraftField('workHours', event.target.value)} /></Col><Col md={6}><div className="small text-secondary pt-4">Assigned grouping type: {getGroupingVehicleType(draftEntity, state) || 'No type selected yet'}</div></Col><Col md={12}><Form.Label className={formLabelClassName}>Notes</Form.Label><Form.Control as="textarea" rows={3} value={draftEntity.notes} style={shellStyles.modalInput} onChange={event => updateDraftField('notes', event.target.value)} /></Col></Row></div>;
+  };
+
+  return <>
+      <Card className="border-0 shadow-sm overflow-hidden">
+        <div className="d-flex align-items-center justify-content-between px-3 py-2 text-white" style={shellStyles.windowHeader}>
+          <strong>{config.title}</strong>
+          <button type="button" className="btn btn-link text-white p-0 text-decoration-none"><IconifyIcon icon="iconoir:xmark" className="fs-18" /></button>
+        </div>
+        <CardBody className="p-2" style={shellStyles.body}>
+          <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-2">
+            <div className="d-flex flex-wrap align-items-center gap-2">
+              <Button style={shellStyles.toolbarButton} onClick={handleRefresh} disabled={loading || saving || operationalAlertsLoading || driverTripMetricsLoading}><IconifyIcon icon="iconoir:refresh-double" /></Button>
+              <div className="vr text-secondary" />
+              <VdrTabsBar onNavigate={() => {
+                setSearch('');
+                setPageIndex(0);
+              }} />
+              <div className="vr text-secondary" />
+              <Button style={shellStyles.toolbarButton} onClick={() => openEditor(null)}><IconifyIcon icon="iconoir:plus" className="me-2" />Add</Button>
+              <Button style={shellStyles.toolbarButton} onClick={() => selectedEntity ? openEditor(selectedEntity) : setMessage('Selecciona un registro para editar.') }><IconifyIcon icon="iconoir:edit-pencil" className="me-2" />Edit</Button>
+            </div>
+            <div className="d-flex align-items-center gap-2 ms-auto">
+              <Button style={shellStyles.toolbarButton} onClick={() => router.push('/integrations/driver-app')}>Driver App</Button>
+              <Dropdown align="end">
+                <Dropdown.Toggle as={Button} style={shellStyles.toolbarButton}>
+                  <IconifyIcon icon="iconoir:settings" className="me-2" />
+                  Settings
+                  <IconifyIcon icon="iconoir:nav-arrow-down" className="ms-2" />
+                </Dropdown.Toggle>
+                <Dropdown.Menu style={shellStyles.toolbarDropdownMenu}>
+                  <Dropdown.Item onClick={() => router.push('/settings/email-templates')}>Email Templates</Dropdown.Item>
+                  <Dropdown.Item onClick={() => router.push('/settings/page-memory')}>Page Memory</Dropdown.Item>
+                  <Dropdown.Item onClick={() => router.push('/settings/gps')}>GPS</Dropdown.Item>
+                  <Dropdown.Item onClick={() => router.push('/settings/office')}>Office</Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown>
+              <Button style={shellStyles.toolbarButton} onClick={() => router.push('/settings/gps')}>GPS</Button>
+              <Button style={shellStyles.toolbarButton} onClick={() => router.push('/billing/genius')}>Genius</Button>
+              <Button style={shellStyles.toolbarButton} onClick={() => router.push('/rates')}>Rates</Button>
+              <div className="position-relative">
+                <IconifyIcon icon="iconoir:search" className="position-absolute top-50 start-0 translate-middle-y ms-3 text-success" />
+                <Form.Control value={search} onChange={event => {
+                  setSearch(event.target.value);
+                  setPageIndex(0);
+                }} placeholder="Search" style={shellStyles.search} />
+              </div>
+              <Button style={shellStyles.dangerButton} onClick={handleDelete} disabled={saving}><IconifyIcon icon="iconoir:trash" className="me-2" />Delete</Button>
+            </div>
+          </div>
+
+          <div className="small text-secondary mb-3 d-flex align-items-center gap-2 flex-wrap">{saving ? <><Spinner animation="border" size="sm" /> Saving...</> : operationalAlertsLoading || driverTripMetricsLoading ? <><Spinner animation="border" size="sm" /> Refreshing driver metrics...</> : message}</div>
+          {error ? <Alert variant="danger" className="py-2">{error}</Alert> : null}
+
+          <div className="border overflow-hidden" style={shellStyles.tableShell}>
+            <div className="table-responsive" style={{ maxHeight: 680 }}>
+              <Table className="align-middle mb-0 text-white">
+                <thead style={shellStyles.tableHead}>
+                  <tr>
+                    <th style={{ width: 34 }}><Form.Check /></th>
+                    {config.columns.map(column => <th key={column} className="fw-normal" style={shellStyles.tableHeadCell}>{column}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? <tr><td colSpan={config.columns.length + 1} className="text-center py-5 text-secondary"><Spinner animation="border" size="sm" className="me-2" />Loading records...</td></tr> : visibleRows.length ? visibleRows.map(row => <tr key={row.id} onClick={() => setSelectedRowId(row.id)} style={{ cursor: 'pointer', backgroundColor: selectedRowId === row.id ? shellStyles.rowBackground.selected : shellStyles.rowBackground.default, color: shellStyles.rowTextColor }}><td><Form.Check checked={selectedRowId === row.id} onChange={() => setSelectedRowId(row.id)} /></td>{renderRowCells(row)}</tr>) : <tr><td colSpan={config.columns.length + 1} className="text-center py-5 text-secondary">No records yet. Usa Add para crear el primer expediente.</td></tr>}
+                </tbody>
+              </Table>
+            </div>
+          </div>
+
+          <div className="d-flex align-items-center gap-2 mt-3">
+            <Button style={shellStyles.toolbarButton} disabled={safePageIndex === 0} onClick={() => setPageIndex(current => Math.max(0, current - 1))}><IconifyIcon icon="iconoir:nav-arrow-left" /></Button>
+            <div className="px-3 py-2 border" style={shellStyles.pageBadge}>{safePageIndex + 1} of {totalPages}</div>
+            <Button style={shellStyles.toolbarButton} disabled={safePageIndex >= totalPages - 1} onClick={() => setPageIndex(current => Math.min(totalPages - 1, current + 1))}><IconifyIcon icon="iconoir:nav-arrow-right" /></Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Modal show={showEditor} onHide={() => setShowEditor(false)} size="xl" centered>
+        <Modal.Header closeButton style={shellStyles.modalHeader} className="text-white">
+          <Modal.Title>{activeTab === 'drivers' ? draftEntity?.displayName || getFullName(draftEntity || {}) || 'New Driver Record' : activeTab === 'attendants' ? draftEntity?.name || 'New Attendant' : activeTab === 'vehicles' ? draftEntity?.label || 'New Vehicle' : draftEntity?.name || 'New Grouping'}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body style={shellStyles.modalContent}>
+          {validationErrors.length > 0 ? <Alert variant="danger"><ul className="mb-0">{validationErrors.map(item => <li key={item}>{item}</li>)}</ul></Alert> : null}
+          {activeTab === 'drivers' ? <>
+              {driverAlerts.length > 0 ? <Alert variant="warning">{driverAlerts.map(alert => <div key={alert.text}>{alert.text}</div>)}</Alert> : null}
+              {operationalAlertsLoading ? <Alert variant="secondary" className="py-2">Loading driver fault history...</Alert> : null}
+              <div className="d-flex flex-wrap gap-2 mb-3">{DRIVER_EDITOR_TABS.map(tab => <Button key={tab.key} style={editorTab === tab.key ? shellStyles.activeTab : shellStyles.toolbarButton} onClick={() => setEditorTab(tab.key)}>{tab.label}</Button>)}</div>
+              {renderDriverEditor()}
+            </> : renderGenericEditor()}
+        </Modal.Body>
+        <Modal.Footer style={{ ...shellStyles.modalHeader, justifyContent: 'space-between' }}>
+          <div className="small text-secondary">Los cambios se guardan en la API local del proyecto y alimentan Dispatcher.</div>
+          <div className="d-flex gap-2">
+            <Button style={shellStyles.toolbarButton} onClick={() => setShowEditor(false)}>Cancel</Button>
+            <Button style={shellStyles.activeTab} onClick={handleSave} disabled={saving}>Save</Button>
+          </div>
+        </Modal.Footer>
+      </Modal>
+    </>;
+};
 
 export default DriversManagementWorkspace;
