@@ -123,10 +123,8 @@ const isTripAssignedToDriver = (trip, driverMatch) => {
 };
 
 const formatClockTime = value => new Date(value).toLocaleTimeString('en-US', {
-    timeZone: DEFAULT_DISPATCH_TIME_ZONE,
   hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
+  minute: '2-digit'
 });
 
 const normalizeLocationSnapshot = value => {
@@ -403,7 +401,7 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
       patch: {
         status: 'In Progress',
         driverTripStatus: 'Patient Onboard',
-        actualPickup: timeLabel,
+        actualPickup: trip?.actualPickup || timeLabel,
         patientOnboardAt: timestamp,
         driverWorkflow: {
           ...nextWorkflow,
@@ -486,7 +484,7 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
         completedAt: timestamp,
         completionLocationSnapshot: locationSnapshot,
         completionPhotoDataUrl,
-        actualDropoff: timeLabel,
+        actualDropoff: trip?.actualDropoff || timeLabel,
         riderSignatureName,
         riderSignedAt: riderSignatureName ? timestamp : trip?.riderSignedAt || null,
         driverWorkflow: {
@@ -555,9 +553,7 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'tripId, driverId, and action are required.' }, { status: 400 });
   }
 
-  const authResult = await authorizeMobileDriverRequest(request, driverId, {
-    allowLegacyWithoutSession: true
-  });
+  const authResult = await authorizeMobileDriverRequest(request, driverId);
   if (authResult.response) return withMobileCors(authResult.response, request);
 
   const adminPayload = await readNemtAdminPayload();
@@ -588,14 +584,7 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived Pickup before Patient Onboard.' }, { status: 400 });
   }
 
-  if (
-    action === 'start-trip'
-    && !currentTrip?.patientOnboardAt
-    && !currentTrip?.actualPickup
-    && !currentTrip?.arrivedAt
-    && !currentTrip?.driverWorkflow?.arrivedPickupAt
-    && !currentTrip?.driverWorkflow?.arrivalAt
-  ) {
+  if (action === 'start-trip' && !currentTrip?.patientOnboardAt && !currentTrip?.actualPickup) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Patient Onboard before Start Trip.' }, { status: 400 });
   }
 
@@ -603,14 +592,8 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Start Trip before Arrived Destination.' }, { status: 400 });
   }
 
-  if (
-    action === 'complete'
-    && !currentTrip?.arrivedDestinationAt
-    && !currentTrip?.driverWorkflow?.destinationArrivalAt
-    && !currentTrip?.startTripAt
-    && !currentTrip?.driverWorkflow?.destinationDepartureAt
-  ) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Start Trip before Complete.' }, { status: 400 });
+  if (action === 'complete' && !currentTrip?.arrivedDestinationAt && !currentTrip?.driverWorkflow?.destinationArrivalAt) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived Destination before Complete.' }, { status: 400 });
   }
 
   if (action === 'complete' && !completionPhotoDataUrl) {
