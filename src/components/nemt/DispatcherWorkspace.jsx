@@ -1148,6 +1148,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     setSelectedRouteId('');
     setSelectedDriverId(null);
     setIsManualDriverScope(false);
+    setQuickReassignDriverId('');
+    setSelectedSecondaryDriverId('');
     setIsRoutePanelCollapsed(true);
     setFollowSelectedDriver(false);
     setMapFocusRequest(null);
