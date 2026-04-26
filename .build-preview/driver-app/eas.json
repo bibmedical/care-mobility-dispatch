@@ -1,0 +1,20 @@
+{
+  "cli": {
+    "version": ">= 18.4.0"
+  },
+  "build": {
+    "preview": {
+      "channel": "main",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "channel": "main",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  }
+}

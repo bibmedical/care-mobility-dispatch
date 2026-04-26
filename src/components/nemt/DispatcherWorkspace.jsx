@@ -14,7 +14,7 @@ import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { DISPATCH_TRIP_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripDropoffPosition, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPickupPosition, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument, formatPrintGeneratedAt } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
-import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
+import { getMapTileConfig } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';

@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "name": "Florida Mobility Driver Diario",
+    "slug": "care-mobility-driver-app",
+    "version": "1.0.9",
+    "orientation": "portrait",
+    "icon": "./assets/iconnew-square.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This driver app needs your live location to show real GPS in dispatcher and calculate ETA.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This driver app needs background GPS so dispatcher can keep seeing the vehicle even when the phone screen is not on.",
+        "NSCameraUsageDescription": "This driver app needs camera access to capture required trip and profile photos.",
+        "NSPhotoLibraryUsageDescription": "This driver app needs photo library access so drivers can attach existing trip and profile photos.",
+        "UIBackgroundModes": [
+          "location"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.caremobility.driverapp",
+      "versionCode": 10,
+      "permissions": [
+        "POST_NOTIFICATIONS",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "WAKE_LOCK",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#071a2a",
+        "foregroundImage": "./assets/iconnew-square.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "extra": {
+      "apiBaseUrl": "https://care-mobility-dispatch-web-v2.onrender.com",
+      "eas": {
+        "projectId": "18100902-f02f-4e6e-a660-d3718fd5200d"
+      }
+    },
+    "web": {
+      "favicon": "./assets/iconnew-square.png",
+      "shortName": "Driver Diario",
+      "name": "Florida Mobility Driver Diario"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "This driver app needs your live location to show real GPS in dispatcher and calculate ETA.",
+          "locationAlwaysAndWhenInUsePermission": "This driver app needs background GPS so dispatcher can keep seeing the vehicle even when the phone screen is off.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "This driver app needs photo access so drivers can attach trip and profile photos.",
+          "cameraPermission": "This driver app needs camera access to take required trip and profile photos."
+        }
+      ]
+    ],
+    "owner": "caremobility",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/18100902-f02f-4e6e-a660-d3718fd5200d"
+    }
+  }
+}

@@ -324,6 +324,7 @@ const DispatcherMessagingPanel = ({
   const hasHydratedMessagingPrefsRef = useRef(false);
   const lastSavedMessagingPrefsRef = useRef('');
   const latestUserPreferencesRef = useRef(userPreferences);
+  const upsertDispatchThreadMessageRef = useRef(upsertDispatchThreadMessage);
 
   const allDrivers = useMemo(() => [
     ...drivers,
@@ -336,6 +337,7 @@ const DispatcherMessagingPanel = ({
     }))
   ], [drivers, dailyDrivers]);
   const allDriversById = useMemo(() => new Map(allDrivers.map(driver => [normalizeDriverId(driver?.id), driver])), [allDrivers]);
+  const allDriverIds = useMemo(() => allDrivers.map(driver => normalizeDriverId(driver?.id)).filter(Boolean), [allDrivers]);
 
   const normalizedThreads = useMemo(() => mergeThreads(dispatchThreads, allDrivers), [allDrivers, dispatchThreads]);
   const hiddenDriverIdSet = useMemo(() => new Set((Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []).map(normalizeDriverId).filter(Boolean)), [hiddenDriverIds]);
@@ -344,6 +346,10 @@ const DispatcherMessagingPanel = ({
   useEffect(() => {
     latestUserPreferencesRef.current = userPreferences;
   }, [userPreferences]);
+
+  useEffect(() => {
+    upsertDispatchThreadMessageRef.current = upsertDispatchThreadMessage;
+  }, [upsertDispatchThreadMessage]);
 
   useEffect(() => {
     if (userPreferencesLoading) return;
@@ -363,6 +369,19 @@ const DispatcherMessagingPanel = ({
     lastSavedMessagingPrefsRef.current = JSON.stringify(normalizedDispatcherMessaging);
     hasHydratedMessagingPrefsRef.current = true;
   }, [userPreferences?.dispatcherMessaging?.chatTheme, userPreferences?.dispatcherMessaging?.customNotificationSoundDataUrl, userPreferences?.dispatcherMessaging?.customNotificationSoundName, userPreferences?.dispatcherMessaging?.hiddenDriverIds, userPreferences?.dispatcherMessaging?.notificationTone, userPreferencesLoading]);
+
+  useEffect(() => {
+    if (!hasHydratedMessagingPrefsRef.current) return;
+    if (allDriverIds.length === 0) return;
+
+    const normalizedHiddenIds = (Array.isArray(hiddenDriverIds) ? hiddenDriverIds : []).map(normalizeDriverId).filter(Boolean);
+    if (normalizedHiddenIds.length === 0) return;
+
+    const hasAnyVisibleDriver = allDriverIds.some(driverId => !normalizedHiddenIds.includes(driverId));
+    if (hasAnyVisibleDriver) return;
+
+    setHiddenDriverIds([]);
+  }, [allDriverIds, hiddenDriverIds]);
 
   useEffect(() => {
     if (userPreferencesLoading || !hasHydratedMessagingPrefsRef.current) return;
@@ -550,7 +569,7 @@ const DispatcherMessagingPanel = ({
             mimeType: String(message?.mediaType || '').trim(),
             dataUrl: String(message?.mediaUrl || '').trim()
           }] : [];
-          upsertDispatchThreadMessage({
+          upsertDispatchThreadMessageRef.current({
             driverId: message.driverId,
             markDispatchDirty: false,
             markIncomingRead: activeDriverIdRef.current === message.driverId,
@@ -585,7 +604,7 @@ const DispatcherMessagingPanel = ({
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [upsertDispatchThreadMessage]);
+  }, []);
 
   const handleSendMessage = async (text, options = {}) => {
     const messageText = text.trim();
@@ -1327,7 +1346,15 @@ const DispatcherMessagingPanel = ({
             </div>
             {smsStatus ? <div className={`alert ${smsStatus.toLowerCase().includes('unable') || smsStatus.toLowerCase().includes('missing') || smsStatus.toLowerCase().includes('failed') ? 'alert-warning' : smsStatus.toLowerCase().includes('sending') ? 'alert-info' : 'alert-success'} py-2 mb-3`}>{smsStatus}</div> : null}
             {activeDriverAlerts.length > 0 ? <div className="d-flex flex-column gap-2 mb-3">
-                {activeDriverAlerts.map(alert => <div key={alert.id} className="border rounded p-3 shadow-sm" style={getAlertSurfaceStyle(alert, isDarkMode)}>
+                {activeDriverAlerts.map(alert => alert?.type === 'delay-alert' ? <div key={alert.id} className="border rounded p-2 shadow-sm" style={getAlertSurfaceStyle(alert, isDarkMode)}>
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <strong style={{ fontSize: '0.95rem', lineHeight: 1.2 }}>{alert.subject || 'Driver alert'}</strong>
+                      <Badge bg={getAlertVariant(alert.priority)}>{alert.priority || 'normal'}</Badge>
+                      <Badge bg="dark">{getAlertLabel(alert)}</Badge>
+                    </div>
+                    <div className="small text-muted mt-1">{formatDispatchTime(alert.createdAt, uiPreferences?.timeZone)} | {alert.deliveryMethod || 'in-app'}</div>
+                    <div className="mt-2 small">{getAlertDisplayBody(alert)}</div>
+                  </div> : <div key={alert.id} className="border rounded p-3 shadow-sm" style={getAlertSurfaceStyle(alert, isDarkMode)}>
                     <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap">
                       <div>
                         <div className="d-flex align-items-center gap-2 flex-wrap">

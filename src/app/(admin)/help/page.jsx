@@ -699,6 +699,51 @@ const HelpPage = () => {
 
             <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
               <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="dark" className="fs-6 px-3 py-2">V22</Badge>
+                <span className="fw-semibold text-dark">Render Rollback Audit + Recovery Order</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 24, 2026</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>User manually installed rollback commit c925264, which was an exact install of snapshot 80bf27e. That action removed a large part of the newer Trip Dashboard and shared-state work, so the recovery baseline must be c925264 instead of guesswork.</li>
+                <li>Git recovery order after that rollback point was reviewed one by one: d6c1bb4, 87de3ce, 4febe03, 90e633d, 0a71a41, a473b86, f91a9c4, b7fd0e5, fd6313a, 78560b8, 178bd77, 366383c, and 31aaca6.</li>
+                <li>The largest drift after the rollback is concentrated in current TripDashboardWorkspace, useNemtContext, and MapScreenWorkspace. Those files carry the biggest behavior delta versus c925264, so they must be inspected first before blaming a small late patch.</li>
+                <li>The driver disappearance root cause is now explicit in code: mapAdminDataToDispatchDrivers was re-filtering the admin_drivers dataset by role even though the source list already came from admin_drivers. That duplicate filter could zero out Dispatcher drivers when role was blank or malformed.</li>
+                <li>The stronger driver repair is therefore not only blank-role normalization. The real fix is that dispatch mapping must trust admin_drivers directly and keep role normalization only as compatibility support.</li>
+                <li>Future rollback rule: reconstruct from git commit order and current code state in the files named here. Do not rebuild from chat memory, and do not mix fresh patches into a rolled-back snapshot until those files are compared first.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="danger" className="fs-6 px-3 py-2">V21</Badge>
+                <span className="fw-semibold text-dark">Dispatcher Driver Visibility Role Guard</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 24, 2026</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Confirmed the large Trip Dashboard map work did not remove drivers from Dispatcher or Trip Dashboard. Both screens still read the shared drivers array from the same context path.</li>
+                <li>Found the real exclusion point in the admin-to-dispatch model layer: dispatchDrivers were filtered by isDriverRole(driver.role) even though the source list already comes from admin_drivers, so valid driver records could exist in admin storage but still disappear from Dispatcher.</li>
+                <li>Local fix: dispatch mapping now trusts the admin_drivers dataset directly and still normalizes blank roles for compatibility, so legacy driver records are not dropped just because the duplicated role field is empty or malformed.</li>
+                <li>Focused local validation confirmed the normalization path now returns a default driver role and keeps the legacy driver in the mapped dispatch driver list. This entry records the exact Render deploy scope.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <Badge bg="warning" className="fs-6 px-3 py-2">V20</Badge>
+                <span className="fw-semibold text-dark">Trip Dashboard Import Routing Guard</span>
+                <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 24, 2026</span>
+              </div>
+              <ul className="mb-0 small ps-3" style={{ color: '#334155' }}>
+                <li>Confirmed the production-visible route inversion problem was not only in Excel import data. Online trips could keep a mutated live route even when providerSnapshot or excelLoaderSnapshot still held the correct imported direction.</li>
+                <li>Found the root cause in shared import merge logic: Trip Dashboard passed an apply-or-keep routing decision from the UI, but useNemtContext upsertImportedTrips ignored that option completely.</li>
+                <li>The same merge path also preserved stale routingDirectionInverted state, so an old manual inversion could keep overriding later imports instead of letting the imported route become authoritative again.</li>
+                <li>Local fix: the shared merge now accepts the routing option, restores imported address and coordinates when route changes are applied, and only preserves current address and coordinates when the user explicitly chooses to keep them.</li>
+                <li>Local validation completed with no editor errors in the touched shared-context and Trip Dashboard files. This diary entry records the repair scope before any future deploy.</li>
+              </ul>
+            </div>
+
+            <div className="border rounded p-3" style={{ backgroundColor: '#f8f9fb', borderColor: '#d5deea' }}>
+              <div className="d-flex align-items-center gap-2 mb-2">
                 <Badge bg="success" className="fs-6 px-3 py-2">V19</Badge>
                 <span className="fw-semibold text-dark">Driver Workflow + Applications + Dispatcher Push</span>
                 <span className="text-dark small ms-auto" style={{ opacity: 0.85 }}>April 17, 2026</span>

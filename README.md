@@ -38,16 +38,15 @@ npm start
 
 La app Expo no se sube a Render. Esa parte se publica con Expo / EAS.
 
-## Mapbox
+## Local Map Tiles
 
-La web puede usar Mapbox con estas variables:
+La web tambien puede apuntar a tiles locales si defines esta variable:
 
 ```bash
-NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_public_token
-NEXT_PUBLIC_MAPBOX_STYLE_ID=mapbox/streets-v12
+NEXT_PUBLIC_LOCAL_TILE_URL=http://localhost:8080/tile/{z}/{x}/{y}.png
 ```
 
-Si no existe token, usa OpenStreetMap.
+Importante: el archivo `.osm.pbf` descargado en `storage/maps/osm/` es fuente de datos y no se pinta directo en Leaflet. Primero hay que convertirlo o servirlo con un tile server local.
 
 ## Render Deploy
 

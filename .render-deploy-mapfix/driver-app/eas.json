@@ -1,0 +1,32 @@
+{
+  "cli": {
+    "version": ">= 18.4.0"
+  },
+  "build": {
+    "preview": {
+      "channel": "main",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "clone-server": {
+      "channel": "clone-server",
+      "distribution": "internal",
+      "env": {
+        "DRIVER_APP_VARIANT": "clone-server",
+        "EXPO_PUBLIC_DRIVER_APP_NAME": "Florida Mobility Driver Diario Clone Server",
+        "EXPO_PUBLIC_DRIVER_ANDROID_PACKAGE": "com.caremobility.driverapp.cloneserver"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "channel": "main",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  }
+}

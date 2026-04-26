@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useMemo } from 'react';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { driverTheme } from './driverTheme';
@@ -26,6 +26,85 @@ const ACTION_LABELS: Record<string, string> = {
   cancel: 'Trip cancelled by driver',
 };
 
+type TimelineEvent = {
+  key: string;
+  label: string;
+  time: string;
+  timestamp: number;
+  source: 'dispatcher' | 'driver';
+};
+
+const toTimestamp = (value?: number | string | null) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const buildTimelineEvents = (trip: DriverRuntime['assignedTrips'][number]): TimelineEvent[] => {
+  const wf = trip.driverWorkflow;
+  const dispatchEvents: TimelineEvent[] = [];
+  const driverEvents: TimelineEvent[] = [];
+
+  if (trip.createdAt) {
+    dispatchEvents.push({
+      key: `${trip.id}-created`,
+      label: 'Trip loaded from Excel/import',
+      time: formatTs(trip.createdAt),
+      timestamp: toTimestamp(trip.createdAt),
+      source: 'dispatcher'
+    });
+  }
+
+  if (trip.confirmationStatus) {
+    const confirmationTime = trip.confirmationRespondedAt || trip.confirmationSentAt || '';
+    dispatchEvents.push({
+      key: `${trip.id}-confirmation`,
+      label: `Confirmation: ${trip.confirmationStatus}`,
+      time: formatTs(confirmationTime) || String(confirmationTime || ''),
+      timestamp: toTimestamp(confirmationTime),
+      source: 'dispatcher'
+    });
+  }
+
+  if (trip.serviceDate) {
+    dispatchEvents.push({
+      key: `${trip.id}-service-date`,
+      label: 'Trip assigned (service date)',
+      time: String(trip.serviceDate),
+      timestamp: toTimestamp(trip.serviceDate),
+      source: 'dispatcher'
+    });
+  }
+
+  if (String(trip.status || '').toLowerCase().includes('cancel') && !trip.canceledAt) {
+    dispatchEvents.push({
+      key: `${trip.id}-dispatch-cancelled`,
+      label: 'Trip cancelled by dispatcher',
+      time: '',
+      timestamp: 0,
+      source: 'dispatcher'
+    });
+  }
+
+  if (wf?.acceptedAt) driverEvents.push({ key: `${trip.id}-accept`, label: ACTION_LABELS.accept, time: formatTs(wf.acceptedAt), timestamp: toTimestamp(wf.acceptedAt), source: 'driver' });
+  if (wf?.willCallActivatedAt || trip.willCallActivatedAt) driverEvents.push({ key: `${trip.id}-activate-willcall`, label: ACTION_LABELS['activate-willcall'], time: formatTs(wf?.willCallActivatedAt || trip.willCallActivatedAt), timestamp: toTimestamp(wf?.willCallActivatedAt || trip.willCallActivatedAt), source: 'driver' });
+  if (wf?.departureToPickupAt || wf?.departureAt) driverEvents.push({ key: `${trip.id}-en-route`, label: ACTION_LABELS['en-route'], time: formatTs(wf?.departureToPickupAt || wf?.departureAt), timestamp: toTimestamp(wf?.departureToPickupAt || wf?.departureAt), source: 'driver' });
+  if (wf?.arrivedPickupAt || wf?.arrivalAt) driverEvents.push({ key: `${trip.id}-arrived`, label: ACTION_LABELS.arrived, time: formatTs(wf?.arrivedPickupAt || wf?.arrivalAt), timestamp: toTimestamp(wf?.arrivedPickupAt || wf?.arrivalAt), source: 'driver' });
+  if (wf?.patientOnboardAt) driverEvents.push({ key: `${trip.id}-patient-onboard`, label: ACTION_LABELS['patient-onboard'], time: formatTs(wf.patientOnboardAt), timestamp: toTimestamp(wf.patientOnboardAt), source: 'driver' });
+  if (wf?.startTripAt || wf?.destinationDepartureAt) driverEvents.push({ key: `${trip.id}-start-trip`, label: ACTION_LABELS['start-trip'], time: formatTs(wf?.startTripAt || wf?.destinationDepartureAt), timestamp: toTimestamp(wf?.startTripAt || wf?.destinationDepartureAt), source: 'driver' });
+  if (wf?.arrivedDestinationAt || wf?.destinationArrivalAt) driverEvents.push({ key: `${trip.id}-arrived-destination`, label: ACTION_LABELS['arrived-destination'], time: formatTs(wf?.arrivedDestinationAt || wf?.destinationArrivalAt), timestamp: toTimestamp(wf?.arrivedDestinationAt || wf?.destinationArrivalAt), source: 'driver' });
+  if (wf?.completedAt) driverEvents.push({ key: `${trip.id}-complete`, label: ACTION_LABELS.complete, time: formatTs(wf.completedAt), timestamp: toTimestamp(wf.completedAt), source: 'driver' });
+  if (trip.canceledAt) driverEvents.push({ key: `${trip.id}-cancel`, label: ACTION_LABELS.cancel, time: formatTs(trip.canceledAt), timestamp: toTimestamp(trip.canceledAt), source: 'driver' });
+
+  return [...dispatchEvents, ...driverEvents].sort((a, b) => {
+    if (a.timestamp === b.timestamp) return a.label.localeCompare(b.label);
+    if (!a.timestamp) return -1;
+    if (!b.timestamp) return 1;
+    return a.timestamp - b.timestamp;
+  });
+};
+
 export const DriverHistorySection = ({ runtime }: Props) => {
   const entries = useMemo(() => {
     return [...runtime.assignedTrips]
@@ -51,26 +130,9 @@ export const DriverHistorySection = ({ runtime }: Props) => {
 
   return <View style={styles.screen}>
       {entries.map(trip => {
-        const wf = trip.driverWorkflow;
         const isCompleted = String(trip.status || '').toLowerCase().includes('complet');
         const isCancelled = String(trip.status || '').toLowerCase().includes('cancel');
-
-        const dispatchEvents: { label: string; time: string }[] = [];
-        if (trip.createdAt) dispatchEvents.push({ label: 'Trip loaded from Excel/import', time: formatTs(trip.createdAt) });
-        if (trip.confirmationStatus) dispatchEvents.push({ label: `Confirmation: ${trip.confirmationStatus}`, time: trip.confirmationRespondedAt || trip.confirmationSentAt || '' });
-        if (trip.serviceDate) dispatchEvents.push({ label: 'Trip assigned (service date)', time: trip.serviceDate });
-        if (isCancelled) dispatchEvents.push({ label: 'Trip cancelled by dispatcher', time: '' });
-
-        const driverEvents: { label: string; time: string }[] = [];
-        if (wf?.acceptedAt) driverEvents.push({ label: ACTION_LABELS['accept'], time: formatTs(wf.acceptedAt) });
-        if (wf?.willCallActivatedAt || trip.willCallActivatedAt) driverEvents.push({ label: ACTION_LABELS['activate-willcall'], time: formatTs(wf?.willCallActivatedAt || trip.willCallActivatedAt) });
-        if (wf?.departureToPickupAt || wf?.departureAt) driverEvents.push({ label: ACTION_LABELS['en-route'], time: formatTs(wf.departureToPickupAt || wf.departureAt) });
-        if (wf?.arrivedPickupAt || wf?.arrivalAt) driverEvents.push({ label: ACTION_LABELS['arrived'], time: formatTs(wf.arrivedPickupAt || wf.arrivalAt) });
-        if (wf?.patientOnboardAt) driverEvents.push({ label: ACTION_LABELS['patient-onboard'], time: formatTs(wf.patientOnboardAt) });
-        if (wf?.startTripAt || wf?.destinationDepartureAt) driverEvents.push({ label: ACTION_LABELS['start-trip'], time: formatTs(wf.startTripAt || wf.destinationDepartureAt) });
-        if (wf?.arrivedDestinationAt || wf?.destinationArrivalAt) driverEvents.push({ label: ACTION_LABELS['arrived-destination'], time: formatTs(wf.arrivedDestinationAt || wf.destinationArrivalAt) });
-        if (wf?.completedAt) driverEvents.push({ label: ACTION_LABELS['complete'], time: formatTs(wf.completedAt) });
-        if (trip.canceledAt) driverEvents.push({ label: ACTION_LABELS['cancel'], time: formatTs(trip.canceledAt) });
+        const timelineEvents = buildTimelineEvents(trip);
 
         const cancellationReason = String(trip.cancellationReason || '').trim();
         const cancellationPhoto = String(trip.cancellationPhotoDataUrl || '').trim();
@@ -91,21 +153,20 @@ export const DriverHistorySection = ({ runtime }: Props) => {
               </View>
             </View>
 
-            {dispatchEvents.length > 0 && <View style={styles.eventSection}>
-              <Text style={styles.eventSectionTitle}>Dispatcher</Text>
-              {dispatchEvents.map((ev, i) => <View key={i} style={styles.eventRow}>
-                  <Text style={styles.eventDot}>·</Text>
-                  <Text style={styles.eventLabel}>{ev.label}</Text>
-                  {ev.time ? <Text style={styles.eventTime}>{ev.time}</Text> : null}
-                </View>)}
-            </View>}
-
-            {driverEvents.length > 0 && <View style={styles.eventSection}>
-              <Text style={styles.eventSectionTitle}>Driver actions</Text>
-              {driverEvents.map((ev, i) => <View key={i} style={styles.eventRow}>
-                  <Text style={styles.eventDot}>·</Text>
-                  <Text style={styles.eventLabel}>{ev.label}</Text>
-                  {ev.time ? <Text style={styles.eventTime}>{ev.time}</Text> : null}
+            {timelineEvents.length > 0 && <View style={styles.eventSection}>
+              <Text style={styles.eventSectionTitle}>Trip line</Text>
+              {timelineEvents.map((ev, index) => <View key={ev.key} style={styles.timelineRow}>
+                  <View style={styles.timelineRail}>
+                    <View style={[styles.timelineDot, ev.source === 'driver' ? styles.timelineDotDriver : styles.timelineDotDispatcher]} />
+                    {index < timelineEvents.length - 1 ? <View style={styles.timelineLine} /> : null}
+                  </View>
+                  <View style={styles.timelineContent}>
+                    <View style={styles.timelineHeader}>
+                      <Text style={styles.eventLabel}>{ev.label}</Text>
+                      {ev.time ? <Text style={styles.eventTime}>{ev.time}</Text> : null}
+                    </View>
+                    <Text style={styles.timelineSource}>{ev.source === 'driver' ? 'Driver' : 'Dispatcher'}</Text>
+                  </View>
                 </View>)}
             </View>}
 
@@ -115,7 +176,7 @@ export const DriverHistorySection = ({ runtime }: Props) => {
                 {cancellationPhoto ? <Text style={styles.eventTime}>Photo attached</Text> : null}
               </View> : null}
 
-            {dispatchEvents.length === 0 && driverEvents.length === 0 && <Text style={styles.noEventsText}>No recorded events yet.</Text>}
+            {timelineEvents.length === 0 && <Text style={styles.noEventsText}>No recorded events yet.</Text>}
           </View>;
       })}
     </View>;
@@ -201,6 +262,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6
+  },
+  timelineRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10
+  },
+  timelineRail: {
+    width: 16,
+    alignItems: 'center'
+  },
+  timelineDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    marginTop: 4
+  },
+  timelineDotDispatcher: {
+    backgroundColor: '#64748b'
+  },
+  timelineDotDriver: {
+    backgroundColor: '#14532d'
+  },
+  timelineLine: {
+    width: 2,
+    flex: 1,
+    marginTop: 4,
+    backgroundColor: driverTheme.colors.border
+  },
+  timelineContent: {
+    flex: 1,
+    paddingBottom: 10,
+    gap: 2
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8
+  },
+  timelineSource: {
+    color: driverTheme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6
   },
   eventDot: {
     color: driverTheme.colors.textMuted,

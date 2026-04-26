@@ -691,7 +691,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
       if (patientToDate && (!dateKey || dateKey > patientToDate)) return;
 
       if (term) {
-        const haystack = [trip.id, rider, phone, trip.address, trip.destination, trip.notes].filter(Boolean).join(' ').toLowerCase();
+        const haystack = [trip.rideId, trip.brokerTripId, trip.id, rider, phone, trip.address, trip.destination, trip.notes].filter(Boolean).join(' ').toLowerCase();
         if (!haystack.includes(term)) return;
       }
 
@@ -894,7 +894,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
       if (!hasActiveBlacklistBlock && isPatientExclusionActiveForDate(riderProfile?.exclusion, tripDateKey, confirmationDate !== 'all' ? confirmationDate : today)) return false;
 
       if (!normalizedSearch) return true;
-      const haystack = [trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
+      const haystack = [trip.rideId, trip.brokerTripId, trip.id, trip.rider, trip.patientPhoneNumber, trip.address, trip.destination, trip.confirmation?.lastResponseText].filter(Boolean).join(' ').toLowerCase();
       return haystack.includes(normalizedSearch);
     });
 
@@ -984,8 +984,8 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
       if (milesSortOrder === 'miles-desc') return rightValue - leftValue;
       if (milesSortOrder === 'rider-asc') return String(leftTrip.rider || '').localeCompare(String(rightTrip.rider || ''));
       if (milesSortOrder === 'rider-desc') return String(rightTrip.rider || '').localeCompare(String(leftTrip.rider || ''));
-      if (milesSortOrder === 'tripId-asc') return String(leftTrip.id || '').localeCompare(String(rightTrip.id || ''));
-      if (milesSortOrder === 'tripId-desc') return String(rightTrip.id || '').localeCompare(String(leftTrip.id || ''));
+      if (milesSortOrder === 'tripId-asc') return String(leftTrip.rideId || leftTrip.brokerTripId || leftTrip.id || '').localeCompare(String(rightTrip.rideId || rightTrip.brokerTripId || rightTrip.id || ''));
+      if (milesSortOrder === 'tripId-desc') return String(rightTrip.rideId || rightTrip.brokerTripId || rightTrip.id || '').localeCompare(String(leftTrip.rideId || leftTrip.brokerTripId || leftTrip.id || ''));
       if (phoneDirection) return compareConfirmationText(leftTrip.patientPhoneNumber, rightTrip.patientPhoneNumber, phoneDirection);
       if (pickupDirection) {
         const leftPickupMinutes = getTripTimeMinutesForFilter(leftTrip);
@@ -1082,7 +1082,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
   const renderConfirmationDataCell = (trip, columnKey, confirmationStatus, isOptedOut, riderProfile) => {
     switch (columnKey) {
       case 'tripId':
-        return <td key={columnKey} className="fw-semibold">{trip.id}</td>;
+        return <td key={columnKey} className="fw-semibold">{String(trip?.rideId || trip?.brokerTripId || trip?.id || '').trim() || '-'}</td>;
       case 'rider':
         return <td key={columnKey} style={{ width: CONFIRMATION_TABLE_COLUMN_WIDTHS.rider, minWidth: CONFIRMATION_TABLE_COLUMN_WIDTHS.rider, maxWidth: CONFIRMATION_TABLE_COLUMN_WIDTHS.rider }}>
           <div>{trip.rider}</div>
@@ -1412,7 +1412,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
     switch (columnKey) {
       case 'tripId':
-        return trip.id || '-';
+        return String(trip?.rideId || trip?.brokerTripId || trip?.id || '').trim() || '-';
       case 'rider':
         return trip.rider || '-';
       case 'phone':
@@ -1478,7 +1478,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
     if (trip) {
       const currentStatus = getEffectiveConfirmationStatus(trip, tripBlockingMap.get(trip.id));
       if (currentStatus === 'Confirmed') {
-        const shouldUnconfirm = window.confirm(`Trip ${trip.id} ya esta confirmado. Quieres marcarlo como UNCONFIRM (Not Sent)?`);
+        const shouldUnconfirm = window.confirm(`Trip ${String(trip?.rideId || trip?.brokerTripId || trip?.id || '').trim() || '-'} ya esta confirmado. Quieres marcarlo como UNCONFIRM (Not Sent)?`);
         if (!shouldUnconfirm) return;
         applyTripConfirmationState(trip, {
           status: 'Not Sent',
@@ -1488,7 +1488,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
           eventType: 'unconfirm',
           noteLine: `[UNCONFIRM] ${new Date().toLocaleString()}: Dispatcher changed status to Not Sent.`
         });
-        setCustomStatus(`Trip ${trip.id} cambiado a Unconfirm (Not Sent).`);
+        setCustomStatus(`Trip ${String(trip?.rideId || trip?.brokerTripId || trip?.id || '').trim() || '-'} cambiado a Unconfirm (Not Sent).`);
         return;
       }
       setConfirmationSourceTrip(trip);
@@ -2464,7 +2464,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                     const rehabHospitalInfo = getTripRehabHospitalInfo(trip);
                     return <tr key={trip.id}>
                       <td className="fw-semibold">
-                        <div>{trip.id}</div>
+                        <div>{String(trip?.rideId || trip?.brokerTripId || trip?.id || '').trim() || '-'}</div>
                         {trip.clonedFromTripId ? (
                           <div className="mt-1">
                             <Badge bg="info" text="dark">CLONED from {trip.clonedFromTripId}</Badge>
@@ -2480,7 +2480,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                       <td>
                         <div className="d-flex flex-column gap-1">
                           <Button size="sm" variant="outline-warning" onClick={() => { setShowRehabBlacklistPanel(false); handleRemoveHospitalRehab(trip); }}>Remove RH</Button>
-                          <Button size="sm" variant="outline-danger" onClick={() => { if (window.confirm(`DELETE trip ${trip.id}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}>Delete</Button>
+                          <Button size="sm" variant="outline-danger" onClick={() => { if (window.confirm(`DELETE trip ${String(trip?.rideId || trip?.brokerTripId || trip?.id || '').trim() || '-'}\nRider: ${trip.rider || '-'}\n\nCannot be undone. Continue?`)) { deleteTripRecord(trip.id); } }}>Delete</Button>
                         </div>
                       </td>
                     </tr>;
@@ -2553,8 +2553,8 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                 <tbody>
                   {trips.filter(trip => Boolean(trip?.clonedFromTripId)).map(trip => (
                     <tr key={trip.id} style={{ backgroundColor: 'rgba(6,182,212,0.05)' }}>
-                      <td className="fw-semibold text-info">{trip.id}</td>
-                      <td>{trip.clonedFromTripId}</td>
+                      <td className="fw-semibold text-info">{String(trip?.rideId || trip?.brokerTripId || trip?.id || '').trim() || '-'}</td>
+                      <td>{trip.clonedFromTripId || '-'}</td>
                       <td>{trip.rider || '-'}</td>
                       <td>{trip.patientPhoneNumber || '-'}</td>
                       <td>{trip.scheduledPickup || trip.pickup || '-'}</td>
@@ -2922,7 +2922,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
                               title={trip.clonedFromTripId ? `Delete cloned copy (original: ${trip.clonedFromTripId})` : 'Permanently delete this trip'}
                               style={{ minWidth: 72 }}
                               onClick={() => {
-                                const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${trip.id}`;
+                                const label = trip.clonedFromTripId ? `DELETE COPY of ${trip.clonedFromTripId}` : `DELETE trip ${String(trip?.rideId || trip?.brokerTripId || trip?.id || '').trim() || '-'}`;
                                 if (window.confirm(`${label}\nRider: ${trip.rider || '-'}\n\nThis cannot be undone. Continue?`)) {
                                   deleteTripRecord(trip.id);
                                 }
@@ -3024,7 +3024,7 @@ const ConfirmationWorkspace = ({ embedded = false, onRequestClose = null }) => {
               <Form.Label className="small text-uppercase text-muted fw-semibold mb-2">Leg Scope</Form.Label>
               <Form.Select className="mb-3" value={confirmationLegScope} onChange={event => setConfirmationLegScope(event.target.value)}>
                 <option value="">Choose one option</option>
-                <option value="single">Only this leg ({confirmationSourceTrip.id})</option>
+                <option value="single">Only this leg ({String(confirmationSourceTrip?.rideId || confirmationSourceTrip?.brokerTripId || confirmationSourceTrip?.id || '').trim() || '-'})</option>
                 <option value="both">Both legs (A and B)</option>
               </Form.Select>
             </> : null}

@@ -155,35 +155,227 @@ const isDriverTripInProgress = trip => {
     || trip?.patientOnboardAt
     || trip?.startTripAt
     || trip?.arrivedDestinationAt
-    || normalizedStatus === 'accepted'
-    || normalizedStatus.includes('en-route')
-    || normalizedStatus.includes('arrived')
-    || normalizedStatus.includes('progress')
-    || normalizedStatus.includes('destination')
-    || workflowStatus === 'accepted'
-    || workflowStatus === 'en-route'
-    || workflowStatus === 'arrived-pickup'
-    || workflowStatus === 'patient-onboard'
-    || workflowStatus === 'to-destination'
-    || workflowStatus === 'arrived-destination'
   );
+};
+
+const buildWorkflowStateFromEvents = workflowEvents => {
+  const sortedEvents = [...(Array.isArray(workflowEvents) ? workflowEvents : [])]
+    .filter(event => event && typeof event === 'object')
+    .sort((left, right) => Number(left?.timestamp || 0) - Number(right?.timestamp || 0));
+
+  if (!sortedEvents.length) return null;
+
+  const workflowState = {
+    status: '',
+    acceptedAt: null,
+    acceptedTimeLabel: '',
+    willCallActivatedAt: null,
+    willCallActivatedTimeLabel: '',
+    departureAt: null,
+    departureTimeLabel: '',
+    departureToPickupAt: null,
+    departureToPickupTimeLabel: '',
+    departureLocationSnapshot: null,
+    arrivalAt: null,
+    arrivalTimeLabel: '',
+    arrivedPickupAt: null,
+    arrivedPickupTimeLabel: '',
+    arrivalLocationSnapshot: null,
+    patientOnboardAt: null,
+    patientOnboardTimeLabel: '',
+    pickupAt: null,
+    pickupTimeLabel: '',
+    startTripAt: null,
+    startTripTimeLabel: '',
+    destinationDepartureAt: null,
+    destinationDepartureTimeLabel: '',
+    destinationDepartureLocationSnapshot: null,
+    arrivedDestinationAt: null,
+    arrivedDestinationTimeLabel: '',
+    destinationArrivalAt: null,
+    destinationArrivalTimeLabel: '',
+    destinationArrivalLocationSnapshot: null,
+    completedAt: null,
+    completedTimeLabel: '',
+    completionLocationSnapshot: null,
+    startedLate: false,
+    startLateMinutes: null,
+    pickupLate: false,
+    pickupLateMinutes: null,
+    dropoffLate: false,
+    dropoffLateMinutes: null,
+    riderSignatureName: '',
+    riderSignedAt: null,
+    auditTrail: sortedEvents.map(event => ({
+      id: event.id,
+      action: event.action,
+      timestamp: event.timestamp,
+      timeLabel: event.timeLabel,
+      riderSignatureName: event.riderSignatureName,
+      compliance: event.compliance || null
+    }))
+  };
+
+  for (const event of sortedEvents) {
+    const action = String(event?.action || '').trim().toLowerCase();
+    const timestamp = Number(event?.timestamp || 0) || null;
+    const timeLabel = String(event?.timeLabel || '').trim();
+    const riderSignatureName = String(event?.riderSignatureName || '').trim();
+    const locationSnapshot = event?.locationSnapshot && typeof event.locationSnapshot === 'object' ? event.locationSnapshot : null;
+    const compliance = event?.compliance && typeof event.compliance === 'object' ? event.compliance : null;
+
+    if (riderSignatureName) {
+      workflowState.riderSignatureName = riderSignatureName;
+      workflowState.riderSignedAt = timestamp;
+    }
+
+    if (action === 'activate-willcall') {
+      workflowState.status = 'willcall';
+      workflowState.willCallActivatedAt = timestamp;
+      workflowState.willCallActivatedTimeLabel = timeLabel;
+    }
+
+    if (action === 'accept') {
+      workflowState.status = 'accepted';
+      workflowState.acceptedAt = timestamp;
+      workflowState.acceptedTimeLabel = timeLabel;
+    }
+
+    if (action === 'en-route') {
+      workflowState.status = 'en-route';
+      workflowState.departureAt = timestamp;
+      workflowState.departureTimeLabel = timeLabel;
+      workflowState.departureToPickupAt = timestamp;
+      workflowState.departureToPickupTimeLabel = timeLabel;
+      workflowState.departureLocationSnapshot = locationSnapshot;
+      workflowState.startedLate = Boolean(compliance?.isLate);
+      workflowState.startLateMinutes = compliance?.measured ? Math.max(0, Number(compliance?.lateByMinutes) || 0) : null;
+    }
+
+    if (action === 'arrived') {
+      workflowState.status = 'arrived-pickup';
+      workflowState.arrivalAt = timestamp;
+      workflowState.arrivalTimeLabel = timeLabel;
+      workflowState.arrivedPickupAt = timestamp;
+      workflowState.arrivedPickupTimeLabel = timeLabel;
+      workflowState.arrivalLocationSnapshot = locationSnapshot;
+      workflowState.pickupLate = Boolean(compliance?.isLate);
+      workflowState.pickupLateMinutes = compliance?.measured ? Math.max(0, Number(compliance?.lateByMinutes) || 0) : null;
+    }
+
+    if (action === 'patient-onboard') {
+      workflowState.status = 'patient-onboard';
+      workflowState.patientOnboardAt = timestamp;
+      workflowState.patientOnboardTimeLabel = timeLabel;
+      workflowState.pickupAt = timestamp;
+      workflowState.pickupTimeLabel = timeLabel;
+    }
+
+    if (action === 'start-trip') {
+      workflowState.status = 'to-destination';
+      workflowState.startTripAt = timestamp;
+      workflowState.startTripTimeLabel = timeLabel;
+      workflowState.destinationDepartureAt = timestamp;
+      workflowState.destinationDepartureTimeLabel = timeLabel;
+      workflowState.destinationDepartureLocationSnapshot = locationSnapshot;
+    }
+
+    if (action === 'arrived-destination') {
+      workflowState.status = 'arrived-destination';
+      workflowState.arrivedDestinationAt = timestamp;
+      workflowState.arrivedDestinationTimeLabel = timeLabel;
+      workflowState.destinationArrivalAt = timestamp;
+      workflowState.destinationArrivalTimeLabel = timeLabel;
+      workflowState.destinationArrivalLocationSnapshot = locationSnapshot;
+      workflowState.dropoffLate = Boolean(compliance?.isLate);
+      workflowState.dropoffLateMinutes = compliance?.measured ? Math.max(0, Number(compliance?.lateByMinutes) || 0) : null;
+    }
+
+    if (action === 'complete') {
+      workflowState.status = 'completed';
+      workflowState.completedAt = timestamp;
+      workflowState.completedTimeLabel = timeLabel;
+      workflowState.completionLocationSnapshot = locationSnapshot;
+      workflowState.dropoffLate = Boolean(compliance?.isLate);
+      workflowState.dropoffLateMinutes = compliance?.measured ? Math.max(0, Number(compliance?.lateByMinutes) || 0) : null;
+    }
+
+    if (action === 'cancel') {
+      workflowState.status = 'cancelled';
+    }
+  }
+
+  return workflowState;
 };
 
 const buildDriverWorkflowState = (trip, workflowEvents = []) => {
   const existingWorkflow = trip?.driverWorkflow && typeof trip.driverWorkflow === 'object' ? trip.driverWorkflow : null;
-  const fallbackAuditTrail = Array.isArray(existingWorkflow?.auditTrail) ? existingWorkflow.auditTrail : [];
-  const auditTrail = workflowEvents.length > 0 ? workflowEvents.map(event => ({
-    id: event.id,
-    action: event.action,
-    timestamp: event.timestamp,
-    timeLabel: event.timeLabel,
-    riderSignatureName: event.riderSignatureName,
-    compliance: event.compliance || null
-  })) : fallbackAuditTrail;
-  if (!existingWorkflow && auditTrail.length === 0) return null;
+  const eventWorkflow = buildWorkflowStateFromEvents(workflowEvents);
+  if (eventWorkflow) return eventWorkflow;
+
+  const sanitizedWorkflow = {
+    willCallActivatedAt: trip?.willCallActivatedAt || existingWorkflow?.willCallActivatedAt || null,
+    willCallActivatedTimeLabel: String(existingWorkflow?.willCallActivatedTimeLabel || '').trim(),
+    departureAt: trip?.enRouteAt || null,
+    departureTimeLabel: trip?.enRouteAt ? String(existingWorkflow?.departureTimeLabel || '').trim() : '',
+    departureToPickupAt: trip?.enRouteAt || null,
+    departureToPickupTimeLabel: trip?.enRouteAt ? String(existingWorkflow?.departureToPickupTimeLabel || existingWorkflow?.departureTimeLabel || '').trim() : '',
+    arrivalAt: trip?.arrivedAt || null,
+    arrivalTimeLabel: trip?.arrivedAt ? String(existingWorkflow?.arrivalTimeLabel || '').trim() : '',
+    arrivedPickupAt: trip?.arrivedAt || null,
+    arrivedPickupTimeLabel: trip?.arrivedAt ? String(existingWorkflow?.arrivedPickupTimeLabel || existingWorkflow?.arrivalTimeLabel || '').trim() : '',
+    patientOnboardAt: trip?.patientOnboardAt || null,
+    patientOnboardTimeLabel: trip?.patientOnboardAt ? String(existingWorkflow?.patientOnboardTimeLabel || '').trim() : '',
+    pickupAt: trip?.patientOnboardAt || null,
+    pickupTimeLabel: trip?.patientOnboardAt ? String(existingWorkflow?.pickupTimeLabel || existingWorkflow?.patientOnboardTimeLabel || '').trim() : '',
+    startTripAt: trip?.startTripAt || null,
+    startTripTimeLabel: trip?.startTripAt ? String(existingWorkflow?.startTripTimeLabel || '').trim() : '',
+    destinationDepartureAt: trip?.startTripAt || null,
+    destinationDepartureTimeLabel: trip?.startTripAt ? String(existingWorkflow?.destinationDepartureTimeLabel || existingWorkflow?.startTripTimeLabel || '').trim() : '',
+    arrivedDestinationAt: trip?.arrivedDestinationAt || null,
+    arrivedDestinationTimeLabel: trip?.arrivedDestinationAt ? String(existingWorkflow?.arrivedDestinationTimeLabel || '').trim() : '',
+    destinationArrivalAt: trip?.arrivedDestinationAt || null,
+    destinationArrivalTimeLabel: trip?.arrivedDestinationAt ? String(existingWorkflow?.destinationArrivalTimeLabel || existingWorkflow?.arrivedDestinationTimeLabel || '').trim() : '',
+    completedAt: trip?.completedAt || null,
+    completedTimeLabel: trip?.completedAt ? String(existingWorkflow?.completedTimeLabel || '').trim() : '',
+    riderSignatureName: String(existingWorkflow?.riderSignatureName || '').trim(),
+    riderSignedAt: trip?.riderSignedAt || existingWorkflow?.riderSignedAt || null,
+    auditTrail: []
+  };
+
+  sanitizedWorkflow.status = sanitizedWorkflow.completedAt
+    ? 'completed'
+    : trip?.canceledAt
+      ? 'cancelled'
+      : sanitizedWorkflow.arrivedDestinationAt
+        ? 'arrived-destination'
+        : sanitizedWorkflow.startTripAt
+          ? 'to-destination'
+          : sanitizedWorkflow.patientOnboardAt
+            ? 'patient-onboard'
+            : sanitizedWorkflow.arrivedPickupAt
+              ? 'arrived-pickup'
+              : sanitizedWorkflow.departureToPickupAt
+                ? 'en-route'
+                : sanitizedWorkflow.willCallActivatedAt
+                  ? 'willcall'
+                  : '';
+
+  const hasWorkflowState = Boolean(
+    sanitizedWorkflow.status
+    || sanitizedWorkflow.willCallActivatedAt
+    || sanitizedWorkflow.departureToPickupAt
+    || sanitizedWorkflow.arrivedPickupAt
+    || sanitizedWorkflow.patientOnboardAt
+    || sanitizedWorkflow.startTripAt
+    || sanitizedWorkflow.arrivedDestinationAt
+    || sanitizedWorkflow.completedAt
+  );
+
+  if (!hasWorkflowState) return null;
+
   return {
-    ...(existingWorkflow || {}),
-    auditTrail
+    ...sanitizedWorkflow
   };
 };
 
@@ -202,6 +394,7 @@ const getTripPatientPhone = trip => {
 
 const mapTripForDriver = (trip, workflowEvents = []) => {
   const normalizedTrip = normalizeTripRecord(trip);
+  const driverWorkflow = buildDriverWorkflowState(normalizedTrip, workflowEvents);
   const effectiveStatus = getEffectiveTripStatus(normalizedTrip);
   const rawNotes = String(normalizedTrip.notes || normalizedTrip.note || normalizedTrip.comments || '').trim();
   const subMobilityType = String(normalizedTrip.subMobilityType || '').trim();
@@ -271,9 +464,9 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
     isWillCall: effectiveStatus === 'WillCall',
     enRouteAt: normalizedTrip.enRouteAt || null,
     arrivedAt: normalizedTrip.arrivedAt || null,
-    patientOnboardAt: normalizedTrip.patientOnboardAt || normalizedTrip.driverWorkflow?.patientOnboardAt || null,
-    startTripAt: normalizedTrip.startTripAt || normalizedTrip.driverWorkflow?.startTripAt || null,
-    arrivedDestinationAt: normalizedTrip.arrivedDestinationAt || normalizedTrip.driverWorkflow?.arrivedDestinationAt || null,
+    patientOnboardAt: normalizedTrip.patientOnboardAt || driverWorkflow?.patientOnboardAt || null,
+    startTripAt: normalizedTrip.startTripAt || driverWorkflow?.startTripAt || null,
+    arrivedDestinationAt: normalizedTrip.arrivedDestinationAt || driverWorkflow?.arrivedDestinationAt || null,
     completedAt: normalizedTrip.completedAt || null,
     riderSignatureName: String(normalizedTrip.riderSignatureName || '').trim(),
     riderSignedAt: normalizedTrip.riderSignedAt || null,
@@ -285,7 +478,7 @@ const mapTripForDriver = (trip, workflowEvents = []) => {
     completionPhotoDataUrl: String(normalizedTrip.completionPhotoDataUrl || '').trim(),
     willCallActivatedAt: normalizedTrip.willCallActivatedAt || null,
     willCallPickupDeadlineAt: normalizedTrip.willCallPickupDeadlineAt || null,
-    driverWorkflow: buildDriverWorkflowState(normalizedTrip, workflowEvents)
+    driverWorkflow
   };
 };
 
@@ -335,21 +528,24 @@ export async function GET(request) {
     const todayServiceDateKey = getLocalDateKey(Date.now(), DEFAULT_DISPATCH_TIME_ZONE);
     const nextDayServiceDateKey = shiftTripDateKey(todayServiceDateKey, 1);
     const dispatchState = await readNemtDispatchState({ includePastDates: true });
-    const driverTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => {
+    const assignedTrips = (Array.isArray(dispatchState?.trips) ? dispatchState.trips : []).filter(trip => {
       return isTripAssignedToDriver(trip, driverMatch) && !isCancelledTrip(trip);
     }).sort(sortTripsByPickupTime);
-    const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(driverTrips.map(trip => trip?.id));
-    const trips = driverTrips.map(trip => {
+    const workflowEventsByTripId = await readTripWorkflowEventsByTripIds(assignedTrips.map(trip => trip?.id));
+    const mappedAssignedTrips = assignedTrips.map(trip => {
       const mappedTrip = mapTripForDriver(trip, workflowEventsByTripId.get(String(trip?.id || '').trim()) || []);
       return {
         ...mappedTrip,
         isNextDayTrip: mappedTrip.serviceDate === nextDayServiceDateKey
       };
     });
-    const activeTrip = trips.find(trip => isDriverTripInProgress(trip))
-      || trips.find(trip => String(trip?.status || '').trim().toLowerCase() !== 'completed')
-      || trips[0]
-      || null;
+    const trips = mappedAssignedTrips.filter(trip => {
+      const serviceDateKey = String(trip?.serviceDate || '').trim();
+      if (!serviceDateKey) return true;
+      if (serviceDateKey === todayServiceDateKey || serviceDateKey === nextDayServiceDateKey) return true;
+      return isDriverTripInProgress(trip);
+    });
+    const activeTrip = trips.find(trip => isDriverTripInProgress(trip)) || null;
     const driverState = (Array.isArray(adminState?.drivers) ? adminState.drivers : []).find(item => String(item?.id || '').trim() === String(driver.id).trim()) || null;
 
     const now = Date.now();

@@ -1,0 +1,99 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+const API_TIMEOUT_MS = 15000;
+
+const fetchWithTimeout = async (input, init = {}) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(new Error('Request timeout')), API_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
+const parseApiResponse = async response => {
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  const normalizedText = String(text || '').trim();
+  return {
+    error: normalizedText.startsWith('<') ? `Server returned HTML instead of JSON (${response.status}).` : normalizedText || `Request failed with status ${response.status}.`
+  };
+};
+
+const useAvatarSettingsApi = () => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const refresh = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetchWithTimeout('/api/avatar', { cache: 'no-store' });
+      const payload = await parseApiResponse(response);
+      if (!response.ok) throw new Error(payload?.error || 'Unable to load avatar settings');
+      setData(payload);
+    } catch (fetchError) {
+      const message = fetchError?.name === 'AbortError' ? 'Avatar settings request timed out.' : fetchError.message || 'Unable to load avatar settings';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveData = async nextState => {
+    setSaving(true);
+    setError('');
+    try {
+      const response = await fetchWithTimeout('/api/avatar', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(nextState)
+      });
+      const payload = await parseApiResponse(response);
+      if (!response.ok) throw new Error(payload?.error || 'Unable to save avatar settings');
+      setData(payload);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('care-mobility-avatar-settings-updated', {
+          detail: payload?.avatar || null
+        }));
+      }
+      return payload;
+    } catch (saveError) {
+      const message = saveError?.name === 'AbortError' ? 'Saving avatar settings timed out.' : saveError.message || 'Unable to save avatar settings';
+      setError(message);
+      throw saveError;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  return {
+    data,
+    loading,
+    saving,
+    error,
+    refresh,
+    saveData
+  };
+};
+
+export default useAvatarSettingsApi;

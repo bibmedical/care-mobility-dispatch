@@ -6,6 +6,8 @@ import { readNemtAdminState, writeNemtAdminState } from '@/server/nemt-admin-sto
 import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
 import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
 
+const shouldRequireDriverPasswordReset = driver => process.env.NODE_ENV === 'production' && isDriverPasswordResetRequired(driver);
+
 const splitFullName = value => {
   const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { firstName: '', lastName: '' };
@@ -26,7 +28,7 @@ const buildSessionPayload = (driver, request = null) => ({
   address: String(driver.address || driver.baseAddress || '').trim(),
   timeOffAppointment: driver.timeOffAppointment || null,
   vehicleId: driver.vehicleId || '',
-  passwordResetRequired: isDriverPasswordResetRequired(driver),
+  passwordResetRequired: shouldRequireDriverPasswordReset(driver),
   deviceId: request?.headers.get('x-driver-device-id') || '',
   sessionToken: request?.headers.get('x-driver-session-token') || ''
 });

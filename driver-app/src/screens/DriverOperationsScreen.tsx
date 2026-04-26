@@ -1,4 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
 import { DriverAlertsSection } from '../components/driver/DriverAlertsSection';
 import { DriverControlSection } from '../components/driver/DriverControlSection';
 import { DriverDashboardSection } from '../components/driver/DriverDashboardSection';
@@ -42,6 +43,12 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
   });
   const showTopBar = runtime.activeTab !== 'home';
 
+  useEffect(() => {
+    if (runtime.activeTab !== 'trips') return;
+    if (runtime.tripDateFilter === 'all') return;
+    runtime.setTripDateFilter('all');
+  }, [runtime]);
+
   const renderBody = () => {
     if (runtime.activeTab === 'home') return <DriverDashboardSection runtime={runtime} />;
     if (runtime.activeTab === 'trips') return <DriverTripsSection runtime={runtime} />;
@@ -74,7 +81,7 @@ export const DriverOperationsScreen = ({ runtime }: Props) => {
         </View>
         <View style={styles.topBarRightActions}>
           {runtime.activeTab === 'trips' ? <View style={styles.todayBadge}>
-              <Text style={styles.todayBadgeText}>Today</Text>
+              <Text style={styles.todayBadgeText}>All Trips</Text>
             </View> : null}
           {logoutButton}
         </View>

@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
 import { DRIVER_APP_CONFIG } from '../../config/driverAppConfig';
 import { DriverRuntime } from '../../hooks/useDriverRuntime';
 import { driverSharedStyles, driverTheme } from './driverTheme';
@@ -9,7 +10,46 @@ type Props = {
 };
 
 export const DriverOverviewSection = ({ runtime }: Props) => {
-  const focusTrip = runtime.activeTrip || runtime.assignedTrips[0] || null;
+  const focusTrip = useMemo(() => {
+    const openTrips = runtime.assignedTrips.filter(trip => {
+      const normalizedStatus = String(trip.status || '').trim().toLowerCase();
+      const workflowStatus = String(trip.driverWorkflow?.status || '').trim().toLowerCase();
+      return !(
+        trip.completedAt
+        || trip.canceledAt
+        || trip.driverWorkflow?.completedAt
+        || normalizedStatus.includes('completed')
+        || normalizedStatus.includes('cancelled')
+        || normalizedStatus.includes('canceled')
+        || workflowStatus === 'complete'
+        || workflowStatus === 'completed'
+        || workflowStatus === 'cancel'
+        || workflowStatus === 'cancelled'
+        || workflowStatus === 'canceled'
+      );
+    });
+
+    const inProgressTrip = openTrips.find(trip => {
+      return Boolean(
+        trip.driverWorkflow?.acceptedAt
+        || trip.driverWorkflow?.departureAt
+        || trip.driverWorkflow?.departureToPickupAt
+        || trip.driverWorkflow?.arrivalAt
+        || trip.driverWorkflow?.arrivedPickupAt
+        || trip.driverWorkflow?.patientOnboardAt
+        || trip.driverWorkflow?.startTripAt
+        || trip.driverWorkflow?.destinationDepartureAt
+        || trip.driverWorkflow?.arrivedDestinationAt
+        || trip.enRouteAt
+        || trip.arrivedAt
+        || trip.patientOnboardAt
+        || trip.startTripAt
+        || trip.arrivedDestinationAt
+      );
+    });
+
+    return runtime.activeTrip || inProgressTrip || openTrips[0] || null;
+  }, [runtime.activeTrip, runtime.assignedTrips]);
   const urgentMessages = runtime.messages.filter(message => message.priority === 'high' || message.status === 'active').length;
   const lateTrips = runtime.assignedTrips.filter(trip => trip.punctualityVariant === 'danger' || Number(trip.lateMinutes || 0) >= DRIVER_APP_CONFIG.lateAlertThresholdMinutes).length;
 
@@ -72,7 +112,10 @@ export const DriverOverviewSection = ({ runtime }: Props) => {
           </View>
 
           <View style={styles.quickActionsRow}>
-            <Pressable style={driverSharedStyles.primaryButton} onPress={() => runtime.setActiveTab('trips')}>
+            <Pressable style={driverSharedStyles.primaryButton} onPress={() => {
+              runtime.setTripDateFilter('all');
+              runtime.setActiveTab('trips');
+            }}>
               <Text style={driverSharedStyles.primaryButtonText}>Open trip</Text>
             </Pressable>
             <Pressable style={driverSharedStyles.secondaryButton} onPress={() => runtime.setActiveTab('messages')}>
@@ -91,6 +134,7 @@ export const DriverOverviewSection = ({ runtime }: Props) => {
         {runtime.tripSyncError ? <Text style={driverSharedStyles.warningText}>{runtime.tripSyncError}</Text> : null}
         {runtime.assignedTrips.length === 0 ? <Text style={driverSharedStyles.emptyText}>No trips assigned yet.</Text> : runtime.assignedTrips.map(trip => <Pressable key={trip.id} onPress={() => {
         runtime.setActiveTrip(trip);
+        runtime.setTripDateFilter('all');
         runtime.setActiveTab('trips');
       }} style={[styles.tripListItem, runtime.activeTrip?.id === trip.id ? styles.tripListItemActive : null]}>
               <View style={driverSharedStyles.rowBetween}>

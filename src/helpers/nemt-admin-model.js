@@ -494,8 +494,14 @@ export const isDriverOnline = driver => {
   return Date.now() - lastSeen.getTime() <= ONLINE_WINDOW_MINUTES * 60 * 1000;
 };
 
+const normalizeDriverRole = driver => {
+  const normalizedRole = String(driver?.role || '').trim();
+  return normalizedRole || createBlankDriver().role;
+};
+
 export const normalizeDriverTracking = driver => ({
   ...driver,
+  role: normalizeDriverRole(driver),
   mobilePin: getDefaultDriverMobilePin(driver),
   passwordChangedAt: normalizePasswordChangedAt(driver?.passwordChangedAt),
   routeRoster: normalizeRouteRoster(driver?.routeRoster, driver),
@@ -824,12 +830,12 @@ export const getDriverAssignedVehicleLabel = (driver, state) => {
 };
 
 export const mapAdminDataToDispatchDrivers = state => {
-  const sourceDrivers = state.drivers.filter(driver => isDriverRole(driver.role));
+  const sourceDrivers = (Array.isArray(state?.drivers) ? state.drivers : []).map(driver => normalizeDriverTracking(driver));
   const rosterDrivers = sourceDrivers.filter(driver => isDriverOnActiveRoster(driver));
   const visibleDrivers = rosterDrivers.length > 0 ? rosterDrivers : sourceDrivers;
 
   return visibleDrivers.map((driver, index) => {
-  const normalizedDriver = normalizeDriverTracking(driver);
+  const normalizedDriver = driver;
   const assignedVehicles = getDriverAssignedVehicles(normalizedDriver, state);
   const vehicle = assignedVehicles[0] || null;
   const attendant = state.attendants.find(item => item.id === normalizedDriver.attendantId);

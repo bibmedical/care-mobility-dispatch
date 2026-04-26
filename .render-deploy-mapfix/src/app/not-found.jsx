@@ -1,0 +1,42 @@
+import BrandImage from '@/components/BrandImage';
+import Image from 'next/image';
+import IconifyIcon from '@/components/wrappers/IconifyIcon';
+import Link from 'next/link';
+import errorImg from '@/assets/images/extra/error.svg';
+import { Card, CardBody, Col, Row } from 'react-bootstrap';
+const NotFound = () => {
+  return <div className="container-xxl">
+      <Row className="vh-100 d-flex justify-content-center">
+        <Col xs={12} className="align-self-center">
+          <CardBody>
+            <Row>
+              <Col lg={4} className="mx-auto">
+                <Card>
+                  <CardBody className="p-0 bg-black auth-header-box rounded-top">
+                    <div className="text-center p-3">
+                      <Link href="/" className="logo logo-admin">
+                        <BrandImage target="error404" height={50} width={180} alt="404 logo" className="auth-logo" style={{ width: '100%', maxWidth: 180, height: 'auto', objectFit: 'contain' }} />
+                      </Link>
+                      <h4 className="mt-3 mb-1 fw-semibold text-white fs-18">Oops! Sorry page does not found</h4>
+                      <p className="text-muted fw-medium mb-0">Back to dashboard of Dastone</p>
+                    </div>
+                  </CardBody>
+                  <CardBody>
+                    <div className="ex-page-content text-center">
+                      <Image src={errorImg} alt={'error-img'} height={170} />
+                      <h1 className="my-2">404!</h1>
+                      <h5 className="fs-16 text-muted mb-3">Something went wrong</h5>
+                    </div>
+                    <Link href="/" className="btn btn-primary w-100">
+                      Back to Dashboard <IconifyIcon icon="fa-solid:redo" className="ms-1" />
+                    </Link>
+                  </CardBody>
+                </Card>
+              </Col>
+            </Row>
+          </CardBody>
+        </Col>
+      </Row>
+    </div>;
+};
+export default NotFound;

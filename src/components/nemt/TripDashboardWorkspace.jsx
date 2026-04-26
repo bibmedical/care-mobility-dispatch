@@ -15,7 +15,7 @@ import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
-import { getMapTileConfig, hasMapboxConfigured } from '@/utils/map-tiles';
+import { getMapTileConfig } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
@@ -696,8 +696,16 @@ const invertDashboardTripDirection = trip => ({
   toZipcode: getPickupZip(trip),
   fromZip: getDropoffZip(trip),
   toZip: getPickupZip(trip),
+  routingOriginalPosition: Array.isArray(trip?.routingOriginalPosition) ? [...trip.routingOriginalPosition] : Array.isArray(trip?.position) ? [...trip.position] : trip?.position,
+  routingOriginalDestinationPosition: Array.isArray(trip?.routingOriginalDestinationPosition) ? [...trip.routingOriginalDestinationPosition] : Array.isArray(trip?.destinationPosition) ? [...trip.destinationPosition] : trip?.destinationPosition,
   position: Array.isArray(trip?.destinationPosition) ? [...trip.destinationPosition] : trip?.destinationPosition,
-  destinationPosition: Array.isArray(trip?.position) ? [...trip.position] : trip?.position
+  destinationPosition: Array.isArray(trip?.position) ? [...trip.position] : trip?.position,
+  localOverrides: {
+    ...(trip?.localOverrides && typeof trip.localOverrides === 'object' ? trip.localOverrides : {}),
+    routingDirectionInverted: !Boolean(trip?.localOverrides?.routingDirectionInverted),
+    pickupCoordinates: true,
+    dropoffCoordinates: true
+  }
 });
 const normalizeDriverId = driverId => String(driverId || '').trim();
 const getClosedRouteKey = (driverId, dateKey) => {
@@ -5699,7 +5707,6 @@ const TripDashboardWorkspace = () => {
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
-                    <option value="mapbox" disabled={!hasMapboxConfigured}>Map: Mapbox</option>
                   </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)}>Panels anchored</Button>
                 </>

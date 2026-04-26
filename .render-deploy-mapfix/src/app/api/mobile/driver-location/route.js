@@ -1,0 +1,80 @@
+import { NextResponse } from 'next/server';
+import { resolveDriverPresenceContext, updateDriverLocation } from '@/server/nemt-admin-store';
+import { logPresenceHeartbeat } from '@/server/activity-logs-store';
+import { authorizeMobileDriverRequest } from '@/server/mobile-driver-auth';
+import { buildMobileCorsPreflightResponse, jsonWithMobileCors, withMobileCors } from '@/server/mobile-api-cors';
+
+const formatCheckpoint = (latitude, longitude) => `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`;
+
+const internalError = (request, error) => jsonWithMobileCors(request, { ok: false, error: 'Internal server error', details: String(error?.message || error) }, { status: 500 });
+
+export async function POST(request) {
+  try {
+  const body = await request.json();
+  const driverId = String(body?.driverId || '').trim();
+  const latitude = Number(body?.latitude);
+  const longitude = Number(body?.longitude);
+  const heading = body?.heading == null ? null : Number(body.heading);
+  const speed = body?.speed == null ? null : Number(body.speed);
+  const accuracy = body?.accuracy == null ? null : Number(body.accuracy);
+  const city = String(body?.city || '').trim();
+  const sourceTimestamp = Number(body?.timestamp);
+
+  if (!driverId || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return jsonWithMobileCors(request, { ok: false, error: 'driverId, latitude, and longitude are required.' }, { status: 400 });
+  }
+
+  const authResult = await authorizeMobileDriverRequest(request, driverId, {
+    allowLegacyWithoutSession: true
+  });
+  if (authResult.response) return withMobileCors(authResult.response, request);
+
+  const trackingLastSeen = Number.isFinite(sourceTimestamp) ? new Date(sourceTimestamp).toISOString() : new Date().toISOString();
+  const updated = await updateDriverLocation({
+    driverId,
+    latitude,
+    longitude,
+    heading,
+    speed,
+    accuracy,
+    city,
+    checkpoint: body?.checkpoint || city || formatCheckpoint(latitude, longitude),
+    trackingLastSeen
+  });
+
+  if (!updated) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Driver not found.' }, { status: 404 });
+  }
+
+  try {
+    const presenceContext = await resolveDriverPresenceContext(driverId);
+    if (presenceContext?.userId) {
+      const ipAddress = String(request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || '').split(',')[0].trim();
+      await logPresenceHeartbeat({
+        userId: presenceContext.userId,
+        userName: presenceContext.userName,
+        userRole: presenceContext.userRole,
+        userEmail: presenceContext.userEmail,
+        ipAddress,
+        metadata: {
+          source: 'mobile-apk',
+          driverId,
+          latitude,
+          longitude
+        },
+        minIntervalMs: Number(process.env.PRESENCE_HEARTBEAT_MIN_INTERVAL_MS || 60_000)
+      });
+    }
+  } catch (presenceError) {
+    console.error('Failed to record mobile presence heartbeat:', presenceError);
+  }
+
+  return jsonWithMobileCors(request, { ok: true, driverId, trackingLastSeen });
+  } catch (error) {
+    return internalError(request, error);
+  }
+}
+
+export function OPTIONS(request) {
+  return buildMobileCorsPreflightResponse(request);
+}
