@@ -123,10 +123,8 @@ const isTripAssignedToDriver = (trip, driverMatch) => {
 };
 
 const formatClockTime = value => new Date(value).toLocaleTimeString('en-US', {
-    timeZone: DEFAULT_DISPATCH_TIME_ZONE,
   hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
+  minute: '2-digit'
 });
 
 const normalizeLocationSnapshot = value => {
@@ -403,7 +401,7 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
       patch: {
         status: 'In Progress',
         driverTripStatus: 'Patient Onboard',
-        actualPickup: timeLabel,
+        actualPickup: trip?.actualPickup || timeLabel,
         patientOnboardAt: timestamp,
         driverWorkflow: {
           ...nextWorkflow,
@@ -486,7 +484,7 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
         completedAt: timestamp,
         completionLocationSnapshot: locationSnapshot,
         completionPhotoDataUrl,
-        actualDropoff: timeLabel,
+        actualDropoff: trip?.actualDropoff || timeLabel,
         riderSignatureName,
         riderSignedAt: riderSignatureName ? timestamp : trip?.riderSignedAt || null,
         driverWorkflow: {
