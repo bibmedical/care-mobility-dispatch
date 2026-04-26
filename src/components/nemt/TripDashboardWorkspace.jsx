@@ -20,7 +20,7 @@ import { getMapTileConfig } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
-import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleMarker, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { ZoomControl } from 'react-leaflet/ZoomControl';
@@ -484,6 +484,13 @@ const BLACKLIST_CATEGORY_OPTIONS = ['Do Not Schedule', 'Medical Hold', 'Deceased
 const TRIP_SYSTEM_NOTE_PREFIXES = ['[TRIP UPDATE]', '[SCHEDULE CHANGE]', '[DISPATCH NOTE]', '[CANCELLED]'];
 const TRIP_CONFIRMATION_OUTPUT_COLUMNS = ['tripId', 'rider', 'phone', 'pickupTime', 'pickupAddress', 'dropoffTime', 'dropoffAddress', 'leg', 'type'];
 const TRIP_CONFIRMATION_VISIBLE_COLUMNS = ['status', 'confirmation'];
+const TRIP_DASHBOARD_DEFAULT_HIDDEN_TRIP_COLUMNS = ['status', 'confirmation', 'notes', 'vehicle', 'assistLevel', 'punctuality', 'lateMinutes'];
+const getTripDashboardDefaultVisibleTripColumns = () => DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key).filter(columnKey => !TRIP_DASHBOARD_DEFAULT_HIDDEN_TRIP_COLUMNS.includes(columnKey));
+const normalizeTripDashboardVisibleTripColumns = value => {
+  const allowedColumnKeys = new Set(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key));
+  const uniqueColumnKeys = Array.from(new Set(Array.isArray(value) ? value : [])).filter(columnKey => allowedColumnKeys.has(columnKey));
+  return uniqueColumnKeys.length > 0 ? uniqueColumnKeys : getTripDashboardDefaultVisibleTripColumns();
+};
 
 const createEmptyBlacklistEntryDraft = () => ({
   name: '',
@@ -1241,6 +1248,14 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     setMapProvider,
   } = useNemtContext();
   const { showNotification } = useNotificationContext();
+  const [tripDashboardVisibleTripColumns, setTripDashboardVisibleTripColumns] = useState(() => getTripDashboardDefaultVisibleTripColumns());
+  const setSurfaceVisibleTripColumns = useCallback(nextColumns => {
+    if (isTripDashboardSurface) {
+      setTripDashboardVisibleTripColumns(nextColumns);
+      return;
+    }
+    setDispatcherVisibleTripColumns(nextColumns);
+  }, [isTripDashboardSurface, setDispatcherVisibleTripColumns]);
   const [routeName, setRouteName] = useState('');
   const [routeNotes, setRouteNotes] = useState('');
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
@@ -2102,8 +2117,16 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       border: '1px solid #64748b'
     }
     : undefined;
-  const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
+  const dispatcherVisibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
+  const visibleTripColumns = isTripDashboardSurface ? tripDashboardVisibleTripColumns : dispatcherVisibleTripColumns;
   const allTripColumnKeys = useMemo(() => DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key), []);
+  const tripDashboardColumnPickerOptions = useMemo(() => {
+    if (!isTripDashboardSurface) return DISPATCH_TRIP_COLUMN_OPTIONS;
+    const priorityColumnKeys = ['status', 'confirmation', 'notes', 'punctuality', 'lateMinutes'];
+    const priorityColumns = priorityColumnKeys.map(columnKey => DISPATCH_TRIP_COLUMN_OPTIONS.find(option => option.key === columnKey)).filter(Boolean);
+    const remainingColumns = DISPATCH_TRIP_COLUMN_OPTIONS.filter(option => !priorityColumnKeys.includes(option.key));
+    return [...priorityColumns, ...remainingColumns];
+  }, [isTripDashboardSurface]);
   const tripColumnMeta = useMemo(() => Object.fromEntries(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => [option.key, {
     label: option.label,
     width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' ? 150 : option.key === 'rider' ? 180 : undefined,
@@ -2175,27 +2198,31 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     });
   }, [serverScopedDateKey, serverScopedFutureDays, serverScopedPastDays]);
 
-  const tripDashboardPreferenceState = useMemo(() => ({
-    storageVersion: 1,
-    layoutMode,
-    panelView,
-    panelOrder,
-    showBottomPanels,
-    showMapPane,
-    showScannerMapInRoutePanel,
-    showDriversPanel,
-    showRoutesPanel,
-    showTripsPanel,
-    rightPanelCollapsed,
-    showConfirmationTools,
-    timeDisplayMode,
-    tripOrderMode,
-    printColumns: routePrintColumns,
-    columnSplit: Math.round(columnSplit * 100) / 100,
-    rowSplit: Math.round(rowSplit * 100) / 100,
-    columnWidths,
-    closedRouteStateByKey
-  }), [closedRouteStateByKey, columnSplit, columnWidths, layoutMode, panelOrder, panelView, rightPanelCollapsed, routePrintColumns, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showScannerMapInRoutePanel, showTripsPanel, timeDisplayMode, tripOrderMode]);
+  const tripDashboardPreferenceState = useMemo(() => {
+    const state = {
+      storageVersion: 1,
+      layoutMode,
+      panelView,
+      panelOrder,
+      showBottomPanels,
+      showMapPane,
+      showScannerMapInRoutePanel,
+      showDriversPanel,
+      showRoutesPanel,
+      showTripsPanel,
+      rightPanelCollapsed,
+      showConfirmationTools,
+      timeDisplayMode,
+      tripOrderMode,
+      printColumns: routePrintColumns,
+      columnSplit: Math.round(columnSplit * 100) / 100,
+      rowSplit: Math.round(rowSplit * 100) / 100,
+      columnWidths,
+      closedRouteStateByKey
+    };
+    if (isTripDashboardSurface) state.visibleTripColumns = tripDashboardVisibleTripColumns;
+    return state;
+  }, [closedRouteStateByKey, columnSplit, columnWidths, isTripDashboardSurface, layoutMode, panelOrder, panelView, rightPanelCollapsed, routePrintColumns, rowSplit, showBottomPanels, showConfirmationTools, showDriversPanel, showMapPane, showRoutesPanel, showScannerMapInRoutePanel, showTripsPanel, timeDisplayMode, tripDashboardVisibleTripColumns, tripOrderMode]);
 
   useEffect(() => {
     if (!todayDateKey) return;
@@ -2477,13 +2504,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       {renderScannerPowerAction({
       label: 'Confirm',
       checked: showConfirmationTools,
-      onToggle: () => {
-        if (selectedVisibleTrips.length > 0) {
-          handleOpenLiveScanConfirmation();
-          return;
-        }
-        handleToggleConfirmationTools();
-      },
+      onToggle: handleToggleConfirmationTools,
       ariaLabel: 'Confirmation controls',
       shellStyle: {
         minWidth: 84
@@ -2586,15 +2607,29 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   const handleOpenScannerColumnOrder = () => {
     const nextColumns = hasTripNotesColumn ? orderedVisibleTripColumns.filter(columnKey => columnKey !== 'notes') : ['notes', ...orderedVisibleTripColumns];
     setScannerColumnsSaved(false);
-    setDispatcherVisibleTripColumns(nextColumns);
+    setSurfaceVisibleTripColumns(nextColumns);
     setStatusMessage(hasTripNotesColumn ? 'Notes column hidden.' : 'Notes column shown.');
   };
 
   const handleSaveScannerColumnOrder = () => {
     const nextColumns = [...orderedVisibleTripColumns];
     pulseScannerActionControl('save');
-    setDispatcherVisibleTripColumns(nextColumns);
+    setSurfaceVisibleTripColumns(nextColumns);
     setScannerColumnsSaved(true);
+    if (isTripDashboardSurface) {
+      void saveUserPreferences({
+        ...userPreferences,
+        tripDashboard: {
+          ...userPreferences?.tripDashboard,
+          visibleTripColumns: nextColumns
+        }
+      }).catch(() => {
+        setScannerColumnsSaved(false);
+        setStatusMessage('Could not save the Trip Dashboard column order.');
+      });
+      setStatusMessage('Trip Dashboard column order saved. It will reopen the same way next time.');
+      return;
+    }
     void saveUserPreferences({
       ...userPreferences,
       nemtUiPreferences: {
@@ -2689,8 +2724,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       {showMapPane ? 'Hide Map' : 'Show Map'}
     </Button>;
 
-  const renderToolbarEditBlock = () => <Button variant={isToolbarEditMode ? 'dark' : 'outline-dark'} size="sm" style={isToolbarEditMode ? undefined : toolbarButtonStyle} onClick={() => setIsToolbarEditMode(current => !current)}>
-      {isToolbarEditMode ? 'Done' : 'Edit toolbar'}
+  const renderToolbarEditBlock = () => <Button variant="outline-dark" size="sm" style={toolbarButtonStyle} onClick={() => router.push('/dispatcher')}>
+      Dispatch
     </Button>;
 
   const renderLayoutBlock = () => <Form.Select size="sm" value={layoutMode} onChange={event => applyLayoutMode(event.target.value)} style={{ ...compactToolbarSelectBaseStyle, width: 160 }}>
@@ -2701,10 +2736,10 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   const renderPanelsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
       <Button variant={showDriversPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showDriversPanel ? undefined : toolbarButtonStyle} onClick={() => setShowDriversPanel(current => !current)}>Drivers</Button>
       <Button variant={showRoutesPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showRoutesPanel ? undefined : toolbarButtonStyle} onClick={() => setShowRoutesPanel(current => !current)}>Routes</Button>
-      <Button variant={showTripsPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showTripsPanel ? undefined : toolbarButtonStyle} onClick={() => setShowTripsPanel(current => !current)}>Trips</Button>
+      {!isTripDashboardSurface ? <Button variant={showTripsPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showTripsPanel ? undefined : toolbarButtonStyle} onClick={() => setShowTripsPanel(current => !current)}>Trips</Button> : null}
     </div>;
 
-  const renderTripOrderBlock = () => <Button variant={tripOrderMode === 'time' ? 'dark' : 'outline-dark'} size="sm" style={tripOrderMode === 'time' ? undefined : toolbarButtonStyle} onClick={handleTripOrderModeToggle}>
+  const renderTripOrderBlock = () => isTripDashboardSurface ? null : <Button variant={tripOrderMode === 'time' ? 'dark' : 'outline-dark'} size="sm" style={tripOrderMode === 'time' ? undefined : toolbarButtonStyle} onClick={handleTripOrderModeToggle}>
       {tripOrderMode === 'time' ? 'Order: Time' : tripOrderMode === 'custom' && tripSort.key === 'trip' ? 'Order: Trip' : 'Order: Original'}
     </Button>;
 
@@ -4548,14 +4583,14 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     const nextValue = !showConfirmationTools;
     if (!nextValue) handleCloseConfirmationMethod();
     if (isTripDashboardSurface && nextValue) {
-      const nextColumns = [...orderedVisibleTripColumns];
-      TRIP_CONFIRMATION_VISIBLE_COLUMNS.forEach(columnKey => {
-        if (!nextColumns.includes(columnKey)) nextColumns.push(columnKey);
-      });
-      setDispatcherVisibleTripColumns(nextColumns);
+      const nextColumns = [
+        ...TRIP_CONFIRMATION_VISIBLE_COLUMNS,
+        ...orderedVisibleTripColumns.filter(columnKey => !TRIP_CONFIRMATION_VISIBLE_COLUMNS.includes(columnKey))
+      ];
+      setSurfaceVisibleTripColumns(nextColumns);
       setScannerColumnsSaved(false);
     } else if (isTripDashboardSurface) {
-      setDispatcherVisibleTripColumns(orderedVisibleTripColumns.filter(columnKey => !TRIP_CONFIRMATION_VISIBLE_COLUMNS.includes(columnKey)));
+      setSurfaceVisibleTripColumns(orderedVisibleTripColumns.filter(columnKey => !TRIP_CONFIRMATION_VISIBLE_COLUMNS.includes(columnKey)));
       setScannerColumnsSaved(false);
     }
     setShowConfirmationTools(nextValue);
@@ -4563,10 +4598,11 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   };
 
   useEffect(() => {
+    if (isTripDashboardSurface) return;
     if (!hasLoadedUserUiPreferences) return;
     if (visibleTripColumns.includes('mobility')) return;
-    setDispatcherVisibleTripColumns([...visibleTripColumns, 'mobility']);
-  }, [hasLoadedUserUiPreferences, setDispatcherVisibleTripColumns, visibleTripColumns]);
+    setSurfaceVisibleTripColumns([...visibleTripColumns, 'mobility']);
+  }, [hasLoadedUserUiPreferences, isTripDashboardSurface, setSurfaceVisibleTripColumns, visibleTripColumns]);
 
   const handleToggleTripColumn = columnKey => {
     const nextColumns = orderedVisibleTripColumns.includes(columnKey) ? orderedVisibleTripColumns.filter(item => item !== columnKey) : [...orderedVisibleTripColumns, columnKey];
@@ -4575,19 +4611,19 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       return;
     }
     setScannerColumnsSaved(false);
-    setDispatcherVisibleTripColumns(nextColumns);
+    setSurfaceVisibleTripColumns(nextColumns);
     setStatusMessage('Column view updated.');
   };
 
   const handleShowAllTripColumns = () => {
     setScannerColumnsSaved(false);
-    setDispatcherVisibleTripColumns(allTripColumnKeys);
+    setSurfaceVisibleTripColumns(allTripColumnKeys);
     setStatusMessage('All trip columns are now visible.');
   };
 
   const handleResetTripColumns = () => {
     setScannerColumnsSaved(false);
-    setDispatcherVisibleTripColumns(DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
+    setSurfaceVisibleTripColumns(isTripDashboardSurface ? getTripDashboardDefaultVisibleTripColumns() : DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS);
     setStatusMessage('Trip columns reset to default view.');
   };
 
@@ -4600,7 +4636,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     const [movedColumn] = nextColumns.splice(sourceIndex, 1);
     nextColumns.splice(targetIndex, 0, movedColumn);
     setScannerColumnsSaved(false);
-    setDispatcherVisibleTripColumns(nextColumns);
+    setSurfaceVisibleTripColumns(nextColumns);
     setStatusMessage(`Column order saved: ${draggingTripColumnKey} moved.`);
   };
 
@@ -5447,6 +5483,9 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     const resolvedPanelView = Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(dashboardPreferences.panelView) ? dashboardPreferences.panelView : TRIP_DASHBOARD_PANEL_VIEWS.both;
     const resolvedPanelOrder = Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(dashboardPreferences.panelOrder) ? dashboardPreferences.panelOrder : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst;
 
+    if (isTripDashboardSurface) {
+      setTripDashboardVisibleTripColumns(normalizeTripDashboardVisibleTripColumns(dashboardPreferences.visibleTripColumns));
+    }
     setLayoutMode(effectiveLayoutMode);
     setPanelView(resolvedPanelView);
     setPanelOrder(resolvedPanelOrder);
@@ -5461,7 +5500,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       setRightPanelCollapsed(dashboardPreferences.rightPanelCollapsed === true);
       setShowConfirmationTools(dashboardPreferences.showConfirmationTools === true);
       setTimeDisplayMode(normalizeTripTimeDisplayMode(dashboardPreferences.timeDisplayMode));
-      setTripOrderMode(dashboardPreferences.tripOrderMode || 'custom');
+      setTripOrderMode(isTripDashboardSurface ? 'custom' : dashboardPreferences.tripOrderMode || 'custom');
+      if (isTripDashboardSurface) setTripSort({ key: 'trip', direction: 'asc' });
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(dashboardPreferences.columnSplit ?? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT);
       setRowSplit(dashboardPreferences.rowSplit ?? TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -5478,6 +5518,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       setShowConfirmationTools(false);
       setTimeDisplayMode(TRIP_TIME_DISPLAY_MODES.standard);
       setTripOrderMode('custom');
+      if (isTripDashboardSurface) setTripSort({ key: 'trip', direction: 'asc' });
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(94);
       setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
@@ -5489,7 +5530,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     panelViewHydratedRef.current = true;
     panelOrderHydratedRef.current = true;
     detailedDashboardHydratedRef.current = true;
-  }, [userPreferences?.tripDashboard, userPreferencesLoading]);
+  }, [isTripDashboardSurface, userPreferences?.tripDashboard, userPreferencesLoading]);
 
   useEffect(() => {
     if (userPreferencesLoading || !detailedDashboardHydratedRef.current) return;
@@ -7205,7 +7246,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                   <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" onClick={handleResetTripColumns}>Default setup</Button>
                 </div>
                 <div className="d-flex flex-column gap-2" style={{ maxHeight: '52vh', overflowY: 'auto', paddingRight: 4 }}>
-                  {DISPATCH_TRIP_COLUMN_OPTIONS.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
+                  {isTripDashboardSurface ? <Form.Check key="trip-column-picker-confirm-tools" type="switch" id="trip-column-picker-confirm-tools" label="Confirm" checked={showConfirmationTools} onChange={handleToggleConfirmationTools} /> : null}
+                  {tripDashboardColumnPickerOptions.map(option => <Form.Check key={`trip-column-picker-${option.key}`} type="switch" id={`trip-column-picker-${option.key}`} label={option.label} checked={orderedVisibleTripColumns.includes(option.key)} onChange={() => handleToggleTripColumn(option.key)} />)}
                 </div>
               </div>
               <div className="col-12 col-xl-6">
