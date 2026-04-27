@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start --keepAliveTimeout 120000",
     "lint": "next lint",
+    "benchmark:maps": "node scripts/benchmark-map-tiles.mjs",
+    "import:mbtiles": "node scripts/import-mbtiles-to-sql.mjs",
     "merge:backups:sql": "node scripts/merge-backups-to-sql.mjs --from=20260403",
     "auth:local:reset": "node scripts/reset-local-auth-passwords.mjs"
   },
@@ -74,6 +76,7 @@
     "react-step-wizard": "^5.3.11",
     "react-text-mask": "^5.5.0",
     "sass": "1.77.6",
+    "sql.js": "^1.13.0",
     "simplebar-react": "^3.3.0",
     "sonner": "^2.0.1",
     "sortablejs": "^1.15.6",

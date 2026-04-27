@@ -14,7 +14,7 @@ import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { DISPATCH_TRIP_COLUMN_OPTIONS, DISPATCHER_TRIP_CONTROL_COLUMN_OPTIONS, getLocalDateKey, getRouteServiceDateKey, getTripDropoffPosition, getTripLateMinutesDisplay, getTripMobilityLabel, getTripPickupPosition, getTripPunctualityLabel, getTripPunctualityVariant, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver, parseTripClockMinutes, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
 import { buildRoutePrintDocument, formatPrintGeneratedAt } from '@/helpers/nemt-print-setup';
 import { getEffectiveConfirmationStatus, getTripBlockingState } from '@/helpers/trip-confirmation-blocking';
-import { getMapTileConfig } from '@/utils/map-tiles';
+import { getMapTileConfigWithFallback, hasLocalMapTilesConfigured, probeLocalMapTilesAvailability } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
@@ -297,8 +297,8 @@ const buildDispatcherSurfaceStyles = isDarkMode => ({
     color: isDarkMode ? '#eff6ff' : '#0f172a'
   },
   rowAssigned: {
-    backgroundColor: isDarkMode ? '#123524' : '#dcfce7',
-    color: isDarkMode ? '#ecfdf5' : '#14532d'
+    backgroundColor: isDarkMode ? 'rgba(22, 61, 120, 0.34)' : '#dcfce7',
+    color: isDarkMode ? '#f8fbff' : '#14532d'
   },
   rowDefault: {
     backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
@@ -908,10 +908,24 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const DispatcherWorkspace = ({ mobileMode = false }) => {
   const router = useRouter();
-  const { themeMode } = useLayoutContext();
+  const { themeMode, changeTheme } = useLayoutContext();
   const isDarkMode = themeMode === 'dark';
+  const dispatcherToolbarButtonStyle = isDarkMode
+    ? { color: '#e2e8f0', borderColor: 'rgba(226,232,240,0.35)', backgroundColor: 'transparent' }
+    : greenToolbarButtonStyle;
   const isMobileDispatchMode = Boolean(mobileMode);
   const dispatcherSurfaceStyles = useMemo(() => buildDispatcherSurfaceStyles(isDarkMode), [isDarkMode]);
+  const dispatcherToolbarShellStyle = isDarkMode
+    ? {
+      backgroundColor: 'var(--cm-panel-bg)',
+      color: 'var(--bs-white)',
+      borderColor: 'rgba(226, 232, 240, 0.2)'
+    }
+    : {
+      backgroundColor: 'var(--bs-success)',
+      color: 'var(--bs-dark)',
+      borderColor: 'rgba(15, 23, 42, 0.16)'
+    };
   const { data: adminData, refresh: refreshAdminData } = useNemtAdminApi();
   const { data: smsData } = useSmsIntegrationApi();
   const { data: blacklistData, saveData: saveBlacklistData } = useBlacklistApi();
@@ -944,6 +958,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   const selectedDriverId = rawSelectedDriverId ?? null;
   const uiPreferences = rawUiPreferences && typeof rawUiPreferences === 'object' ? rawUiPreferences : {};
   const [tripStatusFilter, setTripStatusFilter] = useState('all');
+  const [canUseLocalTiles, setCanUseLocalTiles] = useState(true);
   const [tripIdSearch, setTripIdSearch] = useState('');
   const [tripLegFilter, setTripLegFilter] = useState('all');
   const [tripTypeFilter, setTripTypeFilter] = useState('all');
@@ -1164,7 +1179,27 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     resetDispatcherSelectionScope();
     setStatusMessage(message);
   };
-  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  useEffect(() => {
+    let isActive = true;
+    const providerPreference = String(uiPreferences?.mapProvider ?? 'auto').trim().toLowerCase();
+    if (!hasLocalMapTilesConfigured || !['auto', 'local'].includes(providerPreference)) {
+      setCanUseLocalTiles(true);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    void probeLocalMapTilesAvailability().then(isAvailable => {
+      if (!isActive) return;
+      setCanUseLocalTiles(Boolean(isAvailable));
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [uiPreferences?.mapProvider]);
+
+  const mapTileConfig = useMemo(() => getMapTileConfigWithFallback(uiPreferences?.mapProvider, isDarkMode ? 'dark' : 'light', canUseLocalTiles), [canUseLocalTiles, isDarkMode, uiPreferences?.mapProvider]);
 
   useEffect(() => {
     setTripDateFilter(todayDateKey);
@@ -1630,7 +1665,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   };
 
   const renderRouteToolbarActions = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
-      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print</Button>
+      <Button variant="outline-dark" size="sm" style={dispatcherToolbarButtonStyle} onClick={handlePrintRoute} disabled={mapLocked}>Print</Button>
       <Button variant="success" size="sm" onClick={handleShareRouteWhatsapp} disabled={mapLocked}>W</Button>
     </div>;
 
@@ -1652,7 +1687,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         <option value="">Reassign to driver</option>
         {quickReassignDrivers.map(driver => <option key={`toolbar-${driver.id}`} value={driver.id}>{driver.name}{getDriverTimeOffLabel(driver) ? ` (${getDriverTimeOffLabel(driver)})` : ''}{String(driver?.live || '').trim().toLowerCase() === 'online' ? '' : ' (offline)'}</option>)}
       </Form.Select>
-      <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked || !quickReassignDriverId} title="Reassign selected trips">R</Button>
+      <Button variant="outline-dark" size="sm" style={dispatcherToolbarButtonStyle} onClick={handleQuickReassignSelectedTrips} disabled={mapLocked || !quickReassignDriverId} title="Reassign selected trips">R</Button>
     </div>;
 
   const renderToolbarRow1Block = blockId => {
@@ -1677,22 +1712,32 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           </Form.Select>;
       case 'date-controls':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
-            <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(-1)} title="Previous day" style={greenToolbarButtonStyle}>Prev</Button>
+            <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(-1)} title="Previous day" style={dispatcherToolbarButtonStyle}>Prev</Button>
             <Form.Control size="sm" type="date" value={tripDateFilter === 'all' ? '' : tripDateFilter} onChange={event => setTripDateFilter(event.target.value || todayDateKey)} style={{ width: 150 }} title="Filter trips by date" />
-            <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(1)} title="Next day" style={greenToolbarButtonStyle}>Next</Button>
-            <Button variant="outline-dark" size="sm" onClick={() => setTripDateFilter(todayDateKey)} title="Today" style={greenToolbarButtonStyle}>Today</Button>
+            <Button variant="outline-dark" size="sm" onClick={() => handleShiftTripDate(1)} title="Next day" style={dispatcherToolbarButtonStyle}>Next</Button>
+            <Button variant="outline-dark" size="sm" onClick={() => setTripDateFilter(todayDateKey)} title="Today" style={dispatcherToolbarButtonStyle}>Today</Button>
           </div>;
       case 'trip-search':
         return <div className="d-flex align-items-center gap-1 flex-nowrap">
             <Form.Control size="sm" value={tripIdSearch} onChange={event => setTripIdSearch(event.target.value)} placeholder="Search trip, rider, phone, address..." disabled={mapLocked} style={{ width: 220 }} />
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(true)} disabled={mapLocked}>
+            <Button variant="outline-dark" size="sm" style={dispatcherToolbarButtonStyle} onClick={() => setShowColumnPicker(true)} disabled={mapLocked}>
               Columns
             </Button>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleLeftPanelsToggle} disabled={mapLocked}>
+            <Button variant="outline-dark" size="sm" style={dispatcherToolbarButtonStyle} onClick={handleLeftPanelsToggle} disabled={mapLocked}>
               {dispatcherLayout.mapVisible || dispatcherLayout.messagingVisible ? 'Hide panel' : 'Show panel'}
             </Button>
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={handleOpenDetachedMap} title="Open selected trip in big map">
+            <Button variant="outline-dark" size="sm" style={dispatcherToolbarButtonStyle} onClick={handleOpenDetachedMap} title="Open selected trip in big map">
               Big map
+            </Button>
+            <Button
+              variant="outline-dark"
+              size="sm"
+              style={{ ...dispatcherToolbarButtonStyle, minWidth: 34, paddingLeft: 8, paddingRight: 8 }}
+              onClick={() => changeTheme(isDarkMode ? 'light' : 'dark')}
+              title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              <i className={isDarkMode ? 'iconoir-sun-light' : 'iconoir-half-moon'} />
             </Button>
           </div>;
       case 'driver-select':
@@ -1704,8 +1749,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
             <Button variant={selectedDriverId ? 'outline-dark' : 'dark'} size="sm" onClick={() => {
             resetDispatcherSelectionScope();
             setStatusMessage('Mostrando todos los trips otra vez. GPS en descanso.');
-          }} disabled={mapLocked} style={selectedDriverId ? greenToolbarButtonStyle : undefined}>All rides</Button>
-            {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-dark'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked} style={followSelectedDriver ? undefined : greenToolbarButtonStyle}>{followSelectedDriver ? 'Following' : 'Follow'}</Button> : null}
+          }} disabled={mapLocked} style={selectedDriverId ? dispatcherToolbarButtonStyle : undefined}>All rides</Button>
+            {selectedDriver?.hasRealLocation ? <Button variant={followSelectedDriver ? 'warning' : 'outline-dark'} size="sm" onClick={() => setFollowSelectedDriver(current => !current)} disabled={mapLocked} style={followSelectedDriver ? undefined : dispatcherToolbarButtonStyle}>{followSelectedDriver ? 'Following' : 'Follow'}</Button> : null}
           </div>;
       case 'secondary-driver':
         return <Form.Select size="sm" value={selectedSecondaryDriverId} onChange={event => setSelectedSecondaryDriverId(event.target.value)} disabled={mapLocked} style={{ width: 220 }}>
@@ -1737,9 +1782,9 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         return <div className="d-flex align-items-center gap-2 flex-nowrap">
             <Badge bg="primary">{filteredTrips.length} trips</Badge>
             <Badge bg="secondary">{liveDrivers} live</Badge>
-            <div className="d-flex align-items-center" style={{ border: '1px solid rgba(8,19,26,0.25)', borderRadius: 6, overflow: 'hidden' }} title={`Day summary for ${daySummaryMetrics.dateKey}`}>
-              <div className="px-2 py-1" style={{ backgroundColor: '#e2e8f0', minWidth: 74 }}>
-                <div className="small text-muted" style={{ lineHeight: 1 }}>Total</div>
+            <div className="d-flex align-items-center" style={{ border: isDarkMode ? '1px solid rgba(226,232,240,0.18)' : '1px solid rgba(8,19,26,0.25)', borderRadius: 6, overflow: 'hidden' }} title={`Day summary for ${daySummaryMetrics.dateKey}`}>
+              <div className="px-2 py-1" style={{ backgroundColor: isDarkMode ? '#1e3a5f' : '#e2e8f0', color: isDarkMode ? '#e2e8f0' : '#08131a', minWidth: 74 }}>
+                <div className="small" style={{ lineHeight: 1, opacity: 0.7 }}>Total</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.total}</div>
               </div>
               <button
@@ -1756,13 +1801,13 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   exitCancelledPanelMode();
                 }}
                 className="px-2 py-1 border-start text-start"
-                style={{ backgroundColor: isCancelledPanelMode ? '#fecaca' : '#fee2e2', minWidth: 94, border: 'none', color: '#08131a', boxShadow: isCancelledPanelMode ? 'inset 0 0 0 2px rgba(127,29,29,0.18)' : 'none' }}
+                style={{ backgroundColor: isDarkMode ? (isCancelledPanelMode ? '#7f1d1d' : '#4c1515') : (isCancelledPanelMode ? '#fecaca' : '#fee2e2'), minWidth: 94, border: 'none', color: isDarkMode ? '#fca5a5' : '#08131a', boxShadow: isCancelledPanelMode ? 'inset 0 0 0 2px rgba(127,29,29,0.35)' : 'none' }}
               >
-                <div className="small text-muted" style={{ lineHeight: 1 }}>Cancelled</div>
+                <div className="small" style={{ lineHeight: 1, opacity: 0.7 }}>Cancelled</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.cancelled}</div>
               </button>
-              <div className="px-2 py-1 border-start" style={{ backgroundColor: '#dcfce7', minWidth: 104 }}>
-                <div className="small text-muted" style={{ lineHeight: 1 }}>Completed</div>
+              <div className="px-2 py-1 border-start" style={{ backgroundColor: isDarkMode ? '#14532d' : '#dcfce7', color: isDarkMode ? '#86efac' : '#08131a', minWidth: 104 }}>
+                <div className="small" style={{ lineHeight: 1, opacity: 0.7 }}>Completed</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completedByDrivers}</div>
               </div>
             </div>
@@ -1771,7 +1816,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         return null;
       case 'columns':
         return <div className="d-inline-flex flex-column align-items-start">
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(true)} disabled={mapLocked}>
+            <Button variant="outline-dark" size="sm" style={dispatcherToolbarButtonStyle} onClick={() => setShowColumnPicker(true)} disabled={mapLocked}>
               Columns
             </Button>
           </div>;
@@ -1783,7 +1828,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 Reinstate
               </Button> : null}
             <Button
-              variant={lateTripsInCurrentView.length > 0 ? 'danger' : 'outline-dark'}
+              variant={lateTripsInCurrentView.length > 0 ? 'danger' : isDarkMode ? 'outline-light' : 'outline-dark'}
               size="sm"
               onClick={() => {
                 setShowLateTripsModal(true);
@@ -1795,7 +1840,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
               Late Trips{lateTripsInCurrentView.length > 0 ? ` (${lateTripsInCurrentView.length})` : ''}
             </Button>
             <Button
-              variant="success"
+              variant={isDarkMode ? 'blue' : 'success'}
               size="sm"
               onClick={() => setShowManualTripModal(true)}
               disabled={mapLocked}
@@ -1822,7 +1867,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
               C
             </Button>
             <Button
-              variant="dark"
+              variant={isDarkMode ? 'secondary' : 'dark'}
               size="sm"
               onClick={handleBlockSelectedTrips}
               disabled={mapLocked || selectedTripIds.length === 0}
@@ -2651,7 +2696,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
               borderRadius: 4,
               border: '1px solid #6b7280',
               backgroundColor: '#6b7280',
-              accentColor: '#8b5cf6',
+              accentColor: isDarkMode ? '#163d78' : '#2563eb',
               cursor: mapLocked ? 'not-allowed' : 'pointer',
               opacity: mapLocked ? 0.5 : 1
             }}
@@ -4156,7 +4201,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       backdropFilter: 'blur(10px)'
     }}>
           <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600 }}>PANELS:</span>
-          {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant="outline-success" size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)} style={compactControlButtonStyle}>{panel.label}</Button>)}
+          {hiddenDispatcherPanels.map(panel => <Button key={panel.key} variant={isDarkMode ? 'outline-blue' : 'outline-success'} size="sm" onClick={() => toggleDispatcherLayoutPanel(panel.key)} style={compactControlButtonStyle}>{panel.label}</Button>)}
         </div> : null}
       <div ref={workspaceRef} style={workspaceGridStyle}>
         <div style={{ minWidth: 0, minHeight: 0, display: inlineMapVisible ? 'block' : 'none', ...mapPanelPositionStyle }}>
@@ -4180,9 +4225,9 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
               {shouldShowToolbarRecovery ? <div className="d-flex justify-content-end align-items-center gap-2 px-2 pt-2 flex-wrap">
                   {!hasAnyVisibleToolbarBlock ? <Badge bg="danger">Toolbar hidden</Badge> : null}
                   <Button variant="dark" size="sm" onClick={handleRestoreDispatcherLayout}>Restore toolbar</Button>
-                  <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} onClick={() => setShowColumnPicker(true)}>Show menu</Button>
+                  <Button variant="outline-dark" size="sm" style={dispatcherToolbarButtonStyle} onClick={() => setShowColumnPicker(true)}>Show menu</Button>
                 </div> : null}
-              <div className="d-flex flex-column align-items-stretch px-2 py-2 border-bottom bg-success text-dark gap-2 flex-shrink-0">
+              <div className="d-flex flex-column align-items-stretch px-2 py-2 border-bottom gap-2 flex-shrink-0" style={dispatcherToolbarShellStyle}>
                 {/* Row 1: Trip filters and selection */}
                 <div className="d-flex align-items-center gap-2 flex-nowrap" style={{ minWidth: 'max-content', overflowX: 'auto', overflowY: 'hidden' }} onDragOver={event => {
                 if (!isToolbarEditMode) return;
@@ -4307,8 +4352,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   backgroundColor: isCancelledPanelMode ? 'rgba(127, 29, 29, 0.08)' : 'rgba(15, 23, 42, 0.05)'
                 }}>
                     <div className="d-flex align-items-center gap-2 flex-wrap">
-                      {activeDispatcherContextTokens.map(token => <Badge key={token} bg={isCancelledPanelMode ? 'danger' : 'secondary'}>{token}</Badge>)}
-                      <Button variant={selectedDriverId ? 'dark' : 'outline-dark'} size="sm" onClick={() => {
+                      {activeDispatcherContextTokens.map(token => <Badge key={token} bg={isCancelledPanelMode ? 'danger' : isDarkMode ? 'blue' : 'secondary'}>{token}</Badge>)}
+                      <Button variant={selectedDriverId ? (isDarkMode ? 'outline-light' : 'dark') : (isDarkMode ? 'outline-light' : 'outline-dark')} size="sm" onClick={() => {
                       resetDispatcherSelectionScope();
                       setStatusMessage('Mostrando todos los trips otra vez. GPS en descanso.');
                     }} disabled={mapLocked}>All rides</Button>
@@ -4343,7 +4388,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                     if (bottomNode) bottomNode.scrollLeft = nextLeft;
                     if (topNode) topNode.scrollLeft = nextLeft;
                     setTripTableScrollLeft(nextLeft);
-                  }} style={{ width: '100%', accentColor: '#22c55e' }} aria-label="Horizontal table scroll" />
+                  }} style={{ width: '100%', accentColor: isDarkMode ? '#163d78' : '#16a34a' }} aria-label="Horizontal table scroll" />
                 </div> : null}
               <div ref={tripTableBottomScrollerRef} className="table-responsive flex-grow-1" onScroll={() => syncTripTableScroll('bottom')} style={{ minHeight: 0, maxHeight: '100%', position: 'relative', overflowX: groupedFilteredTripRows.length > 0 ? 'auto' : 'hidden', overflowY: 'auto', scrollbarGutter: 'stable both-edges', paddingBottom: 8 }}>
                 {mapLocked && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 45, borderRadius: '4px', backdropFilter: 'blur(1px)' }}>
@@ -4383,7 +4428,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                             borderRadius: 4,
                             border: '1px solid #6b7280',
                             backgroundColor: '#6b7280',
-                            accentColor: '#8b5cf6',
+                            accentColor: isDarkMode ? '#163d78' : '#2563eb',
                             cursor: mapLocked ? 'not-allowed' : 'pointer',
                             opacity: mapLocked ? 0.5 : 1
                           }}

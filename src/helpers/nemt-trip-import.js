@@ -323,8 +323,74 @@ const getReverseMatchQuality = (outboundTrip, candidateTrip) => {
   };
 };
 
+const hasSequentialLocationMatch = (fromTrip, toTrip) => {
+  return hasSameLocation(fromTrip?.destination, toTrip?.address) || hasSimilarLocation(fromTrip?.destination, toTrip?.address);
+};
+
+const compareTripPickupOrder = (leftTrip, rightTrip) => (leftTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER) - (rightTrip.pickupSortValue ?? Number.MAX_SAFE_INTEGER) || String(leftTrip.id || '').localeCompare(String(rightTrip.id || ''));
+
+const getRouteStartCandidates = trips => {
+  const sortedTrips = [...(Array.isArray(trips) ? trips : [])].sort(compareTripPickupOrder);
+  const destinationMatchedTripIds = new Set();
+
+  sortedTrips.forEach(candidateStartTrip => {
+    sortedTrips.forEach(candidatePreviousTrip => {
+      if (candidateStartTrip.id === candidatePreviousTrip.id) return;
+      if (hasSequentialLocationMatch(candidatePreviousTrip, candidateStartTrip)) {
+        destinationMatchedTripIds.add(candidateStartTrip.id);
+      }
+    });
+  });
+
+  const openPathStarts = sortedTrips.filter(trip => !destinationMatchedTripIds.has(trip.id));
+  if (openPathStarts.length > 0) return openPathStarts;
+
+  const nonWillCallTrips = sortedTrips.filter(trip => !isWillCallTrip(trip));
+  return nonWillCallTrips.length > 0 ? nonWillCallTrips : sortedTrips;
+};
+
+const buildConnectedRouteSequenceFromStart = (trips, startTrip) => {
+  const sortedTrips = [...(Array.isArray(trips) ? trips : [])].sort(compareTripPickupOrder);
+  const sequence = [startTrip];
+  const usedTripIds = new Set([startTrip.id]);
+
+  while (sequence.length < sortedTrips.length) {
+    const currentTrip = sequence[sequence.length - 1];
+    const nextTrip = sortedTrips
+      .filter(trip => !usedTripIds.has(trip.id))
+      .filter(trip => hasSequentialLocationMatch(currentTrip, trip))
+      .sort(compareTripPickupOrder)[0];
+
+    if (!nextTrip) break;
+    sequence.push(nextTrip);
+    usedTripIds.add(nextTrip.id);
+  }
+
+  return sequence.length === sortedTrips.length ? sequence : null;
+};
+
+const getPrimaryRouteSequence = trips => {
+  const sortedTrips = [...(Array.isArray(trips) ? trips : [])].sort((leftTrip, rightTrip) => leftTrip.pickupSortValue - rightTrip.pickupSortValue || leftTrip.id.localeCompare(rightTrip.id));
+  if (sortedTrips.length < 2) return null;
+
+  for (const startTrip of getRouteStartCandidates(sortedTrips)) {
+    const sequence = buildConnectedRouteSequenceFromStart(sortedTrips, startTrip);
+    if (sequence) return sequence;
+  }
+
+  return null;
+};
+
 const buildLogicalTripGroups = (groupTrips, rootGroupKey) => {
   const sortedTrips = [...(Array.isArray(groupTrips) ? groupTrips : [])].sort((leftTrip, rightTrip) => leftTrip.pickupSortValue - rightTrip.pickupSortValue || leftTrip.id.localeCompare(rightTrip.id));
+  const primaryRouteSequence = sortedTrips.length > 2 ? getPrimaryRouteSequence(sortedTrips) : null;
+  if (primaryRouteSequence) {
+    return [{
+      logicalGroupKey: `${rootGroupKey}::chain-1`,
+      trips: primaryRouteSequence
+    }];
+  }
+
   const usedTripIds = new Set();
   const logicalGroups = [];
   let pairIndex = 0;
@@ -379,24 +445,41 @@ const annotateSafeRideTrips = trips => {
   }, new Map());
 
   return Array.from(groupedTrips.entries()).flatMap(([groupKey, groupTrips]) => {
-    const sortedTrips = [...groupTrips].sort((leftTrip, rightTrip) => leftTrip.pickupSortValue - rightTrip.pickupSortValue || leftTrip.id.localeCompare(rightTrip.id));
+    const sortedTrips = getPrimaryRouteSequence(groupTrips) || [...groupTrips].sort((leftTrip, rightTrip) => leftTrip.pickupSortValue - rightTrip.pickupSortValue || leftTrip.id.localeCompare(rightTrip.id));
     const logicalGroups = buildLogicalTripGroups(sortedTrips, groupKey);
     const annotationsByTripId = new Map();
 
     logicalGroups.forEach(logicalGroup => {
       if (logicalGroup.trips.length === 2) {
         const [outboundTrip, returnTrip] = logicalGroup.trips;
+        const outboundIsWillCall = isWillCallTrip(outboundTrip);
+        const returnIsWillCall = isWillCallTrip(returnTrip);
         annotationsByTripId.set(outboundTrip.id, {
           groupedTripKey: logicalGroup.logicalGroupKey,
-          legLabel: 'Outbound',
-          legVariant: 'success',
-          isWillCall: isWillCallTrip(outboundTrip)
+          legLabel: outboundIsWillCall ? 'WillCall' : 'Outbound',
+          legVariant: outboundIsWillCall ? 'info' : 'success',
+          isWillCall: outboundIsWillCall
         });
         annotationsByTripId.set(returnTrip.id, {
           groupedTripKey: logicalGroup.logicalGroupKey,
-          legLabel: 'Return',
-          legVariant: 'warning',
-          isWillCall: isWillCallTrip(returnTrip)
+          legLabel: returnIsWillCall ? 'WillCall' : 'Return',
+          legVariant: returnIsWillCall ? 'info' : 'warning',
+          isWillCall: returnIsWillCall
+        });
+        return;
+      }
+
+      if (logicalGroup.trips.length > 2) {
+        logicalGroup.trips.forEach((trip, index) => {
+          const isWillCall = isWillCallTrip(trip);
+          const isFirstLeg = index === 0;
+          const isLastLeg = index === logicalGroup.trips.length - 1;
+          annotationsByTripId.set(trip.id, {
+            groupedTripKey: logicalGroup.logicalGroupKey,
+            legLabel: isWillCall ? 'WillCall' : isFirstLeg ? 'Outbound' : isLastLeg ? 'Return' : 'Connector',
+            legVariant: isWillCall ? 'info' : isFirstLeg ? 'success' : isLastLeg ? 'warning' : 'info',
+            isWillCall
+          });
         });
         return;
       }
@@ -410,11 +493,37 @@ const annotateSafeRideTrips = trips => {
       });
     });
 
-    return sortedTrips.map(trip => ({
-      ...trip,
-      ...annotationsByTripId.get(trip.id),
-      scanRootGroupKey: groupKey
-    }));
+    return sortedTrips.map(trip => {
+      const annotation = annotationsByTripId.get(trip.id) || {};
+      const scanRootGroupKey = groupKey;
+      const importIdentity = trip?.importIdentity && typeof trip.importIdentity === 'object'
+        ? trip.importIdentity
+        : {
+          fingerprint: String(trip?.importFingerprint || '').trim(),
+          rideId: String(trip?.rideId || '').trim(),
+          brokerTripId: String(trip?.brokerTripId || '').trim(),
+          serviceDate: String(trip?.serviceDate || '').trim(),
+          rider: String(trip?.rider || '').trim(),
+          patientPhoneNumber: String(trip?.patientPhoneNumber || '').trim(),
+          pickup: String(trip?.pickup || '').trim(),
+          address: String(trip?.address || '').trim(),
+          destination: String(trip?.destination || '').trim(),
+          groupedTripKey: String(annotation.groupedTripKey || '').trim(),
+          scanRootGroupKey,
+          legLabel: String(annotation.legLabel || '').trim(),
+          legVariant: String(annotation.legVariant || '').trim(),
+          isWillCall: Boolean(annotation.isWillCall),
+          source: 'initial-import-scan',
+          schemaVersion: 2
+        };
+
+      return {
+        ...trip,
+        ...annotation,
+        scanRootGroupKey,
+        importIdentity
+      };
+    });
   });
 };
 
@@ -465,25 +574,29 @@ const hasSimilarLocation = (leftValue, rightValue) => {
   return Boolean(left) && Boolean(right) && left === right;
 };
 
-const buildTripImportFinding = ({ severity, code, title, detail, trips, groupKey }) => ({
-  id: `${code}:${groupKey || trips.map(trip => trip.id).join('|')}`,
-  severity,
-  code,
-  title,
-  detail,
-  groupKey: groupKey || '',
-  tripIds: trips.map(trip => trip.id),
-  brokerTripIds: Array.from(new Set(trips.map(trip => String(trip?.brokerTripId || '').trim()).filter(Boolean))),
-  riderNames: Array.from(new Set(trips.map(trip => String(trip?.rider || '').trim()).filter(Boolean))),
-  serviceDates: Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))),
-  routes: trips.map(trip => ({
-    rideId: String(trip?.rideId || '').trim(),
-    brokerTripId: String(trip?.brokerTripId || '').trim(),
-    pickup: String(trip?.pickup || '').trim(),
-    fromAddress: String(trip?.address || '').trim(),
-    toAddress: String(trip?.destination || '').trim()
-  }))
-});
+const buildTripImportFinding = ({ severity, code, title, detail, trips, groupKey }) => {
+  const tripIdPart = trips.map(trip => trip.id).join('|');
+  const routePart = trips.map(trip => `${trip.address || ''}=>${trip.destination || ''}`).join('|');
+  return {
+    id: `${code}:${groupKey || ''}:${tripIdPart}:${routePart}`,
+    severity,
+    code,
+    title,
+    detail,
+    groupKey: groupKey || '',
+    tripIds: trips.map(trip => trip.id),
+    brokerTripIds: Array.from(new Set(trips.map(trip => String(trip?.brokerTripId || '').trim()).filter(Boolean))),
+    riderNames: Array.from(new Set(trips.map(trip => String(trip?.rider || '').trim()).filter(Boolean))),
+    serviceDates: Array.from(new Set(trips.map(trip => getTripServiceDateKey(trip)).filter(Boolean))),
+    routes: trips.map(trip => ({
+      rideId: String(trip?.rideId || '').trim(),
+      brokerTripId: String(trip?.brokerTripId || '').trim(),
+      pickup: String(trip?.pickup || '').trim(),
+      fromAddress: String(trip?.address || '').trim(),
+      toAddress: String(trip?.destination || '').trim()
+    }))
+  };
+};
 
 export const analyzeImportedTrips = trips => {
   if (!Array.isArray(trips) || trips.length === 0) {
@@ -563,7 +676,14 @@ export const analyzeImportedTrips = trips => {
   groupedTrips.forEach((groupTrips, groupKey) => {
     if (groupTrips.length < 2) return;
 
-    const sortedTrips = [...groupTrips].sort((leftTrip, rightTrip) => leftTrip.pickupSortValue - rightTrip.pickupSortValue || leftTrip.id.localeCompare(rightTrip.id));
+    // A group is "fully resolved" when every trip already carries a stable importIdentity
+    // with a leg label assigned by the current loader. In that case the route-pattern
+    // heuristics below are redundant and produce misleading warnings.
+    const isFullyResolved = groupTrips.every(
+      t => t?.importIdentity?.legLabel && t?.importIdentity?.scanRootGroupKey
+    );
+
+    const sortedTrips = getPrimaryRouteSequence(groupTrips) || [...groupTrips].sort((leftTrip, rightTrip) => leftTrip.pickupSortValue - rightTrip.pickupSortValue || leftTrip.id.localeCompare(rightTrip.id));
     const sameDirectionRouteGroups = new Map();
     const firstTrip = sortedTrips[0];
     const lastTrip = sortedTrips[sortedTrips.length - 1];
@@ -571,14 +691,18 @@ export const analyzeImportedTrips = trips => {
     const repeatedPickup = hasSameLocation(firstTrip?.address, lastTrip?.address);
     const repeatedDestination = hasSameLocation(firstTrip?.destination, lastTrip?.destination);
     const closeReturnAddressMismatch = !hasSameLocation(firstTrip?.destination, lastTrip?.address) && hasSimilarLocation(firstTrip?.destination, lastTrip?.address);
-    const chainedRoute = sortedTrips.every((trip, index) => index === 0 || hasSameLocation(sortedTrips[index - 1]?.destination, trip?.address));
+    const chainedRoute = sortedTrips.every((trip, index) => index === 0 || hasSequentialLocationMatch(sortedTrips[index - 1], trip));
+    const circularChainedRoute = sortedTrips.length > 2 && chainedRoute && (hasSameLocation(lastTrip?.destination, firstTrip?.address) || hasSimilarLocation(lastTrip?.destination, firstTrip?.address));
 
-    if (sortedTrips.length > 2) {
+    // multi-leg-group: only warn when the group is not already resolved
+    if (sortedTrips.length > 2 && !isFullyResolved) {
       findings.push(buildTripImportFinding({
         severity: 'warning',
         code: 'multi-leg-group',
-        title: 'Trip group has more than two legs',
-        detail: `${sortedTrips.length} rows share the same SafeRide trip group and should be reviewed before import.`,
+        title: circularChainedRoute ? 'Trip group has a connected multi-leg route' : 'Trip group has more than two legs',
+        detail: circularChainedRoute
+          ? `${sortedTrips.length} rows form a connected route that returns to the original pickup.`
+          : `${sortedTrips.length} rows share the same SafeRide trip group and should be reviewed before import.`,
         trips: sortedTrips,
         groupKey
       }));
@@ -590,6 +714,7 @@ export const analyzeImportedTrips = trips => {
       sameDirectionRouteGroups.set(routeKey, [...(sameDirectionRouteGroups.get(routeKey) ?? []), trip]);
     });
 
+    // same-direction-repeated is a true structural error — keep it even for resolved groups
     sameDirectionRouteGroups.forEach(repeatedDirectionTrips => {
       if (repeatedDirectionTrips.length < 2) return;
       const sampleTrip = repeatedDirectionTrips[0];
@@ -602,6 +727,9 @@ export const analyzeImportedTrips = trips => {
         groupKey
       }));
     });
+
+    // All pattern-based heuristic warnings below are skipped when the group is already resolved
+    if (isFullyResolved) return;
 
     if (closeReturnAddressMismatch) {
       findings.push(buildTripImportFinding({
@@ -627,7 +755,7 @@ export const analyzeImportedTrips = trips => {
       return;
     }
 
-    if (chainedRoute && !reverseLooksCorrect) {
+    if (chainedRoute && !reverseLooksCorrect && !circularChainedRoute) {
       findings.push(buildTripImportFinding({
         severity: 'warning',
         code: 'chained-route',
@@ -639,7 +767,7 @@ export const analyzeImportedTrips = trips => {
       return;
     }
 
-    if (!reverseLooksCorrect) {
+    if (!reverseLooksCorrect && !circularChainedRoute) {
       findings.push(buildTripImportFinding({
         severity: 'warning',
         code: 'route-mismatch',
@@ -654,6 +782,9 @@ export const analyzeImportedTrips = trips => {
   annotatedTrips.forEach(trip => {
     const tripId = String(trip?.id || '').trim();
     const currentTrip = sourceTripMap.get(tripId);
+    // If the trip already has a stable importIdentity leg label, it is authoritative —
+    // skip the re-scan comparison to avoid false leg-label-mismatch findings.
+    if (currentTrip?.importIdentity?.legLabel && currentTrip?.importIdentity?.scanRootGroupKey) return;
     const currentLabelCategory = getLegLabelScanCategory(currentTrip?.legLabel);
     const expectedLabelCategory = getLegLabelScanCategory(annotatedTripMap.get(tripId)?.legLabel);
     if (!currentLabelCategory || !expectedLabelCategory || currentLabelCategory === expectedLabelCategory) return;

@@ -1,12 +1,13 @@
 'use client';
 
 import { useNemtContext } from '@/context/useNemtContext';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import { getTripLateMinutes, getTripServiceDateKey, getTripTimelineDateKey, isTripAssignedToDriver } from '@/helpers/nemt-dispatch-state';
 import { findTripAssignmentCompatibilityIssue } from '@/helpers/nemt-trip-assignment';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getMapTileConfig } from '@/utils/map-tiles';
+import { getMapTileConfigWithFallback, hasLocalMapTilesConfigured, probeLocalMapTilesAvailability } from '@/utils/map-tiles';
 import { MapContainer, Marker, Polyline, Popup } from 'react-leaflet';
 import { TileLayer } from 'react-leaflet/TileLayer';
 import { Alert, Badge, Button, Card, CardBody, Col, Form, Row, Table } from 'react-bootstrap';
@@ -137,6 +138,8 @@ const logSystemActivity = async (eventLabel, target = '', metadata = null) => {
 };
 
 const RouteControlWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const isDarkMode = themeMode === 'dark';
   const { data: adminData } = useNemtAdminApi();
   const { data: userPreferences, loading: userPreferencesLoading } = useUserPreferencesApi();
   const {
@@ -165,11 +168,32 @@ const RouteControlWorkspace = () => {
   const [routeNotesDraft, setRouteNotesDraft] = useState('');
   const [statusMessage, setStatusMessage] = useState('Select a work day to load Route Control.');
   const [closedRouteStateByKey, setClosedRouteStateByKey] = useState({});
+  const [canUseLocalTiles, setCanUseLocalTiles] = useState(true);
   const closedRouteSnapshotRef = useRef('');
   const adminDriversById = useMemo(() => new Map((Array.isArray(adminData?.drivers) ? adminData.drivers : []).map(driver => [String(driver?.id || '').trim(), driver])), [adminData?.drivers]);
   const adminVehiclesById = useMemo(() => new Map((Array.isArray(adminData?.vehicles) ? adminData.vehicles : []).map(vehicle => [String(vehicle?.id || '').trim(), vehicle])), [adminData?.vehicles]);
 
-  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  useEffect(() => {
+    let isActive = true;
+    const providerPreference = String(uiPreferences?.mapProvider ?? 'auto').trim().toLowerCase();
+    if (!hasLocalMapTilesConfigured || !['auto', 'local'].includes(providerPreference)) {
+      setCanUseLocalTiles(true);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    void probeLocalMapTilesAvailability().then(isAvailable => {
+      if (!isActive) return;
+      setCanUseLocalTiles(Boolean(isAvailable));
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [uiPreferences?.mapProvider]);
+
+  const mapTileConfig = useMemo(() => getMapTileConfigWithFallback(uiPreferences?.mapProvider, isDarkMode ? 'dark' : 'light', canUseLocalTiles), [canUseLocalTiles, isDarkMode, uiPreferences?.mapProvider]);
   const hasSelectedDate = Boolean(dateFilter);
 
   const effectiveRoutes = useMemo(() => Array.isArray(routePlans) ? routePlans : [], [routePlans]);

@@ -1,6 +1,7 @@
 'use client';
 
-import { getMapTileConfig } from '@/utils/map-tiles';
+import { getMapTileConfigWithFallback, hasLocalMapTilesConfigured, probeLocalMapTilesAvailability } from '@/utils/map-tiles';
+import { useLayoutContext } from '@/context/useLayoutContext';
 import { divIcon } from 'leaflet';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Form, Spinner } from 'react-bootstrap';
@@ -199,6 +200,8 @@ const readTripDashboardMapSelection = () => {
 };
 
 const MapScreenWorkspace = () => {
+  const { themeMode } = useLayoutContext();
+  const isDarkMode = themeMode === 'dark';
   const [originQuery, setOriginQuery] = useState('');
   const [destinationQuery, setDestinationQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -209,8 +212,30 @@ const MapScreenWorkspace = () => {
   const [dashboardSelection, setDashboardSelection] = useState(() => readTripDashboardMapSelection());
   const [dashboardRouteResult, setDashboardRouteResult] = useState(null);
   const [mapProviderPreference, setMapProviderPreference] = useState('auto');
+  const [mapInteractionsLocked, setMapInteractionsLocked] = useState(false);
+  const [canUseLocalTiles, setCanUseLocalTiles] = useState(true);
 
-  const mapTileConfig = useMemo(() => getMapTileConfig(mapProviderPreference), [mapProviderPreference]);
+  useEffect(() => {
+    let isActive = true;
+    const providerPreference = String(mapProviderPreference || 'auto').trim().toLowerCase();
+    if (!hasLocalMapTilesConfigured || !['auto', 'local'].includes(providerPreference)) {
+      setCanUseLocalTiles(true);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    void probeLocalMapTilesAvailability().then(isAvailable => {
+      if (!isActive) return;
+      setCanUseLocalTiles(Boolean(isAvailable));
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [mapProviderPreference]);
+
+  const mapTileConfig = useMemo(() => getMapTileConfigWithFallback(mapProviderPreference, isDarkMode ? 'dark' : 'light', canUseLocalTiles), [canUseLocalTiles, isDarkMode, mapProviderPreference]);
   const hasManualMapSearch = Boolean(originResult || destinationResult || routeResult);
   const dashboardRouteGeometry = dashboardRouteResult?.geometry?.length > 1 ? dashboardRouteResult.geometry : dashboardSelection?.routeGeometry?.length > 1 ? dashboardSelection.routeGeometry : dashboardSelection?.routeWaypoints || [];
   const dashboardRouteStops = useMemo(() => {
@@ -362,7 +387,17 @@ const MapScreenWorkspace = () => {
               <Form.Select value={mapProviderPreference} onChange={event => setMapProviderPreference(event.target.value)} style={{ width: 170 }}>
                 <option value="auto">Map: Auto</option>
                 <option value="openstreetmap">Map: OSM</option>
+                <option value="local" disabled={!hasLocalMapTilesConfigured}>Map: Local</option>
               </Form.Select>
+              <Button
+                type="button"
+                variant={mapInteractionsLocked ? 'warning' : 'outline-secondary'}
+                size="sm"
+                onClick={() => setMapInteractionsLocked(currentValue => !currentValue)}
+                title={mapInteractionsLocked ? 'Unlock map movement' : 'Lock map movement'}
+              >
+                {mapInteractionsLocked ? 'Unlock map' : 'Lock map'}
+              </Button>
               {originResult ? <Badge bg="success">Origin: {originResult.provider}</Badge> : null}
               {destinationResult ? <Badge bg="primary">Destination: {destinationResult.provider}</Badge> : null}
               {routeResult ? <Badge bg={routeResult.isFallback ? 'warning' : 'dark'} text={routeResult.isFallback ? 'dark' : 'light'}>Route: {routeResult.provider}</Badge> : null}
@@ -425,7 +460,19 @@ const MapScreenWorkspace = () => {
           </div> : null}
 
         <div style={mapSurfaceStyle}>
-          <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} zoomControl={false} scrollWheelZoom dragging doubleClickZoom touchZoom boxZoom keyboard preferCanvas style={{ height: '100%', width: '100%' }}>
+          <MapContainer
+            center={DEFAULT_CENTER}
+            zoom={DEFAULT_ZOOM}
+            zoomControl={false}
+            scrollWheelZoom={!mapInteractionsLocked}
+            dragging={!mapInteractionsLocked}
+            doubleClickZoom={!mapInteractionsLocked}
+            touchZoom={!mapInteractionsLocked}
+            boxZoom={!mapInteractionsLocked}
+            keyboard={!mapInteractionsLocked}
+            preferCanvas
+            style={{ height: '100%', width: '100%', cursor: mapInteractionsLocked ? 'not-allowed' : 'grab' }}
+          >
             <ViewportController coordinatesList={mapPoints} zoom={mapPoints.length > 0 ? RESULT_ZOOM : DEFAULT_ZOOM} />
             <ZoomControl position="bottomright" />
             <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />

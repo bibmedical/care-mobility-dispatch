@@ -53,26 +53,47 @@ const OFF_VARIANTS = {
   }
 };
 
+const ON_VARIANTS = {
+  success: {
+    borderColor: 'rgba(22, 163, 74, 0.34)',
+    background: 'linear-gradient(180deg, #18dd73 0%, #53eb73 100%)',
+    shadow: 'inset 0 1px 2px rgba(255,255,255,0.35), 0 8px 18px rgba(34, 197, 94, 0.22)',
+    thumbBorder: 'rgba(34, 197, 94, 0.35)',
+    iconColor: '#22c55e',
+    labelColor: '#ecfdf5'
+  },
+  primary: {
+    borderColor: 'rgba(59, 130, 246, 0.36)',
+    background: 'linear-gradient(180deg, rgba(var(--bs-blue-rgb), 0.86) 0%, var(--bs-blue) 100%)',
+    shadow: 'inset 0 1px 2px rgba(255,255,255,0.35), 0 8px 18px rgba(59, 130, 246, 0.24)',
+    thumbBorder: 'rgba(96, 165, 250, 0.42)',
+    iconColor: '#3b82f6',
+    labelColor: '#eff6ff'
+  }
+};
+
 const getTrackStyle = ({
   checked,
   disabled,
+  onVariant,
   offVariant,
   sizeConfig
 }) => {
   const offTone = OFF_VARIANTS[offVariant] || OFF_VARIANTS.neutral;
+  const onTone = ON_VARIANTS[onVariant] || ON_VARIANTS.success;
 
   return {
     width: sizeConfig.width,
     height: sizeConfig.height,
     borderRadius: sizeConfig.height / 2,
     padding: sizeConfig.padding,
-    border: `1px solid ${checked ? 'rgba(22, 163, 74, 0.34)' : offTone.borderColor}`,
-    background: checked ? 'linear-gradient(180deg, #18dd73 0%, #53eb73 100%)' : offTone.background,
+    border: `1px solid ${checked ? onTone.borderColor : offTone.borderColor}`,
+    background: checked ? onTone.background : offTone.background,
     position: 'relative',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: checked ? 'flex-start' : 'flex-end',
-    boxShadow: checked ? 'inset 0 1px 2px rgba(255,255,255,0.35), 0 8px 18px rgba(34, 197, 94, 0.22)' : 'inset 0 1px 2px rgba(255,255,255,0.6), 0 8px 18px rgba(15, 23, 42, 0.08)',
+    boxShadow: checked ? onTone.shadow : 'inset 0 1px 2px rgba(255,255,255,0.6), 0 8px 18px rgba(15, 23, 42, 0.08)',
     transition: 'background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, opacity 180ms ease',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.55 : 1,
@@ -82,10 +103,12 @@ const getTrackStyle = ({
 
 const getThumbStyle = ({
   checked,
+  onVariant,
   offVariant,
   sizeConfig
 }) => {
   const offTone = OFF_VARIANTS[offVariant] || OFF_VARIANTS.neutral;
+  const onTone = ON_VARIANTS[onVariant] || ON_VARIANTS.success;
 
   return {
     width: sizeConfig.thumb,
@@ -93,12 +116,12 @@ const getThumbStyle = ({
     minWidth: sizeConfig.thumb,
     borderRadius: '50%',
     backgroundColor: '#ffffff',
-    border: `1px solid ${checked ? 'rgba(34, 197, 94, 0.35)' : 'rgba(203, 213, 225, 0.88)'}`,
+    border: `1px solid ${checked ? onTone.thumbBorder : 'rgba(203, 213, 225, 0.88)'}`,
     boxShadow: '0 3px 10px rgba(15, 23, 42, 0.18)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: checked ? '#22c55e' : offTone.iconColor,
+    color: checked ? onTone.iconColor : offTone.iconColor,
     transform: checked ? 'translateX(0)' : 'translateX(0)',
     transition: 'color 180ms ease, border-color 180ms ease, transform 180ms ease'
   };
@@ -106,10 +129,12 @@ const getThumbStyle = ({
 
 const getLabelStyle = ({
   checked,
+  onVariant,
   offVariant,
   sizeConfig
 }) => {
   const offTone = OFF_VARIANTS[offVariant] || OFF_VARIANTS.neutral;
+  const onTone = ON_VARIANTS[onVariant] || ON_VARIANTS.success;
 
   return {
     position: 'absolute',
@@ -122,7 +147,7 @@ const getLabelStyle = ({
     fontSize: sizeConfig.fontSize,
     fontWeight: 700,
     letterSpacing: '0.08em',
-    color: checked ? '#ecfdf5' : offTone.labelColor,
+    color: checked ? onTone.labelColor : offTone.labelColor,
     textTransform: 'uppercase'
   };
 };
@@ -130,6 +155,7 @@ const getLabelStyle = ({
 const PowerToggleButton = ({
   checked = false,
   disabled = false,
+  onVariant = 'success',
   offVariant = 'neutral',
   size = 'md',
   onClick,
@@ -163,9 +189,9 @@ const PowerToggleButton = ({
       onClick={handleClick}
       className={clsx('border-0 bg-transparent p-0 d-inline-flex align-items-center', className)}
       style={style}>
-      <span style={getTrackStyle({ checked, disabled, offVariant, sizeConfig })}>
-        <span style={getLabelStyle({ checked, offVariant, sizeConfig })}>{label}</span>
-        <span style={getThumbStyle({ checked, offVariant, sizeConfig })}>
+      <span style={getTrackStyle({ checked, disabled, onVariant, offVariant, sizeConfig })}>
+        <span style={getLabelStyle({ checked, onVariant, offVariant, sizeConfig })}>{label}</span>
+        <span style={getThumbStyle({ checked, onVariant, offVariant, sizeConfig })}>
           <IconifyIcon icon={checked ? 'iconoir:check' : 'iconoir:xmark'} width={sizeConfig.iconSize} height={sizeConfig.iconSize} />
         </span>
       </span>

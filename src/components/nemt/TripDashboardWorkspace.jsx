@@ -16,7 +16,7 @@ import useSmsIntegrationApi from '@/hooks/useSmsIntegrationApi';
 import useUserPreferencesApi from '@/hooks/useUserPreferencesApi';
 import { useNemtContext } from '@/context/useNemtContext';
 import { useNotificationContext } from '@/context/useNotificationContext';
-import { getMapTileConfig } from '@/utils/map-tiles';
+import { getMapTileConfigWithFallback, hasLocalMapTilesConfigured, probeLocalMapTilesAvailability } from '@/utils/map-tiles';
 import { openWhatsAppConversation, resolveRouteShareDriver } from '@/utils/whatsapp';
 import { divIcon } from 'leaflet';
 import { useRouter } from 'next/navigation';
@@ -40,6 +40,7 @@ const darkToolbarButtonStyle = {
 };
 
 const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
+const TRIP_DASHBOARD_LAYOUT_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_LAYOUT__';
 
 const TRIP_DASHBOARD_MAP_LAYER_OPTIONS = [{
   value: 'all',
@@ -564,7 +565,8 @@ const normalizeTripTimeDisplayMode = value => String(value || '').trim() === TRI
 const getInitialTripDashboardLayoutMode = () => TRIP_DASHBOARD_LAYOUTS.normal;
 
 const getStatusBadge = status => {
-  if (status === 'Assigned') return 'primary';
+  if (status === 'Assigned') return 'success';
+  if (status === 'Unassigned') return 'blue';
   if (status === 'In Progress') return 'success';
   if (status === 'WillCall') return 'danger';
   if (status === 'Cancelled') return 'danger';
@@ -1200,7 +1202,7 @@ const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScale
 
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${DEFAULT_VEHICLE_ICON_URL}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
+    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;display:flex;align-items:center;justify-content:center;"><img src="${DEFAULT_VEHICLE_ICON_URL}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:contain;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
     iconSize: [shellSize, shellSize],
     iconAnchor: [Math.round(shellSize / 2), Math.round(shellSize / 2)],
     popupAnchor: [0, -Math.round(shellSize * 0.4)]
@@ -1310,6 +1312,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     hide: false
   });
   const [mapLocked, setMapLocked] = useState(false);
+  const [canUseLocalTiles, setCanUseLocalTiles] = useState(true);
     const handleFocusLiveScanTrip = (tripId, riderName = '') => {
       const normalizedTripId = normalizeTripId(tripId);
       if (!normalizedTripId) return;
@@ -1412,6 +1415,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   const [importedServiceDateKeys, setImportedServiceDateKeys] = useState([]);
   const [selectedImportFileName, setSelectedImportFileName] = useState('');
   const [importScan, setImportScan] = useState(null);
+  const [importedDuplicateTripIds, setImportedDuplicateTripIds] = useState(new Set());
   const [pendingImportAction, setPendingImportAction] = useState('');
   const [isImportParsing, setIsImportParsing] = useState(false);
   const [localImportPath, setLocalImportPath] = useState('');
@@ -1604,6 +1608,14 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     }
 
     upsertImportedTrips(importPendingTrips);
+    // Persist duplicate IDs so the badge stays visible in the table after the scan is cleared
+    const duplicateIds = new Set();
+    (importScan?.findings || []).forEach(finding => {
+      if (finding.code === 'duplicate-trip-rows') {
+        (finding.tripIds || []).forEach(id => duplicateIds.add(String(id).trim()));
+      }
+    });
+    if (duplicateIds.size > 0) setImportedDuplicateTripIds(prev => new Set([...prev, ...duplicateIds]));
     setShowTripImportModal(false);
     const importMessage = importScan?.findingCount > 0
       ? `${importPendingTrips.length} trip(s) imported into Trip Dashboard. Scanner warnings stay highlighted so you can review and invert manually if needed.`
@@ -2005,7 +2017,28 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     const importedDriverKey = normalizeImportedDriverLookup(trip?.importedDriverName);
     return Boolean(importedDriverKey && selectedDriverRouteLookupKey && importedDriverKey === selectedDriverRouteLookupKey);
   };
-  const mapTileConfig = useMemo(() => getMapTileConfig(uiPreferences?.mapProvider), [uiPreferences?.mapProvider]);
+  const isDarkTheme = themeMode === 'dark';
+  useEffect(() => {
+    let isActive = true;
+    const providerPreference = String(uiPreferences?.mapProvider ?? 'auto').trim().toLowerCase();
+    if (!hasLocalMapTilesConfigured || !['auto', 'local'].includes(providerPreference)) {
+      setCanUseLocalTiles(true);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    void probeLocalMapTilesAvailability().then(isAvailable => {
+      if (!isActive) return;
+      setCanUseLocalTiles(Boolean(isAvailable));
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [uiPreferences?.mapProvider]);
+
+  const mapTileConfig = useMemo(() => getMapTileConfigWithFallback(uiPreferences?.mapProvider, isDarkTheme ? 'dark' : 'light', canUseLocalTiles), [canUseLocalTiles, isDarkTheme, uiPreferences?.mapProvider]);
   const mapLayerVisibility = useMemo(() => getTripDashboardMapLayerVisibility(mapLayerPreset), [mapLayerPreset]);
   const hasBtRouteDriverSelection = btRouteEnabled && Boolean(selectedDriverId);
   const hasActiveMapSelection = selectedTripIds.length > 0 || Boolean(selectedRoute) || hasBtRouteDriverSelection;
@@ -2013,7 +2046,6 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   const showRouteMapLayer = hasActiveMapSelection || (mapLayerVisibility.route && showRoute);
   const showSelectedTripMapLayer = mapLayerVisibility.selectedTrips || hasActiveMapSelection;
   const hasVisibleTripDashboardMap = showMapPane || showScannerMapInRoutePanel;
-  const isDarkTheme = themeMode === 'dark';
   const mapQuickFilterControlStyle = themeMode === 'dark'
     ? {
       width: 150,
@@ -2032,7 +2064,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     width: 130
   };
   const compactToolbarOutlineVariant = isDarkTheme ? 'outline-light' : 'outline-dark';
-  const compactToolbarActiveVariant = isDarkTheme ? 'success' : 'dark';
+  const compactToolbarActiveVariant = isDarkTheme ? 'primary' : 'dark';
   const compactToolbarLabelStyle = isDarkTheme ? { color: '#cbd5e1' } : undefined;
   const compactToolbarSelectBaseStyle = isDarkTheme
     ? {
@@ -2052,13 +2084,42 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     width: 140
   };
   const toolbarButtonStyle = isDarkTheme ? darkToolbarButtonStyle : lightToolbarButtonStyle;
+  const getThemeAwareLegBadge = useCallback(badge => {
+    if (!badge || typeof badge !== 'object') return badge;
+    if (!isDarkTheme) return badge;
+    const label = String(badge.label || '').toLowerCase();
+    if (label.includes('willcall') || label.includes('will call')) {
+      return {
+        ...badge,
+        variant: 'warning'
+      };
+    }
+    if (badge.variant === 'success') {
+      return {
+        ...badge,
+        variant: 'blue'
+      };
+    }
+    if (badge.variant === 'warning') {
+      return {
+        ...badge,
+        variant: 'warning'
+      };
+    }
+    return {
+      ...badge,
+      variant: badge.variant
+    };
+  }, [isDarkTheme]);
   const tripDashboardToolbarShellStyle = isDarkTheme ? {
-    backgroundColor: '#14532d',
-    color: '#f8fafc'
+    backgroundColor: 'var(--cm-panel-bg)',
+    color: 'var(--bs-white)'
   } : {
-    backgroundColor: '#198754',
-    color: '#10212b'
+    backgroundColor: 'var(--bs-success)',
+    color: 'var(--bs-dark)'
   };
+  const driverHeaderBackgroundColor = isDarkTheme ? 'var(--cm-panel-bg)' : 'var(--bs-success)';
+  const driverHeaderTextColor = 'var(--bs-white)';
   const mutedThemeTextStyle = isDarkTheme ? { color: '#94a3b8' } : { color: '#64748b' };
   const aiPlannerCollapsedTriggerStyle = isDarkTheme ? {
     borderRadius: 10,
@@ -2110,13 +2171,6 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       color: '#12202a',
       borderBottom: '1px solid rgba(15, 23, 42, 0.14)'
     };
-  const offlineDriverBadgeStyle = isDarkTheme
-    ? {
-      backgroundColor: '#475569',
-      color: '#f8fafc',
-      border: '1px solid #64748b'
-    }
-    : undefined;
   const dispatcherVisibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
   const visibleTripColumns = isTripDashboardSurface ? tripDashboardVisibleTripColumns : dispatcherVisibleTripColumns;
   const allTripColumnKeys = useMemo(() => DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key), []);
@@ -2491,6 +2545,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       <PowerToggleButton
         checked={checked}
         onToggle={onToggle}
+        onVariant={isDarkTheme ? 'primary' : 'success'}
         onLabel={onLabel}
         offLabel={offLabel}
         offVariant="neutral"
@@ -2669,8 +2724,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       style={{ width: 190 }}
     />;
 
-  const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <div className="d-flex align-items-center gap-1 flex-nowrap">
-      <Button variant="success" size="sm" onClick={() => setShowManualTripModal(true)} title="Create manual trip">+Trip</Button>
+    const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <div className="d-flex align-items-center gap-1 flex-nowrap">
+      <Button variant={isDarkTheme ? 'blue' : 'success'} size="sm" onClick={() => setShowManualTripModal(true)} title="Create manual trip">+Trip</Button>
       <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
       <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
       <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
@@ -2708,14 +2763,16 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       <option value="block">Blocked</option>
     </Form.Select>;
 
-  const renderShowMapBlock = () => <Button variant="warning" size="sm" onClick={() => {
+  const renderShowMapBlock = () => <Button size="sm" onClick={() => {
       if (!showMapPane) {
         applyLayoutMode(TRIP_DASHBOARD_LAYOUTS.normal);
         return;
       }
       setShowMapPane(false);
       setStatusMessage('Map hidden in Trip Dashboard.');
-    }} style={showMapPane ? undefined : {
+    }} variant={isDarkTheme ? (showMapPane ? 'blue' : 'outline-blue') : 'warning'} style={showMapPane || isDarkTheme ? {
+      fontWeight: 800
+    } : {
       color: '#5b3b00',
       borderColor: 'rgba(161, 98, 7, 0.48)',
       background: 'linear-gradient(180deg, #fde68a 0%, #fbbf24 100%)',
@@ -2724,7 +2781,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       {showMapPane ? 'Hide Map' : 'Show Map'}
     </Button>;
 
-  const renderToolbarEditBlock = () => <Button variant="outline-dark" size="sm" style={toolbarButtonStyle} onClick={() => router.push('/dispatcher')}>
+  const renderToolbarEditBlock = () => <Button variant={isDarkTheme ? 'blue' : 'outline-dark'} size="sm" style={isDarkTheme ? undefined : toolbarButtonStyle} onClick={() => router.push('/dispatcher')}>
       Dispatch
     </Button>;
 
@@ -2734,9 +2791,9 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     </Form.Select>;
 
   const renderPanelsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
-      <Button variant={showDriversPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showDriversPanel ? undefined : toolbarButtonStyle} onClick={() => setShowDriversPanel(current => !current)}>Drivers</Button>
-      <Button variant={showRoutesPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showRoutesPanel ? undefined : toolbarButtonStyle} onClick={() => setShowRoutesPanel(current => !current)}>Routes</Button>
-      {!isTripDashboardSurface ? <Button variant={showTripsPanel ? 'success' : compactToolbarOutlineVariant} size="sm" style={showTripsPanel ? undefined : toolbarButtonStyle} onClick={() => setShowTripsPanel(current => !current)}>Trips</Button> : null}
+      <Button variant={showDriversPanel ? isDarkTheme ? 'blue' : 'success' : isDarkTheme ? 'outline-blue' : compactToolbarOutlineVariant} size="sm" style={!isDarkTheme && !showDriversPanel ? toolbarButtonStyle : undefined} onClick={() => setShowDriversPanel(current => !current)}>Drivers</Button>
+      <Button variant={showRoutesPanel ? isDarkTheme ? 'blue' : 'success' : isDarkTheme ? 'outline-blue' : compactToolbarOutlineVariant} size="sm" style={!isDarkTheme && !showRoutesPanel ? toolbarButtonStyle : undefined} onClick={() => setShowRoutesPanel(current => !current)}>Routes</Button>
+      {!isTripDashboardSurface ? <Button variant={showTripsPanel ? isDarkTheme ? 'blue' : 'success' : isDarkTheme ? 'outline-blue' : compactToolbarOutlineVariant} size="sm" style={!isDarkTheme && !showTripsPanel ? toolbarButtonStyle : undefined} onClick={() => setShowTripsPanel(current => !current)}>Trips</Button> : null}
     </div>;
 
   const renderTripOrderBlock = () => isTripDashboardSurface ? null : <Button variant={tripOrderMode === 'time' ? 'dark' : 'outline-dark'} size="sm" style={tripOrderMode === 'time' ? undefined : toolbarButtonStyle} onClick={handleTripOrderModeToggle}>
@@ -2923,7 +2980,19 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     setStatusMessage(message);
     showNotification({ message, variant: 'success' });
   };
-  const scanAnnotatedTrips = useMemo(() => annotateTripsByScanLogic(trips), [trips]);
+  const restoreImportedTripIdentity = trip => {
+    const importIdentity = trip?.importIdentity && typeof trip.importIdentity === 'object' ? trip.importIdentity : null;
+    if (!importIdentity) return trip;
+    return {
+      ...trip,
+      legLabel: String(importIdentity.legLabel || trip?.legLabel || '').trim(),
+      legVariant: String(importIdentity.legVariant || trip?.legVariant || '').trim(),
+      groupedTripKey: String(importIdentity.groupedTripKey || trip?.groupedTripKey || '').trim(),
+      scanRootGroupKey: String(importIdentity.scanRootGroupKey || trip?.scanRootGroupKey || '').trim(),
+      isWillCall: Boolean(importIdentity.isWillCall ?? trip?.isWillCall)
+    };
+  };
+  const scanAnnotatedTrips = useMemo(() => annotateTripsByScanLogic(trips).map(restoreImportedTripIdentity), [trips]);
 
   const matchesTripStatusFilter = (trip, blockingState) => {
     const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
@@ -3045,7 +3114,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     return tripMatchesCity(trip, dropoffCityValue);
   }), [doCityFilter, matchesAnyZipFilter, matchesPickupZipFilter, matchesDropoffZipFilter, matchesTripDateFilter, matchesTripLegFilter, matchesTripSearchFilter, matchesTripServiceAnimalFilter, matchesTripTypeFilter, puCityFilter, scanAnnotatedTrips]);
   const visibleFilteredTripIdSet = useMemo(() => new Set(filteredTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean)), [filteredTrips]);
-  const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanAnalysisTrips).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanAnalysisTrips]);
+  const liveAnnotatedFilteredTripMap = useMemo(() => new Map(annotateTripsByScanLogic(liveScanAnalysisTrips).map(restoreImportedTripIdentity).map(trip => [String(trip?.id || '').trim(), trip])), [liveScanAnalysisTrips]);
   const liveTripScan = useMemo(() => {
     const scanResult = analyzeImportedTrips(liveScanAnalysisTrips);
     const visibleFindings = (scanResult?.findings || []).filter(finding => (Array.isArray(finding?.tripIds) ? finding.tripIds : []).some(tripId => visibleFilteredTripIdSet.has(String(tripId || '').trim())));
@@ -3103,6 +3172,17 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     });
   }, [liveTripScan]);
   const liveTripAutoRepairableFindings = useMemo(() => (liveTripScan?.findings || []).filter(finding => finding.code === 'same-direction-repeated' && Array.isArray(finding.tripIds) && finding.tripIds.length === 2), [liveTripScan]);
+  const importScanDuplicateTripIds = useMemo(() => {
+    const ids = new Set([...importedDuplicateTripIds]);
+    // Also include any pending-but-not-yet-imported duplicates from current scan
+    (importScan?.findings || []).forEach(finding => {
+      if (finding.code === 'duplicate-trip-rows') {
+        (finding.tripIds || []).forEach(id => ids.add(String(id).trim()));
+      }
+    });
+    return ids;
+  }, [importScan, importedDuplicateTripIds]);
+
   const assignmentProgressTrips = useMemo(() => trips.filter(trip => {
     const tripDateKey = getTripTimelineDateKey(trip, routePlans, trips);
     const profilePhoneKey = String(trip?.patientPhoneNumber || '').replace(/\D/g, '');
@@ -3230,14 +3310,14 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           key: `${trip.id}-dropoff-mapquick`,
           tripId: trip.id,
           position: dropoffPosition,
-          color: '#22c55e',
+          color: isDarkTheme ? '#60a5fa' : '#22c55e',
           label: `DO ${getTripDisplayTimeText(trip, 'dropoff', timeDisplayMode) || '-'}`
         });
       }
 
       return points;
     });
-  }, [mapQuickTrips, selectedTrips.length, showSelectedTripMapLayer, timeDisplayMode]);
+  }, [isDarkTheme, mapQuickTrips, selectedTrips.length, showSelectedTripMapLayer, timeDisplayMode]);
   const selectedTripMapPoints = useMemo(() => {
     if (selectedTrips.length === 0 || !showSelectedTripMapLayer) return [];
     const scopedSelectedTrips = activeDateTripIdSet ? selectedTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : selectedTrips;
@@ -3939,10 +4019,10 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   const getTripConfirmationActionVariant = (trip, blockingState) => {
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
     const confirmationLabel = getTripConfirmationDisplayLabel(trip, blockingState);
-    if (confirmationStatus === 'Confirmed') return 'success';
+    if (confirmationStatus === 'Confirmed') return isDarkTheme ? 'primary' : 'success';
     if (confirmationLabel === 'Needs Call') return 'warning';
     if (confirmationLabel === 'Disconnected') return 'secondary';
-    return 'outline-success';
+    return isDarkTheme ? 'outline-primary' : 'outline-success';
   };
 
   const applyTripConfirmationState = (trip, { status, provider = '', methodCode = '', message = '', eventType = 'manual', noteLine = '' }) => {
@@ -4903,16 +4983,16 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     </th>;
   };
 
-  const renderDriverHeader = (columnKey, label) => <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff', whiteSpace: columnKey === 'vehicle' ? 'normal' : 'nowrap' }}>
+  const renderDriverHeader = (columnKey, label) => <th className="py-1" style={{ backgroundColor: driverHeaderBackgroundColor, color: driverHeaderTextColor, whiteSpace: columnKey === 'vehicle' ? 'normal' : 'nowrap' }}>
       <div className="d-flex flex-column gap-1">
-        <button type="button" onClick={() => handleDriverSortChange(columnKey)} className="btn btn-link text-decoration-none p-0 d-inline-flex align-items-center gap-1" style={{ color: '#fff', fontWeight: 700, justifyContent: 'flex-start' }}>
+        <button type="button" onClick={() => handleDriverSortChange(columnKey)} className="btn btn-link text-decoration-none p-0 d-inline-flex align-items-center gap-1" style={{ color: driverHeaderTextColor, fontWeight: 700, justifyContent: 'flex-start' }}>
           <span>{label}</span>
           <span className="small">{driverSort.key === columnKey ? driverSort.direction === 'asc' ? '↑' : '↓' : '↕'}</span>
         </button>
         {columnKey === 'vehicle' ? <div className="d-flex flex-wrap gap-1">
             {GROUPING_SERVICE_TYPE_OPTIONS.map(filterKey => {
           const active = driverVehicleCapabilityFilters.includes(filterKey);
-          return <button key={filterKey} type="button" className="btn btn-sm py-0 px-1" onClick={() => setDriverVehicleCapabilityFilters(current => current.includes(filterKey) ? current.filter(item => item !== filterKey) : [...current, filterKey])} style={{ fontSize: '0.66rem', lineHeight: 1.2, borderColor: active ? '#ffffff' : 'rgba(255,255,255,0.35)', backgroundColor: active ? '#ffffff' : 'transparent', color: active ? '#198754' : '#ffffff', minWidth: filterKey === 'Walker' ? 44 : 28 }}>
+          return <button key={filterKey} type="button" className="btn btn-sm py-0 px-1" onClick={() => setDriverVehicleCapabilityFilters(current => current.includes(filterKey) ? current.filter(item => item !== filterKey) : [...current, filterKey])} style={{ fontSize: '0.66rem', lineHeight: 1.2, borderColor: active ? 'var(--bs-white)' : 'rgba(255,255,255,0.35)', backgroundColor: active ? 'var(--bs-white)' : 'transparent', color: active ? driverHeaderBackgroundColor : 'var(--bs-white)', minWidth: filterKey === 'Walker' ? 44 : 28 }}>
                 {filterKey}
               </button>;
         })}
@@ -5779,7 +5859,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
         return <td key={`${trip.id}-trip`} style={{ whiteSpace: 'nowrap', ...(getFieldErrorStyle('trip') || {}) }} title={getFieldErrorDetail('trip') || undefined}>
             <div className="fw-semibold">{getDisplayTripId(trip)}</div>
           {!orderedVisibleTripColumns.includes('rider') && trip.rider ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1, whiteSpace: 'normal', maxWidth: 180 }}>{trip.rider}</div> : null}
-            {getLegBadge(displayTrip) ? <Badge bg={getLegBadge(displayTrip).variant} className="mt-1 me-1">{getLegBadge(displayTrip).label}</Badge> : null}
+            {getLegBadge(displayTrip) ? <Badge bg={getThemeAwareLegBadge(getLegBadge(displayTrip)).variant} text={getThemeAwareLegBadge(getLegBadge(displayTrip)).variant === 'warning' ? 'dark' : undefined} className="mt-1 me-1">{getThemeAwareLegBadge(getLegBadge(displayTrip)).label}</Badge> : null}
             {trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
           </td>;
       case 'vehicle':
@@ -5859,7 +5939,13 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
               firstName,
               lastName
             } = splitRiderName(trip.rider);
-            return [firstName, lastName].filter(Boolean).join(' ');
+            const nameText = [firstName, lastName].filter(Boolean).join(' ');
+            const isDuplicate = importScanDuplicateTripIds.has(String(trip.id || '').trim());
+            if (!isDuplicate) return nameText;
+            return <span>
+              {nameText}
+              <div className="mt-1"><Badge bg="warning" text="dark" style={{ fontSize: '0.7em' }}>Duplicate</Badge></div>
+            </span>;
           })(),
           cellStyle: {
             whiteSpace: 'normal'
@@ -5987,7 +6073,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           </td>;
       }
       case 'leg':
-        return <td key={`${trip.id}-leg`} style={{ whiteSpace: 'nowrap', ...(getFieldErrorStyle('leg') || {}) }} title={getFieldErrorDetail('leg') || undefined}>{getLegBadge(displayTrip) ? <Badge bg={getLegBadge(displayTrip).variant}>{getLegBadge(displayTrip).label}</Badge> : '-'}</td>;
+        return <td key={`${trip.id}-leg`} style={{ whiteSpace: 'nowrap', ...(getFieldErrorStyle('leg') || {}) }} title={getFieldErrorDetail('leg') || undefined}>{getLegBadge(displayTrip) ? <Badge bg={getThemeAwareLegBadge(getLegBadge(displayTrip)).variant} text={getThemeAwareLegBadge(getLegBadge(displayTrip)).variant === 'warning' ? 'dark' : undefined}>{getThemeAwareLegBadge(getLegBadge(displayTrip)).label}</Badge> : '-'}</td>;
       case 'punctuality':
         return <td key={`${trip.id}-punctuality`} style={{ whiteSpace: 'nowrap' }}><Badge bg={getTripPunctualityVariant(trip)}>{getTripPunctualityLabel(trip)}</Badge></td>;
       case 'lateMinutes':
@@ -6005,7 +6091,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                 ? 'danger'
                 : 'secondary';
         return <td key={`${trip.id}-confirm`} style={{ whiteSpace: 'nowrap' }}>
-            <Badge bg={badgeVariant} text={badgeVariant === 'warning' ? 'dark' : undefined}>{confirmationLabel}</Badge>
+          <Badge bg={isDarkTheme && badgeVariant === 'success' ? 'primary' : badgeVariant} text={badgeVariant === 'warning' ? 'dark' : undefined}>{confirmationLabel}</Badge>
           </td>;
       }
       default:
@@ -6015,29 +6101,29 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
 
   const driverPanelCard = <Card className="h-100 overflow-hidden" data-bs-theme={themeMode}>
       <CardBody className="p-0 d-flex flex-column h-100">
-        <div className="d-flex justify-content-between align-items-center p-3 border-bottom bg-success text-dark flex-wrap gap-2">
+        <div className="d-flex justify-content-between align-items-center p-3 border-bottom flex-wrap gap-2" style={tripDashboardToolbarShellStyle}>
           <div className="d-flex align-items-center gap-2 flex-wrap">
             {!isFocusRightLayout ? <><strong>Drivers: {drivers.length}</strong><span>{liveDrivers} live</span></> : null}
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            <Button variant={isDarkTheme ? 'blue' : 'outline-dark'} size="sm" style={isDarkTheme ? undefined : toolbarButtonStyle} onClick={() => {
             setStatusMessage('Opening Dispatcher workspace.');
             router.push('/dispatcher');
           }}>
               Dispatch
             </Button>
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            <Button variant={isDarkTheme ? 'blue' : 'outline-dark'} size="sm" style={isDarkTheme ? undefined : toolbarButtonStyle} onClick={() => {
             router.push('/drivers/vehicles');
             setStatusMessage('Opening Vehicles.');
           }}>
               Vehicle
             </Button>
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            <Button variant={isDarkTheme ? 'blue' : 'outline-dark'} size="sm" style={isDarkTheme ? undefined : toolbarButtonStyle} onClick={() => {
             refreshDrivers();
             router.push('/drivers');
             setStatusMessage('Opening Drivers.');
           }}>
               Driver
             </Button>
-            <Button variant={isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={toolbarButtonStyle} onClick={() => {
+            <Button variant={isDarkTheme ? 'blue' : 'outline-dark'} size="sm" style={isDarkTheme ? undefined : toolbarButtonStyle} onClick={() => {
             refreshDrivers();
             router.push('/drivers');
             setStatusMessage('Opening Users workspace.');
@@ -6053,7 +6139,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
               Day Off{routeDayOffDrivers.length > 0 ? ` (${routeDayOffDrivers.length})` : ''}
             </Button>
             {!isFocusRightLayout ? <Form.Control size="sm" value={driverSearch} onChange={event => setDriverSearch(event.target.value)} placeholder="Search driver" style={{ width: 180 }} /> : null}
-            <Button variant="outline-dark" size="sm" style={greenToolbarButtonStyle} title="Manage Drivers" aria-label="Manage Drivers" onClick={() => {
+            <Button variant="outline-dark" size="sm" style={isDarkTheme ? toolbarButtonStyle : greenToolbarButtonStyle} title="Manage Drivers" aria-label="Manage Drivers" onClick={() => {
             refreshDrivers();
             router.push('/drivers');
             setStatusMessage('Opening Drivers to manage the live roster.');
@@ -6070,12 +6156,12 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
         </div>
         <div className="table-responsive flex-grow-1" style={{ minHeight: 0, height: '100%', overflowY: 'auto', scrollbarGutter: 'stable' }}>
           <Table size="sm" bordered striped hover className="align-middle mb-0 small" data-bs-theme={themeMode} style={{ lineHeight: 1.1, fontSize: '0.78rem' }}>
-            <thead style={{ backgroundColor: '#198754', color: '#fff', position: 'sticky', top: 0, zIndex: 1 }}>
+            <thead style={{ backgroundColor: driverHeaderBackgroundColor, color: driverHeaderTextColor, position: 'sticky', top: 0, zIndex: 1 }}>
               <tr>
                 {renderDriverHeader('vehicle', 'Vehicle')}
-                {!isFocusRightLayout ? renderDriverHeader('name', 'Driver') : <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff', minWidth: 220 }}>
+                {!isFocusRightLayout ? renderDriverHeader('name', 'Driver') : <th className="py-1" style={{ backgroundColor: driverHeaderBackgroundColor, color: driverHeaderTextColor, minWidth: 220 }}>
                     <div className="d-flex align-items-center gap-2" style={{ minWidth: 0 }}>
-                      <button type="button" onClick={() => handleDriverSortChange('name')} className="btn btn-link text-decoration-none p-0 d-inline-flex align-items-center gap-1 flex-shrink-0" style={{ color: '#fff', fontWeight: 700 }}>
+                      <button type="button" onClick={() => handleDriverSortChange('name')} className="btn btn-link text-decoration-none p-0 d-inline-flex align-items-center gap-1 flex-shrink-0" style={{ color: driverHeaderTextColor, fontWeight: 700 }}>
                         <span>Driver</span>
                         <span className="small">{driverSort.key === 'name' ? driverSort.direction === 'asc' ? '↑' : '↓' : '↕'}</span>
                       </button>
@@ -6084,15 +6170,15 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                         value={driverSearch}
                         onChange={event => setDriverSearch(event.target.value)}
                         placeholder="Search driver"
-                        style={{ flex: '0 1 170px', width: 170, minWidth: 120, maxWidth: 170, backgroundColor: 'rgba(15, 23, 42, 0.78)', color: '#f8fafc', borderColor: 'rgba(226, 232, 240, 0.22)' }}
+                        style={{ flex: '0 1 170px', width: 170, minWidth: 120, maxWidth: 170, backgroundColor: 'var(--cm-panel-bg-soft)', color: '#f8fafc', borderColor: 'rgba(226, 232, 240, 0.22)' }}
                       />
                     </div>
                   </th>}
                 {!isFocusRightLayout ? renderDriverHeader('attendant', 'Attendant') : null}
                 {renderDriverHeader('info', 'Trips')}
                 {renderDriverHeader('live', 'Live')}
-                <th className="py-1" style={{ backgroundColor: '#198754', color: '#fff', borderRight: 'none' }}>#</th>
-                <th className="py-1" style={{ width: 60, backgroundColor: '#198754', color: '#fff', borderLeft: 'none' }}>ACT</th>
+                <th className="py-1" style={{ backgroundColor: driverHeaderBackgroundColor, color: driverHeaderTextColor, borderRight: 'none' }}>#</th>
+                <th className="py-1" style={{ width: 60, backgroundColor: driverHeaderBackgroundColor, color: driverHeaderTextColor, borderLeft: 'none' }}>ACT</th>
               </tr>
             </thead>
             <tbody>
@@ -6100,10 +6186,17 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                 const driverVehicleMeta = getDriverVehicleMeta(driver);
                 const driverAssignedTripCount = driverAssignedTripCountById.get(normalizeDriverId(driver?.id)) || 0;
                 const isTimeOffDriver = Boolean(getDriverTimeOffDateForUi(driver));
-                return <tr key={driver.id} className={selectedDriverId === driver.id ? 'table-primary' : ''} style={isTimeOffDriver ? {
+                const isSelectedDriver = selectedDriverId === driver.id;
+                const selectedDriverRowStyle = isSelectedDriver ? (isDarkTheme ? {
+                  backgroundColor: 'rgba(22, 61, 120, 0.42)',
+                  color: '#f8fbff'
+                } : {
+                  backgroundColor: 'rgba(13, 110, 253, 0.12)'
+                }) : undefined;
+                return <tr key={driver.id} style={isTimeOffDriver ? {
                   backgroundColor: '#e5e7eb',
                   color: '#475569'
-                } : undefined}>
+                } : selectedDriverRowStyle}>
                   <td className="py-1" style={{ whiteSpace: 'normal', minWidth: 220 }}>
                     <div>{driverVehicleMeta.vehicleLabel || driver.vehicle}</div>
                     {driverVehicleMeta.capabilityTokens.length ? <div className="d-flex flex-wrap gap-1 mt-1">{driverVehicleMeta.capabilityTokens.map(token => <Badge key={`${driver.id}-${token}`} bg="light" text="dark" className="border">{token}</Badge>)}</div> : null}
@@ -6112,7 +6205,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                   {!isFocusRightLayout ? <td className="py-1" style={{ whiteSpace: 'nowrap' }}>{driver.attendant}</td> : null}
                   <td className="py-1 text-center" style={{ whiteSpace: 'nowrap', minWidth: 72 }}><Badge bg={driverAssignedTripCount > 0 ? 'primary' : 'secondary'}>{driverAssignedTripCount}</Badge></td>
                   <td className="py-1 text-center" style={{ whiteSpace: 'nowrap' }}>
-                    <Badge bg={driver.live === 'Online' ? 'success' : 'secondary'} className="fw-normal" style={driver.live === 'Online' ? undefined : offlineDriverBadgeStyle}>{driver.live || 'Offline'}</Badge>
+                    <Badge bg={driver.live === 'Online' ? 'success' : (isDarkTheme ? 'blue' : 'secondary')} className="fw-normal">{driver.live || 'Offline'}</Badge>
                   </td>
                   <td className="py-1 text-center fw-bold" style={{ borderRight: 'none' }}>{index + 1}</td>
                   <td className="py-1" style={{ borderLeft: 'none' }}>
@@ -6143,12 +6236,12 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
             <Button variant="warning" size="sm" style={{ ...greenToolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleRoutePanelAssignSecondary} title="Assign 2nd driver" disabled={selectedRoutePanelTripIds.length === 0}>A2</Button>
             <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={handleRoutePanelUnassign} title="Unassign selected trips" disabled={selectedRoutePanelTripIds.length === 0}>U</Button>
             {isFocusRightLayout && showRoutesPanel ? <Button variant="danger" size="sm" style={{ ...redToolbarButtonStyle, flex: '0 0 auto' }} onClick={() => setShowRoutesPanel(false)} title="Hide routes panel">✕</Button> : null}
-            <Button variant={showScannerMapInRoutePanel ? 'warning' : isDarkTheme ? 'outline-light' : 'outline-dark'} size="sm" style={{ ...toolbarButtonStyle, fontWeight: 800, flex: '0 0 auto' }} onClick={handleToggleScannerMapInRoutePanel} title="Show map in this panel">Map</Button>
+            <Button variant={showScannerMapInRoutePanel ? isDarkTheme ? 'blue' : 'warning' : isDarkTheme ? 'outline-blue' : 'outline-dark'} size="sm" style={{ ...(!isDarkTheme ? toolbarButtonStyle : {}), fontWeight: 800, flex: '0 0 auto' }} onClick={handleToggleScannerMapInRoutePanel} title="Show map in this panel">Map</Button>
             
             </div>
           </div>
         </div>
-        <div className="px-3 py-2 border-bottom d-flex align-items-start justify-content-between gap-3 flex-wrap" style={{ backgroundColor: themeMode === 'dark' ? 'rgba(15, 23, 42, 0.78)' : '#f8fafc' }}>
+        <div className="px-3 py-2 border-bottom d-flex align-items-start justify-content-between gap-3 flex-wrap" style={{ backgroundColor: themeMode === 'dark' ? 'var(--cm-panel-bg-soft)' : '#f8fafc' }}>
           <div>
             <div className="fw-semibold">Route for {selectedDriver?.name || routeTitle}</div>
             <div className="small text-muted">{routeTrips.length} trip(s) shown</div>
@@ -6171,7 +6264,15 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
             </thead>
             <tbody>
               {routeTrips.length > 0 ? routeTrips.map(trip => (
-                <tr key={trip.id} className={selectedTripIdSet.has(normalizeTripId(trip.id)) ? 'table-success' : ''}>
+                <tr
+                  key={trip.id}
+                  style={selectedTripIdSet.has(normalizeTripId(trip.id)) ? (isDarkTheme ? {
+                    backgroundColor: 'rgba(22, 61, 120, 0.34)',
+                    color: '#f8fbff'
+                  } : {
+                    backgroundColor: 'rgba(37, 99, 235, 0.12)'
+                  }) : undefined}
+                >
                   <td className="fw-semibold">{getDisplayTripId(trip) || '-'}{getTripAddedByLabel(trip) ? <div className="small mt-1"><Badge bg="dark">{getTripAddedByLabel(trip)}</Badge></div> : null}</td>
                   <td><Badge bg={getTripTypeLabel(trip) === 'STR' ? 'danger' : getTripTypeLabel(trip) === 'W' ? 'warning' : 'success'} text={getTripTypeLabel(trip) === 'W' ? 'dark' : undefined}>{getTripTypeLabel(trip)}</Badge></td>
                   <td>{trip.miles || '-'}</td>
@@ -6244,7 +6345,6 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                   <Form.Select size="sm" value={uiPreferences?.mapProvider || 'auto'} onChange={event => setMapProvider(event.target.value)} style={mapQuickFilterControlStyle}>
                     <option value="auto">Map: Auto</option>
                     <option value="openstreetmap">Map: OSM</option>
-                    <option value="local">Map: Local</option>
                   </Form.Select>
                   <Button variant="dark" size="sm" onClick={() => handlePanelViewChange(TRIP_DASHBOARD_PANEL_VIEWS.both)}>Panels anchored</Button>
                 </>
@@ -6264,7 +6364,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                 <div className="small mt-1">DO {getTripDisplayTimeText(activeInfoTrip, 'dropoff', timeDisplayMode) || '-'}</div>
                 <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
               </div> : null}
-            <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+            <MapContainer key={`trip-dashboard-map-${tripDashboardMapResizeKey}-${mapTileConfig.provider || 'default'}`} className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
               <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
               <TripDashboardMapViewportController focusPoints={mapViewportFocusPoints} focusKey={mapViewportFocusKey} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
@@ -6338,16 +6438,16 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
         display: 'flex',
         gap: 8,
         alignItems: 'center',
-        backgroundColor: 'rgba(15, 23, 42, 0.95)',
+        backgroundColor: 'var(--cm-panel-bg-strong)',
         border: '1px solid rgba(100, 116, 139, 0.35)',
         padding: '8px 12px',
         borderRadius: 8,
         backdropFilter: 'blur(10px)'
       }}>
         <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>HIDDEN PANELS:</span>
-        {!showDriversPanel && <Button variant="outline-success" size="sm" onClick={() => setShowDriversPanel(true)}>📊 Drivers</Button>}
-        {!showRoutesPanel && <Button variant="outline-success" size="sm" onClick={() => setShowRoutesPanel(true)}>🗺️ Routes</Button>}
-        {!showTripsPanel && <Button variant="outline-success" size="sm" onClick={() => setShowTripsPanel(true)}>📋 Trips</Button>}
+        {!showDriversPanel && <Button variant={isDarkTheme ? 'outline-blue' : 'outline-success'} size="sm" onClick={() => setShowDriversPanel(true)}>📊 Drivers</Button>}
+        {!showRoutesPanel && <Button variant={isDarkTheme ? 'outline-blue' : 'outline-success'} size="sm" onClick={() => setShowRoutesPanel(true)}>🗺️ Routes</Button>}
+        {!showTripsPanel && <Button variant={isDarkTheme ? 'outline-blue' : 'outline-success'} size="sm" onClick={() => setShowTripsPanel(true)}>📋 Trips</Button>}
       </div>}
 
       <div ref={workspaceRef} style={workspaceGridStyle}>
@@ -6730,7 +6830,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                         <Button variant="outline-primary" size="sm" disabled={aiPlannerLoading} onClick={() => void handlePreviewAiSmartRoute('openai')}>
                           {aiPlannerLoading && aiPlannerMode === 'openai' ? 'Building GPT preview...' : 'GPT Preview'}
                         </Button>
-                        <Button variant="success" size="sm" disabled={aiPlannerLoading || !aiPlannerPreview?.plan} onClick={() => void handleApplyAiSmartRoute()}>
+                        <Button variant={isDarkTheme ? 'primary' : 'success'} size="sm" disabled={aiPlannerLoading || !aiPlannerPreview?.plan} onClick={() => void handleApplyAiSmartRoute()}>
                           {aiPlannerLoading && aiPlannerPreview?.plan ? 'Applying route...' : 'Apply Preview'}
                         </Button>
                         <Button variant={isDarkTheme ? 'outline-light' : 'light'} size="sm" disabled={!aiPlannerPreview?.plan || aiPlannerLoading} onClick={handleClearAiPlannerPreview}>
@@ -6769,11 +6869,11 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                     </div>}
                 </div>}
               {showLiveTripScanPanel ? <div className="mx-3 mb-3 rounded-3 border" style={{
-              borderColor: isDarkTheme ? 'rgba(45, 212, 191, 0.18)' : 'rgba(16, 185, 129, 0.22)',
+              borderColor: isDarkTheme ? 'rgba(96, 165, 250, 0.24)' : 'rgba(16, 185, 129, 0.22)',
               backgroundColor: isDarkTheme ? '#101827' : '#ffffff'
             }}>
                   <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap p-3" style={{
-                  background: isDarkTheme ? 'linear-gradient(180deg, #158f71 0%, #11745b 100%)' : 'linear-gradient(180deg, #2fb98a 0%, #1f9f77 100%)',
+                  background: isDarkTheme ? 'linear-gradient(180deg, #3d66a6 0%, #2f4f88 100%)' : 'linear-gradient(180deg, #2fb98a 0%, #1f9f77 100%)',
                   color: '#ffffff',
                   rowGap: '0.9rem',
                   paddingBottom: '1rem'
@@ -6799,6 +6899,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                         <PowerToggleButton
                           checked={showScannerRowColors}
                           onToggle={setShowScannerRowColors}
+                          onVariant={isDarkTheme ? 'primary' : 'success'}
                           onLabel="On"
                           offLabel="Off"
                           offVariant="neutral"
@@ -6917,14 +7018,14 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                               borderRadius: 4,
                               border: '1px solid #6b7280',
                               backgroundColor: '#6b7280',
-                              accentColor: '#8b5cf6',
+                              accentColor: isDarkTheme ? '#163d78' : '#2563eb',
                               cursor: 'pointer'
                             }}
                           />
                           <span className="small fw-semibold" style={{ lineHeight: 1 }}>{selectedTripIds.length}</span>
                         </div>
                       </th>
-                      {renderTripHeader('act', 'ACT', 56, false)}
+                      {renderTripHeader('act', 'ACT', showConfirmationTools ? 90 : 56, false)}
                       {hasTripNotesColumn ? renderTripHeader('notes', <span className="d-inline-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}><IconifyIcon icon="iconoir:page-edit" /><span style={{ fontWeight: 700 }}>Notes</span></span>, 148, false) : null}
                       {showConfirmationTools ? renderTripHeader('confirmation-tools', 'Confirm', 158, false) : null}
                       {orderedVisibleTripColumnsWithoutNotes.map(columnKey => {
@@ -6939,7 +7040,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                     const tripLegKey = getTripLegFilterKey(row.trip);
                     const isSelectedTripRow = selectedTripIdSet.has(normalizeTripId(row.trip.id));
                     const isAssignedTripRow = isTripAssignedToSelectedDriver(row.trip);
-                    const scannerRowTone = tripLegKey === 'BL' ? 'bl' : tripLegKey === 'AL' ? 'al' : undefined;
+                    const scannerRowTone = tripLegKey === 'BL' ? 'bl' : tripLegKey === 'AL' ? 'al' : tripLegKey === 'CL' ? 'cl' : undefined;
                     const tripRowClassName = [isSelectedTripRow ? 'trip-dashboard-sheet-row--selected' : '', isAssignedTripRow ? 'trip-dashboard-sheet-row--assigned' : ''].filter(Boolean).join(' ');
                     return <tr key={row.trip.id} className={tripRowClassName} data-trip-row={scannerRowTone}>
                         <td>
@@ -6953,12 +7054,12 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                               borderRadius: 4,
                               border: '1px solid #6b7280',
                               backgroundColor: '#6b7280',
-                              accentColor: '#8b5cf6',
+                              accentColor: isDarkTheme ? '#163d78' : '#2563eb',
                               cursor: 'pointer'
                             }}
                           />
                         </td>
-                        <td style={{ width: columnWidths.act ?? 56, minWidth: columnWidths.act ?? 56, whiteSpace: 'nowrap' }}>
+                        <td style={{ width: showConfirmationTools ? 90 : (columnWidths.act ?? 56), minWidth: showConfirmationTools ? 90 : (columnWidths.act ?? 56), whiteSpace: 'nowrap' }}>
                           <div className="d-flex align-items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
                             <Button variant={row.trip.status === 'Assigned' ? 'success' : 'outline-secondary'} size="sm" onClick={() => {
                           setSelectedTripIds([row.trip.id]);
@@ -6966,6 +7067,9 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                           setSelectedRouteId(row.trip.routeId);
                           setStatusMessage(`Trip ${row.trip.id} activo.`);
                         }}>ACT</Button>
+                            {showConfirmationTools ? <Button size="sm" style={{ ...compactTripActionLabelButtonStyle, backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff' }} onClick={() => void handleToggleTripBlock(row.trip)} title={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Remove from black list' : 'Add to black list'}>
+                              {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'RM' : 'BL'}
+                            </Button> : null}
                           </div>
                         </td>
                         {hasTripNotesColumn ? renderTripDataCell(row.trip)('notes') : null}
@@ -6980,10 +7084,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                               <Button variant="outline-info" size="sm" onClick={() => handleOpenTripUpdateModal(row.trip)} style={compactTripActionButtonStyle} title="Open note and trip update editor">
                                 N
                               </Button>
-                              <span style={{ width: 26, flex: '0 0 26px' }} />
-                              <Button size="sm" style={{ ...compactTripActionLabelButtonStyle, backgroundColor: '#000000', borderColor: '#000000', color: '#ffffff' }} onClick={() => void handleToggleTripBlock(row.trip)} title={getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'Remove from black list' : 'Add to black list'}>
-                                {getEffectiveConfirmationStatus(row.trip, tripBlockingMap.get(row.trip.id)) === 'Opted Out' ? 'RM' : 'BL'}
-                              </Button>
+
                           </div>
                         </td> : null}
                         {orderedVisibleTripColumnsWithoutNotes.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
@@ -7076,7 +7177,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           <Modal.Body>
             <p className="text-muted mb-3">Load and scan the Excel or CSV directly in Trip Dashboard without opening the separate Excel Loader page. The current tree is not changed until you confirm Import Trips or Load Route.</p>
             <div className="d-flex flex-wrap gap-2 mb-3">
-              <Button variant="success" onClick={handleOpenTripImportPicker} disabled={isImportParsing}>
+              <Button variant={isDarkTheme ? 'primary' : 'success'} onClick={handleOpenTripImportPicker} disabled={isImportParsing}>
                 {isImportParsing ? 'Reading file...' : 'Browse Excel or CSV'}
               </Button>
               <Button variant="outline-secondary" onClick={() => router.push('/forms-safe-ride-import')}>
@@ -7164,7 +7265,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
               </Alert> : null}
             {importPendingTrips.length > 0 && importedRouteDriverSummary.usableGroups.length === 0 ? <Alert variant="warning" className="mb-3">No route or driver names were detected in this file. If this spreadsheet uses another header, I expanded the parser for common driver columns, but this particular file still did not expose a usable route name.</Alert> : null}
             {importedRouteDriverSummary.missingNameTripCount > 0 ? <div className="small text-muted mb-3">{importedRouteDriverSummary.missingNameTripCount} trip(s) in the file do not have a usable route/driver name, so they cannot be auto-routed until you import a file that includes that column.</div> : null}
-            {importPendingTrips.length > 0 ? <Alert variant="success" className="mb-0">
+            {importPendingTrips.length > 0 ? <Alert variant={isDarkTheme ? 'primary' : 'success'} className="mb-0">
                 <div className="fw-semibold mb-1">Import ready</div>
                 <div>{importPendingTrips.length} trip(s) will be merged into the current local dispatch state.</div>
                 <div className="small mt-2">Use <strong>Load Route</strong> after matching the route names above. You can choose an existing driver or add a new one when the imported name is misspelled or missing from your system.</div>
@@ -7172,7 +7273,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="outline-secondary" onClick={() => setShowTripImportModal(false)}>Close</Button>
-            <Button variant="success" onClick={handleImportTripsIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing}>Import Trips</Button>
+            <Button variant={isDarkTheme ? 'primary' : 'success'} onClick={handleImportTripsIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing}>Import Trips</Button>
             <Button variant="primary" onClick={handleLoadRoutesIntoDashboard} disabled={importPendingTrips.length === 0 || isImportParsing || isRouteImporting}>{isRouteImporting ? 'Loading Route...' : 'Load Route'}</Button>
           </Modal.Footer>
         </Modal>
@@ -7202,7 +7303,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                       {String(driver?.timeOffAppointment?.note || '').trim() ? <div className="small text-muted mt-1">{String(driver.timeOffAppointment.note).trim()}</div> : null}
                     </div>)}
                 </div>
-              </div> : <Alert variant="success" className="mb-3">No drivers have day off on {activeRouteDateKey}.</Alert>}
+              </div> : <Alert variant={isDarkTheme ? 'primary' : 'success'} className="mb-3">No drivers have day off on {activeRouteDateKey}.</Alert>}
             {futureDayOffDrivers.length > 0 ? <div>
                 <div className="fw-semibold mb-2">Other active appointments</div>
                 <div className="d-flex flex-column gap-2" style={{ maxHeight: 220, overflowY: 'auto' }}>
@@ -7697,6 +7798,34 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
             box-shadow: 0 0 0 1px rgba(24, 33, 42, 0.14) inset;
           }
 
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] td {
+            background: #8fb7ff !important;
+            color: #12213a !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] .text-muted,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] .small.text-muted {
+            color: rgba(18, 33, 58, 0.78) !important;
+            opacity: 1 !important;
+          }
+
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] .btn-outline-secondary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] .btn-outline-success,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] .btn-outline-primary,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] .btn-outline-info,
+          .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] .btn-outline-danger {
+            --bs-btn-color: #12213a;
+            --bs-btn-border-color: rgba(18, 33, 58, 0.2);
+            --bs-btn-hover-color: #12213a;
+            --bs-btn-hover-bg: rgba(255, 255, 255, 0.24);
+            --bs-btn-hover-border-color: rgba(18, 33, 58, 0.28);
+            --bs-btn-active-color: #12213a;
+            --bs-btn-active-bg: rgba(255, 255, 255, 0.3);
+            --bs-btn-active-border-color: rgba(18, 33, 58, 0.28);
+            background-color: rgba(255, 255, 255, 0.18);
+            box-shadow: 0 0 0 1px rgba(18, 33, 58, 0.14) inset;
+          }
+
           .trip-dashboard-selector {
             margin-bottom: 0;
           }
@@ -7727,11 +7856,11 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-wrap {
             background: #111827;
-            scrollbar-color: #22c55e transparent;
+            scrollbar-color: #3b82f6 transparent;
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-wrap::-webkit-scrollbar-thumb {
-            background: #22c55e;
+            background: #3b82f6;
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table thead th {
@@ -7753,18 +7882,33 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='al'] td {
-            background: #2f9f89 !important;
-            color: #f8fafc !important;
+            background: #0d1b2e !important;
+            color: #e2e8f0 !important;
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] td {
-            background: #d9b733 !important;
-            color: #111827 !important;
+            background: #101f38 !important;
+            color: #bfdbfe !important;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='cl'] td {
+            background: #0c2a4a !important;
+            color: #93c5fd !important;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='wc'] td {
+            background: #2d0a0a !important;
+            color: #fca5a5 !important;
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .text-muted,
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .small.text-muted {
-            color: rgba(17, 24, 39, 0.78) !important;
+            color: rgba(191, 219, 254, 0.55) !important;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='wc'] .text-muted,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='wc'] .small.text-muted {
+            color: rgba(252, 165, 165, 0.55) !important;
           }
 
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-secondary,
@@ -7772,16 +7916,33 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-primary,
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-info,
           html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='bl'] .btn-outline-danger {
-            --bs-btn-color: #111827;
-            --bs-btn-border-color: rgba(17, 24, 39, 0.18);
-            --bs-btn-hover-color: #111827;
-            --bs-btn-hover-bg: rgba(255, 255, 255, 0.22);
-            --bs-btn-hover-border-color: rgba(17, 24, 39, 0.28);
-            --bs-btn-active-color: #111827;
-            --bs-btn-active-bg: rgba(255, 255, 255, 0.3);
-            --bs-btn-active-border-color: rgba(17, 24, 39, 0.28);
-            background-color: rgba(255, 255, 255, 0.14);
-            box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.12) inset;
+            --bs-btn-color: #bfdbfe;
+            --bs-btn-border-color: rgba(191, 219, 254, 0.25);
+            --bs-btn-hover-color: #bfdbfe;
+            --bs-btn-hover-bg: rgba(191, 219, 254, 0.1);
+            --bs-btn-hover-border-color: rgba(191, 219, 254, 0.38);
+            --bs-btn-active-color: #bfdbfe;
+            --bs-btn-active-bg: rgba(191, 219, 254, 0.15);
+            --bs-btn-active-border-color: rgba(191, 219, 254, 0.38);
+            background-color: rgba(191, 219, 254, 0.07);
+            box-shadow: 0 0 0 1px rgba(191, 219, 254, 0.15) inset;
+          }
+
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='wc'] .btn-outline-secondary,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='wc'] .btn-outline-success,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='wc'] .btn-outline-primary,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='wc'] .btn-outline-info,
+          html[data-bs-theme='dark'] .trip-dashboard-sheet-table.trip-dashboard-sheet-table--scanner-colors tbody tr[data-trip-row='wc'] .btn-outline-danger {
+            --bs-btn-color: #fca5a5;
+            --bs-btn-border-color: rgba(252, 165, 165, 0.25);
+            --bs-btn-hover-color: #fca5a5;
+            --bs-btn-hover-bg: rgba(252, 165, 165, 0.1);
+            --bs-btn-hover-border-color: rgba(252, 165, 165, 0.38);
+            --bs-btn-active-color: #fca5a5;
+            --bs-btn-active-bg: rgba(252, 165, 165, 0.15);
+            --bs-btn-active-border-color: rgba(252, 165, 165, 0.38);
+            background-color: rgba(252, 165, 165, 0.07);
+            box-shadow: 0 0 0 1px rgba(252, 165, 165, 0.15) inset;
           }
 
         `}</style>
