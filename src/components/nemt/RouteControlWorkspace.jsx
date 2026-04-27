@@ -652,6 +652,7 @@ const RouteControlWorkspace = () => {
                 <div style={{ height: 280, borderRadius: 8, overflow: 'hidden' }}>
                   <MapContainer center={mapCenter} zoom={10} style={{ height: '100%', width: '100%' }}>
                     <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} />
+                    {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" /> : null}
                     {routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: '#2563eb', weight: 4 }} /> : null}
                     {selectedRouteTrips.map((trip, index) => Array.isArray(trip?.position) && trip.position.length === 2 ? (
                       <Marker key={`${trip.id}-${index}`} position={trip.position}>

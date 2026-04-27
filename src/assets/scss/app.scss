@@ -69,3 +69,179 @@ File: App Css
 .breadcrumb {
   margin-bottom: 0;
 }
+
+html,
+body,
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 999px;
+  border: 2px solid #e2e8f0;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+*::-webkit-scrollbar-corner {
+  background: #e2e8f0;
+}
+
+.simplebar-track {
+  background: #e2e8f0;
+}
+
+.simplebar-scrollbar:before {
+  background: rgba(100, 116, 139, 0.75) !important;
+  opacity: 0.8;
+}
+
+.simplebar-scrollbar.simplebar-visible:before {
+  opacity: 1;
+}
+
+html[data-bs-theme='dark'],
+html[data-bs-theme='dark'] body,
+html[data-bs-theme='dark'] * {
+  scrollbar-color: #0a0a0a #111111;
+}
+
+html[data-bs-theme='dark'] *::-webkit-scrollbar-track {
+  background: #111111;
+}
+
+html[data-bs-theme='dark'] *::-webkit-scrollbar-thumb {
+  background: #0a0a0a;
+  border: 2px solid #111111;
+}
+
+html[data-bs-theme='dark'] *::-webkit-scrollbar-thumb:hover {
+  background: #000000;
+}
+
+html[data-bs-theme='dark'] *::-webkit-scrollbar-corner {
+  background: #111111;
+}
+
+html[data-bs-theme='dark'] .simplebar-track {
+  background: #111111;
+}
+
+html[data-bs-theme='dark'] .simplebar-scrollbar:before {
+  background: rgba(0, 0, 0, 0.9) !important;
+}
+
+html[data-bs-theme='light'] .dispatcher-top-scroller input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 14px;
+}
+
+html[data-bs-theme='light'] .dispatcher-top-scroller input[type='range']::-webkit-slider-runnable-track {
+  background: #dbe3ef;
+  height: 6px;
+  border-radius: 999px;
+}
+
+html[data-bs-theme='light'] .dispatcher-top-scroller input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #64748b;
+  margin-top: -4px;
+  cursor: col-resize;
+}
+
+html[data-bs-theme='light'] .dispatcher-top-scroller input[type='range']::-moz-range-track {
+  background: #dbe3ef;
+  height: 6px;
+  border-radius: 999px;
+}
+
+html[data-bs-theme='light'] .dispatcher-top-scroller input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #64748b;
+  border: none;
+  cursor: col-resize;
+}
+
+html[data-bs-theme='dark'] .dispatcher-top-scroller input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 14px;
+}
+html[data-bs-theme='dark'] .dispatcher-top-scroller input[type='range']::-webkit-slider-runnable-track {
+  background: #1a1f28;
+  height: 6px;
+  border-radius: 999px;
+}
+html[data-bs-theme='dark'] .dispatcher-top-scroller input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #4b5563;
+  margin-top: -4px;
+  cursor: col-resize;
+}
+html[data-bs-theme='dark'] .dispatcher-top-scroller input[type='range']::-moz-range-track {
+  background: #1a1f28;
+  height: 6px;
+  border-radius: 999px;
+}
+html[data-bs-theme='dark'] .dispatcher-top-scroller input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #4b5563;
+  border: none;
+  cursor: col-resize;
+}
+
+.dispatcher-column-picker-modal .dispatcher-column-picker-switch .form-check-input {
+  border-color: #6b7280;
+  box-shadow: none;
+}
+
+.dispatcher-column-picker-modal .dispatcher-column-picker-switch .form-check-input:checked {
+  background-color: #111111;
+  border-color: #111111;
+}
+
+.dispatcher-column-picker-modal .dispatcher-column-picker-switch .form-check-input:focus {
+  border-color: #374151;
+  box-shadow: 0 0 0 0.15rem rgba(17, 17, 17, 0.25);
+}
+
+html[data-bs-theme='dark'] .dispatcher-column-picker-modal .dispatcher-column-picker-switch .form-check-input {
+  background-color: #0d1117;
+  border-color: #4b5563;
+}
+
+html[data-bs-theme='dark'] .dispatcher-column-picker-modal .dispatcher-column-picker-switch .form-check-input:checked {
+  background-color: #000000;
+  border-color: #000000;
+}
+
+html[data-bs-theme='dark'] .dispatcher-column-picker-modal .dispatcher-column-picker-switch .form-check-input:focus {
+  border-color: #6b7280;
+  box-shadow: 0 0 0 0.15rem rgba(0, 0, 0, 0.35);
+}

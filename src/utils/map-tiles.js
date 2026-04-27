@@ -10,7 +10,9 @@ const openStreetMapConfig = {
 const darkMapConfig = {
   provider: 'carto-dark',
   attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-  url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+  url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+  labelOverlayUrl: 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png',
+  labelOverlayOpacity: 1
 };
 
 const localMapConfig = {

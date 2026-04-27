@@ -26,46 +26,46 @@ const messagingStatusRowStyle = {
 
 const buildMessagingSurfaceStyles = isDarkMode => ({
   shell: {
-    background: isDarkMode ? 'linear-gradient(180deg, #0f172a 0%, #111827 100%)' : '#ffffff',
-    borderColor: isDarkMode ? 'rgba(71, 85, 105, 0.68)' : '#dbe3ef',
-    color: isDarkMode ? '#e5eefc' : '#0f172a'
+    background: isDarkMode ? 'linear-gradient(180deg, #0b0f14 0%, #161b22 100%)' : '#ffffff',
+    borderColor: isDarkMode ? 'rgba(107, 114, 128, 0.52)' : '#dbe3ef',
+    color: isDarkMode ? '#e5e7eb' : '#0f172a'
   },
   header: {
-    background: isDarkMode ? 'linear-gradient(180deg, rgba(17, 24, 39, 0.98) 0%, rgba(15, 23, 42, 0.96) 100%)' : '#f8fafc',
-    borderColor: isDarkMode ? 'rgba(71, 85, 105, 0.58)' : '#dbe3ef',
-    color: isDarkMode ? '#e5eefc' : '#0f172a'
+    background: isDarkMode ? 'linear-gradient(180deg, rgba(18, 22, 28, 0.98) 0%, rgba(11, 15, 20, 0.96) 100%)' : '#f8fafc',
+    borderColor: isDarkMode ? 'rgba(107, 114, 128, 0.42)' : '#dbe3ef',
+    color: isDarkMode ? '#e5e7eb' : '#0f172a'
   },
   input: {
-    backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
-    color: isDarkMode ? '#e5eefc' : '#0f172a',
-    borderColor: isDarkMode ? 'rgba(100, 116, 139, 0.7)' : '#cbd5e1'
+    backgroundColor: isDarkMode ? '#0d1117' : '#ffffff',
+    color: isDarkMode ? '#e5e7eb' : '#0f172a',
+    borderColor: isDarkMode ? 'rgba(107, 114, 128, 0.62)' : '#cbd5e1'
   },
   button: {
-    color: isDarkMode ? '#dbeafe' : '#0f172a',
-    borderColor: isDarkMode ? 'rgba(96, 165, 250, 0.45)' : '#cbd5e1',
-    backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.58)' : '#f8fafc'
+    color: isDarkMode ? '#e5e7eb' : '#0f172a',
+    borderColor: isDarkMode ? 'rgba(148, 163, 184, 0.28)' : '#cbd5e1',
+    backgroundColor: isDarkMode ? 'rgba(17, 24, 39, 0.78)' : '#f8fafc'
   },
   sidebar: {
-    backgroundColor: isDarkMode ? '#111827' : '#ffffff',
-    borderColor: isDarkMode ? 'rgba(71, 85, 105, 0.52)' : '#dbe3ef'
+    backgroundColor: isDarkMode ? '#161b22' : '#ffffff',
+    borderColor: isDarkMode ? 'rgba(107, 114, 128, 0.4)' : '#dbe3ef'
   },
   sidebarHeader: {
-    backgroundColor: isDarkMode ? '#172033' : '#f8fafc',
-    borderColor: isDarkMode ? 'rgba(71, 85, 105, 0.52)' : '#dbe3ef'
+    backgroundColor: isDarkMode ? '#1a2028' : '#f8fafc',
+    borderColor: isDarkMode ? 'rgba(107, 114, 128, 0.4)' : '#dbe3ef'
   },
   secondaryText: isDarkMode ? '#94a3b8' : '#64748b',
   threadUrgentBackground: isDarkMode ? 'rgba(127, 29, 29, 0.65)' : '#fff1f2',
   mainPane: {
-    backgroundColor: isDarkMode ? '#0f172a' : '#ffffff'
+    backgroundColor: isDarkMode ? '#0d1117' : '#ffffff'
   },
-  mainPaneGradient: isDarkMode ? 'linear-gradient(180deg, rgba(15, 23, 42, 0.82) 0%, rgba(17, 24, 39, 0.96) 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+  mainPaneGradient: isDarkMode ? 'linear-gradient(180deg, rgba(13, 17, 23, 0.82) 0%, rgba(22, 27, 34, 0.96) 100%)' : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
   footer: {
-    backgroundColor: isDarkMode ? '#172033' : '#f8fafc',
-    borderColor: isDarkMode ? 'rgba(71, 85, 105, 0.52)' : '#dbe3ef'
+    backgroundColor: isDarkMode ? '#1a2028' : '#f8fafc',
+    borderColor: isDarkMode ? 'rgba(107, 114, 128, 0.4)' : '#dbe3ef'
   },
   composer: {
-    backgroundColor: isDarkMode ? '#0f172a' : '#ffffff',
-    borderColor: isDarkMode ? 'rgba(71, 85, 105, 0.52)' : '#dbe3ef'
+    backgroundColor: isDarkMode ? '#0d1117' : '#ffffff',
+    borderColor: isDarkMode ? 'rgba(107, 114, 128, 0.4)' : '#dbe3ef'
   }
 });
 

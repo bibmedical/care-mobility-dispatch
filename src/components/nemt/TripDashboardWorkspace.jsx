@@ -6368,6 +6368,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
               <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
               <TripDashboardMapViewportController focusPoints={mapViewportFocusPoints} focusKey={mapViewportFocusKey} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
+              {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={false} /> : null}
               <ZoomControl position="bottomleft" />
               {showRouteMapLayer && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
               {mapDriverTripLinks.map(link => <Polyline key={link.key} positions={link.positions} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8', opacity: 0.82 }} />)}

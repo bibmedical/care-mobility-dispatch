@@ -30,7 +30,10 @@ const mergeThreads = (threads, drivers) => {
 const LeftSideBar = () => {
   const pathname = usePathname();
   const isDispatcherPage = String(pathname || '').toLowerCase().startsWith('/dispatcher');
-  const { themeMode } = useLayoutContext();
+  const {
+    themeMode,
+    changeMenu: { size: changeMenuSize }
+  } = useLayoutContext();
   const isDark = themeMode === 'dark';
   const {
     drivers,
@@ -115,8 +118,8 @@ const LeftSideBar = () => {
         height: 'calc(100dvh - 24px)',
         margin: '12px',
         alignSelf: 'flex-start',
-        background: isDark ? 'linear-gradient(180deg, #0f172a 0%, #111827 100%)' : '#f8fafc',
-        border: isDark ? '1px solid rgba(71,85,105,0.55)' : '1px solid #e5e7eb',
+        background: isDark ? 'linear-gradient(180deg, #0b0f14 0%, #161b22 100%)' : '#f8fafc',
+        border: isDark ? '1px solid rgba(107,114,128,0.46)' : '1px solid #e5e7eb',
         borderRadius: 16,
         position: 'relative',
         zIndex: 1200,
@@ -124,11 +127,41 @@ const LeftSideBar = () => {
         boxShadow: isDark ? '0 10px 24px rgba(2,6,23,0.35)' : '0 10px 24px rgba(15, 23, 42, 0.08)'
       }}
     >
+      {isDispatcherPage ? <button
+        type="button"
+        onClick={() => changeMenuSize('collapsed')}
+        title="Hide drivers list"
+        aria-label="Hide drivers list"
+        style={{
+          position: 'absolute',
+          right: -12,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: 24,
+          height: 44,
+          borderRadius: 999,
+          border: isDark ? '1px solid rgba(107,114,128,0.45)' : '1px solid #cbd5e1',
+          background: isDark ? '#000000' : '#ffffff',
+          color: isDark ? '#e5e7eb' : '#0f172a',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 16,
+          fontWeight: 700,
+          lineHeight: 1,
+          zIndex: 1300,
+          boxShadow: isDark ? '0 6px 16px rgba(0,0,0,0.45)' : '0 6px 16px rgba(15,23,42,0.15)',
+          cursor: 'pointer'
+        }}
+      >
+          {'<'}
+        </button> : null}
+
       <div
         className="p-2 border-bottom"
         style={{
-          backgroundColor: isDark ? '#111827' : '#ffffff',
-          borderBottomColor: isDark ? 'rgba(71,85,105,0.4)' : undefined
+          backgroundColor: isDark ? '#161b22' : '#ffffff',
+          borderBottomColor: isDark ? 'rgba(107,114,128,0.34)' : undefined
         }}
       >
         <Form.Control
@@ -138,15 +171,15 @@ const LeftSideBar = () => {
           placeholder={isDispatcherPage ? 'Search driver or message...' : 'Search driver'}
           style={isDark
             ? {
-                backgroundColor: '#0f172a',
-                color: '#e2e8f0',
-                borderColor: 'rgba(100,116,139,0.7)'
+                backgroundColor: '#0d1117',
+                color: '#e5e7eb',
+                borderColor: 'rgba(107,114,128,0.62)'
               }
             : undefined}
         />
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', backgroundColor: isDark ? '#0f172a' : '#f8fafc' }}>
+      <div style={{ flex: 1, overflowY: 'auto', backgroundColor: isDark ? '#0d1117' : '#f8fafc' }}>
         {isDispatcherPage ? (
           <>
             {filteredThreads.length > 0 ? filteredThreads.map(thread => {
@@ -169,7 +202,7 @@ const LeftSideBar = () => {
                   }}
                   style={{
                     ...listButtonBaseStyle,
-                    borderBottom: isDark ? '1px solid rgba(71,85,105,0.3)' : '1px solid #e2e8f0',
+                    borderBottom: isDark ? '1px solid rgba(107,114,128,0.24)' : '1px solid #e2e8f0',
                     borderLeft: `4px solid ${driverColor}`,
                     background: isSelected
                       ? (isDark ? withDriverAlpha(driverColor, 0.28) : withDriverAlpha(driverColor, 0.18))

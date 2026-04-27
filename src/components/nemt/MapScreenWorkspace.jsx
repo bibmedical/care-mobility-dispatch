@@ -17,33 +17,40 @@ const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const shellStyle = {
-  minHeight: '100vh',
-  display: 'grid',
-  gridTemplateRows: 'auto 1fr',
-  background: 'linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%)'
+  minHeight: '100dvh',
+  position: 'relative',
+  background: '#020617'
 };
 
 const toolbarStyle = {
+  position: 'absolute',
+  top: 10,
+  left: 12,
+  right: 12,
+  zIndex: 700,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  gap: 16,
-  padding: '14px 18px',
-  background: 'linear-gradient(135deg, #14532d 0%, #0f766e 100%)',
+  gap: 10,
+  padding: '8px 12px',
+  background: 'rgba(15, 23, 42, 0.62)',
   color: '#f8fafc',
-  borderBottom: '1px solid rgba(15, 23, 42, 0.18)',
+  border: '1px solid rgba(148, 163, 184, 0.22)',
+  borderRadius: 10,
+  backdropFilter: 'blur(8px)',
   flexWrap: 'wrap'
 };
 
 const panelStyle = {
   position: 'relative',
   minHeight: 0,
-  padding: 12
+  height: '100dvh',
+  padding: 0
 };
 
 const overlayCardStyle = {
   position: 'absolute',
-  top: 16,
+  top: 62,
   left: 16,
   zIndex: 500,
   width: 'min(360px, calc(100% - 32px))',
@@ -72,12 +79,12 @@ const emptyHintStyle = {
 };
 
 const mapSurfaceStyle = {
-  height: 'calc(100vh - 94px)',
+  height: '100dvh',
   width: '100%',
-  borderRadius: 22,
+  borderRadius: 0,
   overflow: 'hidden',
-  boxShadow: '0 28px 60px rgba(15, 23, 42, 0.18)',
-  border: '1px solid rgba(148, 163, 184, 0.3)'
+  boxShadow: 'none',
+  border: 'none'
 };
 
 const ViewportController = ({ coordinatesList, zoom }) => {
@@ -379,7 +386,7 @@ const MapScreenWorkspace = () => {
             <div className="d-flex gap-2 flex-wrap">
               <Form.Control value={originQuery} onChange={event => setOriginQuery(event.target.value)} placeholder="Origin address..." autoFocus style={{ minWidth: 220, flex: '1 1 260px' }} />
               <Form.Control value={destinationQuery} onChange={event => setDestinationQuery(event.target.value)} placeholder="Destination address..." style={{ minWidth: 220, flex: '1 1 260px' }} />
-              <Button type="submit" variant="success" disabled={loading}>{loading ? <><Spinner size="sm" animation="border" className="me-2" />Searching</> : 'Search'}</Button>
+              <Button type="submit" variant={isDarkMode ? 'dark' : 'success'} disabled={loading}>{loading ? <><Spinner size="sm" animation="border" className="me-2" />Searching</> : 'Search'}</Button>
               <Button type="button" variant="outline-secondary" onClick={handleReset} disabled={loading && !originResult && !destinationResult}>Clear</Button>
             </div>
 
@@ -476,6 +483,7 @@ const MapScreenWorkspace = () => {
             <ViewportController coordinatesList={mapPoints} zoom={mapPoints.length > 0 ? RESULT_ZOOM : DEFAULT_ZOOM} />
             <ZoomControl position="bottomright" />
             <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
+            {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={false} /> : null}
             {originResult ? <Marker position={originResult.coordinates} icon={createRouteStopIcon('1', 'pickup')}>
                 <Popup>
                   <div className="fw-semibold mb-1">Origin</div>
