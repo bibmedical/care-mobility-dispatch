@@ -4600,7 +4600,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                       }
 
                       const wf = row.trip?.driverWorkflow;
-                      const showWorkflowRow = Boolean(wf) && isTripEnRoute(row.trip);
+                      const travelState = getTripTravelState(row.trip);
+                      const showWorkflowRow = Boolean(wf) && (isTripEnRoute(row.trip) || travelState === 'completed' || tripStatusFilter === 'completed');
                       const steps = showWorkflowRow ? [{
                         label: 'Accepted',
                         value: wf.acceptedTimeLabel
