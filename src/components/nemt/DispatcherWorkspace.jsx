@@ -4604,7 +4604,32 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                         cursor: mapLocked ? 'not-allowed' : 'pointer'
                       }}>
                         {activeVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
-                      </tr>) : <tr>
+                        </tr>,
+                        (() => {
+                          const wf = row.trip?.driverWorkflow;
+                          if (!wf || !isTripEnRoute(row.trip)) return null;
+                          const steps = [
+                            { label: 'Accepted', value: wf.acceptedTimeLabel },
+                            { label: 'Start route', value: wf.departureToPickupTimeLabel || wf.departureTimeLabel },
+                            { label: 'Arrived pickup', value: wf.arrivedPickupTimeLabel || wf.arrivalTimeLabel },
+                            { label: 'Patient onboard', value: wf.patientOnboardTimeLabel },
+                            { label: 'Start trip', value: wf.startTripTimeLabel },
+                            { label: 'Arrived destination', value: wf.arrivedDestinationTimeLabel || wf.destinationArrivalTimeLabel },
+                            { label: 'Completion', value: wf.completedTimeLabel },
+                          ];
+                          return <tr key={`${row.trip.id}-workflow`} style={{ background: isDarkMode ? 'rgba(15,23,42,0.7)' : 'rgba(240,249,255,0.9)' }}>
+                            <td colSpan={tripTableColumnCount} style={{ padding: '4px 12px 6px', borderTop: 'none' }}>
+                              <div className="d-flex align-items-center gap-3 flex-wrap" style={{ fontSize: '0.78rem' }}>
+                                <span className="fw-semibold text-uppercase" style={{ opacity: 0.55, letterSpacing: '0.06em', fontSize: '0.7rem' }}>Trip Workflow</span>
+                                {steps.map(step => (
+                                  <span key={step.label} style={{ color: step.value ? (isDarkMode ? '#86efac' : '#15803d') : (isDarkMode ? '#475569' : '#94a3b8') }}>
+                                    {step.label}: <strong>{step.value || 'Pending'}</strong>
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>;
+                        })()]) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center py-4" style={{ color: dispatcherSurfaceStyles.emptyText }}>{isCancelledPanelMode ? 'No cancelled trips for the selected day.' : 'No trips loaded. Waiting for your real trips.'}</td>
                       </tr>}
                   </tbody>
