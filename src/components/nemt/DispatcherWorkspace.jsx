@@ -2375,11 +2375,13 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     const selectedTripIdSet = new Set(selectedTripIds.map(id => String(id || '').trim()).filter(Boolean));
     const selectedRouteTripIdSet = new Set((Array.isArray(selectedRoute?.tripIds) ? selectedRoute.tripIds : []).map(id => String(id || '').trim()).filter(Boolean));
     const hasDriverScope = Boolean(selectedDriver);
-    const baseTrips = selectedRoute
-      ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim()))
-      : hasDriverScope
-        ? trips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id))
-      : trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()));
+    const baseTrips = selectedTripIds.length > 0
+      ? trips.filter(trip => selectedTripIdSet.has(String(trip?.id || '').trim()))
+      : selectedRoute
+        ? trips.filter(trip => selectedRouteTripIdSet.has(String(trip?.id || '').trim()))
+        : hasDriverScope
+          ? trips.filter(trip => isTripAssignedToDriver(trip, selectedDriver.id))
+          : [];
     const scopedTrips = activeDateTripIdSet ? baseTrips.filter(trip => activeDateTripIdSet.has(String(trip?.id || '').trim())) : baseTrips;
     const term = deferredRouteSearch.trim().toLowerCase();
     return sortTripsByPickupTime(scopedTrips.filter(trip => !term || [trip.id, trip.rider, trip.address].some(value => String(value || '').toLowerCase().includes(term))));
@@ -4590,9 +4592,40 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                     </tr>
                   </thead>
                   <tbody>
-                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => row.type === 'group' ? <tr key={`group-${row.groupKey}`} style={dispatcherSurfaceStyles.groupRow}>
-                        <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: dispatcherSurfaceStyles.groupLabelColor }}>{row.label}</td>
-                      </tr> : <tr id={`dispatcher-trip-row-${normalizeTripId(row.trip.id)}`} key={row.trip.id} onClick={() => {
+                    {groupedFilteredTripRows.length > 0 ? groupedFilteredTripRows.map(row => {
+                      if (row.type === 'group') {
+                        return <tr key={`group-${row.groupKey}`} style={dispatcherSurfaceStyles.groupRow}>
+                            <td colSpan={tripTableColumnCount} className="small fw-semibold text-uppercase" style={{ color: dispatcherSurfaceStyles.groupLabelColor }}>{row.label}</td>
+                          </tr>;
+                      }
+
+                      const wf = row.trip?.driverWorkflow;
+                      const showWorkflowRow = Boolean(wf) && isTripEnRoute(row.trip);
+                      const steps = showWorkflowRow ? [{
+                        label: 'Accepted',
+                        value: wf.acceptedTimeLabel
+                      }, {
+                        label: 'Start route',
+                        value: wf.departureToPickupTimeLabel || wf.departureTimeLabel
+                      }, {
+                        label: 'Arrived pickup',
+                        value: wf.arrivedPickupTimeLabel || wf.arrivalTimeLabel
+                      }, {
+                        label: 'Patient onboard',
+                        value: wf.patientOnboardTimeLabel
+                      }, {
+                        label: 'Start trip',
+                        value: wf.startTripTimeLabel
+                      }, {
+                        label: 'Arrived destination',
+                        value: wf.arrivedDestinationTimeLabel || wf.destinationArrivalTimeLabel
+                      }, {
+                        label: 'Completion',
+                        value: wf.completedTimeLabel
+                      }] : [];
+
+                      return <React.Fragment key={`row-wrap-${row.trip.id}`}>
+                          <tr id={`dispatcher-trip-row-${normalizeTripId(row.trip.id)}`} onClick={() => {
                         if (mapLocked) return;
                         setSelectedTripIds([row.trip.id]);
                         setIsRoutePanelCollapsed(true);
@@ -4603,33 +4636,20 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                         color: isCancelledRoutesMode ? (getEffectiveTripStatus(row.trip) === 'Cancelled' ? '#b91c1c' : getEffectiveTripStatus(row.trip) === 'Completed' ? '#15803d' : undefined) : undefined,
                         cursor: mapLocked ? 'not-allowed' : 'pointer'
                       }}>
-                        {activeVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
-                        </tr>,
-                        (() => {
-                          const wf = row.trip?.driverWorkflow;
-                          if (!wf || !isTripEnRoute(row.trip)) return null;
-                          const steps = [
-                            { label: 'Accepted', value: wf.acceptedTimeLabel },
-                            { label: 'Start route', value: wf.departureToPickupTimeLabel || wf.departureTimeLabel },
-                            { label: 'Arrived pickup', value: wf.arrivedPickupTimeLabel || wf.arrivalTimeLabel },
-                            { label: 'Patient onboard', value: wf.patientOnboardTimeLabel },
-                            { label: 'Start trip', value: wf.startTripTimeLabel },
-                            { label: 'Arrived destination', value: wf.arrivedDestinationTimeLabel || wf.destinationArrivalTimeLabel },
-                            { label: 'Completion', value: wf.completedTimeLabel },
-                          ];
-                          return <tr key={`${row.trip.id}-workflow`} style={{ background: isDarkMode ? 'rgba(15,23,42,0.7)' : 'rgba(240,249,255,0.9)' }}>
-                            <td colSpan={tripTableColumnCount} style={{ padding: '4px 12px 6px', borderTop: 'none' }}>
-                              <div className="d-flex align-items-center gap-3 flex-wrap" style={{ fontSize: '0.78rem' }}>
-                                <span className="fw-semibold text-uppercase" style={{ opacity: 0.55, letterSpacing: '0.06em', fontSize: '0.7rem' }}>Trip Workflow</span>
-                                {steps.map(step => (
-                                  <span key={step.label} style={{ color: step.value ? (isDarkMode ? '#86efac' : '#15803d') : (isDarkMode ? '#475569' : '#94a3b8') }}>
-                                    {step.label}: <strong>{step.value || 'Pending'}</strong>
-                                  </span>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>;
-                        })()]) : <tr>
+                            {activeVisibleTripColumns.map(columnKey => <React.Fragment key={`${row.trip.id}-${columnKey}`}>{renderTripDataCell(row.trip)(columnKey)}</React.Fragment>)}
+                          </tr>
+                          {showWorkflowRow ? <tr key={`${row.trip.id}-workflow`} style={{ background: isDarkMode ? 'rgba(15,23,42,0.7)' : 'rgba(240,249,255,0.9)' }}>
+                              <td colSpan={tripTableColumnCount} style={{ padding: '4px 12px 6px', borderTop: 'none' }}>
+                                <div className="d-flex align-items-center gap-3 flex-wrap" style={{ fontSize: '0.78rem' }}>
+                                  <span className="fw-semibold text-uppercase" style={{ opacity: 0.55, letterSpacing: '0.06em', fontSize: '0.7rem' }}>Trip Workflow</span>
+                                  {steps.map(step => <span key={step.label} style={{ color: step.value ? isDarkMode ? '#86efac' : '#15803d' : isDarkMode ? '#475569' : '#94a3b8' }}>
+                                      {step.label}: <strong>{step.value || 'Pending'}</strong>
+                                    </span>)}
+                                </div>
+                              </td>
+                            </tr> : null}
+                        </React.Fragment>;
+                    }) : <tr>
                         <td colSpan={tripTableColumnCount} className="text-center py-4" style={{ color: dispatcherSurfaceStyles.emptyText }}>{isCancelledPanelMode ? 'No cancelled trips for the selected day.' : 'No trips loaded. Waiting for your real trips.'}</td>
                       </tr>}
                   </tbody>
