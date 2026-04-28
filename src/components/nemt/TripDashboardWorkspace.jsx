@@ -3820,6 +3820,39 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     return [];
   }, [mapQuickTripPoints, mapRelevantDriverPositions, routeStops, selectedTripMapPoints]);
   const mapViewportFocusKey = useMemo(() => mapViewportFocusPoints.map(point => `${Number(point?.[0] || 0).toFixed(5)},${Number(point?.[1] || 0).toFixed(5)}`).join('|'), [mapViewportFocusPoints]);
+  const mapViewportManualZoomSafeKey = useMemo(() => {
+    const toStablePointKey = point => {
+      if (!Array.isArray(point) || point.length < 2) return '';
+      const latitude = Number(point[0]);
+      const longitude = Number(point[1]);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
+      return `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+    };
+    const toStablePointListKey = points => Array.from(new Set((Array.isArray(points) ? points : []).map(toStablePointKey).filter(Boolean))).sort((left, right) => left.localeCompare(right)).join('|');
+
+    const hasScopedSelection = selectedTripIds.length > 0 || routeStops.length > 0 || selectedTripMapPoints.length > 0 || Boolean(selectedRouteId) || Boolean(selectedDriverId);
+    if (!hasScopedSelection) {
+      return [
+        'overview',
+        String(tripDateFilter || ''),
+        String(tripStatusFilter || ''),
+        String(mapQuickTripPoints.length),
+        String(mapRelevantDriverPositions.length)
+      ].join('||');
+    }
+
+    const selectedTripPointsKey = toStablePointListKey(selectedTripMapPoints.map(point => point?.position));
+    const routeStopsKey = toStablePointListKey(routeStops.map(stop => stop?.position));
+    const selectedTripIdsKey = selectedTripIds.map(id => String(id || '').trim()).filter(Boolean).sort((left, right) => left.localeCompare(right)).join(',');
+
+    return [
+      String(selectedRouteId || ''),
+      String(selectedDriverId || ''),
+      selectedTripIdsKey,
+      routeStopsKey,
+      selectedTripPointsKey
+    ].join('||');
+  }, [mapQuickTripPoints.length, mapRelevantDriverPositions.length, routeStops, selectedDriverId, selectedRouteId, selectedTripIds, selectedTripMapPoints, tripDateFilter, tripStatusFilter]);
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -5554,14 +5587,9 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     if (userPreferencesLoading || detailedDashboardHydratedRef.current) return;
 
     const dashboardPreferences = userPreferences?.tripDashboard || {};
-    const hasSavedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(dashboardPreferences.layoutMode);
-    const hasSavedShowMapPane = Object.prototype.hasOwnProperty.call(dashboardPreferences, 'showMapPane');
-    const resolvedLayoutMode = hasSavedLayoutMode ? dashboardPreferences.layoutMode : TRIP_DASHBOARD_LAYOUTS.normal;
-    const effectiveLayoutMode = resolvedLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && !hasSavedShowMapPane
-      ? TRIP_DASHBOARD_LAYOUTS.normal
-      : resolvedLayoutMode;
-    const resolvedPanelView = Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(dashboardPreferences.panelView) ? dashboardPreferences.panelView : TRIP_DASHBOARD_PANEL_VIEWS.both;
-    const resolvedPanelOrder = Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(dashboardPreferences.panelOrder) ? dashboardPreferences.panelOrder : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst;
+    const effectiveLayoutMode = TRIP_DASHBOARD_LAYOUTS.normal;
+    const resolvedPanelView = TRIP_DASHBOARD_PANEL_VIEWS.both;
+    const resolvedPanelOrder = TRIP_DASHBOARD_PANEL_ORDERS.driversFirst;
 
     if (isTripDashboardSurface) {
       setTripDashboardVisibleTripColumns(normalizeTripDashboardVisibleTripColumns(dashboardPreferences.visibleTripColumns));
@@ -5594,13 +5622,13 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       setShowDriversPanel(true);
       setShowRoutesPanel(true);
       setShowTripsPanel(true);
-      setRightPanelCollapsed(true);
+      setRightPanelCollapsed(false);
       setShowConfirmationTools(false);
       setTimeDisplayMode(TRIP_TIME_DISPLAY_MODES.standard);
       setTripOrderMode('custom');
       if (isTripDashboardSurface) setTripSort({ key: 'trip', direction: 'asc' });
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
-      setColumnSplit(94);
+      setColumnSplit(TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT);
       setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
       setColumnWidths({});
       setClosedRouteStateByKey(dashboardPreferences.closedRouteStateByKey || {});
@@ -6364,9 +6392,9 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                 <div className="small mt-1">DO {getTripDisplayTimeText(activeInfoTrip, 'dropoff', timeDisplayMode) || '-'}</div>
                 <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
               </div> : null}
-            <MapContainer key={`trip-dashboard-map-${tripDashboardMapResizeKey}-${mapTileConfig.provider || 'default'}`} className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+            <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
               <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
-              <TripDashboardMapViewportController focusPoints={mapViewportFocusPoints} focusKey={mapViewportFocusKey} />
+              <TripDashboardMapViewportController focusPoints={mapViewportFocusPoints} focusKey={mapViewportManualZoomSafeKey} />
               <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
               {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={false} /> : null}
               <ZoomControl position="bottomleft" />

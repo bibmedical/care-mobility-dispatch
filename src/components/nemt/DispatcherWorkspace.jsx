@@ -2156,8 +2156,9 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   const tripTableTrips = useMemo(() => isCancelledPanelMode ? isCancelledRoutesMode ? dayRoutesByDriverTrips : cancelledSummaryTrips : filteredTrips, [cancelledSummaryTrips, dayRoutesByDriverTrips, filteredTrips, isCancelledPanelMode, isCancelledRoutesMode]);
   const activeDispatcherContextTokens = useMemo(() => {
     const tokens = [];
-    tokens.push(isCancelledPanelMode ? isCancelledRoutesMode ? 'Mode: Day trips by driver' : 'Mode: Cancelled' : 'Mode: Normal');
-    tokens.push(`Date: ${tripDateFilter === 'all' ? daySummaryMetrics.dateKey : tripDateFilter}`);
+    if (isCancelledPanelMode) {
+      tokens.push(isCancelledRoutesMode ? 'Mode: Day trips by driver' : 'Mode: Cancelled');
+    }
     if (tripStatusFilter !== 'all') tokens.push(`Status: ${tripStatusFilter}`);
     tokens.push(selectedDriver?.name ? `Driver: ${selectedDriver.name}` : 'Driver: All rides');
     if (selectedRoute?.name) tokens.push(`Route: ${selectedRoute.name}`);

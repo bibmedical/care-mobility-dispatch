@@ -543,7 +543,7 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
 const DISPATCHER_TRIP_TABLE_COLUMN_OPTIONS = [...DISPATCHER_TRIP_CONTROL_COLUMN_OPTIONS, ...DISPATCH_TRIP_COLUMN_OPTIONS];
 const LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = ['notes', 'miles', 'status', 'rider', 'address', 'destination'];
 const LEGACY_ALL_DISPATCHER_VISIBLE_TRIP_COLUMNS = DISPATCH_TRIP_COLUMN_OPTIONS.map(option => option.key);
-export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = [
+const PREVIOUS_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = [
   'selectTrips',
   'tripAction',
   'willCallAction',
@@ -566,6 +566,26 @@ export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = [
   'punctuality',
   'lateMinutes'
 ];
+export const DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS = [
+  'selectTrips',
+  'tripAction',
+  'tripNoteAction',
+  'driverAlertAction',
+  'trip',
+  'rider',
+  'dropoff',
+  'destination',
+  'driver',
+  'mobility',
+  'confirmation',
+  'doZip',
+  'phone',
+  'miles',
+  'address',
+  'pickup',
+  'assistLevel',
+  'serviceAnimal'
+];
 
 export const normalizeMapProviderPreference = value => {
   const normalized = String(value ?? 'auto').trim().toLowerCase();
@@ -576,6 +596,9 @@ export const normalizeDispatcherVisibleTripColumns = value => {
   const allowedKeys = new Set(DISPATCHER_TRIP_TABLE_COLUMN_OPTIONS.map(option => option.key));
   const cleanedColumns = Array.isArray(value) ? value.filter(columnKey => allowedKeys.has(columnKey)) : [];
   const uniqueColumns = Array.from(new Set(cleanedColumns));
+  if (uniqueColumns.length === PREVIOUS_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS.length && uniqueColumns.every((columnKey, index) => columnKey === PREVIOUS_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS[index])) {
+    return [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
+  }
   if (uniqueColumns.length === LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS.length && uniqueColumns.every((columnKey, index) => columnKey === LEGACY_DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS[index])) {
     return [...DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS];
   }
