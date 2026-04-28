@@ -103,7 +103,9 @@ const useNemtAdminApi = () => {
       if (!response.ok) throw new Error(payload?.error || 'Unable to save admin data');
       setData(payload);
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('nemt-admin-updated'));
+        window.dispatchEvent(new CustomEvent('nemt-admin-updated', {
+          detail: payload
+        }));
       }
       return payload;
     } catch (saveError) {

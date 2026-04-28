@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isAdminRole } from '@/helpers/system-users';
+import { mapAdminDataToDispatchDrivers } from '@/helpers/nemt-admin-model';
 import { readNemtAdminPayload, writeNemtAdminState } from '@/server/nemt-admin-store';
 import { readSystemUsersState } from '@/server/system-users-store';
 
@@ -42,6 +43,7 @@ export async function PUT(request) {
     const nextState = await writeNemtAdminState(body);
     return NextResponse.json({
       ...nextState,
+      dispatchDrivers: mapAdminDataToDispatchDrivers(nextState),
       ok: true
     });
   } catch (error) {

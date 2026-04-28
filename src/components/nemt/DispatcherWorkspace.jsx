@@ -938,7 +938,12 @@ const getVehicleVariantIndex = key => {
 
 const getVehicleVariantUrl = key => `/assets/gpscars/car-${String(getVehicleVariantIndex(key) + 1).padStart(2, '0')}.svg`;
 
-const resolveVehicleIconUrl = () => DEFAULT_VEHICLE_ICON_URL;
+const normalizeVehicleIconUrl = value => {
+  const raw = String(value || '').trim();
+  return raw ? `/${raw.replace(/^\/+/, '')}` : '';
+};
+
+const resolveVehicleIconUrl = value => normalizeVehicleIconUrl(value) || DEFAULT_VEHICLE_ICON_URL;
 
 const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   className: 'driver-map-icon-shell',
@@ -948,17 +953,17 @@ const createDriverMapIcon = ({ isSelected, isOnline }) => divIcon({
   popupAnchor: [0, -16]
 });
 
-const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100 }) => {
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100, vehicleIconSvgPath = '' }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
   const normalizedScale = clamp(Number(vehicleIconScalePercent) || 100, 70, 200);
   const shellSize = Math.round(60 * normalizedScale / 100);
   const bodyWidth = Math.round(34 * normalizedScale / 100);
   const bodyHeight = Math.round(48 * normalizedScale / 100);
   const imageSizePercent = Math.round(clamp(132 * normalizedScale / 100, 110, 190));
-  const vehicleVariantUrl = resolveVehicleIconUrl();
+  const vehicleVariantUrl = resolveVehicleIconUrl(vehicleIconSvgPath);
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${vehicleVariantUrl}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
+    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${vehicleVariantUrl}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:contain;" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
     iconSize: [shellSize, shellSize],
     iconAnchor: [Math.round(shellSize / 2), Math.round(shellSize / 2)],
     popupAnchor: [0, -Math.round(shellSize * 0.4)]
@@ -2576,7 +2581,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       iconByDriverId.set(String(driver?.id || '').trim(), createLiveVehicleIcon({
         heading: driver.heading,
         isOnline: driver.live === 'Online',
-        vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+        vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent,
+        vehicleIconSvgPath: driver?.gpsSettings?.vehicleIconSvgPath
       }));
     }
     return iconByDriverId;
@@ -3985,8 +3991,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
             setFollowSelectedDriver(false);
             setStatusMessage('Auto-follow paused. You can pan and zoom the map freely.');
           }} />
-            <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
-            {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={false} /> : null}
+            <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={true} />
+            {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={true} /> : null}
             <ZoomControl position="bottomleft" />
             {showRoute && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
             {selectedDriver?.hasRealLocation && selectedDriverEtaTrip && selectedDriverEta ? <>
@@ -4003,7 +4009,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
             {selectedDriver?.hasRealLocation ? <Marker position={selectedDriver.position} icon={liveVehicleIconByDriverId.get(String(selectedDriver?.id || '').trim()) || createLiveVehicleIcon({
             heading: selectedDriver.heading,
             isOnline: selectedDriver.live === 'Online',
-            vehicleIconScalePercent: selectedDriver?.gpsSettings?.vehicleIconScalePercent
+                vehicleIconScalePercent: selectedDriver?.gpsSettings?.vehicleIconScalePercent,
+                vehicleIconSvgPath: selectedDriver?.gpsSettings?.vehicleIconSvgPath
           })}>
                 <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                   <div className="fw-semibold">{selectedDriver.name}</div>
@@ -4016,7 +4023,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
             {nonSelectedDriversWithRealLocation.map(driver => <Marker key={`driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
-            vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+                vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent,
+                vehicleIconSvgPath: driver?.gpsSettings?.vehicleIconSvgPath
           })}>
                 <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                   <div className="fw-semibold">{driver.name}</div>

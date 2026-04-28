@@ -617,6 +617,7 @@ export const NemtProvider = ({
   const dispatchStateSyncInFlightRef = useRef(false);
   const liveSyncInFlightRef = useRef(false);
   const driverSyncInFlightRef = useRef(false);
+  const driverSyncPendingRef = useRef(false);
   const recentlyDeletedTripIdsRef = useRef(new Map());
   const pendingPersistSnapshotRef = useRef('');
   const allowTripShrinkNextPersistRef = useRef(false);
@@ -855,8 +856,32 @@ export const NemtProvider = ({
     }
   };
 
-  const syncDriversFromServer = async () => {
-    if (driverSyncInFlightRef.current) return false;
+  const applyDispatchDriversToState = nextDrivers => {
+    if (!Array.isArray(nextDrivers)) return false;
+    startTransition(() => {
+      setState(currentState => {
+        const baseState = currentState ?? createInitialState();
+        const currentDriversJson = JSON.stringify(Array.isArray(baseState?.drivers) ? baseState.drivers : []);
+        const nextDriversJson = JSON.stringify(nextDrivers);
+
+        if (currentDriversJson === nextDriversJson) {
+          return baseState;
+        }
+
+        return {
+          ...baseState,
+          drivers: nextDrivers
+        };
+      });
+    });
+    return true;
+  };
+
+  const syncDriversFromServer = async (options = {}) => {
+    if (driverSyncInFlightRef.current) {
+      if (options?.force) driverSyncPendingRef.current = true;
+      return false;
+    }
     driverSyncInFlightRef.current = true;
     try {
       const response = await fetch('/api/nemt/admin/drivers', {
@@ -865,28 +890,17 @@ export const NemtProvider = ({
       if (!response.ok) return false;
       const payload = await response.json();
       const nextDrivers = Array.isArray(payload?.dispatchDrivers) ? payload.dispatchDrivers : [];
-      startTransition(() => {
-        setState(currentState => {
-          const baseState = currentState ?? createInitialState();
-          const currentDriversJson = JSON.stringify(Array.isArray(baseState?.drivers) ? baseState.drivers : []);
-          const nextDriversJson = JSON.stringify(nextDrivers);
-
-          if (currentDriversJson === nextDriversJson) {
-            return baseState;
-          }
-
-          return {
-            ...baseState,
-            drivers: nextDrivers
-          };
-        });
-      });
+      applyDispatchDriversToState(nextDrivers);
       return true;
     } catch {
       // Keep the last known dispatch state if the admin API is temporarily unavailable.
       return false;
     } finally {
       driverSyncInFlightRef.current = false;
+      if (driverSyncPendingRef.current) {
+        driverSyncPendingRef.current = false;
+        void syncDriversFromServer();
+      }
     }
   };
 
@@ -1151,8 +1165,14 @@ export const NemtProvider = ({
 
     syncDriversFromServer();
 
-    const handleAdminUpdate = () => {
-      syncDriversFromServer();
+    const handleAdminUpdate = event => {
+      const eventDrivers = Array.isArray(event?.detail?.dispatchDrivers) ? event.detail.dispatchDrivers : null;
+      if (eventDrivers) {
+        applyDispatchDriversToState(eventDrivers);
+        return;
+      }
+
+      syncDriversFromServer({ force: true });
     };
 
     window.addEventListener('nemt-admin-updated', handleAdminUpdate);
