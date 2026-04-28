@@ -2455,7 +2455,11 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     return null;
   }, [isManualDriverScope, routeTrips, selectedDriver, selectedRoute, selectedTripIdSet, selectedTripIds.length, trips]);
 
-  const detachedMapTrips = useMemo(() => routeTrips.length > 0 ? routeTrips : activeInfoTrip ? [activeInfoTrip] : [], [activeInfoTrip, routeTrips]);
+  const detachedMapTrips = useMemo(() => {
+    if (selectedTripIds.length > 0) return routeTrips.length > 0 ? routeTrips : activeInfoTrip ? [activeInfoTrip] : [];
+    if (selectedRoute) return routeTrips;
+    return [];
+  }, [activeInfoTrip, routeTrips, selectedRoute, selectedTripIds]);
   const detachedMapRouteWaypoints = useMemo(() => routeStops.map(stop => stop.position).filter(position => Array.isArray(position) && position.length === 2), [routeStops]);
 
   useEffect(() => {
