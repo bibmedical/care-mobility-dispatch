@@ -874,7 +874,7 @@ const getTripTravelState = trip => String(trip?.driverTripStatus || trip?.driver
 
 const isTripEnRoute = trip => {
   const travelState = getTripTravelState(trip);
-  return travelState === 'enroute' || travelState === 'inprogress';
+  return ['enroute', 'inprogress', 'accepted', 'arrivedpickup', 'arrived', 'patientonboard', 'starttrip', 'todestination', 'arriveddestination'].includes(travelState);
 };
 
 const getDriverTripProgressLabel = trip => {
