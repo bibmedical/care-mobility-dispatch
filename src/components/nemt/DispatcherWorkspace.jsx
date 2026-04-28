@@ -860,7 +860,7 @@ const getEffectiveTripStatus = trip => {
   if (normalizedStatusToken === 'willcall') return 'WillCall';
   if (hasWillCallPickupMarker(trip)) return 'WillCall';
   if (getTripLegFilterKey(trip) !== 'AL' && hasMissingTripTime(trip)) return 'WillCall';
-  if (normalizedDriverStatus && ['accepted', 'enroute', 'arrivedpickup', 'patientonboard', 'todestination', 'arriveddestination', 'completed'].includes(normalizedDriverStatusToken)) {
+  if (normalizedDriverStatus && ['accepted', 'enroute', 'arrived', 'arrivedpickup', 'patientonboard', 'starttrip', 'todestination', 'inprogress', 'arriveddestination', 'completed'].includes(normalizedDriverStatusToken)) {
     return normalizedDriverStatus;
   }
   return normalizedStatus || 'Unassigned';
@@ -900,7 +900,7 @@ const getDriverTripProgressVariant = trip => {
 const getSelectedDriverEtaTarget = trip => {
   const travelState = getTripTravelState(trip);
 
-  if (travelState === 'inprogress') {
+  if (['patientonboard', 'starttrip', 'todestination', 'inprogress', 'arriveddestination'].includes(travelState)) {
     return {
       stage: 'dropoff',
       label: 'Heading to Dropoff',
@@ -2892,8 +2892,20 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
             {!orderedVisibleTripColumns.includes('mobility') && trip.mobilityType ? <Badge bg="light" text="dark" className="mt-1 border">{trip.mobilityType}</Badge> : null}
           </td>;
       case 'status':
+        {
+          const showDriverProgress = isCancelledRoutesMode || tripStatusFilter === 'inprogress' || isTripEnRoute(trip);
+          const statusBadgeVariant = showDriverProgress
+            ? getDriverTripProgressVariant(trip)
+            : isTripAssignedToSelectedDriver(trip)
+              ? 'success'
+              : getStatusBadge(getEffectiveTripStatus(trip));
+          const statusBadgeLabel = showDriverProgress
+            ? getDriverTripProgressLabel(trip)
+            : isTripAssignedToSelectedDriver(trip)
+              ? 'Assigned Here'
+              : getEffectiveTripStatus(trip);
         return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>
-            <Badge bg={isCancelledRoutesMode ? getDriverTripProgressVariant(trip) : isTripAssignedToSelectedDriver(trip) ? 'success' : getStatusBadge(getEffectiveTripStatus(trip))}>{isCancelledRoutesMode ? getDriverTripProgressLabel(trip) : isTripAssignedToSelectedDriver(trip) ? 'Assigned Here' : getEffectiveTripStatus(trip)}</Badge>
+            <Badge bg={statusBadgeVariant}>{statusBadgeLabel}</Badge>
             {trip.secondaryDriverId ? <div className="mt-1"><Badge bg="warning" text="dark">2 Drivers</Badge></div> : null}
             {trip.safeRideStatus && getEffectiveTripStatus(trip) !== 'Cancelled' ? <div className="small text-muted mt-1">{trip.safeRideStatus}</div> : null}
             {isCancelledRoutesMode ? <div className="mt-1 d-flex align-items-center gap-1 flex-wrap">
@@ -2901,6 +2913,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 {lateMinutesDisplay !== '-' ? <Badge bg={Number(lateMinutesDisplay) > 0 ? 'danger' : 'success'}>{lateMinutesDisplay} min</Badge> : null}
               </div> : null}
           </td>;
+        }
       case 'confirmation': {
         const blockingState = tripBlockingMap.get(trip.id);
         const confirmationLabel = getDispatcherConfirmationLabel(trip, blockingState);
@@ -4208,6 +4221,9 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           const phoneNumber = String(trip?.patientPhoneNumber || '').trim();
           const phoneHref = phoneNumber ? `tel:${phoneNumber.replace(/[^+\d]/g, '')}` : '';
           const currentStatus = getEffectiveTripStatus(trip);
+          const showDriverProgress = tripStatusFilter === 'inprogress' || isTripEnRoute(trip);
+          const mobileStatusLabel = showDriverProgress ? getDriverTripProgressLabel(trip) : currentStatus;
+          const mobileStatusVariant = showDriverProgress ? getDriverTripProgressVariant(trip) : getStatusBadge(currentStatus);
           const lateMinutes = getCurrentLateMinutesForTrip(trip);
           const actualPickup = String(trip?.actualPickup || '').trim();
           const actualDropoff = String(trip?.actualDropoff || '').trim();
@@ -4221,7 +4237,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                         <div className="small mt-1" style={{ color: isDarkMode ? '#cbd5e1' : '#475569', wordBreak: 'break-word' }}>{getDisplayTripId(trip)}{trip.brokerTripId && trip.brokerTripId !== trip.id ? ` • Broker ${trip.brokerTripId}` : ''}</div>
                       </div>
                       <div className="d-flex flex-column align-items-end gap-2">
-                        <Badge bg={getStatusBadge(currentStatus)}>{currentStatus}</Badge>
+                        <Badge bg={mobileStatusVariant}>{mobileStatusLabel}</Badge>
                         <Button variant={isExpanded ? 'outline-light' : 'outline-primary'} size="sm" onClick={() => setMobileExpandedTripId(current => current === trip.id ? null : trip.id)} style={{ padding: '0.12rem 0.55rem', lineHeight: 1.1 }}>
                           {isExpanded ? 'Hide' : 'Open'}
                         </Button>
