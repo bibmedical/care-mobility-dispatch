@@ -2085,7 +2085,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(effectiveStatus) || hasActiveHospitalRehab;
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
     const confirmationLabel = getDispatcherConfirmationLabel(trip, blockingState);
-    const matchesStatus = tripStatusFilter === 'all' ? true : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationLabel === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationLabel === 'Not Sent' || confirmationLabel === 'Unconfirmed' : effectiveStatus === tripStatusFilter;
+    const matchesStatus = tripStatusFilter === 'all' ? true : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationLabel === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationLabel === 'Not Sent' || confirmationLabel === 'Unconfirmed' : tripStatusFilter === 'inprogress' ? isTripEnRoute(trip) : effectiveStatus === tripStatusFilter;
     if (!matchesStatus) return false;
     if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) return false;
     return true;
