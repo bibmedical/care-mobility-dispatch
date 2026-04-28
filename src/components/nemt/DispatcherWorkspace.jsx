@@ -2087,7 +2087,10 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     const confirmationLabel = getDispatcherConfirmationLabel(trip, blockingState);
     const matchesStatus = tripStatusFilter === 'all' ? true : tripStatusFilter === 'unassigned' ? !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip : tripStatusFilter === 'block' ? confirmationStatus === 'Opted Out' : tripStatusFilter === 'confirm' ? confirmationLabel === 'Confirmed' : tripStatusFilter === 'unconfirm' ? confirmationLabel === 'Not Sent' || confirmationLabel === 'Unconfirmed' : tripStatusFilter === 'inprogress' ? isTripEnRoute(trip) : effectiveStatus === tripStatusFilter;
     if (!matchesStatus) return false;
-    if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) return false;
+    if (tripDateFilter !== 'all' && tripDateKey !== tripDateFilter) {
+      const allowLiveInProgressAcrossDates = tripStatusFilter === 'inprogress' && isTripEnRoute(trip);
+      if (!allowLiveInProgressAcrossDates) return false;
+    }
     return true;
   }).filter(trip => {
     if (tripLegFilter === 'all') return true;
