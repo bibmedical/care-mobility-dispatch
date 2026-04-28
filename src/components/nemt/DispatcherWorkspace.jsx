@@ -2413,7 +2413,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       }]);
     }
 
-    if (selectedRoute) {
+    if (selectedRoute || selectedDriver) {
       return routeTrips.flatMap((trip, index) => [{
         key: `${trip.id}-pickup`,
         label: `${index * 2 + 1}`,
@@ -2432,7 +2432,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, showRoute, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
