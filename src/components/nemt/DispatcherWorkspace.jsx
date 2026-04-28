@@ -2040,6 +2040,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   }, [tripDateFilter, routePlans, trips]);
 
   const hasSelectedTrips = selectedTripIds.length > 0;
+  const hasEmbeddedMapRouteScope = hasSelectedTrips || Boolean(selectedRoute) || Boolean(selectedDriver);
   const isTripAssignedToSelectedDriver = trip => isTripAssignedToDriver(trip, selectedDriverId);
   const getTripDriverDisplay = trip => {
     const primaryDriverName = getDriverName(trip?.driverId);
@@ -4078,7 +4079,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   <div className="small text-muted">{driver.live}</div>
                 </Tooltip>
               </Marker>)}
-            {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
+            {!hasEmbeddedMapRouteScope ? mapQuickTrips.flatMap(trip => {
             const points = [{
               key: `${trip.id}-pickup-mapquick`,
               tripId: trip.id,
@@ -4098,7 +4099,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           }}>
                 <Popup>{point.label}</Popup>
               </CircleMarker>) : null}
-            {hasSelectedTrips ? routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
+            {hasEmbeddedMapRouteScope ? routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
                 <Popup>
                   <div className="fw-semibold">{stop.title}</div>
                   <div>{stop.detail}</div>
