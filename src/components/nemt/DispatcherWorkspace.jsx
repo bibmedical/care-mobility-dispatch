@@ -2040,7 +2040,6 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   }, [tripDateFilter, routePlans, trips]);
 
   const hasSelectedTrips = selectedTripIds.length > 0;
-  const hasEmbeddedMapRouteScope = hasSelectedTrips || Boolean(selectedRoute) || Boolean(selectedDriver);
   const isTripAssignedToSelectedDriver = trip => isTripAssignedToDriver(trip, selectedDriverId);
   const getTripDriverDisplay = trip => {
     const primaryDriverName = getDriverName(trip?.driverId);
@@ -2414,7 +2413,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       }]);
     }
 
-    if (selectedRoute || selectedDriver) {
+    if (selectedRoute) {
       return routeTrips.flatMap((trip, index) => [{
         key: `${trip.id}-pickup`,
         label: `${index * 2 + 1}`,
@@ -2433,7 +2432,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     }
 
     return [];
-  }, [activeDateTripIdSet, routeTrips, selectedDriver, selectedRoute, selectedTripIds, showRoute, trips]);
+  }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds, showRoute, trips]);
 
   const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
@@ -4079,7 +4078,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   <div className="small text-muted">{driver.live}</div>
                 </Tooltip>
               </Marker>)}
-            {!hasEmbeddedMapRouteScope ? mapQuickTrips.flatMap(trip => {
+            {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
             const points = [{
               key: `${trip.id}-pickup-mapquick`,
               tripId: trip.id,
@@ -4099,7 +4098,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           }}>
                 <Popup>{point.label}</Popup>
               </CircleMarker>) : null}
-            {hasEmbeddedMapRouteScope ? routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
+            {hasSelectedTrips ? routeStops.map(stop => <Marker key={stop.key} position={stop.position} icon={createRouteStopIcon(stop.label, stop.variant)}>
                 <Popup>
                   <div className="fw-semibold">{stop.title}</div>
                   <div>{stop.detail}</div>
