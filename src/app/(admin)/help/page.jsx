@@ -19,17 +19,9 @@ const HELP_ENTRIES = [{
   route: '/confirmation',
   instruction: 'Trigger confirmations and verify passenger response queue.'
 }, {
-  module: 'Daily Driver Snapshot',
-  route: '/daily-driver-snapshot',
-  instruction: 'View daily driver snapshot with status, checkpoint, trips and shift performance.'
-}, {
   module: 'Dispatcher',
   route: '/dispatcher',
   instruction: 'Assign trips, apply map filters, and monitor drivers live.'
-}, {
-  module: 'Driver Efficiency Report',
-  route: '/driver-efficiency-report',
-  instruction: 'Measure efficiency by block, idle time and compliance.'
 }, {
   module: 'Drivers',
   route: '/drivers',
@@ -42,10 +34,6 @@ const HELP_ENTRIES = [{
   module: 'Excel Loader',
   route: '/forms-safe-ride-import',
   instruction: 'Import SafeRide trips from Excel/CSV and validate errors before saving.'
-}, {
-  module: 'Full Shift Analysis',
-  route: '/full-shift-analysis',
-  instruction: 'Analyze the full shift by routes, times and productivity.'
 }, {
   module: 'Office Settings',
   route: '/settings/office',

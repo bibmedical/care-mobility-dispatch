@@ -4627,8 +4627,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
               setShowLayoutModal(true);
             }} openFullChat={() => {
               refreshDrivers();
-              router.push('/driver-chat');
-              setStatusMessage('Opening full driver messaging panel.');
+              router.push('/dispatcher');
+              setStatusMessage('Opening dispatcher workspace.');
             }} />
             </CardBody>
           </Card>

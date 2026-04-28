@@ -19,28 +19,16 @@ const quickLinks = [{
   href: '/trip-dashboard'
 }, {
   keywords: ['dispatching', 'message center', 'messages'],
-  href: '/dispatching'
+  href: '/dispatcher'
 }, {
   keywords: ['driver', 'application'],
   href: '/driver-applications'
 }, {
   keywords: ['vehicle'],
-  href: '/vehicles'
-}, {
-  keywords: ['passenger', 'rider'],
-  href: '/passengers'
+  href: '/drivers/vehicles'
 }, {
   keywords: ['admin'],
-  href: '/administrators'
-}, {
-  keywords: ['chat', 'message'],
-  href: '/driver-chat'
-}, {
-  keywords: ['contact'],
-  href: '/driver-contacts'
-}, {
-  keywords: ['calendar'],
-  href: '/care-calendar'
+  href: '/user-management'
 }, {
   keywords: ['import', 'csv', 'form'],
   href: '/forms-safe-ride-import'

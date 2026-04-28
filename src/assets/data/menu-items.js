@@ -15,7 +15,7 @@ export const MENU_ITEMS = [{
   key: 'all-screens-menu',
   label: 'All',
   icon: 'iconoir:view-grid',
-  url: '/dispatcher/screens'
+  url: '/all'
 }, {
   key: 'transportation-menu',
   label: 'Transportation',

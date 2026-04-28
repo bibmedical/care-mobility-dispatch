@@ -1,4 +1,27 @@
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
 import { query } from '@/server/db';
+
+const hasDatabaseUrl = () => Boolean(String(process.env.DATABASE_URL || '').trim());
+const shouldUseLocalFallback = () => process.env.NODE_ENV !== 'production' && !hasDatabaseUrl();
+
+const getLocalFilePath = () => join(process.cwd(), 'storage', 'email-templates.json');
+
+const readLocalTemplates = async () => {
+  try {
+    const raw = await readFile(getLocalFilePath(), 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+};
+
+const writeLocalTemplates = async templates => {
+  const filePath = getLocalFilePath();
+  await mkdir(join(process.cwd(), 'storage'), { recursive: true });
+  await writeFile(filePath, JSON.stringify(templates, null, 2), 'utf8');
+  return templates;
+};
 
 const DEFAULT_TEMPLATES = {
   licenseExpiry: {
@@ -51,6 +74,10 @@ const ensureTable = async () => {
 };
 
 export const readEmailTemplates = async () => {
+  if (shouldUseLocalFallback()) {
+    const stored = await readLocalTemplates();
+    return { ...DEFAULT_TEMPLATES, ...stored };
+  }
   await ensureTable();
   const result = await query(`SELECT id, data FROM email_templates`);
   const stored = {};
@@ -62,6 +89,9 @@ export const readEmailTemplates = async () => {
 };
 
 export const writeEmailTemplates = async templates => {
+  if (shouldUseLocalFallback()) {
+    return writeLocalTemplates(templates);
+  }
   await ensureTable();
   for (const [id, tpl] of Object.entries(templates)) {
     await query(

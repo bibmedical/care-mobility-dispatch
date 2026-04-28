@@ -55,18 +55,18 @@ const ProfileDropdown = () => {
         </div>
         <DropdownDivider className="mt-0" />
           <small className="text-muted px-2 pb-1 d-block">Cuenta</small>
-          <DropdownItem as={Link} href="/administrators">
+          <DropdownItem as={Link} href="/user-management">
             <IconifyIcon icon="la:user" className="fs-18 me-1 align-text-bottom" /> Perfil
         </DropdownItem>
           <DropdownItem as={Link} href="/dispatcher">
             <IconifyIcon icon="la:wallet" className="fs-18 me-1 align-text-bottom" /> Centro de ayuda
         </DropdownItem>
           <small className="text-muted px-2 py-1 d-block">Configuracion</small>
-          <DropdownItem as={Link} href="/administrators">
+          <DropdownItem as={Link} href="/user-management">
           <IconifyIcon icon="la:cog" className="fs-18 me-1 align-text-bottom" />
             Ajustes de cuenta
         </DropdownItem>
-          <DropdownItem as={Link} href="/administrators">
+          <DropdownItem as={Link} href="/user-management">
             <IconifyIcon icon="la:lock" className="fs-18 me-1 align-text-bottom" /> Seguridad
         </DropdownItem>
           <DropdownItem as={Link} href="/dispatcher">
