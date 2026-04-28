@@ -1,11 +1,14 @@
 'use client';
 
 import PageTitle from '@/components/PageTitle';
+import VehicleIconSelector from '@/components/VehicleIconSelector';
 import { getFullName } from '@/helpers/nemt-admin-model';
 import { isDriverRole } from '@/helpers/system-users';
 import useNemtAdminApi from '@/hooks/useNemtAdminApi';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Card, CardBody, Col, Form, Row, Spinner } from 'react-bootstrap';
+
+const DEFAULT_GLOBAL_VEHICLE_ICON_PATH = '/assets/gpscars/car-01.svg';
 
 const DEFAULT_GPS_SETTINGS = {
   mapRadiusMeters: 800,
@@ -43,6 +46,8 @@ const GpsSettingsWorkspace = () => {
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [gpsDrafts, setGpsDrafts] = useState({});
   const [statusMessage, setStatusMessage] = useState('');
+  const [globalVehicleIconPath, setGlobalVehicleIconPath] = useState(DEFAULT_GLOBAL_VEHICLE_ICON_PATH);
+  const [applyingGlobalIcon, setApplyingGlobalIcon] = useState(false);
 
   const drivers = useMemo(() => {
     const source = Array.isArray(data?.drivers) ? data.drivers : [];
@@ -75,6 +80,20 @@ const GpsSettingsWorkspace = () => {
 
   const selectedDriver = drivers.find(driver => driver.id === selectedDriverId) || null;
   const selectedGpsSettings = selectedDriver ? gpsDrafts[selectedDriver.id] || normalizeGpsSettings(selectedDriver.gpsSettings) : normalizeGpsSettings({});
+
+  useEffect(() => {
+    const driverIconPaths = drivers
+      .map(driver => normalizeGpsSettings(driver.gpsSettings).vehicleIconSvgPath)
+      .filter(Boolean);
+
+    if (driverIconPaths.length === 0) {
+      setGlobalVehicleIconPath(DEFAULT_GLOBAL_VEHICLE_ICON_PATH);
+      return;
+    }
+
+    const firstIconPath = driverIconPaths[0];
+    setGlobalVehicleIconPath(driverIconPaths.every(iconPath => iconPath === firstIconPath) ? firstIconPath : DEFAULT_GLOBAL_VEHICLE_ICON_PATH);
+  }, [drivers]);
 
   const updateNumericDraft = (field, value) => {
     if (!selectedDriver) return;
@@ -121,6 +140,45 @@ const GpsSettingsWorkspace = () => {
     }
   };
 
+  const handleApplyVehicleIconToAllDrivers = async vehicleIconSvgPath => {
+    if (!data) return;
+
+    const normalizedPath = normalizeGpsSettings({ vehicleIconSvgPath }).vehicleIconSvgPath || DEFAULT_GLOBAL_VEHICLE_ICON_PATH;
+    const nextDrivers = (Array.isArray(data.drivers) ? data.drivers : []).map(driver => {
+      if (!isDriverRole(driver?.role)) return driver;
+      return {
+        ...driver,
+        gpsSettings: {
+          ...normalizeGpsSettings(driver.gpsSettings),
+          vehicleIconSvgPath: normalizedPath
+        }
+      };
+    });
+
+    try {
+      setApplyingGlobalIcon(true);
+      await saveData({
+        ...data,
+        drivers: nextDrivers
+      });
+      setGlobalVehicleIconPath(normalizedPath);
+      setGpsDrafts(current => {
+        const nextDrafts = { ...current };
+        nextDrivers.forEach(driver => {
+          if (isDriverRole(driver?.role)) {
+            nextDrafts[driver.id] = normalizeGpsSettings(driver.gpsSettings);
+          }
+        });
+        return nextDrafts;
+      });
+      setStatusMessage('Vehicle icon applied to all drivers.');
+    } catch {
+      setStatusMessage('Unable to apply vehicle icon to all drivers.');
+    } finally {
+      setApplyingGlobalIcon(false);
+    }
+  };
+
   return (
     <>
       <PageTitle title="GPS Settings" subName="Settings" />
@@ -157,6 +215,17 @@ const GpsSettingsWorkspace = () => {
         </Col>
 
         <Col lg={8} xl={9}>
+          <Card className="mb-3">
+            <CardBody>
+              <VehicleIconSelector
+                value={globalVehicleIconPath}
+                onChange={setGlobalVehicleIconPath}
+                onApplyToAll={handleApplyVehicleIconToAllDrivers}
+                applying={applyingGlobalIcon || saving}
+              />
+            </CardBody>
+          </Card>
+
           <Card>
             <CardBody>
               <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -252,15 +321,12 @@ const GpsSettingsWorkspace = () => {
                     <div className="small text-secondary mt-1">Per-driver map car size. 100 = default.</div>
                   </Col>
 
-                  <Col md={6}>
-                    <Form.Label>Vehicle SVG Path (optional)</Form.Label>
-                    <Form.Control
-                      type="text"
-                      value={selectedGpsSettings.vehicleIconSvgPath}
-                      placeholder="/assets/gpscars/car-01.svg"
-                      onChange={event => updateTextDraft('vehicleIconSvgPath', event.target.value)}
+                  <Col md={12}>
+                    <VehicleIconSelector
+                      value={selectedGpsSettings.vehicleIconSvgPath || DEFAULT_GLOBAL_VEHICLE_ICON_PATH}
+                      onChange={vehicleIconSvgPath => updateTextDraft('vehicleIconSvgPath', vehicleIconSvgPath)}
+                      showApplyButton={false}
                     />
-                    <div className="small text-secondary mt-1">Use an SVG in public/assets, ex: /assets/gpscars/car-07.svg</div>
                   </Col>
                 </Row>
               )}

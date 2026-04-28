@@ -107,33 +107,6 @@ const TripDashboardMapResizer = ({ resizeKey }) => {
   return null;
 };
 
-const TripDashboardMapViewportController = ({ focusPoints, focusKey }) => {
-  const map = useMap();
-  const lastAppliedFocusKeyRef = useRef('');
-
-  useEffect(() => {
-    if (!Array.isArray(focusPoints) || focusPoints.length === 0) return;
-    if (focusKey && lastAppliedFocusKeyRef.current === focusKey) return;
-
-    if (focusPoints.length === 1) {
-      map.setView(focusPoints[0], Math.max(map.getZoom(), 12), {
-        animate: false
-      });
-      lastAppliedFocusKeyRef.current = focusKey;
-      return;
-    }
-
-    map.fitBounds(focusPoints, {
-      padding: [36, 36],
-      maxZoom: 13,
-      animate: false
-    });
-    lastAppliedFocusKeyRef.current = focusKey;
-  }, [focusKey, map]);
-
-  return null;
-};
-
 const iconToolbarButtonStyle = {
   minWidth: 34,
   width: 34,
@@ -1192,17 +1165,23 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
 
 const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
 
-const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100 }) => {
+const normalizeVehicleIconUrl = value => {
+  const raw = String(value || '').trim();
+  return raw ? `/${raw.replace(/^\/+/, '')}` : '';
+};
+
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100, vehicleIconSvgPath = '' }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
   const normalizedScale = clamp(Number(vehicleIconScalePercent) || 100, 70, 200);
   const shellSize = Math.round(60 * normalizedScale / 100);
   const bodyWidth = Math.round(34 * normalizedScale / 100);
   const bodyHeight = Math.round(48 * normalizedScale / 100);
   const imageSizePercent = Math.round(clamp(132 * normalizedScale / 100, 110, 190));
+  const vehicleIconUrl = normalizeVehicleIconUrl(vehicleIconSvgPath) || DEFAULT_VEHICLE_ICON_URL;
 
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;display:flex;align-items:center;justify-content:center;"><img src="${DEFAULT_VEHICLE_ICON_URL}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:contain;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
+    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;display:flex;align-items:center;justify-content:center;"><img src="${vehicleIconUrl}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:contain;" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
     iconSize: [shellSize, shellSize],
     iconAnchor: [Math.round(shellSize / 2), Math.round(shellSize / 2)],
     popupAnchor: [0, -Math.round(shellSize * 0.4)]
@@ -3743,7 +3722,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       iconByDriverId.set(String(driver?.id || '').trim(), createLiveVehicleIcon({
         heading: driver.heading,
         isOnline: driver.live === 'Online',
-        vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+        vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent,
+        vehicleIconSvgPath: driver?.gpsSettings?.vehicleIconSvgPath
       }));
     }
     return iconByDriverId;
@@ -3819,40 +3799,16 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     if (uniquePoints.length > 0) return uniquePoints;
     return [];
   }, [mapQuickTripPoints, mapRelevantDriverPositions, routeStops, selectedTripMapPoints]);
-  const mapViewportFocusKey = useMemo(() => mapViewportFocusPoints.map(point => `${Number(point?.[0] || 0).toFixed(5)},${Number(point?.[1] || 0).toFixed(5)}`).join('|'), [mapViewportFocusPoints]);
-  const mapViewportManualZoomSafeKey = useMemo(() => {
-    const toStablePointKey = point => {
-      if (!Array.isArray(point) || point.length < 2) return '';
-      const latitude = Number(point[0]);
-      const longitude = Number(point[1]);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
-      return `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
-    };
-    const toStablePointListKey = points => Array.from(new Set((Array.isArray(points) ? points : []).map(toStablePointKey).filter(Boolean))).sort((left, right) => left.localeCompare(right)).join('|');
-
-    const hasScopedSelection = selectedTripIds.length > 0 || routeStops.length > 0 || selectedTripMapPoints.length > 0 || Boolean(selectedRouteId) || Boolean(selectedDriverId);
-    if (!hasScopedSelection) {
-      return [
-        'overview',
-        String(tripDateFilter || ''),
-        String(tripStatusFilter || ''),
-        String(mapQuickTripPoints.length),
-        String(mapRelevantDriverPositions.length)
-      ].join('||');
-    }
-
-    const selectedTripPointsKey = toStablePointListKey(selectedTripMapPoints.map(point => point?.position));
-    const routeStopsKey = toStablePointListKey(routeStops.map(stop => stop?.position));
-    const selectedTripIdsKey = selectedTripIds.map(id => String(id || '').trim()).filter(Boolean).sort((left, right) => left.localeCompare(right)).join(',');
-
-    return [
-      String(selectedRouteId || ''),
-      String(selectedDriverId || ''),
-      selectedTripIdsKey,
-      routeStopsKey,
-      selectedTripPointsKey
-    ].join('||');
-  }, [mapQuickTripPoints.length, mapRelevantDriverPositions.length, routeStops, selectedDriverId, selectedRouteId, selectedTripIds, selectedTripMapPoints, tripDateFilter, tripStatusFilter]);
+  const mapViewportFocusKey = useMemo(() => [
+    selectedDriverId || 'no-driver',
+    selectedRouteId || 'no-route',
+    selectedTripIds.map(normalizeTripId).filter(Boolean).sort().join(',') || 'no-selected-trips',
+    routeStops.map(stop => String(stop?.key || '')).filter(Boolean).join(',') || 'no-route-stops',
+    selectedTripMapPoints.map(point => String(point?.key || '')).filter(Boolean).join(',') || 'no-selected-points',
+    mapQuickTripPoints.map(point => String(point?.key || '')).filter(Boolean).join(',') || 'no-quick-points',
+    showRouteMapLayer ? 'route-on' : 'route-off',
+    showDriverMapLayer ? 'drivers-on' : 'drivers-off'
+  ].join('|'), [mapQuickTripPoints, routeStops, selectedDriverId, selectedRouteId, selectedTripIds, selectedTripMapPoints, showDriverMapLayer, showRouteMapLayer]);
   const activeInfoTrip = selectedTripIds.length > 0 ? trips.find(trip => selectedTripIdSet.has(normalizeTripId(trip.id))) ?? null : selectedRoute ? routeTrips[0] ?? null : selectedDriver ? trips.find(trip => isTripAssignedToDriver(trip, selectedDriver.id)) ?? null : routeTrips[0] ?? filteredTrips[0] ?? null;
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -5587,9 +5543,14 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     if (userPreferencesLoading || detailedDashboardHydratedRef.current) return;
 
     const dashboardPreferences = userPreferences?.tripDashboard || {};
-    const effectiveLayoutMode = TRIP_DASHBOARD_LAYOUTS.normal;
-    const resolvedPanelView = TRIP_DASHBOARD_PANEL_VIEWS.both;
-    const resolvedPanelOrder = TRIP_DASHBOARD_PANEL_ORDERS.driversFirst;
+    const hasSavedLayoutMode = Object.values(TRIP_DASHBOARD_LAYOUTS).includes(dashboardPreferences.layoutMode);
+    const hasSavedShowMapPane = Object.prototype.hasOwnProperty.call(dashboardPreferences, 'showMapPane');
+    const resolvedLayoutMode = hasSavedLayoutMode ? dashboardPreferences.layoutMode : TRIP_DASHBOARD_LAYOUTS.normal;
+    const effectiveLayoutMode = resolvedLayoutMode === TRIP_DASHBOARD_LAYOUTS.focusRight && !hasSavedShowMapPane
+      ? TRIP_DASHBOARD_LAYOUTS.normal
+      : resolvedLayoutMode;
+    const resolvedPanelView = Object.values(TRIP_DASHBOARD_PANEL_VIEWS).includes(dashboardPreferences.panelView) ? dashboardPreferences.panelView : TRIP_DASHBOARD_PANEL_VIEWS.both;
+    const resolvedPanelOrder = Object.values(TRIP_DASHBOARD_PANEL_ORDERS).includes(dashboardPreferences.panelOrder) ? dashboardPreferences.panelOrder : TRIP_DASHBOARD_PANEL_ORDERS.driversFirst;
 
     if (isTripDashboardSurface) {
       setTripDashboardVisibleTripColumns(normalizeTripDashboardVisibleTripColumns(dashboardPreferences.visibleTripColumns));
@@ -5622,13 +5583,13 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       setShowDriversPanel(true);
       setShowRoutesPanel(true);
       setShowTripsPanel(true);
-      setRightPanelCollapsed(false);
+      setRightPanelCollapsed(true);
       setShowConfirmationTools(false);
       setTimeDisplayMode(TRIP_TIME_DISPLAY_MODES.standard);
       setTripOrderMode('custom');
       if (isTripDashboardSurface) setTripSort({ key: 'trip', direction: 'asc' });
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
-      setColumnSplit(TRIP_DASHBOARD_DEFAULT_STANDARD_SPLIT);
+      setColumnSplit(94);
       setRowSplit(TRIP_DASHBOARD_DEFAULT_ROW_SPLIT);
       setColumnWidths({});
       setClosedRouteStateByKey(dashboardPreferences.closedRouteStateByKey || {});
@@ -6325,7 +6286,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       </CardBody>
     </Card>;
 
-  const tripDashboardMapResizeKey = [showMapPane ? 'open' : 'closed', layoutMode, Math.round(columnSplit), rightPanelCollapsed ? 'collapsed' : 'expanded', showBottomPanels ? 'bottom' : 'solo', showDriversPanel ? 'drivers' : 'no-drivers', showRoutesPanel ? 'routes' : 'no-routes', showTripsPanel ? 'trips' : 'no-trips'].join('|');
+  const tripDashboardMapResizeKey = [showMapPane ? 'open' : 'closed', layoutMode, rightPanelCollapsed ? 'collapsed' : 'expanded', showBottomPanels ? 'bottom' : 'solo', showDriversPanel ? 'drivers' : 'no-drivers', showRoutesPanel ? 'routes' : 'no-routes', showTripsPanel ? 'trips' : 'no-trips'].join('|');
 
   const renderTripMapPanel = ({ docked = false } = {}) => <Card className="h-100 border-0" style={{ boxShadow: 'none', background: 'transparent' }}>
       <CardBody className="p-0 d-flex flex-column h-100 position-relative">
@@ -6392,18 +6353,18 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                 <div className="small mt-1">DO {getTripDisplayTimeText(activeInfoTrip, 'dropoff', timeDisplayMode) || '-'}</div>
                 <div className="small" style={{ color: '#cbd5e1' }}>{activeInfoTrip.destination || 'No dropoff address available'}</div>
               </div> : null}
-            <MapContainer className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
+            <MapContainer key={`trip-dashboard-map-${tripDashboardMapResizeKey}`} className="dispatcher-map" center={selectedDriver?.position ?? [28.5383, -81.3792]} zoom={10} zoomControl={false} scrollWheelZoom={!mapLocked} dragging={!mapLocked} doubleClickZoom={!mapLocked} touchZoom={!mapLocked} boxZoom={!mapLocked} keyboard={!mapLocked} preferCanvas zoomAnimation={false} markerZoomAnimation={false} style={{ height: '100%', width: '100%' }}>
               <TripDashboardMapResizer resizeKey={tripDashboardMapResizeKey} />
-              <TripDashboardMapViewportController focusPoints={mapViewportFocusPoints} focusKey={mapViewportManualZoomSafeKey} />
-              <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
-              {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={false} /> : null}
+              <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={true} />
+              {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={true} /> : null}
               <ZoomControl position="bottomleft" />
               {showRouteMapLayer && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
               {mapDriverTripLinks.map(link => <Polyline key={link.key} positions={link.positions} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8', opacity: 0.82 }} />)}
               {mapVisibleDriversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
-            vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+                vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent,
+                vehicleIconSvgPath: driver?.gpsSettings?.vehicleIconSvgPath
           })}>
                   <Popup>
                     <div className="fw-semibold">{driver.name}</div>

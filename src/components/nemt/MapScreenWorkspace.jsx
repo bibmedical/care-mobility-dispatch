@@ -16,6 +16,11 @@ const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTI
 const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
+const normalizeVehicleIconUrl = value => {
+  const raw = String(value || '').trim();
+  return raw ? `/${raw.replace(/^\/+/, '')}` : '';
+};
+
 const shellStyle = {
   minHeight: '100dvh',
   position: 'relative',
@@ -87,33 +92,6 @@ const mapSurfaceStyle = {
   border: 'none'
 };
 
-const ViewportController = ({ coordinatesList, zoom }) => {
-  const map = useMap();
-
-  React.useEffect(() => {
-    const validCoordinates = Array.isArray(coordinatesList)
-      ? coordinatesList.filter(coordinates => Array.isArray(coordinates) && coordinates.length === 2)
-      : [];
-
-    if (validCoordinates.length === 0) {
-      map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, { duration: 0.8 });
-      return;
-    }
-
-    if (validCoordinates.length === 1) {
-      map.flyTo(validCoordinates[0], zoom, { duration: 0.8 });
-      return;
-    }
-
-    map.fitBounds(validCoordinates, {
-      padding: [60, 60],
-      maxZoom: 14
-    });
-  }, [coordinatesList, map, zoom]);
-
-  return null;
-};
-
 const buildExternalMapUrl = coordinates => {
   if (!Array.isArray(coordinates) || coordinates.length !== 2) return '#';
   return `https://www.google.com/maps/search/?api=1&query=${coordinates[0]},${coordinates[1]}`;
@@ -127,16 +105,17 @@ const createRouteStopIcon = (label, variant = 'pickup') => divIcon({
   popupAnchor: [0, -14]
 });
 
-const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100 }) => {
+const createLiveVehicleIcon = ({ heading = 0, isOnline = false, vehicleIconScalePercent = 100, vehicleIconSvgPath = '' }) => {
   const normalizedHeading = Number.isFinite(Number(heading)) ? Number(heading) : 0;
   const normalizedScale = clamp(Number(vehicleIconScalePercent) || 100, 70, 200);
   const shellSize = Math.round(60 * normalizedScale / 100);
   const bodyWidth = Math.round(34 * normalizedScale / 100);
   const bodyHeight = Math.round(48 * normalizedScale / 100);
   const imageSizePercent = Math.round(clamp(132 * normalizedScale / 100, 110, 190));
+  const vehicleIconUrl = normalizeVehicleIconUrl(vehicleIconSvgPath) || DEFAULT_VEHICLE_ICON_URL;
   return divIcon({
     className: 'driver-live-vehicle-icon-shell',
-    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${DEFAULT_VEHICLE_ICON_URL}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:cover;filter:${isOnline ? 'none' : 'grayscale(0.9)'};" /></div></div>`,
+    html: `<div style="width:${shellSize}px;height:${shellSize}px;display:flex;align-items:center;justify-content:center;transform: rotate(${normalizedHeading}deg);filter: drop-shadow(0 6px 16px rgba(15,23,42,0.28));opacity:${isOnline ? '1' : '0.82'};"><div style="width:${bodyWidth}px;height:${bodyHeight}px;overflow:hidden;display:flex;align-items:center;justify-content:center;"><img src="${vehicleIconUrl}" alt="car" style="width:${imageSizePercent}%;height:${imageSizePercent}%;object-fit:contain;" onerror="this.onerror=null;this.src='${DEFAULT_VEHICLE_ICON_URL}';" /></div></div>`,
     iconSize: [shellSize, shellSize],
     iconAnchor: [Math.round(shellSize / 2), Math.round(shellSize / 2)],
     popupAnchor: [0, -Math.round(shellSize * 0.4)]
@@ -480,10 +459,9 @@ const MapScreenWorkspace = () => {
             preferCanvas
             style={{ height: '100%', width: '100%', cursor: mapInteractionsLocked ? 'not-allowed' : 'grab' }}
           >
-            <ViewportController coordinatesList={mapPoints} zoom={mapPoints.length > 0 ? RESULT_ZOOM : DEFAULT_ZOOM} />
             <ZoomControl position="bottomright" />
-            <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={false} />
-            {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={false} /> : null}
+            <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.url} updateWhenZooming={true} />
+            {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={true} /> : null}
             {originResult ? <Marker position={originResult.coordinates} icon={createRouteStopIcon('1', 'pickup')}>
                 <Popup>
                   <div className="fw-semibold mb-1">Origin</div>
@@ -501,7 +479,8 @@ const MapScreenWorkspace = () => {
             {!hasManualMapSearch && dashboardDrivers.map(driver => <Marker key={`dashboard-driver-${driver.id || driver.name || driver.position.join(',')}`} position={driver.position} icon={createLiveVehicleIcon({
               heading: driver.heading,
               isOnline: String(driver.live || '').trim().toLowerCase() === 'online',
-              vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent
+              vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent,
+              vehicleIconSvgPath: driver?.gpsSettings?.vehicleIconSvgPath
             })}>
                 <Popup>
                   <div className="fw-semibold">Driver</div>
