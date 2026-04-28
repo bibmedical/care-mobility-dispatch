@@ -2813,8 +2813,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       {remainingVisibleTripCount} left
     </Badge> : null;
 
-  const renderCompletedRoutesBlock = () => tripStatusFilter === 'unassigned' ? <Badge bg="success" style={{ minWidth: 62, fontSize: '0.75rem' }} title="Routes already built in the current scope">
-      {completedRoutesCount} rutas
+  const renderCompletedRoutesBlock = () => tripStatusFilter === 'unassigned' ? <Badge bg="success" style={{ minWidth: 62, fontSize: '0.75rem', cursor: 'pointer' }} title="Click to view completed trips" onClick={() => setTripStatusFilter('completed')}>
+      {completedRoutesCount} complete
     </Badge> : null;
 
   const renderRemovedSinceLoadBlock = () => removedSinceLastLoadScopeCount > 0 ? <Badge bg={tripStatusFilter === 'removedsinceload' ? 'danger' : 'warning'} text={tripStatusFilter === 'removedsinceload' ? undefined : 'dark'} style={{ minWidth: 132, fontSize: '0.75rem' }} title={tripDateFilter === 'all' ? 'Trips removed across all visible dates' : `Trips removed on ${tripDateFilter}`}>
@@ -2987,7 +2987,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     const normalizedStatus = isAutoCancelledByExclusion ? 'cancelled' : String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
     const nowDateKey = getLocalDateKey(new Date());
     const hasActiveHospitalRehab = Boolean(trip?.hospitalStatus?.startDate) && Boolean(trip?.hospitalStatus?.endDate) && nowDateKey >= String(trip.hospitalStatus.startDate) && nowDateKey <= String(trip.hospitalStatus.endDate);
-    const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(normalizedStatus) || hasActiveHospitalRehab;
+    const isNonOperationalTrip = ['cancelled', 'canceled', 'completed', 'rehab'].includes(normalizedStatus) || hasActiveHospitalRehab;
     const confirmationStatus = getEffectiveConfirmationStatus(trip, blockingState);
     if (tripStatusFilter === 'all') return !isNonOperationalTrip;
     if (tripStatusFilter === 'unassigned') return !trip.driverId && !trip.secondaryDriverId && !isNonOperationalTrip;
@@ -3177,7 +3177,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     const normalizedStatus = isAutoCancelledByExclusion ? 'cancelled' : String(getEffectiveTripStatus(trip) || '').toLowerCase().replace(/\s+/g, '');
     const nowDateKey = getLocalDateKey(new Date());
     const hasActiveHospitalRehab = Boolean(trip?.hospitalStatus?.startDate) && Boolean(trip?.hospitalStatus?.endDate) && nowDateKey >= String(trip.hospitalStatus.startDate) && nowDateKey <= String(trip.hospitalStatus.endDate);
-    const isNonOperationalTrip = ['cancelled', 'canceled', 'rehab'].includes(normalizedStatus) || hasActiveHospitalRehab;
+    const isNonOperationalTrip = ['cancelled', 'canceled', 'completed', 'rehab'].includes(normalizedStatus) || hasActiveHospitalRehab;
     return !isNonOperationalTrip;
   }).filter(trip => {
     if (tripDateFilter === 'all') return true;

@@ -870,7 +870,7 @@ const stopInputEventPropagation = event => {
   event.stopPropagation();
 };
 
-const getTripTravelState = trip => String(trip?.driverTripStatus || trip?.status || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+const getTripTravelState = trip => String(trip?.driverTripStatus || trip?.driverWorkflow?.status || trip?.status || '').trim().toLowerCase().replace(/[^a-z]/g, '');
 
 const isTripEnRoute = trip => {
   const travelState = getTripTravelState(trip);
@@ -1872,10 +1872,22 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
             <Badge bg={isDarkMode ? 'dark' : 'primary'} text={isDarkMode ? 'light' : undefined}>{filteredTrips.length} trips</Badge>
             <Badge bg={isDarkMode ? 'dark' : 'secondary'} text={isDarkMode ? 'light' : undefined}>{liveDrivers} live</Badge>
             <div className="d-flex align-items-center" style={{ border: isDarkMode ? '1px solid rgba(226,232,240,0.18)' : '1px solid rgba(8,19,26,0.25)', borderRadius: 6, overflow: 'hidden' }} title={`Day summary for ${daySummaryMetrics.dateKey}`}>
-              <div className="px-2 py-1" style={{ backgroundColor: isDarkMode ? '#1e3a5f' : '#e2e8f0', color: isDarkMode ? '#e2e8f0' : '#08131a', minWidth: 74 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isCancelledPanelMode) {
+                    exitCancelledPanelMode();
+                  }
+                  resetDispatcherSelectionScope();
+                  setTripStatusFilter('all');
+                  setStatusMessage('Mostrando vista total del dia.');
+                }}
+                className="px-2 py-1 text-start"
+                style={{ backgroundColor: isDarkMode ? '#1e3a5f' : '#e2e8f0', color: isDarkMode ? '#e2e8f0' : '#08131a', minWidth: 74, border: 'none' }}
+              >
                 <div className="small" style={{ lineHeight: 1, opacity: 0.7 }}>Total</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.total}</div>
-              </div>
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -1895,10 +1907,25 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 <div className="small" style={{ lineHeight: 1, opacity: 0.7 }}>Cancelled</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.cancelled}</div>
               </button>
-              <div className="px-2 py-1 border-start" style={{ backgroundColor: isDarkMode ? '#14532d' : '#dcfce7', color: isDarkMode ? '#86efac' : '#08131a', minWidth: 104 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isCancelledPanelMode) {
+                    exitCancelledPanelMode();
+                  }
+                  resetDispatcherSelectionScope();
+                  const nextFilter = tripStatusFilter === 'completed' ? 'all' : 'completed';
+                  setTripStatusFilter(nextFilter);
+                  setStatusMessage(nextFilter === 'completed'
+                    ? `Mostrando ${daySummaryMetrics.completedByDrivers} trip(s) completed en el dia.`
+                    : 'Filtro de completed limpiado.');
+                }}
+                className="px-2 py-1 border-start text-start"
+                style={{ backgroundColor: isDarkMode ? (tripStatusFilter === 'completed' ? '#166534' : '#14532d') : (tripStatusFilter === 'completed' ? '#bbf7d0' : '#dcfce7'), minWidth: 104, border: 'none', color: isDarkMode ? '#86efac' : '#08131a', boxShadow: tripStatusFilter === 'completed' ? 'inset 0 0 0 2px rgba(22,101,52,0.35)' : 'none' }}
+              >
                 <div className="small" style={{ lineHeight: 1, opacity: 0.7 }}>Completed</div>
                 <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completedByDrivers}</div>
-              </div>
+              </button>
             </div>
           </div>;
       case 'toolbar-edit':
