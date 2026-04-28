@@ -870,7 +870,7 @@ const stopInputEventPropagation = event => {
   event.stopPropagation();
 };
 
-const getTripTravelState = trip => String(trip?.driverTripStatus || trip?.driverWorkflow?.status || trip?.status || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+const getTripTravelState = trip => String(trip?.driverWorkflow?.status || trip?.driverTripStatus || trip?.status || '').trim().toLowerCase().replace(/[^a-z]/g, '');
 
 const isTripEnRoute = trip => {
   const travelState = getTripTravelState(trip);
