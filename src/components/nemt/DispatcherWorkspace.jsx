@@ -3783,7 +3783,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   };
 
   useEffect(() => {
-    if (!showRoute || routeStops.length < 2) {
+    if (!dispatcherLayout.mapVisible || !showRoute || routeStops.length < 2) {
       setRouteGeometry([]);
       setRouteMetrics(null);
       return;
@@ -3826,7 +3826,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     return () => {
       abortController.abort();
     };
-  }, [routeStops, showRoute]);
+  }, [dispatcherLayout.mapVisible, routeStops, showRoute]);
 
   useEffect(() => {
     if (!dispatcherLayout.mapVisible || !selectedDriver?.hasRealLocation || !selectedDriverEtaTrip) {
