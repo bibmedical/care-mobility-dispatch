@@ -899,13 +899,15 @@ const getDriverTripProgressVariant = trip => {
 
 const getSelectedDriverEtaTarget = trip => {
   const travelState = getTripTravelState(trip);
+  const pickupPosition = getTripPickupPosition(trip);
+  const dropoffPosition = getTripDropoffPosition(trip);
 
   if (['patientonboard', 'starttrip', 'todestination', 'inprogress', 'arriveddestination'].includes(travelState)) {
     return {
       stage: 'dropoff',
       label: 'Heading to Dropoff',
       shortLabel: 'To Dropoff',
-      position: trip?.destinationPosition ?? trip?.position,
+      position: dropoffPosition,
       detail: trip?.destination || 'Destination pending',
       color: '#2563eb'
     };
@@ -915,13 +917,17 @@ const getSelectedDriverEtaTarget = trip => {
     stage: 'pickup',
     label: 'Heading to Pickup',
     shortLabel: 'To Pickup',
-    position: trip?.position,
+    position: pickupPosition,
     detail: trip?.address || 'Pickup pending',
     color: '#16a34a'
   };
 };
 
-const getTripTargetPosition = trip => getSelectedDriverEtaTarget(trip)?.position ?? trip?.position;
+const getTripTargetPosition = trip => {
+  const target = getSelectedDriverEtaTarget(trip);
+  if (Array.isArray(target?.position) && target.position.length === 2) return target.position;
+  return getTripPickupPosition(trip);
+};
 
 const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
 const VEHICLE_VARIANT_TOTAL = 20;
@@ -2568,6 +2574,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   const selectedDriverEta = useMemo(() => {
     if (!dispatcherLayout.mapVisible || !selectedDriver || !selectedDriver.hasRealLocation || !selectedDriverEtaTrip) return null;
     const target = getSelectedDriverEtaTarget(selectedDriverEtaTrip);
+    if (!Array.isArray(target?.position) || target.position.length !== 2) return null;
     const miles = selectedDriverRouteMetrics?.distanceMiles ?? getDistanceMiles(selectedDriver.position, target?.position);
     const remainingMinutes = selectedDriverRouteMetrics?.durationMinutes;
     return {
