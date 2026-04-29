@@ -2398,39 +2398,61 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         if (!activeDateTripIdSet) return true;
         return activeDateTripIdSet.has(tripId);
       });
-      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: 'pickup',
-        position: trip.position,
-        title: `Pickup ${trip.pickup}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${trip.dropoff}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
+      return sortTripsByPickupTime(selectedTripsForMap).flatMap((trip, index) => {
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
+        const stops = [];
+        if (pickupPosition) {
+          stops.push({
+            key: `${trip.id}-pickup`,
+            label: `${index * 2 + 1}`,
+            variant: 'pickup',
+            position: pickupPosition,
+            title: `Pickup ${trip.pickup}`,
+            detail: trip.address
+          });
+        }
+        if (dropoffPosition) {
+          stops.push({
+            key: `${trip.id}-dropoff`,
+            label: `${index * 2 + 2}`,
+            variant: 'dropoff',
+            position: dropoffPosition,
+            title: `Dropoff ${trip.dropoff}`,
+            detail: trip.destination || 'Destination pending'
+          });
+        }
+        return stops;
+      });
     }
 
     if (selectedRoute) {
-      return routeTrips.flatMap((trip, index) => [{
-        key: `${trip.id}-pickup`,
-        label: `${index * 2 + 1}`,
-        variant: 'pickup',
-        position: trip.position,
-        title: `Pickup ${trip.pickup}`,
-        detail: trip.address
-      }, {
-        key: `${trip.id}-dropoff`,
-        label: `${index * 2 + 2}`,
-        variant: 'dropoff',
-        position: trip.destinationPosition ?? trip.position,
-        title: `Dropoff ${trip.dropoff}`,
-        detail: trip.destination || 'Destination pending'
-      }]);
+      return routeTrips.flatMap((trip, index) => {
+        const pickupPosition = getTripPickupPosition(trip);
+        const dropoffPosition = getTripDropoffPosition(trip);
+        const stops = [];
+        if (pickupPosition) {
+          stops.push({
+            key: `${trip.id}-pickup`,
+            label: `${index * 2 + 1}`,
+            variant: 'pickup',
+            position: pickupPosition,
+            title: `Pickup ${trip.pickup}`,
+            detail: trip.address
+          });
+        }
+        if (dropoffPosition) {
+          stops.push({
+            key: `${trip.id}-dropoff`,
+            label: `${index * 2 + 2}`,
+            variant: 'dropoff',
+            position: dropoffPosition,
+            title: `Dropoff ${trip.dropoff}`,
+            detail: trip.destination || 'Destination pending'
+          });
+        }
+        return stops;
+      });
     }
 
     return [];
@@ -3783,13 +3805,15 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   };
 
   useEffect(() => {
-    if (!dispatcherLayout.mapVisible || !showRoute || routeStops.length < 2) {
+    const validRouteStops = routeStops.filter(stop => Array.isArray(stop?.position) && stop.position.length === 2 && Number.isFinite(Number(stop.position[0])) && Number.isFinite(Number(stop.position[1])));
+
+    if (!dispatcherLayout.mapVisible || !showRoute || validRouteStops.length < 2) {
       setRouteGeometry([]);
       setRouteMetrics(null);
       return;
     }
 
-    const uniqueStops = routeStops.filter((stop, index, stops) => index === 0 || stop.position[0] !== stops[index - 1].position[0] || stop.position[1] !== stops[index - 1].position[1]);
+    const uniqueStops = validRouteStops.filter((stop, index, stops) => index === 0 || stop.position[0] !== stops[index - 1].position[0] || stop.position[1] !== stops[index - 1].position[1]);
     if (uniqueStops.length < 2) {
       setRouteGeometry(uniqueStops.map(stop => stop.position));
       setRouteMetrics(null);

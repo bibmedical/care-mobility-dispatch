@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+const MAX_ROUTE_COORDINATES = 60;
+
 const toCoordinatePairs = value => String(value ?? '').split(';').map(pair => pair.trim()).filter(Boolean).map(pair => {
   const [latitudeValue, longitudeValue] = pair.split(',').map(item => Number(item.trim()));
   if (!Number.isFinite(latitudeValue) || !Number.isFinite(longitudeValue)) return null;
@@ -91,6 +93,20 @@ export async function GET(request) {
       error: 'At least two coordinates are required.'
     }, {
       status: 400
+    });
+  }
+
+  if (coordinates.length > MAX_ROUTE_COORDINATES) {
+    return NextResponse.json({
+      provider: 'fallback-capped',
+      geometry: buildFallbackGeometry(coordinates),
+      distanceMiles: null,
+      durationMinutes: null,
+      alternatives: [],
+      isFallback: true,
+      warning: `Route request exceeded ${MAX_ROUTE_COORDINATES} coordinates.`
+    }, {
+      headers: { 'Cache-Control': 'no-store' }
     });
   }
 

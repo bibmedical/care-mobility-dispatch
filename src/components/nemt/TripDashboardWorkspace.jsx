@@ -3772,7 +3772,11 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     }
     return waypoints;
   }, [mapRelevantDriverPositions, routeStops, selectedDriver, selectedTripMapPoints]);
-  const mapDetachedTrips = useMemo(() => selectedTrips.length > 0 ? selectedTrips : routeTrips, [routeTrips, selectedTrips]);
+  const hasDetachedMapSelection = selectedTripIds.length > 0 || Boolean(selectedRoute) || hasBtRouteDriverSelection;
+  const mapDetachedTrips = useMemo(() => {
+    if (!hasDetachedMapSelection) return [];
+    return selectedTrips.length > 0 ? selectedTrips : routeTrips;
+  }, [hasDetachedMapSelection, routeTrips, selectedTrips]);
   const routePath = routeGeometry.length > 1 ? routeGeometry : routeGeometryLoading ? [] : mapRouteWaypointPositions.length > 1 ? mapRouteWaypointPositions : fallbackRoutePath;
   const mapViewportFocusPoints = useMemo(() => {
     const uniquePoints = [];
@@ -3814,7 +3818,13 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     if (typeof window === 'undefined') return;
 
     try {
+      if (!hasDetachedMapSelection) {
+        window.localStorage.removeItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+        return;
+      }
+
       window.localStorage.setItem(DETACHED_MAP_SELECTION_STORAGE_KEY, JSON.stringify({
+        source: 'trip-dashboard',
         selectedTripIds: mapDetachedTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
         selectedDriverId: selectedDriverId || null,
         selectedRouteId: selectedRouteId || null,
@@ -3853,7 +3863,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     } catch {
       // Ignore detached map payload write failures.
     }
-  });
+  }, [hasDetachedMapSelection, hasBtRouteDriverSelection, mapDetachedDrivers, mapDetachedTrips, mapRouteWaypointPositions, routeGeometry, routeGeometryLoading, routeMetrics, routeStops, selectedDriver, selectedDriverId, selectedRoute, selectedRouteId, selectedTripIds.length]);
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const selectedDriverAssignedTripCount = useMemo(() => selectedDriverId ? trips.filter(trip => trip.driverId === selectedDriverId || trip.secondaryDriverId === selectedDriverId).length : 0, [selectedDriverId, trips]);
   const remainingVisibleTripCount = filteredTrips.length;
@@ -6359,7 +6369,6 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
               {mapTileConfig.labelOverlayUrl ? <TileLayer attribution={mapTileConfig.attribution} url={mapTileConfig.labelOverlayUrl} opacity={mapTileConfig.labelOverlayOpacity ?? 1} pane="overlayPane" updateWhenZooming={true} /> : null}
               <ZoomControl position="bottomleft" />
               {showRouteMapLayer && routePath.length > 1 ? <Polyline positions={routePath} pathOptions={{ color: selectedRoute?.color ?? '#2563eb', weight: 4 }} /> : null}
-              {mapDriverTripLinks.map(link => <Polyline key={link.key} positions={link.positions} pathOptions={{ color: '#f59e0b', weight: 3, dashArray: '8 8', opacity: 0.82 }} />)}
               {mapVisibleDriversWithRealLocation.map(driver => <Marker key={`trip-dashboard-driver-live-${driver.id}`} position={driver.position} icon={liveVehicleIconByDriverId.get(String(driver?.id || '').trim()) || createLiveVehicleIcon({
             heading: driver.heading,
             isOnline: driver.live === 'Online',
