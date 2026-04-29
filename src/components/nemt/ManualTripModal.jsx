@@ -179,10 +179,6 @@ const ManualTripModal = ({
       setError('Service date is required.');
       return;
     }
-    if (!normalizedDraft.rider) {
-      setError('Rider name is required.');
-      return;
-    }
     if (!normalizedDraft.address) {
       setError('Pickup address is required.');
       return;
@@ -282,7 +278,7 @@ const ManualTripModal = ({
               <Form.Control value={isCalculatingRoute ? 'Calculating...' : draft.durationMinutes} placeholder="Auto" readOnly />
             </Col>
           </Row>
-          {routeError ? <div className="small text-warning mt-2">{routeError}</div> : null}
+          {routeError ? <div className="small text-warning mt-2">{routeError} The trip can still be saved with address-only routing.</div> : null}
         </div>
 
         <div className="border rounded p-3">

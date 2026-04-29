@@ -4110,20 +4110,22 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 </Tooltip>
               </Marker>)}
             {!hasSelectedTrips ? mapQuickTrips.flatMap(trip => {
+            const pickupPosition = getTripPickupPosition(trip);
+            const dropoffPosition = getTripDropoffPosition(trip);
             const points = [{
               key: `${trip.id}-pickup-mapquick`,
               tripId: trip.id,
-              position: trip.position,
+              position: pickupPosition,
               color: '#0ea5e9',
               label: `PU ${trip.pickup}`
             }, {
               key: `${trip.id}-dropoff-mapquick`,
               tripId: trip.id,
-              position: trip.destinationPosition ?? trip.position,
+              position: dropoffPosition,
               color: '#22c55e',
               label: `DO ${trip.dropoff}`
             }];
-            return points;
+            return points.filter(point => Array.isArray(point.position) && point.position.length === 2);
           }).map(point => <CircleMarker key={point.key} center={point.position} radius={6} pathOptions={{ color: point.color, fillColor: point.color, fillOpacity: 0.85 }} eventHandlers={{
             click: () => toggleTripSelection(point.tripId)
           }}>
@@ -4135,11 +4137,15 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   <div>{stop.detail}</div>
                 </Popup>
               </Marker>) : null}
-            {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).map(trip => <CircleMarker key={trip.id} center={trip.position} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
+            {hasSelectedTrips ? filteredTrips.filter(trip => selectedTripIdSet.has(normalizeTripId(trip.id))).map(trip => {
+            const pickupPosition = getTripPickupPosition(trip);
+            if (!pickupPosition) return null;
+            return <CircleMarker key={trip.id} center={pickupPosition} radius={10} pathOptions={{ color: '#0ea5e9', fillColor: '#0ea5e9', fillOpacity: 0.9 }} eventHandlers={{
               click: () => toggleTripSelection(trip.id)
             }}>
                 <Popup>{`${trip.brokerTripId || trip.id} | ${trip.legLabel || 'Ride'} | ${trip.rider} | ${trip.pickup}`}</Popup>
-              </CircleMarker>) : null}
+              </CircleMarker>;
+          }) : null}
           </MapContainer>
         </div> : <div className="h-100 d-flex flex-column justify-content-center align-items-center text-center p-4" style={{ background: 'linear-gradient(180deg, #0f172a 0%, #162236 100%)', color: '#f8fafc' }}>
             <div className="fw-semibold fs-5">Mapa oculto en dispatcher</div>
