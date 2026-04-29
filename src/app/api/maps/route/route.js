@@ -4,6 +4,7 @@ const MAX_ROUTE_COORDINATES = 60;
 const EARTH_RADIUS_MILES = 3958.8;
 const FALLBACK_SPEED_MPH = 28;
 const OSRM_REQUEST_TIMEOUT_MS = 6000;
+const SEGMENTED_ROUTE_TIME_BUDGET_MS = 2500;
 
 const toCoordinatePairs = value => String(value ?? '').split(';').map(pair => pair.trim()).filter(Boolean).map(pair => {
   const [latitudeValue, longitudeValue] = pair.split(',').map(item => Number(item.trim()));
@@ -81,8 +82,31 @@ const buildSegmentedRoute = async coordinates => {
   let usedFallbackSegment = false;
   let estimatedDistanceMiles = 0;
   let estimatedDurationMinutes = 0;
+  const segmentedDeadline = Date.now() + SEGMENTED_ROUTE_TIME_BUDGET_MS;
 
   for (let index = 0; index < coordinates.length - 1; index += 1) {
+    if (Date.now() > segmentedDeadline) {
+      usedFallbackSegment = true;
+      hasDistance = false;
+      hasDuration = false;
+
+      for (let remainingIndex = index; remainingIndex < coordinates.length - 1; remainingIndex += 1) {
+        const remainingSegmentCoordinates = [coordinates[remainingIndex], coordinates[remainingIndex + 1]];
+        const fallbackSegmentMiles = getPathDistanceMiles(remainingSegmentCoordinates);
+        if (Number.isFinite(fallbackSegmentMiles)) {
+          estimatedDistanceMiles += fallbackSegmentMiles;
+          estimatedDurationMinutes += estimateDurationMinutesFromMiles(fallbackSegmentMiles) || 0;
+        }
+        const fallbackGeometry = buildFallbackGeometry(remainingSegmentCoordinates);
+        if (geometry.length > 0) {
+          geometry.push(...fallbackGeometry.slice(1));
+        } else {
+          geometry.push(...fallbackGeometry);
+        }
+      }
+      break;
+    }
+
     const segmentCoordinates = [coordinates[index], coordinates[index + 1]];
     const routes = await readOsrmRoutes(buildOsrmUrl(segmentCoordinates));
     const route = routes[0];

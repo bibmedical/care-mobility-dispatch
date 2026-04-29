@@ -5,8 +5,8 @@ services:
     rootDir: .
     plan: pro
     scaling:
-      minInstances: 1
-      maxInstances: 3
+      minInstances: 2
+      maxInstances: 4
       targetMemoryPercent: 60
       targetCPUPercent: 60
     buildCommand: npm install ; npm run build
