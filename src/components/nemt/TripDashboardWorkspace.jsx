@@ -3858,7 +3858,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           live: driver?.live || '',
           position: driver?.hasRealLocation ? driver.position : null
         })),
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        expiresAt: Date.now() + 15 * 60 * 1000
       }));
     } catch {
       // Ignore detached map payload write failures.

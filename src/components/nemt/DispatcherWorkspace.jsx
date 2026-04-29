@@ -2536,7 +2536,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           gpsSettings: selectedDriver?.gpsSettings || null,
           position: selectedDriver.position
         }] : [],
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
+        expiresAt: Date.now() + 15 * 60 * 1000
       }));
     } catch {}
   }, [detachedMapRouteWaypoints, detachedMapTrips, routeGeometry, routeMetrics, routeStops, selectedDriver, selectedDriverId, selectedRouteId]);

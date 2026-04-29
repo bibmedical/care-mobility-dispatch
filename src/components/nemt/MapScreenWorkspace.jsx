@@ -13,6 +13,7 @@ const DEFAULT_CENTER = [28.5383, -81.3792];
 const DEFAULT_ZOOM = 10;
 const RESULT_ZOOM = 16;
 const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
+const DETACHED_MAP_SELECTION_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -168,18 +169,45 @@ const readTripDashboardMapSelection = () => {
     const rawValue = window.localStorage.getItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
     if (!rawValue) return null;
     const parsedValue = JSON.parse(rawValue);
+    const expiresAt = Number(parsedValue?.expiresAt);
+    if (Number.isFinite(expiresAt) && expiresAt > 0 && Date.now() > expiresAt) {
+      window.localStorage.removeItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+      return null;
+    }
+
     const isValidCoordinatePair = point => Array.isArray(point) && point.length === 2 && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1]));
     const routeWaypoints = Array.isArray(parsedValue?.routeWaypoints)
       ? parsedValue.routeWaypoints.filter(isValidCoordinatePair)
       : [];
-    if (routeWaypoints.length === 0 && !Array.isArray(parsedValue?.trips)) return null;
+
+    const trips = Array.isArray(parsedValue?.trips)
+      ? parsedValue.trips.filter(trip => {
+        const pickupPosition = isValidCoordinatePair(trip?.pickupPosition) ? trip.pickupPosition : null;
+        const dropoffPosition = isValidCoordinatePair(trip?.dropoffPosition) ? trip.dropoffPosition : null;
+        return Boolean(String(trip?.id || '').trim()) && (pickupPosition || dropoffPosition);
+      }).map(trip => ({
+        ...trip,
+        pickupPosition: isValidCoordinatePair(trip?.pickupPosition) ? trip.pickupPosition : null,
+        dropoffPosition: isValidCoordinatePair(trip?.dropoffPosition) ? trip.dropoffPosition : null
+      }))
+      : [];
+
+    const drivers = Array.isArray(parsedValue?.drivers)
+      ? parsedValue.drivers.filter(driver => isValidCoordinatePair(driver?.position))
+      : [];
+
+    if (routeWaypoints.length === 0 && trips.length === 0 && drivers.length === 0) {
+      window.localStorage.removeItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+      return null;
+    }
+
     return {
       ...parsedValue,
       routeWaypoints,
       routeGeometry: Array.isArray(parsedValue?.routeGeometry) ? parsedValue.routeGeometry.filter(isValidCoordinatePair) : [],
       routeStops: Array.isArray(parsedValue?.routeStops) ? parsedValue.routeStops.filter(stop => isValidCoordinatePair(stop?.position)) : [],
-      trips: Array.isArray(parsedValue?.trips) ? parsedValue.trips : [],
-      drivers: Array.isArray(parsedValue?.drivers) ? parsedValue.drivers.filter(driver => isValidCoordinatePair(driver?.position)) : []
+      trips,
+      drivers
     };
   } catch {
     return null;
