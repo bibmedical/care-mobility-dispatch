@@ -614,20 +614,6 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Start Trip before Arrived Destination.' }, { status: 400 });
   }
 
-  if (action === 'complete') {
-    const hasTripProgress = Boolean(
-      currentTrip?.patientOnboardAt
-      || currentTrip?.startTripAt
-      || currentTrip?.arrivedDestinationAt
-      || currentTrip?.driverWorkflow?.patientOnboardAt
-      || currentTrip?.driverWorkflow?.destinationDepartureAt
-      || currentTrip?.driverWorkflow?.destinationArrivalAt
-    );
-    if (!hasTripProgress) {
-      return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Patient Onboard before Complete.' }, { status: 400 });
-    }
-  }
-
   if (action === 'cancel') {
     const tripActivated = isTripActivatedForCancellation(currentTrip);
     const alreadyMoved = Boolean(currentTrip?.patientOnboardAt || currentTrip?.startTripAt || currentTrip?.arrivedDestinationAt || currentTrip?.completedAt || currentTrip?.driverWorkflow?.patientOnboardAt || currentTrip?.driverWorkflow?.startTripAt || currentTrip?.driverWorkflow?.arrivedDestinationAt || currentTrip?.driverWorkflow?.completedAt);
