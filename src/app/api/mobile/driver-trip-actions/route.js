@@ -598,34 +598,9 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Trip is not assigned to this driver.' }, { status: 403 });
   }
 
-  if (action === 'arrived' && !currentTrip?.enRouteAt) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark En Route before Arrived.' }, { status: 400 });
-  }
-
-  if (action === 'patient-onboard' && !currentTrip?.arrivedAt) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived Pickup before Patient Onboard.' }, { status: 400 });
-  }
-
-  if (action === 'start-trip' && !currentTrip?.patientOnboardAt && !currentTrip?.actualPickup) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Patient Onboard before Start Trip.' }, { status: 400 });
-  }
-
-  if (action === 'arrived-destination' && !currentTrip?.startTripAt && !currentTrip?.driverWorkflow?.destinationDepartureAt) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Start Trip before Arrived Destination.' }, { status: 400 });
-  }
-
-  if (action === 'cancel') {
-    const tripActivated = isTripActivatedForCancellation(currentTrip);
-    const alreadyMoved = Boolean(currentTrip?.patientOnboardAt || currentTrip?.startTripAt || currentTrip?.arrivedDestinationAt || currentTrip?.completedAt || currentTrip?.driverWorkflow?.patientOnboardAt || currentTrip?.driverWorkflow?.startTripAt || currentTrip?.driverWorkflow?.arrivedDestinationAt || currentTrip?.driverWorkflow?.completedAt);
-    if (alreadyMoved) {
-      return jsonWithMobileCors(request, { ok: false, error: 'Cancel is only allowed before Patient Onboard.' }, { status: 400 });
-    }
-    if (!cancellationReason) {
-      return jsonWithMobileCors(request, { ok: false, error: 'Cancellation reason is required.' }, { status: 400 });
-    }
-    if (tripActivated && !cancellationPhotoDataUrl) {
-      return jsonWithMobileCors(request, { ok: false, error: 'Cancellation photo is required once the trip is in progress.' }, { status: 400 });
-    }
+  // Only rule for cancel: cancellation reason is required
+  if (action === 'cancel' && !cancellationReason) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Cancellation reason is required.' }, { status: 400 });
   }
 
   const requestedEventTimestamp = Number(body?.eventTimestamp);
@@ -667,6 +642,11 @@ export async function POST(request) {
 
   if (action === 'accept') {
     patch.riderSignatureData = riderSignatureData;
+    // Clean up previous driver metadata when accepting
+    patch.completedByDriverId = undefined;
+    patch.completedByDriverName = undefined;
+    patch.canceledByDriverId = undefined;
+    patch.canceledByDriverName = undefined;
   }
 
   if (action === 'complete') {
@@ -706,6 +686,10 @@ export async function POST(request) {
     }
   });
 
+    // Photo is optional now - only use if provided
+    if (completionPhotoDataUrl) {
+      patch.cancellationPhotoDataUrl = completionPhotoDataUrl;
+    }
   const disciplineEvent = buildDisciplineEventForAction({
     trip: currentTrip,
     driverId,
