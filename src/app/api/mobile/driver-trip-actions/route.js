@@ -129,6 +129,14 @@ const formatClockTime = value => new Date(value).toLocaleTimeString('en-US', {
     hour12: true
 });
 
+const formatWorkflowTimeLabel = value => {
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue) && numericValue > 0) return formatClockTime(numericValue);
+  const parsedValue = new Date(value || 0).getTime();
+  if (Number.isFinite(parsedValue) && parsedValue > 0) return formatClockTime(parsedValue);
+  return '';
+};
+
 const normalizeLocationSnapshot = value => {
   if (!value || typeof value !== 'object') return null;
   const latitude = Number(value.latitude);
