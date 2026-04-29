@@ -479,10 +479,14 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
 
   if (action === 'complete') {
     const completionPhotoDataUrl = String(options.completionPhotoDataUrl || '').trim();
+    const effectiveStartTripAt = trip?.startTripAt || existingWorkflow?.startTripAt || existingWorkflow?.destinationDepartureAt || trip?.patientOnboardAt || existingWorkflow?.patientOnboardAt || timestamp;
+    const effectiveArrivedDestinationAt = trip?.arrivedDestinationAt || existingWorkflow?.arrivedDestinationAt || existingWorkflow?.destinationArrivalAt || timestamp;
     return {
       patch: {
         status: 'Completed',
         driverTripStatus: 'Completed',
+        startTripAt: effectiveStartTripAt,
+        arrivedDestinationAt: effectiveArrivedDestinationAt,
         completedAt: timestamp,
         completionLocationSnapshot: locationSnapshot,
         completionPhotoDataUrl,
@@ -492,6 +496,14 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
         driverWorkflow: {
           ...nextWorkflow,
           status: 'completed',
+          startTripAt: effectiveStartTripAt,
+          startTripTimeLabel: existingWorkflow?.startTripTimeLabel || formatWorkflowTimeLabel(effectiveStartTripAt),
+          destinationDepartureAt: effectiveStartTripAt,
+          destinationDepartureTimeLabel: existingWorkflow?.destinationDepartureTimeLabel || formatWorkflowTimeLabel(effectiveStartTripAt),
+          arrivedDestinationAt: effectiveArrivedDestinationAt,
+          arrivedDestinationTimeLabel: existingWorkflow?.arrivedDestinationTimeLabel || formatWorkflowTimeLabel(effectiveArrivedDestinationAt),
+          destinationArrivalAt: effectiveArrivedDestinationAt,
+          destinationArrivalTimeLabel: existingWorkflow?.destinationArrivalTimeLabel || formatWorkflowTimeLabel(effectiveArrivedDestinationAt),
           completedAt: timestamp,
           completedTimeLabel: timeLabel,
           completionLocationSnapshot: locationSnapshot,
@@ -594,12 +606,18 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Start Trip before Arrived Destination.' }, { status: 400 });
   }
 
-  if (action === 'complete' && !currentTrip?.arrivedDestinationAt && !currentTrip?.driverWorkflow?.destinationArrivalAt) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Arrived Destination before Complete.' }, { status: 400 });
-  }
-
-  if (action === 'complete' && !completionPhotoDataUrl) {
-    return jsonWithMobileCors(request, { ok: false, error: 'Completion photo is required before closing the trip.' }, { status: 400 });
+  if (action === 'complete') {
+    const hasTripProgress = Boolean(
+      currentTrip?.patientOnboardAt
+      || currentTrip?.startTripAt
+      || currentTrip?.arrivedDestinationAt
+      || currentTrip?.driverWorkflow?.patientOnboardAt
+      || currentTrip?.driverWorkflow?.destinationDepartureAt
+      || currentTrip?.driverWorkflow?.destinationArrivalAt
+    );
+    if (!hasTripProgress) {
+      return jsonWithMobileCors(request, { ok: false, error: 'Driver must mark Patient Onboard before Complete.' }, { status: 400 });
+    }
   }
 
   if (action === 'cancel') {

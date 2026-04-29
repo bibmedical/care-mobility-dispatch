@@ -568,6 +568,7 @@ const formatDriverSpeedLabel = driver => {
   const speedValue = Number(driver?.speed);
   if (!Number.isFinite(speedValue) || speedValue < 0) return 'Speed unavailable';
   const normalizedSpeed = Math.max(0, speedValue);
+  if (normalizedSpeed < 1) return 'Stopped';
   const roundedSpeed = normalizedSpeed >= 10 ? Math.round(normalizedSpeed) : Number(normalizedSpeed.toFixed(1));
   return `${roundedSpeed} mph`;
 };
