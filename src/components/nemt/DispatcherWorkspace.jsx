@@ -2260,7 +2260,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   }, [cityOptionTrips, mapCityQuickFilter, mapZipQuickFilter]);
   const selectedTripIdSet = useMemo(() => new Set(selectedTripIds.map(normalizeTripId).filter(Boolean)), [selectedTripIds]);
   const visibleTripIds = tripTableTrips.map(trip => normalizeTripId(trip.id)).filter(Boolean);
-  const visibleTripColumns = uiPreferences?.dispatcherVisibleTripColumns ?? [];
+  const visibleTripColumns = (uiPreferences?.dispatcherVisibleTripColumns?.length > 0) ? uiPreferences.dispatcherVisibleTripColumns : DEFAULT_DISPATCHER_VISIBLE_TRIP_COLUMNS;
   const dispatcherTripColumnOptions = useMemo(() => [...DISPATCHER_TRIP_CONTROL_COLUMN_OPTIONS, ...DISPATCH_TRIP_COLUMN_OPTIONS], []);
   const dispatcherControlColumnKeySet = useMemo(() => new Set(DISPATCHER_TRIP_CONTROL_COLUMN_OPTIONS.map(option => option.key)), []);
   const dispatcherControlColumnOrder = useMemo(() => new Map(DISPATCHER_TRIP_CONTROL_COLUMN_OPTIONS.map((option, index) => [option.key, index])), []);
@@ -2477,7 +2477,13 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     return [];
   }, [activeDateTripIdSet, routeTrips, selectedRoute, selectedTripIds, showRoute, trips]);
 
-  const fallbackRoutePath = useMemo(() => routeStops.map(stop => stop.position), [routeStops]);
+  const stableRouteStops = useMemo(() => routeStops.filter(stop => Array.isArray(stop?.position) && stop.position.length === 2 && Number.isFinite(Number(stop.position[0])) && Number.isFinite(Number(stop.position[1]))).map(stop => ({
+    ...stop,
+    position: [Number(stop.position[0]), Number(stop.position[1])]
+  })), [routeStops]);
+  const stableUniqueRoutePath = useMemo(() => stableRouteStops.filter((stop, index, stops) => index === 0 || stop.position[0] !== stops[index - 1].position[0] || stop.position[1] !== stops[index - 1].position[1]).map(stop => stop.position), [stableRouteStops]);
+  const routeCoordinates = useMemo(() => stableUniqueRoutePath.length >= 2 ? stableUniqueRoutePath.map(position => `${position[0]},${position[1]}`).join(';') : '', [stableUniqueRoutePath]);
+  const fallbackRoutePath = stableRouteStops.map(stop => stop.position);
   const routePath = routeGeometry.length > 1 ? routeGeometry : fallbackRoutePath;
 
   const liveDrivers = drivers.filter(driver => driver.live === 'Online').length;
@@ -2596,6 +2602,24 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       label: remainingMinutes != null ? formatRemainingEta(remainingMinutes) : formatEta(miles)
     };
   }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip, selectedDriverRouteMetrics]);
+  const selectedDriverRouteRequest = useMemo(() => {
+    if (!dispatcherLayout.mapVisible || !selectedDriver?.hasRealLocation || !selectedDriverEtaTrip) return null;
+
+    const driverPosition = Array.isArray(selectedDriver.position) && selectedDriver.position.length === 2 && Number.isFinite(Number(selectedDriver.position[0])) && Number.isFinite(Number(selectedDriver.position[1]))
+      ? [Number(selectedDriver.position[0]), Number(selectedDriver.position[1])]
+      : null;
+    const target = getSelectedDriverEtaTarget(selectedDriverEtaTrip);
+    const targetPosition = Array.isArray(target?.position) && target.position.length === 2 && Number.isFinite(Number(target.position[0])) && Number.isFinite(Number(target.position[1]))
+      ? [Number(target.position[0]), Number(target.position[1])]
+      : null;
+
+    if (!driverPosition || !targetPosition) return null;
+
+    return {
+      coordinates: `${driverPosition[0]},${driverPosition[1]};${targetPosition[0]},${targetPosition[1]}`,
+      fallbackGeometry: [driverPosition, targetPosition]
+    };
+  }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip]);
   const driverEtaPreviewById = useMemo(() => {
     const etaByDriver = new Map();
     drivers.forEach(driver => {
@@ -3856,27 +3880,17 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   };
 
   useEffect(() => {
-    const validRouteStops = routeStops.filter(stop => Array.isArray(stop?.position) && stop.position.length === 2 && Number.isFinite(Number(stop.position[0])) && Number.isFinite(Number(stop.position[1])));
-
-    if (!dispatcherLayout.mapVisible || !showRoute || validRouteStops.length < 2) {
+    if (!dispatcherLayout.mapVisible || !showRoute || !routeCoordinates) {
       setRouteGeometry([]);
       setRouteMetrics(null);
       return;
     }
 
-    const uniqueStops = validRouteStops.filter((stop, index, stops) => index === 0 || stop.position[0] !== stops[index - 1].position[0] || stop.position[1] !== stops[index - 1].position[1]);
-    if (uniqueStops.length < 2) {
-      setRouteGeometry(uniqueStops.map(stop => stop.position));
-      setRouteMetrics(null);
-      return;
-    }
-
     const abortController = new AbortController();
-    const coordinates = uniqueStops.map(stop => `${stop.position[0]},${stop.position[1]}`).join(';');
 
     const loadRouteGeometry = async () => {
       try {
-        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
+        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(routeCoordinates)}`, {
           signal: abortController.signal
         });
         if (!response.ok) throw new Error('Routing service unavailable');
@@ -3891,7 +3905,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         });
       } catch {
         if (abortController.signal.aborted) return;
-        setRouteGeometry(uniqueStops.map(stop => stop.position));
+        setRouteGeometry(stableUniqueRoutePath);
         setRouteMetrics(null);
       }
     };
@@ -3901,29 +3915,20 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     return () => {
       abortController.abort();
     };
-  }, [dispatcherLayout.mapVisible, routeStops, showRoute]);
+  }, [dispatcherLayout.mapVisible, routeCoordinates, showRoute, stableUniqueRoutePath]);
 
   useEffect(() => {
-    if (!dispatcherLayout.mapVisible || !selectedDriver?.hasRealLocation || !selectedDriverEtaTrip) {
-      setSelectedDriverRouteGeometry([]);
-      setSelectedDriverRouteMetrics(null);
-      return;
-    }
-
-    const target = getSelectedDriverEtaTarget(selectedDriverEtaTrip);
-    const targetPosition = Array.isArray(target?.position) ? target.position : null;
-    if (!Array.isArray(selectedDriver.position) || !targetPosition || targetPosition.length !== 2) {
+    if (!selectedDriverRouteRequest) {
       setSelectedDriverRouteGeometry([]);
       setSelectedDriverRouteMetrics(null);
       return;
     }
 
     const abortController = new AbortController();
-    const coordinates = `${selectedDriver.position[0]},${selectedDriver.position[1]};${targetPosition[0]},${targetPosition[1]}`;
 
     const loadSelectedDriverRoute = async () => {
       try {
-        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
+        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(selectedDriverRouteRequest.coordinates)}`, {
           signal: abortController.signal
         });
         if (!response.ok) throw new Error('Routing service unavailable');
@@ -3938,7 +3943,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
         });
       } catch {
         if (abortController.signal.aborted) return;
-        setSelectedDriverRouteGeometry([selectedDriver.position, targetPosition]);
+        setSelectedDriverRouteGeometry(selectedDriverRouteRequest.fallbackGeometry);
         setSelectedDriverRouteMetrics(null);
       }
     };
@@ -3948,7 +3953,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     return () => {
       abortController.abort();
     };
-  }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip]);
+  }, [selectedDriverRouteRequest]);
 
   useEffect(() => {
     if (!dragMode) return;
@@ -4150,7 +4155,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
             isOnline: driver.live === 'Online',
                 vehicleIconScalePercent: driver?.gpsSettings?.vehicleIconScalePercent,
                 vehicleIconSvgPath: driver?.gpsSettings?.vehicleIconSvgPath
-          })}>
+          })} eventHandlers={{ click: () => { if (!mapLocked) handleDriverSelectionChange(driver.id); } }}>
                 <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                   <div className="fw-semibold">{driver.name}</div>
                   <div className="small text-muted">Left to arrive: {driverEtaPreviewById.get(String(driver.id || '').trim())?.etaLabel || 'ETA unavailable'}</div>
