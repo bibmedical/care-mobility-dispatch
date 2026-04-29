@@ -649,11 +649,24 @@ const getDropoffCity = trip => extractCityFromAddress(trip?.destination);
 
 const buildTripEditDraft = trip => ({
   notes: String(trip?.notes || '').trim(),
+  serviceDate: String(getTripServiceDateKey(trip) || '').trim(),
+  rider: String(trip?.rider || '').trim(),
+  patientPhoneNumber: String(trip?.patientPhoneNumber || '').trim(),
+  address: String(trip?.address || '').trim(),
+  fromZipcode: String(getPickupZip(trip) || '').trim(),
+  destination: String(trip?.destination || '').trim(),
+  toZipcode: String(getDropoffZip(trip) || '').trim(),
+  pickup: String(trip?.pickup || '').trim(),
+  dropoff: String(trip?.dropoff || '').trim(),
+  miles: String(trip?.miles ?? '').trim(),
+  vehicleType: String(trip?.vehicleType || '').trim(),
+  tripType: String(trip?.tripType || '').trim(),
   scheduledPickup: String(trip?.scheduledPickup || '').trim(),
   actualPickup: String(trip?.actualPickup || '').trim(),
   scheduledDropoff: String(trip?.scheduledDropoff || '').trim(),
   actualDropoff: String(trip?.actualDropoff || '').trim(),
   delay: trip?.lateMinutes != null ? String(Math.round(trip.lateMinutes)) : String(trip?.delay || '').trim(),
+  status: String(trip?.status || '').trim(),
   onTimeStatus: String(trip?.onTimeStatus || '').trim()
 });
 
@@ -2697,15 +2710,39 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     if (!noteModalTrip) return;
     updateTripRecord(noteModalTrip.id, {
       notes: noteDraft,
+      serviceDate: tripEditDraft.serviceDate,
+      rider: tripEditDraft.rider,
+      patientPhoneNumber: tripEditDraft.patientPhoneNumber,
+      address: tripEditDraft.address,
+      fromZipcode: tripEditDraft.fromZipcode,
+      destination: tripEditDraft.destination,
+      toZipcode: tripEditDraft.toZipcode,
+      pickup: tripEditDraft.pickup,
+      dropoff: tripEditDraft.dropoff,
+      miles: tripEditDraft.miles,
+      vehicleType: tripEditDraft.vehicleType,
+      tripType: tripEditDraft.tripType,
       scheduledPickup: tripEditDraft.scheduledPickup,
       actualPickup: tripEditDraft.actualPickup,
       scheduledDropoff: tripEditDraft.scheduledDropoff,
       actualDropoff: tripEditDraft.actualDropoff,
+      status: tripEditDraft.status,
       delay: tripEditDraft.delay,
       lateMinutes: tripEditDraft.delay,
       onTimeStatus: tripEditDraft.onTimeStatus
     });
     setStatusMessage(`Puntualidad y nota guardadas para ${getDisplayTripId(noteModalTrip)}.`);
+    handleCloseTripNote();
+  };
+
+  const handleCompleteModalTrip = () => {
+    if (!noteModalTrip) return;
+    const nowLabel = formatWillCallDeadlineLabel(new Date());
+    updateTripRecord(noteModalTrip.id, {
+      status: 'Completed',
+      actualDropoff: String(tripEditDraft.actualDropoff || '').trim() || nowLabel
+    });
+    setStatusMessage(`Trip ${getDisplayTripId(noteModalTrip)} completado desde Dispatcher.`);
     handleCloseTripNote();
   };
 
@@ -2883,13 +2920,19 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           </td>;
       case 'tripNoteAction':
         return <td key={`${trip.id}-note-action`} style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-            <Button variant="outline-secondary" size="sm" disabled={mapLocked} onClick={() => handleOpenTripNote(trip)} style={{ minWidth: 34, color: getTripNoteText(trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent', opacity: mapLocked ? 0.5 : 1 }}>
+            <Button variant="outline-secondary" size="sm" disabled={mapLocked} onClick={event => {
+            event.stopPropagation();
+            handleOpenTripNote(trip);
+          }} style={{ minWidth: 34, color: getTripNoteText(trip) ? '#9ca3af' : '#d1d5db', borderColor: '#6b7280', backgroundColor: 'transparent', opacity: mapLocked ? 0.5 : 1 }}>
               N
             </Button>
           </td>;
       case 'willCallAction':
         return <td key={`${trip.id}-will-call-action`} style={{ width: 56, minWidth: 56, whiteSpace: 'nowrap' }}>
-            {(getTripLegFilterKey(trip) !== 'AL' || getEffectiveTripStatus(trip) === 'WillCall') ? <Button variant={getEffectiveTripStatus(trip) === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={() => handleToggleWillCall(trip.id)} title={getEffectiveTripStatus(trip) === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
+            {(getTripLegFilterKey(trip) !== 'AL' || getEffectiveTripStatus(trip) === 'WillCall') ? <Button variant={getEffectiveTripStatus(trip) === 'WillCall' ? 'danger' : 'outline-secondary'} size="sm" disabled={mapLocked} onClick={event => {
+            event.stopPropagation();
+            handleToggleWillCall(trip.id);
+          }} title={getEffectiveTripStatus(trip) === 'WillCall' ? 'Remove WillCall' : 'Mark as WillCall'} style={{ minWidth: 40, opacity: mapLocked ? 0.5 : 1 }}>
                 WC
               </Button> : <span style={{ display: 'inline-block', minWidth: 40 }} />}
           </td>;
@@ -4669,6 +4712,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                         setSelectedTripIds([row.trip.id]);
                         setIsRoutePanelCollapsed(true);
                         setSelectedRouteId(normalizeRouteId(row.trip.routeId) || '');
+                        handleOpenTripNote(row.trip);
                         setStatusMessage(`Trip ${row.trip.id} seleccionado.`);
                       }} style={{
                         ...(selectedTripIdSet.has(normalizeTripId(row.trip.id)) ? dispatcherSurfaceStyles.rowSelected : isTripAssignedToSelectedDriver(row.trip) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault),
@@ -4794,6 +4838,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                       if (mapLocked) return;
                       setSelectedTripIds([trip.id]);
                       setIsRoutePanelCollapsed(true);
+                      handleOpenTripNote(trip);
                       setStatusMessage(`Trip ${trip.id} seleccionado.`);
                     }} style={{
                       ...(selectedTripIdSet.has(normalizeTripId(trip.id)) ? dispatcherSurfaceStyles.rowAssigned : dispatcherSurfaceStyles.rowDefault),
@@ -5036,9 +5081,107 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           <Modal.Header closeButton>
             <Modal.Title>Trip Details</Modal.Title>
           </Modal.Header>
-          <Modal.Body>
+          <Modal.Body style={{ maxHeight: '68vh', overflowY: 'auto' }}>
             <div className="small text-muted mb-2">{noteModalTrip ? getDisplayTripId(noteModalTrip) : ''}</div>
             <Row className="g-3">
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Service date</Form.Label>
+                <Form.Control type="date" value={tripEditDraft.serviceDate} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                serviceDate: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Status</Form.Label>
+                <Form.Select value={tripEditDraft.status} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                status: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation}>
+                  <option value="Unassigned">Unassigned</option>
+                  <option value="Assigned">Assigned</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="WillCall">WillCall</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </Form.Select>
+              </Col>
+              <Col md={8}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Rider</Form.Label>
+                <Form.Control value={tripEditDraft.rider} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                rider: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Phone</Form.Label>
+                <Form.Control value={tripEditDraft.patientPhoneNumber} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                patientPhoneNumber: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={9}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Pickup address</Form.Label>
+                <Form.Control value={tripEditDraft.address} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                address: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={3}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">PU ZIP</Form.Label>
+                <Form.Control value={tripEditDraft.fromZipcode} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                fromZipcode: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={9}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Dropoff address</Form.Label>
+                <Form.Control value={tripEditDraft.destination} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                destination: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={3}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">DO ZIP</Form.Label>
+                <Form.Control value={tripEditDraft.toZipcode} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                toZipcode: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Pickup</Form.Label>
+                <Form.Control value={tripEditDraft.pickup} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                pickup: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Dropoff</Form.Label>
+                <Form.Control value={tripEditDraft.dropoff} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                dropoff: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Miles</Form.Label>
+                <Form.Control value={tripEditDraft.miles} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                miles: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Vehicle / LOS</Form.Label>
+                <Form.Control value={tripEditDraft.vehicleType} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                vehicleType: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small text-uppercase text-muted fw-semibold">Trip type</Form.Label>
+                <Form.Control value={tripEditDraft.tripType} onChange={event => setTripEditDraft(current => ({
+                ...current,
+                tripType: event.target.value
+              }))} onClick={stopInputEventPropagation} onKeyDown={stopInputEventPropagation} onKeyUp={stopInputEventPropagation} />
+              </Col>
               <Col md={6}>
                 <Form.Label className="small text-uppercase text-muted fw-semibold">Scheduled pickup</Form.Label>
                 <Form.Control value={tripEditDraft.scheduledPickup} onChange={event => setTripEditDraft(current => ({
@@ -5094,6 +5237,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={handleCloseTripNote}>Close</Button>
+            {noteModalTrip && String(getEffectiveTripStatus(noteModalTrip) || '').trim().toLowerCase() !== 'completed' ? <Button variant="success" onClick={handleCompleteModalTrip}>Complete Trip</Button> : null}
             <Button variant={isDarkMode ? 'dark' : 'primary'} onClick={handleSaveTripNote}>Save Trip</Button>
           </Modal.Footer>
         </Modal>
