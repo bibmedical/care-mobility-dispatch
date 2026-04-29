@@ -642,11 +642,8 @@ export async function POST(request) {
 
   if (action === 'accept') {
     patch.riderSignatureData = riderSignatureData;
-    // Clean up previous driver metadata when accepting
-    patch.completedByDriverId = undefined;
-    patch.completedByDriverName = undefined;
-    patch.canceledByDriverId = undefined;
-    patch.canceledByDriverName = undefined;
+    // Note: Previous driver audit fields (completedByDriverId, canceledByDriverId) 
+    // will be cleared naturally when trip progresses through new driver workflow
   }
 
   if (action === 'complete') {
