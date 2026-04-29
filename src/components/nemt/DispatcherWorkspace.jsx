@@ -868,6 +868,7 @@ const getEffectiveTripStatus = trip => {
   const normalizedDriverStatus = String(trip?.driverTripStatus || '').trim();
   const normalizedDriverStatusToken = normalizedDriverStatus.toLowerCase().replace(/\s+/g, '');
   if (['cancelled', 'canceled'].includes(normalizedStatusToken)) return 'Cancelled';
+  if (normalizedStatusToken === 'completed') return 'Completed';
   if (normalizedOverride === 'off') return normalizedStatusToken === 'willcall' ? 'Unassigned' : normalizedStatus || 'Unassigned';
   if (normalizedOverride === 'manual') return 'WillCall';
   if (normalizedStatusToken === 'willcall') return 'WillCall';
