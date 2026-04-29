@@ -5,6 +5,10 @@ const EARTH_RADIUS_MILES = 3958.8;
 const FALLBACK_SPEED_MPH = 28;
 const OSRM_REQUEST_TIMEOUT_MS = 6000;
 const SEGMENTED_ROUTE_TIME_BUDGET_MS = 2500;
+const ROUTE_CACHE_TTL_MS = 45000;
+const ROUTE_CACHE_MAX_ENTRIES = 300;
+const routeResponseCache = new Map();
+const routeInFlightRequests = new Map();
 
 const toCoordinatePairs = value => String(value ?? '').split(';').map(pair => pair.trim()).filter(Boolean).map(pair => {
   const [latitudeValue, longitudeValue] = pair.split(',').map(item => Number(item.trim()));
@@ -72,6 +76,35 @@ const readOsrmRoutes = async url => {
 };
 
 const toRouteGeometry = route => Array.isArray(route?.geometry?.coordinates) ? route.geometry.coordinates.map(([longitude, latitude]) => [latitude, longitude]) : [];
+
+const buildRouteCacheKey = (coordinates, includeAlternatives) => {
+  const coordinateKey = (Array.isArray(coordinates) ? coordinates : []).map(pair => `${Number(pair?.[0]).toFixed(6)},${Number(pair?.[1]).toFixed(6)}`).join(';');
+  return `${includeAlternatives ? 'alt' : 'main'}|${coordinateKey}`;
+};
+
+const readRouteCache = cacheKey => {
+  const cached = routeResponseCache.get(cacheKey);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    routeResponseCache.delete(cacheKey);
+    return null;
+  }
+  cached.lastAccessedAt = Date.now();
+  return cached.payload;
+};
+
+const writeRouteCache = (cacheKey, payload) => {
+  routeResponseCache.set(cacheKey, {
+    payload,
+    expiresAt: Date.now() + ROUTE_CACHE_TTL_MS,
+    lastAccessedAt: Date.now()
+  });
+
+  if (routeResponseCache.size <= ROUTE_CACHE_MAX_ENTRIES) return;
+
+  const oldestEntry = [...routeResponseCache.entries()].sort((left, right) => (left[1]?.lastAccessedAt || 0) - (right[1]?.lastAccessedAt || 0))[0];
+  if (oldestEntry) routeResponseCache.delete(oldestEntry[0]);
+};
 
 const buildSegmentedRoute = async coordinates => {
   const geometry = [];
@@ -166,6 +199,68 @@ const buildSegmentedRoute = async coordinates => {
   };
 };
 
+const computeRoutePayload = async (coordinates, includeAlternatives) => {
+  const providers = [{
+    name: 'osrm',
+    url: buildOsrmUrl(coordinates, includeAlternatives)
+  }].filter(provider => provider.url);
+
+  for (const provider of providers) {
+    try {
+      const routes = await readOsrmRoutes(provider.url);
+      const route = routes[0];
+      const geometry = toRouteGeometry(route);
+
+      if (geometry.length < 2) continue;
+
+      const alternatives = routes.slice(1).map(item => ({
+        geometry: toRouteGeometry(item),
+        distanceMiles: Number.isFinite(item?.distance) ? toMiles(item.distance) : getPathDistanceMiles(toRouteGeometry(item)),
+        durationMinutes: Number.isFinite(item?.duration) ? toMinutes(item.duration) : estimateDurationMinutesFromMiles(getPathDistanceMiles(toRouteGeometry(item)))
+      })).filter(item => item.geometry.length > 1);
+
+      const routeDistanceMiles = Number.isFinite(route?.distance) ? toMiles(route.distance) : getPathDistanceMiles(geometry);
+      const routeDurationMinutes = Number.isFinite(route?.duration) ? toMinutes(route.duration) : estimateDurationMinutesFromMiles(routeDistanceMiles);
+
+      return {
+        provider: provider.name,
+        geometry,
+        distanceMiles: routeDistanceMiles,
+        durationMinutes: routeDurationMinutes,
+        alternatives,
+        isFallback: false
+      };
+    } catch {
+      // Try the next provider.
+    }
+  }
+
+  try {
+    const segmentedRoute = await buildSegmentedRoute(coordinates);
+    if (segmentedRoute.geometry.length > 1) {
+      return {
+        provider: segmentedRoute.usedFallbackSegment ? 'osrm-segmented-partial' : 'osrm-segmented',
+        geometry: segmentedRoute.geometry,
+        distanceMiles: segmentedRoute.distanceMiles,
+        durationMinutes: segmentedRoute.durationMinutes,
+        alternatives: [],
+        isFallback: segmentedRoute.usedFallbackSegment
+      };
+    }
+  } catch {
+    // Use the straight-line fallback below.
+  }
+
+  return {
+    provider: 'fallback',
+    geometry: buildFallbackGeometry(coordinates),
+    distanceMiles: getPathDistanceMiles(coordinates),
+    durationMinutes: estimateDurationMinutesFromMiles(getPathDistanceMiles(coordinates)),
+    alternatives: [],
+    isFallback: true
+  };
+};
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const coordinates = toCoordinatePairs(searchParams.get('coordinates'));
@@ -194,69 +289,42 @@ export async function GET(request) {
     });
   }
 
-  const providers = [{
-    name: 'osrm',
-    url: buildOsrmUrl(coordinates, includeAlternatives)
-  }].filter(provider => provider.url);
-
-  for (const provider of providers) {
-    try {
-      const routes = await readOsrmRoutes(provider.url);
-      const route = routes[0];
-      const geometry = toRouteGeometry(route);
-
-      if (geometry.length < 2) continue;
-
-      const alternatives = routes.slice(1).map(item => ({
-        geometry: toRouteGeometry(item),
-        distanceMiles: Number.isFinite(item?.distance) ? toMiles(item.distance) : getPathDistanceMiles(toRouteGeometry(item)),
-        durationMinutes: Number.isFinite(item?.duration) ? toMinutes(item.duration) : estimateDurationMinutesFromMiles(getPathDistanceMiles(toRouteGeometry(item)))
-      })).filter(item => item.geometry.length > 1);
-
-      const routeDistanceMiles = Number.isFinite(route?.distance) ? toMiles(route.distance) : getPathDistanceMiles(geometry);
-      const routeDurationMinutes = Number.isFinite(route?.duration) ? toMinutes(route.duration) : estimateDurationMinutesFromMiles(routeDistanceMiles);
-
-      return NextResponse.json({
-        provider: provider.name,
-        geometry,
-        distanceMiles: routeDistanceMiles,
-        durationMinutes: routeDurationMinutes,
-        alternatives,
-        isFallback: false
-      }, {
-        headers: { 'Cache-Control': 'no-store' }
-      });
-    } catch {
-      // Try the next provider.
-    }
+  const cacheKey = buildRouteCacheKey(coordinates, includeAlternatives);
+  const cachedPayload = readRouteCache(cacheKey);
+  if (cachedPayload) {
+    return NextResponse.json(cachedPayload, {
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Route-Cache': 'HIT'
+      }
+    });
   }
 
-  try {
-    const segmentedRoute = await buildSegmentedRoute(coordinates);
-    if (segmentedRoute.geometry.length > 1) {
-      return NextResponse.json({
-        provider: segmentedRoute.usedFallbackSegment ? 'osrm-segmented-partial' : 'osrm-segmented',
-        geometry: segmentedRoute.geometry,
-        distanceMiles: segmentedRoute.distanceMiles,
-        durationMinutes: segmentedRoute.durationMinutes,
-        alternatives: [],
-        isFallback: segmentedRoute.usedFallbackSegment
-      }, {
-        headers: { 'Cache-Control': 'no-store' }
-      });
-    }
-  } catch {
-    // Use the straight-line fallback below.
+  if (routeInFlightRequests.has(cacheKey)) {
+    const inflightPayload = await routeInFlightRequests.get(cacheKey);
+    return NextResponse.json(inflightPayload, {
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Route-Cache': 'INFLIGHT'
+      }
+    });
   }
 
-  return NextResponse.json({
-    provider: 'fallback',
-    geometry: buildFallbackGeometry(coordinates),
-    distanceMiles: getPathDistanceMiles(coordinates),
-    durationMinutes: estimateDurationMinutesFromMiles(getPathDistanceMiles(coordinates)),
-    alternatives: [],
-    isFallback: true
-  }, {
-    headers: { 'Cache-Control': 'no-store' }
+  const payloadPromise = computeRoutePayload(coordinates, includeAlternatives)
+    .then(payload => {
+      writeRouteCache(cacheKey, payload);
+      return payload;
+    })
+    .finally(() => {
+      routeInFlightRequests.delete(cacheKey);
+    });
+
+  routeInFlightRequests.set(cacheKey, payloadPromise);
+  const payload = await payloadPromise;
+  return NextResponse.json(payload, {
+    headers: {
+      'Cache-Control': 'no-store',
+      'X-Route-Cache': 'MISS'
+    }
   });
 }
