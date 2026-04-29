@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 
 const MAX_ROUTE_COORDINATES = 60;
+const EARTH_RADIUS_MILES = 3958.8;
+const FALLBACK_SPEED_MPH = 28;
 
 const toCoordinatePairs = value => String(value ?? '').split(';').map(pair => pair.trim()).filter(Boolean).map(pair => {
   const [latitudeValue, longitudeValue] = pair.split(',').map(item => Number(item.trim()));
@@ -10,6 +12,33 @@ const toCoordinatePairs = value => String(value ?? '').split(';').map(pair => pa
 
 const toMiles = meters => Number.isFinite(meters) ? meters / 1609.344 : null;
 const toMinutes = seconds => Number.isFinite(seconds) ? seconds / 60 : null;
+
+const toRadians = value => value * (Math.PI / 180);
+
+const getSegmentDistanceMiles = (from, to) => {
+  if (!Array.isArray(from) || !Array.isArray(to) || from.length !== 2 || to.length !== 2) return null;
+  const dLat = toRadians(to[0] - from[0]);
+  const dLon = toRadians(to[1] - from[1]);
+  const lat1 = toRadians(from[0]);
+  const lat2 = toRadians(to[0]);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return EARTH_RADIUS_MILES * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getPathDistanceMiles = coordinates => {
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return null;
+  let totalMiles = 0;
+  let hasSegment = false;
+  for (let index = 0; index < coordinates.length - 1; index += 1) {
+    const segmentMiles = getSegmentDistanceMiles(coordinates[index], coordinates[index + 1]);
+    if (!Number.isFinite(segmentMiles)) continue;
+    totalMiles += segmentMiles;
+    hasSegment = true;
+  }
+  return hasSegment ? totalMiles : null;
+};
+
+const estimateDurationMinutesFromMiles = miles => Number.isFinite(miles) && miles >= 0 ? Math.max(1, Math.round(miles / FALLBACK_SPEED_MPH * 60)) : null;
 
 const buildFallbackGeometry = coordinates => coordinates.map(([latitude, longitude]) => [latitude, longitude]);
 
@@ -37,6 +66,8 @@ const buildSegmentedRoute = async coordinates => {
   let hasDistance = true;
   let hasDuration = true;
   let usedFallbackSegment = false;
+  let estimatedDistanceMiles = 0;
+  let estimatedDurationMinutes = 0;
 
   for (let index = 0; index < coordinates.length - 1; index += 1) {
     const segmentCoordinates = [coordinates[index], coordinates[index + 1]];
@@ -53,13 +84,23 @@ const buildSegmentedRoute = async coordinates => {
 
       if (Number.isFinite(route?.distance)) {
         distanceMeters += route.distance;
+        estimatedDistanceMiles += toMiles(route.distance) || 0;
       } else {
         hasDistance = false;
+        const fallbackSegmentMiles = getPathDistanceMiles(segmentCoordinates);
+        if (Number.isFinite(fallbackSegmentMiles)) {
+          estimatedDistanceMiles += fallbackSegmentMiles;
+        }
       }
       if (Number.isFinite(route?.duration)) {
         durationSeconds += route.duration;
+        estimatedDurationMinutes += toMinutes(route.duration) || 0;
       } else {
         hasDuration = false;
+        const fallbackSegmentMinutes = estimateDurationMinutesFromMiles(getPathDistanceMiles(segmentCoordinates));
+        if (Number.isFinite(fallbackSegmentMinutes)) {
+          estimatedDurationMinutes += fallbackSegmentMinutes;
+        }
       }
       continue;
     }
@@ -67,6 +108,11 @@ const buildSegmentedRoute = async coordinates => {
     usedFallbackSegment = true;
     hasDistance = false;
     hasDuration = false;
+    const fallbackSegmentMiles = getPathDistanceMiles(segmentCoordinates);
+    if (Number.isFinite(fallbackSegmentMiles)) {
+      estimatedDistanceMiles += fallbackSegmentMiles;
+      estimatedDurationMinutes += estimateDurationMinutesFromMiles(fallbackSegmentMiles) || 0;
+    }
     const fallbackGeometry = buildFallbackGeometry(segmentCoordinates);
     if (geometry.length > 0) {
       geometry.push(...fallbackGeometry.slice(1));
@@ -77,8 +123,8 @@ const buildSegmentedRoute = async coordinates => {
 
   return {
     geometry,
-    distanceMiles: hasDistance ? toMiles(distanceMeters) : null,
-    durationMinutes: hasDuration ? toMinutes(durationSeconds) : null,
+    distanceMiles: hasDistance ? toMiles(distanceMeters) : estimatedDistanceMiles > 0 ? estimatedDistanceMiles : getPathDistanceMiles(coordinates),
+    durationMinutes: hasDuration ? toMinutes(durationSeconds) : estimatedDurationMinutes > 0 ? estimatedDurationMinutes : estimateDurationMinutesFromMiles(getPathDistanceMiles(coordinates)),
     usedFallbackSegment
   };
 };
@@ -97,11 +143,12 @@ export async function GET(request) {
   }
 
   if (coordinates.length > MAX_ROUTE_COORDINATES) {
+    const fallbackMiles = getPathDistanceMiles(coordinates);
     return NextResponse.json({
       provider: 'fallback-capped',
       geometry: buildFallbackGeometry(coordinates),
-      distanceMiles: null,
-      durationMinutes: null,
+      distanceMiles: fallbackMiles,
+      durationMinutes: estimateDurationMinutesFromMiles(fallbackMiles),
       alternatives: [],
       isFallback: true,
       warning: `Route request exceeded ${MAX_ROUTE_COORDINATES} coordinates.`
@@ -125,15 +172,18 @@ export async function GET(request) {
 
       const alternatives = routes.slice(1).map(item => ({
         geometry: toRouteGeometry(item),
-        distanceMiles: toMiles(item?.distance),
-        durationMinutes: toMinutes(item?.duration)
+        distanceMiles: Number.isFinite(item?.distance) ? toMiles(item.distance) : getPathDistanceMiles(toRouteGeometry(item)),
+        durationMinutes: Number.isFinite(item?.duration) ? toMinutes(item.duration) : estimateDurationMinutesFromMiles(getPathDistanceMiles(toRouteGeometry(item)))
       })).filter(item => item.geometry.length > 1);
+
+      const routeDistanceMiles = Number.isFinite(route?.distance) ? toMiles(route.distance) : getPathDistanceMiles(geometry);
+      const routeDurationMinutes = Number.isFinite(route?.duration) ? toMinutes(route.duration) : estimateDurationMinutesFromMiles(routeDistanceMiles);
 
       return NextResponse.json({
         provider: provider.name,
         geometry,
-        distanceMiles: toMiles(route.distance),
-        durationMinutes: toMinutes(route.duration),
+        distanceMiles: routeDistanceMiles,
+        durationMinutes: routeDurationMinutes,
         alternatives,
         isFallback: false
       }, {
@@ -165,8 +215,8 @@ export async function GET(request) {
   return NextResponse.json({
     provider: 'fallback',
     geometry: buildFallbackGeometry(coordinates),
-    distanceMiles: null,
-    durationMinutes: null,
+    distanceMiles: getPathDistanceMiles(coordinates),
+    durationMinutes: estimateDurationMinutesFromMiles(getPathDistanceMiles(coordinates)),
     alternatives: [],
     isFallback: true
   }, {
