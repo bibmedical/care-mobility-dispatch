@@ -1851,6 +1851,22 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
             <Button
               variant="outline-dark"
               size="sm"
+              style={dispatcherToolbarButtonStyle}
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.open('/map-lab', '_blank', 'noopener,noreferrer');
+                } else {
+                  router.push('/map-lab');
+                }
+                setStatusMessage('Map Lab opened in a new tab.');
+              }}
+              title="Open isolated map speed lab"
+            >
+              Map lab
+            </Button>
+            <Button
+              variant="outline-dark"
+              size="sm"
               style={{ ...dispatcherToolbarButtonStyle, minWidth: 34, paddingLeft: 8, paddingRight: 8 }}
               onClick={() => changeTheme(isDarkMode ? 'light' : 'dark')}
               title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
