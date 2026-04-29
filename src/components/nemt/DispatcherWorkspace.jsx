@@ -3783,7 +3783,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   };
 
   useEffect(() => {
-    if (!dispatcherLayout.mapVisible || !showRoute || routeStops.length < 2) {
+    if (!showRoute || routeStops.length < 2) {
       setRouteGeometry([]);
       setRouteMetrics(null);
       return;
@@ -3826,10 +3826,10 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     return () => {
       abortController.abort();
     };
-  }, [dispatcherLayout.mapVisible, routeStops, showRoute]);
+  }, [routeStops, showRoute]);
 
   useEffect(() => {
-    if (!dispatcherLayout.mapVisible || !selectedDriver?.hasRealLocation || !selectedDriverEtaTrip) {
+    if (!selectedDriver?.hasRealLocation || !selectedDriverEtaTrip) {
       setSelectedDriverRouteGeometry([]);
       setSelectedDriverRouteMetrics(null);
       return;
@@ -3873,7 +3873,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     return () => {
       abortController.abort();
     };
-  }, [dispatcherLayout.mapVisible, selectedDriver, selectedDriverEtaTrip]);
+  }, [selectedDriver, selectedDriverEtaTrip]);
 
   useEffect(() => {
     if (!dragMode) return;
