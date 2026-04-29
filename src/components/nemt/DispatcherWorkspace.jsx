@@ -564,6 +564,16 @@ const getDriverMapLocationLabel = driver => {
   return 'Location unavailable';
 };
 
+const formatDriverSpeedLabel = driver => {
+  const speedValue = Number(driver?.speed);
+  if (!Number.isFinite(speedValue) || speedValue < 0) return 'Speed unavailable';
+  const normalizedSpeed = Math.max(0, speedValue);
+  const roundedSpeed = normalizedSpeed >= 10 ? Math.round(normalizedSpeed) : Number(normalizedSpeed.toFixed(1));
+  return `${roundedSpeed} mph`;
+};
+
+const formatMilesLabel = miles => Number.isFinite(miles) && miles >= 0 ? `${Number(miles).toFixed(1)} mi` : 'Miles unavailable';
+
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 const toRadians = value => value * (Math.PI / 180);
@@ -1249,12 +1259,12 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     const targetDateKey = tripDateFilter === 'all' ? todayDateKey : tripDateFilter;
     const dayTrips = trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === targetDateKey);
     const cancelled = dayTrips.filter(trip => getEffectiveTripStatus(trip) === 'Cancelled').length;
-    const completedByDrivers = dayTrips.filter(trip => String(getEffectiveTripStatus(trip)).trim().toLowerCase() === 'completed' && (trip?.driverId || trip?.secondaryDriverId)).length;
+    const completed = dayTrips.filter(trip => String(getEffectiveTripStatus(trip)).trim().toLowerCase() === 'completed').length;
     return {
       dateKey: targetDateKey,
       total: dayTrips.length,
       cancelled,
-      completedByDrivers
+      completed
     };
   }, [routePlans, todayDateKey, tripDateFilter, trips]);
   const cancelledSummaryTrips = useMemo(() => trips.filter(trip => getTripTimelineDateKey(trip, routePlans, trips) === daySummaryMetrics.dateKey && getEffectiveTripStatus(trip) === 'Cancelled'), [daySummaryMetrics.dateKey, routePlans, trips]);
@@ -1937,14 +1947,14 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   const nextFilter = tripStatusFilter === 'completed' ? 'all' : 'completed';
                   setTripStatusFilter(nextFilter);
                   setStatusMessage(nextFilter === 'completed'
-                    ? `Mostrando ${daySummaryMetrics.completedByDrivers} trip(s) completed en el dia.`
+                    ? `Mostrando ${daySummaryMetrics.completed} trip(s) completed en el dia.`
                     : 'Filtro de completed limpiado.');
                 }}
                 className="px-2 py-1 border-start text-start"
                 style={{ backgroundColor: isDarkMode ? (tripStatusFilter === 'completed' ? '#166534' : '#14532d') : (tripStatusFilter === 'completed' ? '#bbf7d0' : '#dcfce7'), minWidth: 104, border: 'none', color: isDarkMode ? '#86efac' : '#08131a', boxShadow: tripStatusFilter === 'completed' ? 'inset 0 0 0 2px rgba(22,101,52,0.35)' : 'none' }}
               >
                 <div className="small" style={{ lineHeight: 1, opacity: 0.7 }}>Completed</div>
-                <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completedByDrivers}</div>
+                <div className="fw-semibold" style={{ lineHeight: 1.1 }}>{daySummaryMetrics.completed}</div>
               </button>
             </div>
           </div>;
@@ -2632,6 +2642,7 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
       const miles = getDistanceMiles(driver.position, target.position);
       etaByDriver.set(String(driver.id || '').trim(), {
         etaLabel: formatEta(miles),
+        miles,
         rider: String(activeTrip?.rider || '').trim(),
         tripId: String(activeTrip?.brokerTripId || activeTrip?.id || '').trim(),
         targetLabel: String(target?.label || '').trim()
@@ -4146,6 +4157,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                 <Tooltip direction="top" offset={[0, -10]} opacity={1} sticky>
                   <div className="fw-semibold">{selectedDriver.name}</div>
                   <div>{getDriverMapLocationLabel(selectedDriver)}</div>
+                  <div className="small text-muted">Speed: {formatDriverSpeedLabel(selectedDriver)}</div>
+                  <div className="small text-muted">Miles: {formatMilesLabel(selectedDriverEta?.miles ?? driverEtaPreviewById.get(String(selectedDriver?.id || '').trim())?.miles)}</div>
                   <div className="small text-muted">Left to arrive: {selectedDriverEta?.label || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim())?.etaLabel || 'ETA unavailable'}</div>
                   <div className="small text-muted">Patient: {selectedDriverEtaTrip?.rider || driverEtaPreviewById.get(String(selectedDriver?.id || '').trim())?.rider || 'Not assigned'}</div>
                 </Tooltip>
@@ -4162,6 +4175,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                   <div className="small text-muted">Left to arrive: {driverEtaPreviewById.get(String(driver.id || '').trim())?.etaLabel || 'ETA unavailable'}</div>
                   <div className="small text-muted">Patient: {driverEtaPreviewById.get(String(driver.id || '').trim())?.rider || 'Not assigned'}</div>
                   <div>{getDriverMapLocationLabel(driver)}</div>
+                  <div className="small text-muted">Speed: {formatDriverSpeedLabel(driver)}</div>
+                  <div className="small text-muted">Miles: {formatMilesLabel(driverEtaPreviewById.get(String(driver.id || '').trim())?.miles)}</div>
                   <div className="small text-muted">{driver.live}</div>
                 </Tooltip>
               </Marker>)}
