@@ -683,13 +683,17 @@ export async function POST(request) {
     patch.canceledByDriverName = String(actionDriver?.name || currentTrip?.driverName || '').trim() || driverId;
   }
 
-  const nextTrips = trips.map(trip => String(trip?.id || '').trim() === tripId ? {
+  // Re-read latest state immediately before writing to avoid overwriting
+  // trips added via the web between the initial read and this write.
+  const latestStateForWrite = await readNemtDispatchState({ includePastDates: true });
+  const latestTripsForWrite = Array.isArray(latestStateForWrite?.trips) ? latestStateForWrite.trips : [];
+  const nextTrips = latestTripsForWrite.map(trip => String(trip?.id || '').trim() === tripId ? {
     ...trip,
     ...patch
   } : trip);
 
   await writeNemtDispatchState({
-    ...dispatchState,
+    ...latestStateForWrite,
     trips: nextTrips
   });
 
