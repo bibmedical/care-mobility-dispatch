@@ -471,7 +471,8 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
            data = EXCLUDED.data,
            service_date = EXCLUDED.service_date,
            broker_trip_id = EXCLUDED.broker_trip_id,
-           updated_at = NOW()`,
+           updated_at = NOW()
+         WHERE COALESCE((EXCLUDED.data->>'updatedAt')::bigint, 0) >= COALESCE((dispatch_trips.data->>'updatedAt')::bigint, 0)`,
         [JSON.stringify(activeState.trips)]
       );
       if (allowPrune) {
