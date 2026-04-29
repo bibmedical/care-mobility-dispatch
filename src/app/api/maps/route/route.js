@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 const MAX_ROUTE_COORDINATES = 60;
 const EARTH_RADIUS_MILES = 3958.8;
 const FALLBACK_SPEED_MPH = 28;
+const OSRM_REQUEST_TIMEOUT_MS = 6000;
 
 const toCoordinatePairs = value => String(value ?? '').split(';').map(pair => pair.trim()).filter(Boolean).map(pair => {
   const [latitudeValue, longitudeValue] = pair.split(',').map(item => Number(item.trim()));
@@ -48,13 +49,25 @@ const buildOsrmUrl = (coordinates, includeAlternatives = false) => {
 };
 
 const readOsrmRoutes = async url => {
-  const response = await fetch(url, {
-    cache: 'no-store'
-  });
-  if (!response.ok) return [];
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => {
+    abortController.abort();
+  }, OSRM_REQUEST_TIMEOUT_MS);
 
-  const payload = await response.json();
-  return Array.isArray(payload?.routes) ? payload.routes : [];
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      signal: abortController.signal
+    });
+    if (!response.ok) return [];
+
+    const payload = await response.json();
+    return Array.isArray(payload?.routes) ? payload.routes : [];
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 const toRouteGeometry = route => Array.isArray(route?.geometry?.coordinates) ? route.geometry.coordinates.map(([longitude, latitude]) => [latitude, longitude]) : [];

@@ -3777,7 +3777,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     if (!hasDetachedMapSelection) return [];
     return selectedTrips.length > 0 ? selectedTrips : routeTrips;
   }, [hasDetachedMapSelection, routeTrips, selectedTrips]);
-  const routePath = routeGeometry.length > 1 ? routeGeometry : routeGeometryLoading ? [] : mapRouteWaypointPositions.length > 1 ? mapRouteWaypointPositions : fallbackRoutePath;
+  const routePath = routeGeometry.length > 1 ? routeGeometry : mapRouteWaypointPositions.length > 1 ? mapRouteWaypointPositions : fallbackRoutePath;
   const mapViewportFocusPoints = useMemo(() => {
     const uniquePoints = [];
     const seenPoints = new Set();
@@ -5477,8 +5477,6 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       return;
     }
 
-    // Drop the previous driver's path immediately so the map never keeps a stale route
-    // while the next geometry request is loading.
     setRouteGeometry([]);
     setRouteMetrics(null);
     setRouteGeometryLoading(true);
