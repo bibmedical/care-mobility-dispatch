@@ -213,6 +213,14 @@ const isProtectedManualTrip = trip => {
   return Boolean(trip?.createdManually) || Boolean(trip?.protectedFromImportPrune) || source === MANUAL_TRIP_SOURCE;
 };
 
+const isConfirmedOrCompletedTrip = trip => {
+  if (!trip) return false;
+  const status = String(trip.status || '').trim();
+  return status === 'Confirmed' || status === 'Completed' || status === 'In Progress' ||
+    Boolean(trip.arrivedAt) || Boolean(trip.completedAt) || Boolean(trip.patientOnboardAt) ||
+    Boolean(trip.startTripAt) || Boolean(trip.arrivedDestinationAt);
+};
+
 const isSafeRideManagedTrip = trip => {
   if (!trip || isProtectedManualTrip(trip)) return false;
   const source = String(trip?.source || '').trim().toLowerCase();
@@ -1766,11 +1774,18 @@ export const NemtProvider = ({
 
   const reinstateTrips = (tripIds = []) => updateState(currentState => {
     const targetTripIds = tripIds.length > 0 ? tripIds : currentState.selectedTripIds;
+    // Never reinstate trips that have been confirmed or completed with a driver
+    const safeToReinstateIds = new Set(
+      targetTripIds.filter(id => {
+        const trip = currentState.trips.find(t => t.id === id);
+        return trip && !isConfirmedOrCompletedTrip(trip);
+      })
+    );
     const updatedAt = getMutationTimestamp();
     return {
       ...currentState,
-      selectedTripIds: currentState.selectedTripIds.filter(id => !targetTripIds.includes(id)),
-      trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
+      selectedTripIds: currentState.selectedTripIds.filter(id => !safeToReinstateIds.has(id)),
+      trips: currentState.trips.map(trip => safeToReinstateIds.has(trip.id) ? {
         ...resetTripDriverExecutionState(trip),
         driverId: null,
         secondaryDriverId: null,
@@ -2150,7 +2165,7 @@ export const NemtProvider = ({
     const targetDateKeys = new Set((Array.isArray(serviceDateKeys) ? serviceDateKeys : []).map(value => String(value || '').trim()).filter(Boolean));
     if (targetDateKeys.size === 0) return currentState;
 
-    const nextTrips = currentState.trips.filter(trip => isProtectedManualTrip(trip) || !targetDateKeys.has(getTripServiceDateKey(trip)));
+    const nextTrips = currentState.trips.filter(trip => isProtectedManualTrip(trip) || isConfirmedOrCompletedTrip(trip) || !targetDateKeys.has(getTripServiceDateKey(trip)));
     const nextTripIds = new Set(nextTrips.map(trip => trip.id));
 
     return {
