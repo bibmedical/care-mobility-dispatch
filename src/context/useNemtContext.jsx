@@ -657,6 +657,7 @@ export const NemtProvider = ({
   const driverSyncInFlightRef = useRef(false);
   const driverSyncPendingRef = useRef(false);
   const recentlyDeletedTripIdsRef = useRef(new Map());
+  const pendingDeletedServiceDatesRef = useRef(new Set());
   const pendingPersistSnapshotRef = useRef('');
   const allowTripShrinkNextPersistRef = useRef(false);
   const pendingAllowTripShrinkRef = useRef(false);
@@ -849,9 +850,30 @@ export const NemtProvider = ({
     const allowTripShrink = pendingAllowTripShrinkRef.current;
     const allowTripShrinkReason = pendingAllowTripShrinkReasonRef.current;
     const actorName = String(session?.user?.name || session?.user?.username || session?.user?.email || '').trim();
-    const pruneDateKey = String(dispatchQueryDateKeyRef.current || '').trim();
-    const pruneWindowPastDays = String(Math.max(Number(dispatchWindowPastDaysRef.current) || 0, 0));
-    const pruneWindowFutureDays = String(Math.max(Number(dispatchWindowFutureDaysRef.current) || 0, 0));
+    // Derive prune scope from the actual trip dates in the snapshot so that deleting
+    // a trip from a future date (e.g. May 1 while viewing April 30) is correctly
+    // removed from SQL instead of being skipped by a mismatched service_date scope.
+    let pruneDateKey = String(dispatchQueryDateKeyRef.current || '').trim();
+    let pruneWindowPastDays = String(Math.max(Number(dispatchWindowPastDaysRef.current) || 0, 0));
+    let pruneWindowFutureDays = String(Math.max(Number(dispatchWindowFutureDaysRef.current) || 0, 0));
+    if (allowTripShrink && nextSnapshot) {
+      try {
+        const snapshotTrips = JSON.parse(nextSnapshot)?.trips;
+        const snapshotDates = Array.isArray(snapshotTrips)
+          ? snapshotTrips.map(t => String(t?.serviceDate || '').trim()).filter(Boolean)
+          : [];
+        // Also include dates of trips that were deleted (they may no longer appear in the snapshot)
+        const allDates = Array.from(new Set([...snapshotDates, ...Array.from(pendingDeletedServiceDatesRef.current)])).sort();
+        if (allDates.length > 0) {
+          pruneDateKey = allDates[0];
+          pruneWindowPastDays = '0';
+          pruneWindowFutureDays = String(allDates.length - 1);
+        }
+      } catch {
+        // keep defaults on parse error
+      }
+    }
+    pendingDeletedServiceDatesRef.current.clear();
 
     persistInFlightRef.current = true;
     pendingPersistSnapshotRef.current = '';
@@ -2384,6 +2406,13 @@ export const NemtProvider = ({
     const normalizedTripId = String(tripId || '').trim();
     if (!normalizedTripId) return;
     recentlyDeletedTripIdsRef.current.set(normalizedTripId, Date.now());
+    // Track the service date of the trip being deleted so the SQL prune scope
+    // covers the correct date even when viewing a different date on the dashboard.
+    const tripBeingDeleted = (state?.trips ?? []).find(t => String(t?.id || '').trim() === normalizedTripId);
+    const deletedServiceDate = String(getTripServiceDateKey(tripBeingDeleted) || '').trim();
+    if (deletedServiceDate) {
+      pendingDeletedServiceDatesRef.current.add(deletedServiceDate);
+    }
     updateState(currentState => ({
       ...currentState,
       selectedTripIds: currentState.selectedTripIds.filter(id => id !== normalizedTripId),
