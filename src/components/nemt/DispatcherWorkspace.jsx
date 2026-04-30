@@ -2802,11 +2802,18 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   const handleCompleteModalTrip = () => {
     if (!noteModalTrip) return;
     const nowLabel = formatWillCallDeadlineLabel(new Date());
+    const assignedDriverId = String(noteModalTrip?.driverId || '').trim();
+    const assignedDriverName = assignedDriverId ? getDriverName(assignedDriverId) : '';
+    const completedByName = assignedDriverName && assignedDriverName !== 'Unassigned' ? assignedDriverName : 'Dispatcher';
     updateTripRecord(noteModalTrip.id, {
       status: 'Completed',
-      actualDropoff: String(tripEditDraft.actualDropoff || '').trim() || nowLabel
+      actualDropoff: String(tripEditDraft.actualDropoff || '').trim() || nowLabel,
+      completedByDriverName: completedByName
+    }, {
+      action: 'trip-complete-dispatcher',
+      summary: `Trip ${getDisplayTripId(noteModalTrip)} completed by ${completedByName}`
     });
-    setStatusMessage(`Trip ${getDisplayTripId(noteModalTrip)} completado desde Dispatcher.`);
+    setStatusMessage(`Trip ${getDisplayTripId(noteModalTrip)} completado por ${completedByName}.`);
     handleCloseTripNote();
   };
 
