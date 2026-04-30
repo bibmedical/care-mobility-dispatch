@@ -143,6 +143,8 @@ export type DriverTrip = {
   completedAt?: number | null;
   riderSignatureName?: string;
   riderSignedAt?: number | null;
+  sharedRideId?: string | null;
+  sharedRideOrder?: number | null;
   canceledAt?: number | null;
   canceledByDriverId?: string;
   canceledByDriverName?: string;

@@ -818,7 +818,9 @@ export const normalizeTripRecord = trip => {
     onTimeStatus: normalizeTextValue(trip?.onTimeStatus || (lateMinutes == null ? 'Pending' : lateMinutes > 0 ? 'Late' : 'On Time')),
     localOverrides,
     providerSnapshot,
-    confirmation: normalizeTripConfirmation(trip?.confirmation)
+    confirmation: normalizeTripConfirmation(trip?.confirmation),
+    sharedRideId: normalizeTextValue(trip?.sharedRideId),
+    sharedRideOrder: trip?.sharedRideOrder != null ? Number(trip.sharedRideOrder) : null
   };
 };
 

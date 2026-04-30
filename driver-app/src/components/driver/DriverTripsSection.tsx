@@ -708,11 +708,31 @@ export const DriverTripsSection = ({ runtime }: Props) => {
           <Text style={driverSharedStyles.emptyText}>No trips in this queue.</Text>
         </View> : null}
 
-      {displayedScheduledTrips.map(trip => {
-        const isWillCallTrip = Boolean(trip.isWillCall) || String(trip.status || '').trim().toLowerCase() === 'willcall';
-        const willCallActivatedLabel = formatWillCallActivatedLabel(trip.willCallActivatedAt);
+      {(() => {
+        // Sort: shared ride trips grouped together (by sharedRideId then sharedRideOrder), standalone trips stay in place
+        const sorted = [...displayedScheduledTrips].sort((a, b) => {
+          const aGroup = a.sharedRideId || '';
+          const bGroup = b.sharedRideId || '';
+          if (aGroup && bGroup && aGroup === bGroup) return (a.sharedRideOrder ?? 0) - (b.sharedRideOrder ?? 0);
+          if (aGroup && !bGroup) return -1;
+          if (!aGroup && bGroup) return 1;
+          return 0;
+        });
+        const seenGroups = new Set<string>();
+        return sorted.map(trip => {
+          const isWillCallTrip = Boolean(trip.isWillCall) || String(trip.status || '').trim().toLowerCase() === 'willcall';
+          const willCallActivatedLabel = formatWillCallActivatedLabel(trip.willCallActivatedAt);
+          const sharedGroupId = trip.sharedRideId || '';
+          const isFirstInGroup = sharedGroupId && !seenGroups.has(sharedGroupId);
+          if (sharedGroupId) seenGroups.add(sharedGroupId);
+          const groupSize = sharedGroupId ? sorted.filter(t => t.sharedRideId === sharedGroupId).length : 0;
+          const posInGroup = sharedGroupId ? (trip.sharedRideOrder != null ? trip.sharedRideOrder + 1 : sorted.filter(t => t.sharedRideId === sharedGroupId).indexOf(trip) + 1) : 0;
 
-        return <View key={trip.id} style={[styles.routeCard, runtime.activeTrip?.id === trip.id ? styles.routeCardActive : null]}>
+          return <View key={trip.id}>
+            {isFirstInGroup ? <View style={styles.sharedRideGroupHeader}>
+                <Text style={styles.sharedRideGroupHeaderText}>🚌 Shared ride · {groupSize} rider{groupSize !== 1 ? 's' : ''} — pick up ALL before dropping off</Text>
+              </View> : null}
+            <View style={[styles.routeCard, runtime.activeTrip?.id === trip.id ? styles.routeCardActive : null, sharedGroupId ? styles.routeCardSharedRide : null]}>
               <Pressable onPress={() => handleTripCardPress(trip)}>
               <View style={styles.routeCardTop}>
                 <View style={styles.routeTopHeaderRow}>
@@ -727,6 +747,11 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                   </View>
                 </View>
                 {renderSupportBadges(trip)}
+                {sharedGroupId ? <View style={styles.supportBadgeRow}>
+                    <View style={[styles.supportBadge, styles.supportBadgeSharedRide]}>
+                      <Text style={styles.supportBadgeSharedRideText}>🚌 Rider {posInGroup}/{groupSize}</Text>
+                    </View>
+                  </View> : null}
               </View>
 
               <View style={styles.routeCardBottom}>
@@ -753,6 +778,9 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               </View>
             </View>;
           })}
+        </View>;
+        })}
+      )()}
 
       {displayedFocusTrip ? <View style={driverSharedStyles.card}>
           <View style={driverSharedStyles.rowBetween}>
@@ -984,6 +1012,22 @@ const styles = StyleSheet.create({
     borderColor: driverTheme.colors.primary,
     borderWidth: 2
   },
+  routeCardSharedRide: {
+    borderColor: '#0ea5e9',
+    borderLeftWidth: 4
+  },
+  sharedRideGroupHeader: {
+    backgroundColor: '#0ea5e9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: 4
+  },
+  sharedRideGroupHeaderText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700'
+  },
   routeCardTop: {
     backgroundColor: '#334155',
     paddingHorizontal: 10,
@@ -1161,6 +1205,15 @@ const styles = StyleSheet.create({
   },
   supportBadgeAnimalText: {
     color: '#6f4e00',
+    fontSize: 11,
+    fontWeight: '800'
+  },
+  supportBadgeSharedRide: {
+    backgroundColor: '#e0f2fe',
+    borderColor: '#0ea5e9'
+  },
+  supportBadgeSharedRideText: {
+    color: '#0369a1',
     fontSize: 11,
     fontWeight: '800'
   },

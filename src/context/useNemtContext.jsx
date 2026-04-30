@@ -2158,6 +2158,53 @@ export const NemtProvider = ({
     return nextTrip;
   };
 
+  const groupSharedRide = (tripIds = []) => {
+    const normalizedIds = tripIds.map(id => String(id || '').trim()).filter(Boolean);
+    if (normalizedIds.length < 2) return;
+    const sharedRideId = `shared-${getMutationTimestamp()}`;
+    const updatedAt = getMutationTimestamp();
+    updateState(currentState => ({
+      ...currentState,
+      trips: currentState.trips.map((trip, _, arr) => {
+        const idx = normalizedIds.indexOf(String(trip.id || '').trim());
+        if (idx === -1) return trip;
+        return { ...trip, sharedRideId, sharedRideOrder: idx, updatedAt };
+      })
+    }), {
+      markDispatchDirty: true,
+      buildAuditEntry: () => ({
+        action: 'shared-ride-group',
+        entityType: 'trip',
+        entityId: sharedRideId,
+        source: 'dispatcher',
+        summary: `Grouped ${normalizedIds.length} trips as shared ride ${sharedRideId}`
+      })
+    });
+  };
+
+  const ungroupSharedRide = (sharedRideId) => {
+    const normalizedId = String(sharedRideId || '').trim();
+    if (!normalizedId) return;
+    const updatedAt = getMutationTimestamp();
+    updateState(currentState => ({
+      ...currentState,
+      trips: currentState.trips.map(trip =>
+        String(trip.sharedRideId || '').trim() === normalizedId
+          ? { ...trip, sharedRideId: null, sharedRideOrder: null, updatedAt }
+          : trip
+      )
+    }), {
+      markDispatchDirty: true,
+      buildAuditEntry: () => ({
+        action: 'shared-ride-ungroup',
+        entityType: 'trip',
+        entityId: normalizedId,
+        source: 'dispatcher',
+        summary: `Ungrouped shared ride ${normalizedId}`
+      })
+    });
+  };
+
   const clearTrips = () => updateState(currentState => ({
     ...currentState,
     trips: [],
@@ -2399,6 +2446,8 @@ export const NemtProvider = ({
     clearTripsByServiceDates,
     clearTrips,
     createManualTripRecord,
+    groupSharedRide,
+    ungroupSharedRide,
     updateTripNotes,
     updateTripRecord,
     cloneTripRecord,

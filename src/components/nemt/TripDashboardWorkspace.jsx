@@ -1221,6 +1221,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     refreshDispatchState,
     getDriverName,
     createManualTripRecord,
+    groupSharedRide,
+    ungroupSharedRide,
     updateTripNotes,
     updateTripRecord,
     cloneTripRecord,
@@ -2715,14 +2717,28 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       style={{ width: 190 }}
     />;
 
-    const renderActionButtonsBlock = () => tripStatusFilter === 'cancelled' ? <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button> : <div className="d-flex align-items-center gap-1 flex-nowrap">
-      <Button variant={isDarkTheme ? 'blue' : 'success'} size="sm" onClick={() => setShowManualTripModal(true)} title="Create manual trip">+Trip</Button>
-      <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
-      <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
-      <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
-      <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
-      <Button variant="outline-danger" size="sm" onClick={handleDeleteSelectedTrips} title="Delete selected trips" disabled={selectedTripIds.length === 0}>D</Button>
-    </div>;
+    const renderActionButtonsBlock = () => {
+      const selectedSharedRideIds = [...new Set(
+        trips.filter(t => selectedTripIds.includes(String(t.id)) && t.sharedRideId).map(t => t.sharedRideId)
+      )];
+      const allSelectedAreGrouped = selectedTripIds.length >= 2 && selectedSharedRideIds.length === 1 &&
+        trips.filter(t => t.sharedRideId === selectedSharedRideIds[0]).every(t => selectedTripIds.includes(String(t.id)));
+      if (tripStatusFilter === 'cancelled') return <Button variant="primary" size="sm" onClick={handleReinstateSelectedTrips}>I</Button>;
+      return <div className="d-flex align-items-center gap-1 flex-nowrap">
+        <Button variant={isDarkTheme ? 'blue' : 'success'} size="sm" onClick={() => setShowManualTripModal(true)} title="Create manual trip">+Trip</Button>
+        <Button variant="primary" size="sm" onClick={() => handleAssign(selectedDriverId)}>A</Button>
+        <Button variant="warning" size="sm" onClick={() => handleAssignSecondary(selectedSecondaryDriverId)} title="Assign secondary driver">A2</Button>
+        <Button variant="secondary" size="sm" onClick={handleUnassign}>U</Button>
+        <Button variant="danger" size="sm" onClick={handleCancelSelectedTrips}>C</Button>
+        <Button variant="outline-danger" size="sm" onClick={handleDeleteSelectedTrips} title="Delete selected trips" disabled={selectedTripIds.length === 0}>D</Button>
+        {selectedTripIds.length >= 2 && !allSelectedAreGrouped
+          ? <Button size="sm" variant="outline-info" onClick={() => groupSharedRide(selectedTripIds)} title="Agrupar como shared ride: el chofer recoge a todos los riders antes de dejar a alguien">🚌 Shared</Button>
+          : null}
+        {allSelectedAreGrouped
+          ? <Button size="sm" variant="outline-secondary" onClick={() => ungroupSharedRide(selectedSharedRideIds[0])} title="Desagrupar shared ride">✕ Shared</Button>
+          : null}
+      </div>;
+    };
 
   const renderLegButtonsBlock = () => <div className="d-flex align-items-center gap-1 flex-nowrap">
       <span className="fw-semibold small" style={isDarkTheme ? compactToolbarLabelStyle : { color: '#10212b' }}>Leg</span>
@@ -5885,6 +5901,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           {!orderedVisibleTripColumns.includes('rider') && trip.rider ? <div className="small text-muted mt-1" style={{ lineHeight: 1.1, whiteSpace: 'normal', maxWidth: 180 }}>{trip.rider}</div> : null}
             {getLegBadge(displayTrip) ? <Badge bg={getThemeAwareLegBadge(getLegBadge(displayTrip)).variant} text={getThemeAwareLegBadge(getLegBadge(displayTrip)).variant === 'warning' ? 'dark' : undefined} className="mt-1 me-1">{getThemeAwareLegBadge(getLegBadge(displayTrip)).label}</Badge> : null}
             {trip.hasServiceAnimal ? <Badge bg="warning" text="dark" className="mt-1 me-1">🐕 Service Animal</Badge> : null}
+            {trip.sharedRideId ? <Badge bg="info" text="dark" className="mt-1 me-1" title={`Shared ride group: ${trip.sharedRideId}`}>🚌 Shared</Badge> : null}
           </td>;
       case 'vehicle':
         {
