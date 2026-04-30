@@ -1433,6 +1433,11 @@ export const NemtProvider = ({
         if (shouldAllowTripShrink) {
           allowTripShrinkNextPersistRef.current = true;
           allowTripShrinkReasonNextPersistRef.current = allowTripShrinkReason || 'manual-admin-delete';
+        } else {
+          // Keep merge/import writes strictly non-destructive unless a caller
+          // explicitly requests trip shrink for a delete/clear operation.
+          allowTripShrinkNextPersistRef.current = false;
+          allowTripShrinkReasonNextPersistRef.current = '';
         }
       }
       const nextState = updater(baseState);
