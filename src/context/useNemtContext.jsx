@@ -1425,14 +1425,15 @@ export const NemtProvider = ({
     const shouldMarkDispatchDirty = options.markDispatchDirty ?? false;
     const shouldAllowTripShrink = options.allowTripShrink ?? false;
     const allowTripShrinkReason = String(options.allowTripShrinkReason || '').trim();
+    const allowExplicitManualDeleteShrink = shouldAllowTripShrink && allowTripShrinkReason === 'manual-admin-delete';
     const buildAuditEntry = typeof options.buildAuditEntry === 'function' ? options.buildAuditEntry : null;
     setState(currentState => {
       const baseState = currentState ?? createInitialState();
       if (shouldMarkDispatchDirty) {
         hasLocalDispatchChangesRef.current = true;
-        if (shouldAllowTripShrink) {
+        if (allowExplicitManualDeleteShrink) {
           allowTripShrinkNextPersistRef.current = true;
-          allowTripShrinkReasonNextPersistRef.current = allowTripShrinkReason || 'manual-admin-delete';
+          allowTripShrinkReasonNextPersistRef.current = 'manual-admin-delete';
         } else {
           // Keep merge/import writes strictly non-destructive unless a caller
           // explicitly requests trip shrink for a delete/clear operation.
