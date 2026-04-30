@@ -903,6 +903,8 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
       return getDropoffZip(trip);
     case 'phone':
       return trip.patientPhoneNumber;
+    case 'alternativePhone':
+      return trip.alternativePhoneNumber;
     case 'miles':
       return Number(trip.miles) || 0;
     case 'vehicle':
@@ -2172,7 +2174,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   }, [isTripDashboardSurface]);
   const tripColumnMeta = useMemo(() => Object.fromEntries(DISPATCH_TRIP_COLUMN_OPTIONS.map(option => [option.key, {
     label: option.label,
-    width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' ? 150 : option.key === 'rider' ? 180 : undefined,
+    width: option.key === 'address' || option.key === 'destination' ? 260 : option.key === 'phone' || option.key === 'alternativePhone' ? 150 : option.key === 'rider' ? 180 : undefined,
     sortable: option.key !== 'notes'
   }])), []);
   const orderedVisibleTripColumns = useMemo(() => visibleTripColumns.filter(columnKey => Boolean(tripColumnMeta[columnKey])), [tripColumnMeta, visibleTripColumns]);
@@ -2956,16 +2958,23 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   };
 
   const handleCreateManualTrip = async draft => {
-    const createdTrip = createManualTripRecord({
-      ...draft,
+    const tripDrafts = Array.isArray(draft?.segments) ? draft.segments : [draft];
+    const createdTrips = tripDrafts.map(segmentDraft => createManualTripRecord({
+      ...segmentDraft,
       manualEntrySource: 'trip-dashboard'
-    });
-    setTripDateFilter(createdTrip.serviceDate || draft.serviceDate);
+    }));
+    const firstTrip = createdTrips[0];
+    const createdCount = createdTrips.length;
+    if (!firstTrip) return;
+
+    setTripDateFilter(firstTrip.serviceDate || draft.serviceDate);
     setTripStatusFilter('all');
     setSelectedRouteId(null);
-    setSelectedTripIds([createdTrip.id]);
+    setSelectedTripIds(createdTrips.map(trip => trip.id));
     setShowManualTripModal(false);
-    const message = `Manual trip ${createdTrip.brokerTripId || createdTrip.id} created for ${createdTrip.rider}.`;
+    const message = createdCount > 1
+      ? `Round trip created with ${createdCount} legs for ${firstTrip.rider}.`
+      : `Manual trip ${firstTrip.brokerTripId || firstTrip.id} created for ${firstTrip.rider}.`;
     setStatusMessage(message);
     showNotification({ message, variant: 'success' });
   };
@@ -4697,7 +4706,14 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   const handleToggleTripColumn = columnKey => {
     const nextColumns = orderedVisibleTripColumns.includes(columnKey) ? orderedVisibleTripColumns.filter(item => item !== columnKey) : [...orderedVisibleTripColumns, columnKey];
     if (nextColumns.length === 0) {
-      setStatusMessage('At least one column must remain visible.');
+      const fallbackColumnKey = tripColumnMeta.trip ? 'trip' : Object.keys(tripColumnMeta)[0];
+      if (!fallbackColumnKey) {
+        setStatusMessage('No columns are available right now.');
+        return;
+      }
+      setScannerColumnsSaved(false);
+      setSurfaceVisibleTripColumns([fallbackColumnKey]);
+      setStatusMessage('Trip / Ride was enabled so you can hide the previous column.');
       return;
     }
     setScannerColumnsSaved(false);
@@ -6019,6 +6035,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
           },
           placeholder: '(407) 555-0000'
         });
+      case 'alternativePhone':
+        return <td key={`${trip.id}-alternative-phone`} style={{ whiteSpace: 'nowrap' }}>{trip.alternativePhoneNumber || '-'}</td>;
       case 'mobility': {
         const tripTypeLabel = getTripTypeLabel(trip);
         const badgeVariant = tripTypeLabel === 'STR' ? 'danger' : tripTypeLabel === 'W' ? 'warning' : 'success';

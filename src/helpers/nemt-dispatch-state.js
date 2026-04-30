@@ -512,6 +512,9 @@ export const DISPATCH_TRIP_COLUMN_OPTIONS = [{
   key: 'phone',
   label: 'Phone'
 }, {
+  key: 'alternativePhone',
+  label: 'Alternative phone'
+}, {
   key: 'miles',
   label: 'Miles'
 }, {
@@ -740,6 +743,7 @@ export const normalizeTripRecord = trip => {
   const { address, zipcode: fromZipcode } = splitAddressAndZipcode(rawAddress, rawFromZipcode);
   const { address: destination, zipcode: toZipcode } = splitAddressAndZipcode(rawDestination, rawToZipcode);
   const patientPhoneNumber = getFirstNonEmptyValue(trip?.patientPhoneNumber, trip?.phone, trip?.phoneNumber, trip?.memberPhone);
+  const alternativePhoneNumber = getFirstNonEmptyValue(trip?.alternativePhoneNumber, trip?.alternative_phone_number);
   const notes = getFirstNonEmptyValue(trip?.notes, trip?.additionalNotes, trip?.otherDetails);
   const vehicleType = getFirstNonEmptyValue(trip?.vehicleType, trip?.requestedVehicleType, trip?.vehicleRequired);
   const tripType = getFirstNonEmptyValue(trip?.tripType, trip?.serviceType, trip?.levelOfService, trip?.serviceLevel, trip?.los);
@@ -791,6 +795,7 @@ export const normalizeTripRecord = trip => {
     notes,
     vehicleType,
     tripType,
+    alternativePhoneNumber,
     assistanceNeeds,
     subMobilityType,
     delay,

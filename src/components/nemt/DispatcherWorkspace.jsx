@@ -813,6 +813,8 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
       return getDropoffZip(trip);
     case 'phone':
       return trip.patientPhoneNumber;
+    case 'alternativePhone':
+      return trip.alternativePhoneNumber;
     case 'miles':
       return Number(trip.miles) || 0;
     case 'vehicle':
@@ -2050,16 +2052,25 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   };
 
   const handleCreateManualTrip = async draft => {
-    const createdTrip = createManualTripRecord({
-      ...draft,
+    const tripDrafts = Array.isArray(draft?.segments) ? draft.segments : [draft];
+    const createdTrips = tripDrafts.map(segmentDraft => createManualTripRecord({
+      ...segmentDraft,
       manualEntrySource: 'dispatcher'
-    });
-    setTripDateFilter(createdTrip.serviceDate || draft.serviceDate);
+    }));
+    const firstTrip = createdTrips[0];
+    const createdCount = createdTrips.length;
+    if (!firstTrip) return;
+
+    setTripDateFilter(firstTrip.serviceDate || draft.serviceDate);
     setTripStatusFilter('all');
     setSelectedRouteId(null);
-    setSelectedTripIds([createdTrip.id]);
+    setSelectedTripIds(createdTrips.map(trip => trip.id));
     setShowManualTripModal(false);
-    setStatusMessage(`Manual trip ${createdTrip.brokerTripId || createdTrip.id} created for ${createdTrip.rider}.`);
+    if (createdCount > 1) {
+      setStatusMessage(`Round trip created with ${createdCount} legs for ${firstTrip.rider}.`);
+    } else {
+      setStatusMessage(`Manual trip ${firstTrip.brokerTripId || firstTrip.id} created for ${firstTrip.rider}.`);
+    }
   };
 
   const renderToolbarRow3Block = blockId => {
@@ -2895,7 +2906,13 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
   const handleToggleTripColumn = columnKey => {
     const nextColumns = orderedVisibleTripColumns.includes(columnKey) ? orderedVisibleTripColumns.filter(item => item !== columnKey) : [...orderedVisibleTripColumns, columnKey];
     if (nextColumns.length === 0) {
-      setStatusMessage('Debe quedar al menos una columna visible.');
+      const fallbackColumnKey = tripColumnMeta.trip ? 'trip' : Object.keys(tripColumnMeta)[0];
+      if (!fallbackColumnKey) {
+        setStatusMessage('No se encontraron columnas disponibles.');
+        return;
+      }
+      setDispatcherVisibleTripColumns(orderDispatcherVisibleTripColumns([fallbackColumnKey]));
+      setStatusMessage('Se activo Trip / Ride para poder ocultar la columna anterior.');
       return;
     }
     setDispatcherVisibleTripColumns(orderDispatcherVisibleTripColumns(nextColumns));
@@ -3182,6 +3199,8 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
           textColor,
           placeholder: '(407) 555-0000'
         });
+      case 'alternativePhone':
+        return <td key={columnKey} style={{ whiteSpace: 'nowrap', color: textColor }}>{trip.alternativePhoneNumber || '-'}</td>;
       case 'vehicle':
         return renderInlineEditableTripCell({
           trip,
