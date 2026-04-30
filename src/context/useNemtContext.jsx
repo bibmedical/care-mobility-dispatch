@@ -345,6 +345,18 @@ const getImportedTripRoutingChangePreviews = (currentTrips, importedTrips) => {
 
 const mergeImportedTripWithCurrent = (currentTrip, importedTrip, importMetadata = {}, applyRoutingChanges = true) => {
   const shouldAutoCancel = isSafeRideCancelledImport(importedTrip);
+  // Protect confirmed/active trips — never clear driver assignment if trip was confirmed or driver already started execution
+  const isConfirmedOrActive = !!(
+    currentTrip && (
+      ['Confirmed', 'Completed', 'In Progress'].includes(currentTrip.status) ||
+      currentTrip.arrivedAt ||
+      currentTrip.completedAt ||
+      currentTrip.patientOnboardAt ||
+      currentTrip.startTripAt ||
+      currentTrip.acceptedAt
+    )
+  );
+  const effectiveAutoCancel = shouldAutoCancel && !isConfirmedOrActive;
   const hasRoutingChange = hasImportedTripRoutingChange(currentTrip, importedTrip);
   const importedAt = String(importMetadata?.importedAt || '').trim() || new Date().toISOString();
   const batchId = String(importMetadata?.batchId || '').trim() || null;
@@ -365,14 +377,14 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip, importMetadata 
     ...importedTrip,
     id: String(currentTrip?.id || importedTrip?.id || '').trim(),
     importFingerprint: String(currentTrip?.importFingerprint || importedTrip?.importFingerprint || '').trim(),
-    driverId: shouldAutoCancel ? null : currentTrip?.driverId ?? null,
-    secondaryDriverId: shouldAutoCancel ? null : currentTrip?.secondaryDriverId ?? null,
-    routeId: shouldAutoCancel ? null : currentTrip?.routeId ?? null,
-    status: shouldAutoCancel ? 'Cancelled' : (currentTrip?.status || importedTrip?.status),
-    safeRideStatus: shouldAutoCancel ? 'Canceled by SafeRide' : getPreferredImportedValue(false, currentTrip?.safeRideStatus, importedTrip?.safeRideStatus),
-    cancellationReason: shouldAutoCancel ? 'Canceled by SafeRide' : (localOverrides.localCancellation ? currentTrip?.cancellationReason : getPreferredImportedValue(false, currentTrip?.cancellationReason, importedTrip?.cancellationReason)),
-    cancellationSource: shouldAutoCancel ? 'saferide-import' : (localOverrides.localCancellation ? currentTrip?.cancellationSource : getPreferredImportedValue(false, currentTrip?.cancellationSource, importedTrip?.cancellationSource)),
-    cancelledAt: shouldAutoCancel ? new Date().toISOString() : (localOverrides.localCancellation ? currentTrip?.cancelledAt || null : getPreferredImportedValue(false, currentTrip?.cancelledAt, importedTrip?.cancelledAt)),
+    driverId: effectiveAutoCancel ? null : currentTrip?.driverId ?? null,
+    secondaryDriverId: effectiveAutoCancel ? null : currentTrip?.secondaryDriverId ?? null,
+    routeId: effectiveAutoCancel ? null : currentTrip?.routeId ?? null,
+    status: effectiveAutoCancel ? 'Cancelled' : (currentTrip?.status || importedTrip?.status),
+    safeRideStatus: effectiveAutoCancel ? 'Canceled by SafeRide' : getPreferredImportedValue(false, currentTrip?.safeRideStatus, importedTrip?.safeRideStatus),
+    cancellationReason: effectiveAutoCancel ? 'Canceled by SafeRide' : (localOverrides.localCancellation ? currentTrip?.cancellationReason : getPreferredImportedValue(false, currentTrip?.cancellationReason, importedTrip?.cancellationReason)),
+    cancellationSource: effectiveAutoCancel ? 'saferide-import' : (localOverrides.localCancellation ? currentTrip?.cancellationSource : getPreferredImportedValue(false, currentTrip?.cancellationSource, importedTrip?.cancellationSource)),
+    cancelledAt: effectiveAutoCancel ? new Date().toISOString() : (localOverrides.localCancellation ? currentTrip?.cancelledAt || null : getPreferredImportedValue(false, currentTrip?.cancelledAt, importedTrip?.cancelledAt)),
     pickup: getPreferredImportedValue(localOverrides.pickupTime, currentTrip?.pickup, importedTrip?.pickup),
     scheduledPickup: getPreferredImportedValue(localOverrides.pickupTime, currentTrip?.scheduledPickup, importedTrip?.scheduledPickup),
     pickupSortValue: getPreferredImportedNumericValue(localOverrides.pickupTime, currentTrip?.pickupSortValue, importedTrip?.pickupSortValue),
