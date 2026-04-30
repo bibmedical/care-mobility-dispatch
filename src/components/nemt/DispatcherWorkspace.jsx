@@ -2608,7 +2608,11 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
 
   const allVisibleSelected = visibleTripIds.length > 0 && visibleTripIds.every(id => selectedTripIdSet.has(id));
   const showCancelledDetailControls = !isCancelledPanelMode;
-  const activeVisibleTripColumns = useMemo(() => showCancelledDetailControls ? orderedVisibleTripColumns : orderedVisibleTripColumns.filter(columnKey => !dispatcherControlColumnKeySet.has(columnKey)), [dispatcherControlColumnKeySet, orderedVisibleTripColumns, showCancelledDetailControls]);
+  const activeVisibleTripColumns = useMemo(() => {
+    if (showCancelledDetailControls) return orderedVisibleTripColumns;
+    const nonControlColumns = orderedVisibleTripColumns.filter(columnKey => !dispatcherControlColumnKeySet.has(columnKey));
+    return ['selectTrips', ...nonControlColumns.filter(columnKey => columnKey !== 'selectTrips')];
+  }, [dispatcherControlColumnKeySet, orderedVisibleTripColumns, showCancelledDetailControls]);
   const tripTableColumnCount = activeVisibleTripColumns.length;
   const selectedDriverSelectedTrip = useMemo(() => {
     if (!selectedDriver) return null;
@@ -2966,7 +2970,6 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
               height: 16,
               borderRadius: 4,
               border: '1px solid #6b7280',
-              backgroundColor: '#6b7280',
               accentColor: isDarkMode ? '#163d78' : '#2563eb',
               cursor: mapLocked ? 'not-allowed' : 'pointer',
               opacity: mapLocked ? 0.5 : 1
@@ -4720,7 +4723,6 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
                             height: 16,
                             borderRadius: 4,
                             border: '1px solid #6b7280',
-                            backgroundColor: '#6b7280',
                             accentColor: isDarkMode ? '#163d78' : '#2563eb',
                             cursor: mapLocked ? 'not-allowed' : 'pointer',
                             opacity: mapLocked ? 0.5 : 1

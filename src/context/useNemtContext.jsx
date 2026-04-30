@@ -416,7 +416,6 @@ const mergeImportedTripWithCurrent = (currentTrip, importedTrip, importMetadata 
 };
 
 const DRIVER_RUNTIME_TRIP_FIELDS = [
-  'status',
   'driverTripStatus',
   'acceptedAt',
   'enRouteAt',
@@ -448,6 +447,45 @@ const DRIVER_RUNTIME_TRIP_FIELDS = [
   'driverWorkflow',
   'updatedAt'
 ];
+
+const resetTripDriverExecutionState = trip => ({
+  ...trip,
+  driverTripStatus: '',
+  acceptedAt: null,
+  enRouteAt: null,
+  arrivedAt: null,
+  patientOnboardAt: null,
+  startTripAt: null,
+  arrivedDestinationAt: null,
+  completedAt: null,
+  actualPickup: '',
+  actualDropoff: '',
+  departureLocationSnapshot: null,
+  arrivalLocationSnapshot: null,
+  destinationDepartureLocationSnapshot: null,
+  destinationArrivalLocationSnapshot: null,
+  completionLocationSnapshot: null,
+  cancellationReason: '',
+  cancellationPhotoDataUrl: '',
+  completionPhotoDataUrl: '',
+  reviewRequestToken: '',
+  reviewRequestStatus: '',
+  reviewRequestSentAt: null,
+  completedByDriverId: null,
+  completedByDriverName: null,
+  canceledByDriverId: null,
+  canceledByDriverName: null,
+  cancelledAt: null,
+  canceledAt: null,
+  riderSignatureName: '',
+  riderSignedAt: null,
+  riderSignatureData: null,
+  driverWorkflow: null,
+  localOverrides: {
+    ...(trip?.localOverrides && typeof trip.localOverrides === 'object' ? trip.localOverrides : {}),
+    localCancellation: false
+  }
+});
 
 const mergeRemoteDriverTripRuntime = (localTrips, serverTrips) => {
   const serverTripLookup = new Map();
@@ -1570,10 +1608,14 @@ export const NemtProvider = ({
         const serviceDate = getTripServiceDateKey(trip);
         if (blockedDate && serviceDate === blockedDate) return trip;
         return {
-          ...trip,
+          ...resetTripDriverExecutionState(trip),
           driverId,
+          secondaryDriverId: null,
+          routeId: null,
           updatedAt,
-          status: 'Assigned'
+          status: 'Assigned',
+          cancellationSource: '',
+          safeRideStatus: String(trip?.safeRideStatus || '').trim().toLowerCase().includes('canceled by saferide') ? trip.safeRideStatus : ''
         };
       })
     };
@@ -1633,12 +1675,13 @@ export const NemtProvider = ({
       ...currentState,
       routePlans: updatedRoutePlans,
       trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
-        ...trip,
+        ...resetTripDriverExecutionState(trip),
         driverId: null,
         secondaryDriverId: null,
         routeId: null,
         updatedAt,
-        status: 'Unassigned'
+        status: 'Unassigned',
+        cancellationSource: ''
       } : trip)
     };
   }, {
@@ -1710,12 +1753,13 @@ export const NemtProvider = ({
       ...currentState,
       selectedTripIds: currentState.selectedTripIds.filter(id => !targetTripIds.includes(id)),
       trips: currentState.trips.map(trip => targetTripIds.includes(trip.id) ? {
-        ...trip,
+        ...resetTripDriverExecutionState(trip),
         driverId: null,
         secondaryDriverId: null,
         routeId: null,
         updatedAt,
-        status: 'Unassigned'
+        status: 'Unassigned',
+        cancellationSource: ''
       } : trip)
     };
   }, {
