@@ -592,9 +592,15 @@ const buildDispatchDaySnapshot = (state, serviceDateKey) => {
     return tripDateKey === normalizedDateKey;
   }).map(normalizeTripRecord);
 
+  const dayTripRouteIds = new Set(dayTrips.map(trip => normalizeDriverId(trip?.routeId)).filter(Boolean));
+
   const dayRoutePlans = (Array.isArray(normalizedState?.routePlans) ? normalizedState.routePlans : []).filter(routePlan => {
     const routeDateKey = getRouteServiceDateKey(routePlan, normalizedState.trips);
-    return routeDateKey === normalizedDateKey;
+    if (routeDateKey === normalizedDateKey) return true;
+    const routeId = normalizeDriverId(routePlan?.id);
+    if (routeId && dayTripRouteIds.has(routeId)) return true;
+    const routeTripIds = Array.isArray(routePlan?.tripIds) ? routePlan.tripIds : [];
+    return routeTripIds.some(tripId => dayTrips.some(trip => String(trip?.id || '').trim() === String(tripId || '').trim()));
   }).map(normalizeRoutePlanRecord);
 
   const dayDriverIds = new Set();

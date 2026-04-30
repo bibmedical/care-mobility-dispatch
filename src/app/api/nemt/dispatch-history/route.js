@@ -4,7 +4,7 @@ import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isAdminRole } from '@/helpers/system-users';
 import { createDispatchRestorePoint, readDispatchHistoryArchive, readDispatchHistoryArchiveIndex, readDispatchHistoryDriverIndex, readDispatchRestorePoints, runDispatchHistoryBackfill } from '@/server/dispatch-history-store';
 import { readNemtDispatchState, restoreDispatchDayFromRestorePoint } from '@/server/nemt-dispatch-store';
-import { getLocalDateKey, getTripTimelineDateKey } from '@/helpers/nemt-dispatch-state';
+import { getLocalDateKey, getRouteServiceDateKey, getTripTimelineDateKey } from '@/helpers/nemt-dispatch-state';
 
 const normalizeDateKey = value => {
   const text = String(value || '').trim();
@@ -137,9 +137,14 @@ export async function GET(request) {
           const tripDateKey = getTripTimelineDateKey(trip, allRoutePlans, allTrips);
           return tripDateKey === dateToFilter;
         });
+        const dayTripRouteIds = new Set(dayTrips.map(trip => String(trip?.routeId || '').trim()).filter(Boolean));
         const dayRoutes = allRoutePlans.filter(route => {
-          const svcDate = String(route?.serviceDate || route?.service_date || route?.date || '').trim().slice(0, 10);
-          return svcDate === dateToFilter;
+          const routeDateKey = getRouteServiceDateKey(route, allTrips);
+          if (routeDateKey === dateToFilter) return true;
+          const routeId = String(route?.id || '').trim();
+          if (routeId && dayTripRouteIds.has(routeId)) return true;
+          const routeTripIds = Array.isArray(route?.tripIds) ? route.tripIds : [];
+          return routeTripIds.some(tripId => dayTrips.some(trip => String(trip?.id || '').trim() === String(tripId || '').trim()));
         });
         const tripDriverIds = new Set(dayTrips.flatMap(trip => [String(trip?.driverId || '').trim(), String(trip?.secondaryDriverId || '').trim()].filter(Boolean)));
         const routeDriverIds = new Set(dayRoutes.flatMap(route => [String(route?.driverId || '').trim(), String(route?.secondaryDriverId || '').trim()].filter(Boolean)));
