@@ -12,7 +12,7 @@ const formatClockTime = value => new Date(value).toLocaleTimeString('en-US', {
   minute: '2-digit'
 });
 
-const buildTripActionPatch = (trip, action, timestamp) => {
+const buildTripActionPatch = (trip, action, timestamp, options = {}) => {
   const timeLabel = formatClockTime(timestamp);
 
   if (action === 'en-route') {
@@ -44,6 +44,16 @@ const buildTripActionPatch = (trip, action, timestamp) => {
     };
   }
 
+  if (action === 'reject') {
+    return {
+      status: 'Driver Rejected',
+      driverTripStatus: 'Driver Rejected',
+      driverRejectedAt: timestamp,
+      driverRejectionReason: options?.rejectionReason || '',
+      updatedAt: timestamp
+    };
+  }
+
   return null;
 };
 
@@ -68,13 +78,14 @@ export async function POST(request) {
   const body = await request.json();
   const tripId = String(body?.tripId || '').trim();
   const action = normalizeLookupValue(body?.action);
+  const rejectionReason = String(body?.rejectionReason || '').trim();
 
   if (!tripId || !action) {
     return NextResponse.json({ ok: false, error: 'tripId and action are required.' }, { status: 400 });
   }
 
   const timestamp = Date.now();
-  const patch = buildTripActionPatch({}, action, timestamp);
+  const patch = buildTripActionPatch({}, action, timestamp, { rejectionReason });
   if (!patch) {
     return NextResponse.json({ ok: false, error: 'Unsupported action.' }, { status: 400 });
   }

@@ -159,6 +159,9 @@ export const DriverTripsSection = ({ runtime }: Props) => {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelPhotoDataUrl, setCancelPhotoDataUrl] = useState('');
   const [completionPhotoDataUrl, setCompletionPhotoDataUrl] = useState('');
+  const [showRejectComposer, setShowRejectComposer] = useState(false);
+  const [rejectTargetTrip, setRejectTargetTrip] = useState<typeof openTrips[number] | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   const lateAlertSentRef = useRef<string>('');
 
   const isClosedTrip = (status?: string) => {
@@ -229,6 +232,45 @@ export const DriverTripsSection = ({ runtime }: Props) => {
     setCancelReason('');
     setCancelPhotoDataUrl('');
     setShowCancelComposer(true);
+  };
+
+  const openRejectComposer = (trip: typeof openTrips[number]) => {
+    setRejectTargetTrip(trip);
+    setRejectReason('');
+    setShowRejectComposer(true);
+  };
+
+  const closeRejectComposer = () => {
+    setShowRejectComposer(false);
+    setRejectTargetTrip(null);
+    setRejectReason('');
+  };
+
+  const submitRejectTrip = async () => {
+    if (!rejectReason.trim()) {
+      Alert.alert('Reject Ride', 'Please write a reason before submitting.');
+      return;
+    }
+    if (!rejectTargetTrip?.id) {
+      Alert.alert('Reject Ride', 'No trip selected.');
+      return;
+    }
+    const confirmed = await new Promise<boolean>(resolve => {
+      Alert.alert(
+        'Reject Ride?',
+        `Reason: ${rejectReason.trim()}\n\nThe trip will be sent back to the dispatcher.`,
+        [
+          { text: 'Back', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Reject', style: 'destructive', onPress: () => resolve(true) }
+        ]
+      );
+    });
+    if (!confirmed) return;
+    const ok = await runtime.submitTripAction('reject', {
+      tripId: rejectTargetTrip.id,
+      cancellationReason: rejectReason.trim()
+    });
+    if (ok) closeRejectComposer();
   };
 
   const showScheduledQueue = () => {
@@ -565,12 +607,21 @@ export const DriverTripsSection = ({ runtime }: Props) => {
       return;
     }
     if (!completionPhotoDataUrl) {
-      Alert.alert('Complete trip', 'Take a photo before closing the trip.');
-      return;
+      const confirmed = await new Promise<boolean>(resolve => {
+        Alert.alert(
+          'Complete without photo?',
+          'No completion photo has been attached. Do you want to complete the trip without a photo?',
+          [
+            { text: 'Back', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Complete anyway', onPress: () => resolve(true) }
+          ]
+        );
+      });
+      if (!confirmed) return;
     }
     const ok = await runtime.submitTripAction('complete', {
       tripId: displayedFocusTrip.id,
-      completionPhotoDataUrl
+      completionPhotoDataUrl: completionPhotoDataUrl || undefined
     });
     if (ok) {
       setCompletionPhotoDataUrl('');
@@ -772,8 +823,8 @@ export const DriverTripsSection = ({ runtime }: Props) => {
                 {isWillCallTrip ? <Pressable style={[styles.willCallBadge, isAndroidDevice ? styles.androidQuickActionButton : null, runtime.activeTripAction ? styles.actionDisabled : null, willCallActivatedLabel ? styles.willCallBadgeActive : null]} onPress={() => void activateWillCallTrip(trip)} disabled={runtime.activeTripAction.length > 0}>
                   <Text style={styles.willCallBadgeText}>{runtime.activeTripAction === 'activate-willcall' && runtime.activeTrip?.id === trip.id ? 'Sending...' : willCallActivatedLabel ? `Open Trip ${willCallActivatedLabel}` : 'Activate WillCall'}</Text>
                   </Pressable> : null}
-                <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openCancelComposer(trip, 'quick')}>
-                  <Text style={styles.cancelBadgeText}>Cancel</Text>
+                <Pressable style={[styles.cancelBadge, isAndroidDevice ? styles.androidQuickActionButton : null]} onPress={() => openRejectComposer(trip)}>
+                  <Text style={styles.cancelBadgeText}>Reject Ride</Text>
                 </Pressable>
               </View>
             </View>;
@@ -905,8 +956,8 @@ export const DriverTripsSection = ({ runtime }: Props) => {
           </View>
 
           {showCompleteAction ? <View style={styles.completePhotoCard}>
-              <Text style={styles.completePhotoTitle}>Completion photo required</Text>
-              <Text style={styles.completePhotoBody}>This closes only after attaching a low-quality photo.</Text>
+              <Text style={styles.completePhotoTitle}>Completion photo (optional)</Text>
+              <Text style={styles.completePhotoBody}>Attach a photo to document the drop-off, or complete without one.</Text>
               {completionPhotoDataUrl ? <Image source={{ uri: completionPhotoDataUrl }} style={styles.cancelPhotoPreview} resizeMode="cover" /> : null}
               <Pressable style={[styles.cancelAttachButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void pickCompletionPhoto()} disabled={runtime.activeTripAction.length > 0}>
                 <Text style={styles.cancelAttachButtonText}>{completionPhotoDataUrl ? 'Change Photo' : 'Add Completion Photo'}</Text>
@@ -944,6 +995,25 @@ export const DriverTripsSection = ({ runtime }: Props) => {
               </View>
                 </>;
               })()}
+            </View>
+          </View>
+        </Modal> : null}
+
+      {rejectTargetTrip && showRejectComposer ? <Modal transparent animationType="slide" visible={showRejectComposer} onRequestClose={closeRejectComposer}>
+          <View style={styles.cancelModalOverlay}>
+            <View style={styles.cancelModalCard}>
+              <Text style={styles.cancelTitle}>Reject Ride</Text>
+              <Text style={styles.cancelHelpText}>Write the reason below. The trip will be sent back to the dispatcher so they can reassign or cancel it manually.</Text>
+              <Text style={styles.cancelTripName}>{rejectTargetTrip.rider || 'Patient'}</Text>
+              <TextInput value={rejectReason} onChangeText={setRejectReason} placeholder="Reason for rejecting this ride" placeholderTextColor="#6b7280" multiline autoFocus style={styles.cancelInput} />
+              <View style={styles.cancelFooterRow}>
+                <Pressable style={styles.cancelDismissButton} onPress={closeRejectComposer}>
+                  <Text style={styles.cancelDismissButtonText}>Close</Text>
+                </Pressable>
+                <Pressable style={[styles.cancelSubmitButton, runtime.activeTripAction ? styles.actionDisabled : null]} onPress={() => void submitRejectTrip()} disabled={runtime.activeTripAction.length > 0}>
+                  <Text style={styles.cancelSubmitButtonText}>{runtime.activeTripAction === 'reject' ? 'Sending...' : 'Reject Ride'}</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
         </Modal> : null}

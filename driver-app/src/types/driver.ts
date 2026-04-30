@@ -7,7 +7,7 @@ export type LocationSnapshot = {
   timestamp: number;
 };
 
-export type DriverTripActionName = 'accept' | 'activate-willcall' | 'en-route' | 'arrived' | 'patient-onboard' | 'start-trip' | 'arrived-destination' | 'complete' | 'cancel';
+export type DriverTripActionName = 'accept' | 'activate-willcall' | 'en-route' | 'arrived' | 'patient-onboard' | 'start-trip' | 'arrived-destination' | 'complete' | 'cancel' | 'reject';
 
 export type DriverPendingTripAction = {
   id: string;

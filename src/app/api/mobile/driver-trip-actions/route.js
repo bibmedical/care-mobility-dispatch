@@ -554,6 +554,28 @@ const buildTripActionUpdate = (trip, action, timestamp, options = {}) => {
     };
   }
 
+  if (action === 'reject') {
+    const rejectionReason = String(options.cancellationReason || '').trim();
+    return {
+      patch: {
+        status: 'Driver Rejected',
+        driverTripStatus: 'Driver Rejected',
+        driverRejectedAt: timestamp,
+        driverRejectionReason: rejectionReason,
+        driverWorkflow: {
+          ...nextWorkflow,
+          status: 'reject'
+        },
+        updatedAt: timestamp
+      },
+      workflowEvent,
+      compliance,
+      locationSnapshot,
+      riderSignatureName,
+      timeLabel
+    };
+  }
+
   return null;
 };
 
@@ -603,6 +625,11 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Cancellation reason is required.' }, { status: 400 });
   }
 
+  // Reject requires a reason too
+  if (action === 'reject' && !cancellationReason) {
+    return jsonWithMobileCors(request, { ok: false, error: 'Rejection reason is required.' }, { status: 400 });
+  }
+
   const requestedEventTimestamp = Number(body?.eventTimestamp);
   let timestamp = Number.isFinite(requestedEventTimestamp) && requestedEventTimestamp > 0
     ? requestedEventTimestamp
@@ -635,7 +662,7 @@ export async function POST(request) {
     return jsonWithMobileCors(request, { ok: false, error: 'Unsupported action.' }, { status: 400 });
   }
   const patch = actionUpdate.patch;
-  const shouldLoadDriverRecord = ['complete', 'cancel', 'activate-willcall'].includes(action);
+  const shouldLoadDriverRecord = ['complete', 'cancel', 'reject', 'activate-willcall'].includes(action);
   const actionDriver = shouldLoadDriverRecord
     ? (Array.isArray(adminPayload?.dispatchDrivers) ? adminPayload.dispatchDrivers : []).find(item => String(item?.id || '').trim() === driverId) || null
     : null;
@@ -658,6 +685,11 @@ export async function POST(request) {
   if (action === 'cancel') {
     patch.canceledByDriverId = driverId;
     patch.canceledByDriverName = String(actionDriver?.name || currentTrip?.driverName || '').trim() || driverId;
+  }
+
+  if (action === 'reject') {
+    patch.rejectedByDriverId = driverId;
+    patch.rejectedByDriverName = String(actionDriver?.name || currentTrip?.driverName || '').trim() || driverId;
   }
 
   // Re-read latest state immediately before writing to avoid overwriting
@@ -808,7 +840,7 @@ export async function POST(request) {
     }
   }
 
-  if (['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination', 'complete', 'cancel'].includes(action)) {
+  if (['en-route', 'arrived', 'patient-onboard', 'start-trip', 'arrived-destination', 'complete', 'cancel', 'reject'].includes(action)) {
     await resolveSystemMessageById(buildAutoNoDepartureAlertId(driverId, tripId));
     await resolveDriverDisciplineEventById(buildAutoNoDepartureAlertId(driverId, tripId));
     const activeNoDepartureAlert = await getActiveMessageForDriver(driverId, AUTO_NO_DEPARTURE_ALERT_TYPE);
@@ -818,7 +850,7 @@ export async function POST(request) {
     }
   }
 
-  if (['complete', 'cancel'].includes(action)) {
+  if (['complete', 'cancel', 'reject'].includes(action)) {
     await resolveActiveDriverTripAlerts(driverId, tripId);
   }
 

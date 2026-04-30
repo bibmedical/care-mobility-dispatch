@@ -16,6 +16,8 @@ const SESSION_RESTORE_TIMEOUT_MS = 2500;
 const NETWORK_TIMEOUT_MS = 45000;
 const isLocalPasswordlessDriverLoginEnabled = __DEV__;
 const DRIVER_RENDER_API_BASE_URL = 'https://care-mobility-dispatch-web-v2.onrender.com';
+const DRIVER_REMOTE_APP_CONFIG_REFRESH_MS = 60000;
+const DRIVER_REMOTE_APP_CONFIG_TIMEOUT_MS = 8000;
 const DRIVER_ALERT_CHANNEL_ID = 'driver-alerts';
 const shouldRegisterRemotePushToken = true;
 const isExpoGoRuntime = Constants.appOwnership === 'expo'
@@ -58,6 +60,42 @@ const buildLoginApiBaseCandidates = () => {
     .filter(Boolean);
 
   return Array.from(new Set(candidates));
+};
+
+const normalizeApiBaseUrl = (value: unknown) => String(value || '').trim().replace(/\/$/, '');
+
+const extractRemoteDriverApiBaseUrl = (payload: any) => {
+  const candidates = [
+    payload?.driverApp?.configuredApiBaseUrl,
+    payload?.driverApp?.apiBaseUrl,
+    payload?.configuredApiBaseUrl,
+    payload?.apiBaseUrl
+  ];
+
+  const matched = candidates.map(normalizeApiBaseUrl).find(candidate => /^https?:\/\//i.test(candidate));
+  return matched || '';
+};
+
+const readRemoteDriverApiBaseUrl = async () => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DRIVER_REMOTE_APP_CONFIG_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${DRIVER_RENDER_API_BASE_URL}/api/mobile/app-config?t=${Date.now()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json'
+      },
+      signal: controller.signal
+    });
+    if (!response.ok) return '';
+    const payload = await parseJsonResponse(response);
+    return extractRemoteDriverApiBaseUrl(payload);
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, fallbackValue: T): Promise<T> => {
@@ -278,6 +316,21 @@ export const useDriverRuntime = () => {
   const requestedBackgroundSettingsRef = useRef(false);
   const processingPendingTripActionsRef = useRef(false);
   const pendingTripActionFlushRequestedRef = useRef(false);
+  const isSyncingRemoteApiConfigRef = useRef(false);
+
+  const syncRemoteDriverApiBaseUrl = async () => {
+    if (isSyncingRemoteApiConfigRef.current) return;
+    isSyncingRemoteApiConfigRef.current = true;
+
+    try {
+      const remoteApiBaseUrl = await readRemoteDriverApiBaseUrl();
+      if (!remoteApiBaseUrl) return;
+      if (remoteApiBaseUrl === DRIVER_APP_CONFIG.apiBaseUrl) return;
+      DRIVER_APP_CONFIG.apiBaseUrl = remoteApiBaseUrl;
+    } finally {
+      isSyncingRemoteApiConfigRef.current = false;
+    }
+  };
 
   const syncLocationProviderState = async (promptToEnable = false) => {
     const servicesEnabled = await Location.hasServicesEnabledAsync();
@@ -380,11 +433,13 @@ export const useDriverRuntime = () => {
         ? 'Completed'
         : action === 'cancel'
           ? 'Cancelled'
-          : action === 'activate-willcall'
-            ? 'WillCall'
-            : action === 'arrived' || action === 'arrived-destination'
-              ? 'Arrived'
-              : 'In Progress'
+          : action === 'reject'
+            ? 'Driver Rejected'
+            : action === 'activate-willcall'
+              ? 'WillCall'
+              : action === 'arrived' || action === 'arrived-destination'
+                ? 'Arrived'
+                : 'In Progress'
     };
 
     if (action === 'accept') {
@@ -436,6 +491,12 @@ export const useDriverRuntime = () => {
       patch.cancellationPhotoDataUrl = String(options.cancellationPhotoDataUrl || '').trim() || undefined;
     }
 
+    if (action === 'reject') {
+      patch.status = 'Driver Rejected';
+      patch.canceledAt = now;
+      patch.cancellationReason = String(options.cancellationReason || '').trim() || undefined;
+    }
+
     patch.driverWorkflow = workflow;
     return patch;
   };
@@ -480,7 +541,8 @@ export const useDriverRuntime = () => {
     if (action === 'arrived-destination') setShiftState('arrived');
     if (action === 'complete') setShiftState('completed');
     if (action === 'cancel') setShiftState('available');
-    if (action === 'complete' || action === 'cancel') setActiveTab('trips');
+    if (action === 'reject') setShiftState('available');
+    if (action === 'complete' || action === 'cancel' || action === 'reject') setActiveTab('trips');
   };
 
   const applyPendingActionsToTrips = (trips: DriverTrip[], queuedActions: DriverPendingTripAction[]) => {
@@ -766,6 +828,33 @@ export const useDriverRuntime = () => {
 
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const syncRemoteConfig = async () => {
+      if (!mounted) return;
+      await syncRemoteDriverApiBaseUrl();
+    };
+
+    void syncRemoteConfig();
+
+    const intervalId = setInterval(() => {
+      void syncRemoteConfig();
+    }, DRIVER_REMOTE_APP_CONFIG_REFRESH_MS);
+
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        void syncRemoteConfig();
+      }
+    });
+
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+      subscription.remove();
     };
   }, []);
 
@@ -1404,6 +1493,7 @@ export const useDriverRuntime = () => {
     setIsSigningIn(true);
 
     try {
+      await syncRemoteDriverApiBaseUrl();
       const deviceId = await readOrCreateDriverDeviceId();
       const loginApiBaseCandidates = buildLoginApiBaseCandidates();
       if (!loginApiBaseCandidates.length) {
