@@ -1,6 +1,6 @@
 import { readFile } from 'fs/promises';
 import { getLocalDateKey, getRouteServiceDateKey, getTripServiceDateKey, normalizeDispatchMessageRecord, normalizeDispatchThreadRecord, normalizePersistentDispatchState, shiftTripDateKey } from '@/helpers/nemt-dispatch-state';
-import { archiveDispatchState, readDispatchHistoryArchive } from '@/server/dispatch-history-store';
+import { archiveDispatchState, createDispatchRestorePoint, readDispatchHistoryArchive, readDispatchRestorePointById } from '@/server/dispatch-history-store';
 import { query, queryOne, withTransaction } from '@/server/db';
 import { runMigrations } from '@/server/db-schema';
 import { writeJsonFileWithSnapshots } from '@/server/storage-backup';
@@ -587,6 +587,28 @@ export const writeNemtDispatchState = async (nextState, options = {}) => {
       [activeState.uiPreferences ?? {}]
     );
 
+    // ── restore points: automatic snapshots every ~4h per active service date ─
+    const restorePointDateKeys = new Set();
+    activeState.trips.forEach(trip => {
+      const dateKey = String(getTripServiceDateKey(trip) || '').trim();
+      if (dateKey) restorePointDateKeys.add(dateKey);
+    });
+    activeState.routePlans.forEach(routePlan => {
+      const dateKey = String(getRouteServiceDateKey(routePlan, activeState.trips) || '').trim();
+      if (dateKey) restorePointDateKeys.add(dateKey);
+    });
+    for (const dateKey of restorePointDateKeys) {
+      await createDispatchRestorePoint({
+        serviceDateKey: dateKey,
+        state: activeState,
+        reason: 'auto-4h',
+        force: false,
+        intervalHours: 4
+      }, {
+        queryExecutor: client
+      });
+    }
+
     return activeState;
   });
 
@@ -681,4 +703,62 @@ export const runDispatchArchiveMaintenance = async () => {
     await writeNemtDispatchState(nextState, { allowPrune: true, allowDestructiveEmptyPrune: true });
   }
   return { state: nextState, archivedDates, archiveSummaries };
+};
+
+export const restoreDispatchDayFromRestorePoint = async ({ restorePointId, actorName = '' } = {}) => {
+  const restorePoint = await readDispatchRestorePointById(restorePointId);
+  if (!restorePoint) {
+    throw new Error('Restore point not found');
+  }
+
+  const currentState = await readNemtDispatchState({ includePastDates: true });
+  const serviceDateKey = String(restorePoint.serviceDateKey || '').trim();
+  const restoreSnapshot = normalizePersistentDispatchState(restorePoint.snapshot || {});
+
+  const keepTrips = (Array.isArray(currentState?.trips) ? currentState.trips : []).filter(trip => String(getTripServiceDateKey(trip) || '').trim() !== serviceDateKey);
+  const keepRoutePlans = (Array.isArray(currentState?.routePlans) ? currentState.routePlans : []).filter(routePlan => String(getRouteServiceDateKey(routePlan, currentState?.trips) || '').trim() !== serviceDateKey);
+
+  const nextAuditLog = [
+    ...((Array.isArray(currentState?.auditLog) ? currentState.auditLog : [])),
+    {
+      id: `restore-point-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      action: 'restore-day-from-point',
+      entityType: 'dispatch',
+      entityId: serviceDateKey,
+      source: 'dispatcher-history',
+      timestamp: new Date().toISOString(),
+      summary: `Restored ${serviceDateKey} from restore point #${restorePoint.id}`,
+      metadata: {
+        restorePointId: restorePoint.id,
+        serviceDateKey,
+        actorName: String(actorName || '').trim()
+      }
+    }
+  ];
+
+  const nextState = normalizePersistentDispatchState({
+    ...currentState,
+    trips: [...keepTrips, ...(Array.isArray(restoreSnapshot?.trips) ? restoreSnapshot.trips : [])],
+    routePlans: [...keepRoutePlans, ...(Array.isArray(restoreSnapshot?.routePlans) ? restoreSnapshot.routePlans : [])],
+    dispatchThreads: Array.isArray(currentState?.dispatchThreads) ? currentState.dispatchThreads : [],
+    dailyDrivers: Array.isArray(currentState?.dailyDrivers) ? currentState.dailyDrivers : [],
+    auditLog: nextAuditLog
+  });
+
+  await writeNemtDispatchState(nextState, {
+    allowTripShrink: true,
+    allowPrune: true,
+    pruneDateKey: serviceDateKey,
+    pruneWindowPastDays: 0,
+    pruneWindowFutureDays: 0,
+    allowDestructiveEmptyPrune: true
+  });
+
+  return {
+    ok: true,
+    restorePointId: restorePoint.id,
+    serviceDateKey,
+    tripCount: Array.isArray(restoreSnapshot?.trips) ? restoreSnapshot.trips.length : 0,
+    routeCount: Array.isArray(restoreSnapshot?.routePlans) ? restoreSnapshot.routePlans.length : 0
+  };
 };

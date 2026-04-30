@@ -227,6 +227,9 @@ const DispatcherHistoryWorkspace = () => {
   const [availableDates, setAvailableDates] = useState([]);
   const [availableDrivers, setAvailableDrivers] = useState([]);
   const [archive, setArchive] = useState(null);
+  const [restorePoints, setRestorePoints] = useState([]);
+  const [restoreBusyId, setRestoreBusyId] = useState(0);
+  const [creatingRestorePoint, setCreatingRestorePoint] = useState(false);
   const [backfillStatus, setBackfillStatus] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [driverSearch, setDriverSearch] = useState('');
@@ -258,6 +261,7 @@ const DispatcherHistoryWorkspace = () => {
       }
       setAvailableDates(Array.isArray(payload?.availableDates) ? payload.availableDates : []);
       setAvailableDrivers(Array.isArray(payload?.availableDrivers) ? payload.availableDrivers : []);
+      setRestorePoints(Array.isArray(payload?.restorePoints) ? payload.restorePoints : []);
       setSelectedDate(String(payload?.selectedDateKey || nextDate || ''));
       const serverDriverId = buildDriverSelectionKey(payload?.selectedDriverId || '');
       const localDriverId = buildDriverSelectionKey(nextDriverId || '');
@@ -269,6 +273,7 @@ const DispatcherHistoryWorkspace = () => {
       setArchive(payload?.archive || null);
     } catch (error) {
       setArchive(null);
+      setRestorePoints([]);
       showNotification({
         message: error?.message || 'Unable to load dispatcher history',
         variant: 'danger'
@@ -330,6 +335,73 @@ const DispatcherHistoryWorkspace = () => {
       });
     } finally {
       setBackfillRunning(false);
+    }
+  };
+
+  const handleCreateRestorePoint = async () => {
+    if (!selectedDate) return;
+    setCreatingRestorePoint(true);
+    try {
+      const response = await fetch('/api/nemt/dispatch-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-restore-point',
+          serviceDateKey: selectedDate
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Unable to create restore point');
+      }
+      setRestorePoints(Array.isArray(payload?.restorePoints) ? payload.restorePoints : []);
+      showNotification({
+        message: `Restore point saved for ${selectedDate}.`,
+        variant: 'success'
+      });
+    } catch (error) {
+      showNotification({
+        message: error?.message || 'Unable to create restore point',
+        variant: 'danger'
+      });
+    } finally {
+      setCreatingRestorePoint(false);
+    }
+  };
+
+  const handleRestoreFromPoint = async restorePoint => {
+    const restorePointId = Number(restorePoint?.id || 0);
+    if (!Number.isFinite(restorePointId) || restorePointId <= 0) return;
+    const confirmed = window.confirm(`Restore full day ${selectedDate} from ${new Date(restorePoint?.createdAt || '').toLocaleString()}? This replaces trips and routes for that day.`);
+    if (!confirmed) return;
+
+    setRestoreBusyId(restorePointId);
+    try {
+      const response = await fetch('/api/nemt/dispatch-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'restore-from-point',
+          restorePointId
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Unable to restore from point');
+      }
+      setRestorePoints(Array.isArray(payload?.restorePoints) ? payload.restorePoints : []);
+      await fetchHistory(payload?.serviceDateKey || selectedDate || '', selectedDriverId);
+      showNotification({
+        message: `Day restored from point #${restorePointId}.`,
+        variant: 'success'
+      });
+    } catch (error) {
+      showNotification({
+        message: error?.message || 'Unable to restore from point',
+        variant: 'danger'
+      });
+    } finally {
+      setRestoreBusyId(0);
     }
   };
 
@@ -730,6 +802,30 @@ const DispatcherHistoryWorkspace = () => {
                     </div>
                     <span className={styles.sidebarItemPill}>{item.isLive ? item.tripCount : item.auditCount}</span>
                   </button>)}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className={styles.sidebarCard}>
+            <CardBody className="p-3">
+              <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                <div>
+                  <div className={styles.sectionTitle}>Restore points</div>
+                  <div className={styles.sectionMeta}>Snapshots cada 4h del día para restaurar rutas y trips.</div>
+                </div>
+                <Badge bg="dark">{restorePoints.length}</Badge>
+              </div>
+              <div className="d-grid mb-3">
+                <Button size="sm" variant="outline-primary" onClick={handleCreateRestorePoint} disabled={!selectedDate || loading || creatingRestorePoint}>{creatingRestorePoint ? 'Saving point...' : 'Save restore point now'}</Button>
+              </div>
+              <div className={styles.sidebarList}>
+                {restorePoints.length > 0 ? restorePoints.map(point => <div key={point.id} className={styles.sidebarItem}>
+                    <div>
+                      <div className={styles.sidebarItemTitle}>{new Date(point.createdAt).toLocaleString()}</div>
+                      <div className={styles.sidebarItemMeta}>{point.routeCount} routes · {point.tripCount} trips · {point.reason || 'manual'}</div>
+                    </div>
+                    <Button size="sm" variant="danger" onClick={() => handleRestoreFromPoint(point)} disabled={restoreBusyId === point.id}>{restoreBusyId === point.id ? 'Restoring...' : 'Restore'}</Button>
+                  </div>) : <div className={styles.emptyState}>No restore points yet for this day.</div>}
               </div>
             </CardBody>
           </Card>

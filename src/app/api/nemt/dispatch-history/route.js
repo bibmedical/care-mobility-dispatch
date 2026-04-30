@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { options } from '@/app/api/auth/[...nextauth]/options';
 import { isAdminRole } from '@/helpers/system-users';
-import { readDispatchHistoryArchive, readDispatchHistoryArchiveIndex, readDispatchHistoryDriverIndex, runDispatchHistoryBackfill } from '@/server/dispatch-history-store';
-import { readNemtDispatchState } from '@/server/nemt-dispatch-store';
+import { createDispatchRestorePoint, readDispatchHistoryArchive, readDispatchHistoryArchiveIndex, readDispatchHistoryDriverIndex, readDispatchRestorePoints, runDispatchHistoryBackfill } from '@/server/dispatch-history-store';
+import { readNemtDispatchState, restoreDispatchDayFromRestorePoint } from '@/server/nemt-dispatch-store';
 import { getLocalDateKey, getTripTimelineDateKey } from '@/helpers/nemt-dispatch-state';
 
 const normalizeDateKey = value => {
@@ -186,13 +186,16 @@ export async function GET(request) {
       selectedDriver = requestedDriverId ? availableDrivers.find(driver => driver.driverId === requestedDriverId) || null : null;
     }
 
+    const restorePoints = selectedDateKey ? await readDispatchRestorePoints(selectedDateKey, 72) : [];
+
     return NextResponse.json({
       ok: true,
       selectedDateKey,
       selectedDriverId: requestedDriverId,
       availableDates: availableDatesWithToday,
       availableDrivers,
-      archive
+      archive,
+      restorePoints
     });
   } catch (error) {
     console.error('[dispatch-history] GET failed:', error);
@@ -202,7 +205,7 @@ export async function GET(request) {
   }
 }
 
-export async function POST() {
+export async function POST(request) {
   const session = await getServerSession(options);
 
   if (!session?.user?.id) {
@@ -213,10 +216,59 @@ export async function POST() {
     return NextResponse.json({ error: 'Only administrators can backfill dispatch history' }, { status: 403 });
   }
 
+  const payload = await request.json().catch(() => ({}));
+  const action = String(payload?.action || 'backfill').trim().toLowerCase();
+
+  if (action === 'create-restore-point') {
+    const serviceDateKey = normalizeDateKey(payload?.serviceDateKey);
+    if (!serviceDateKey) {
+      return NextResponse.json({ error: 'serviceDateKey is required' }, { status: 400 });
+    }
+
+    const currentState = await readNemtDispatchState({ includePastDates: true });
+    const createdPoint = await createDispatchRestorePoint({
+      serviceDateKey,
+      state: currentState,
+      reason: 'manual',
+      force: true
+    });
+
+    if (!createdPoint) {
+      return NextResponse.json({ error: 'No trips/routes found for that day to snapshot' }, { status: 400 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      action,
+      restorePoint: createdPoint,
+      restorePoints: await readDispatchRestorePoints(serviceDateKey, 72)
+    });
+  }
+
+  if (action === 'restore-from-point') {
+    const restorePointId = Number(payload?.restorePointId);
+    if (!Number.isFinite(restorePointId) || restorePointId <= 0) {
+      return NextResponse.json({ error: 'restorePointId is required' }, { status: 400 });
+    }
+
+    const result = await restoreDispatchDayFromRestorePoint({
+      restorePointId,
+      actorName: session?.user?.name || session?.user?.username || session?.user?.email || ''
+    });
+
+    return NextResponse.json({
+      ok: true,
+      action,
+      ...result,
+      restorePoints: await readDispatchRestorePoints(result.serviceDateKey, 72)
+    });
+  }
+
   const result = await runDispatchHistoryBackfill();
 
   return NextResponse.json({
     ok: true,
+    action: 'backfill',
     ...result
   });
 }

@@ -98,6 +98,14 @@ const _runMigrationsOnce = async () => {
       updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_dispatch_daily_archives_archived_at ON dispatch_daily_archives(archived_at DESC);
+    CREATE TABLE IF NOT EXISTS dispatch_restore_points (
+      id            BIGSERIAL PRIMARY KEY,
+      service_date  TEXT NOT NULL,
+      reason        TEXT NOT NULL DEFAULT 'manual',
+      data          JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_dispatch_restore_points_service_date_created_at ON dispatch_restore_points(service_date, created_at DESC);
     CREATE TABLE IF NOT EXISTS system_users_state (
       id                  TEXT PRIMARY KEY DEFAULT 'singleton',
       version             INTEGER NOT NULL DEFAULT 6,

@@ -15,6 +15,7 @@ import { query } from '@/server/db';
 const runQuery = async (queryExecutor, text, params) => (queryExecutor ? queryExecutor.query(text, params) : query(text, params));
 
 let tableReady = false;
+let restorePointsTableReady = false;
 
 const ensureTable = async queryExecutor => {
   if (tableReady) return;
@@ -563,5 +564,174 @@ export const runDispatchHistoryBackfill = async (options = {}) => {
     archiveDates: Array.from(archiveDateSet).sort(compareDateKeys),
     totalArchivedDays: availableDates.length,
     availableDates
+  };
+};
+
+const ensureRestorePointsTable = async queryExecutor => {
+  if (restorePointsTableReady) return;
+  await runQuery(queryExecutor, `
+    CREATE TABLE IF NOT EXISTS dispatch_restore_points (
+      id            BIGSERIAL PRIMARY KEY,
+      service_date  TEXT NOT NULL,
+      reason        TEXT NOT NULL DEFAULT 'manual',
+      data          JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await runQuery(queryExecutor, `CREATE INDEX IF NOT EXISTS idx_dispatch_restore_points_service_date_created_at ON dispatch_restore_points(service_date, created_at DESC)`);
+  restorePointsTableReady = true;
+};
+
+const buildDispatchDaySnapshot = (state, serviceDateKey) => {
+  const normalizedState = normalizePersistentDispatchState(state || {});
+  const normalizedDateKey = String(serviceDateKey || '').trim();
+  if (!normalizedDateKey) return null;
+
+  const dayTrips = (Array.isArray(normalizedState?.trips) ? normalizedState.trips : []).filter(trip => {
+    const tripDateKey = getTripTimelineDateKey(trip, normalizedState.routePlans, normalizedState.trips);
+    return tripDateKey === normalizedDateKey;
+  }).map(normalizeTripRecord);
+
+  const dayRoutePlans = (Array.isArray(normalizedState?.routePlans) ? normalizedState.routePlans : []).filter(routePlan => {
+    const routeDateKey = getRouteServiceDateKey(routePlan, normalizedState.trips);
+    return routeDateKey === normalizedDateKey;
+  }).map(normalizeRoutePlanRecord);
+
+  const dayDriverIds = new Set();
+  dayTrips.forEach(trip => {
+    const primaryDriverId = normalizeDriverId(trip?.driverId);
+    const secondaryDriverId = normalizeDriverId(trip?.secondaryDriverId);
+    if (primaryDriverId) dayDriverIds.add(primaryDriverId);
+    if (secondaryDriverId) dayDriverIds.add(secondaryDriverId);
+  });
+  dayRoutePlans.forEach(routePlan => {
+    const primaryDriverId = normalizeDriverId(routePlan?.driverId);
+    const secondaryDriverId = normalizeDriverId(routePlan?.secondaryDriverId);
+    if (primaryDriverId) dayDriverIds.add(primaryDriverId);
+    if (secondaryDriverId) dayDriverIds.add(secondaryDriverId);
+  });
+
+  const dayThreads = (Array.isArray(normalizedState?.dispatchThreads) ? normalizedState.dispatchThreads : [])
+    .filter(thread => dayDriverIds.has(normalizeDriverId(thread?.driverId)))
+    .map(normalizeDispatchThreadRecord);
+
+  const dayAuditLog = (Array.isArray(normalizedState?.auditLog) ? normalizedState.auditLog : []).filter(entry => {
+    const entryDate = getTimestampDateKey(entry?.timestamp || entry?.occurredAt, normalizedState?.uiPreferences?.timeZone);
+    return entryDate === normalizedDateKey;
+  }).map(normalizeDispatchAuditRecord);
+
+  return normalizePersistentDispatchState({
+    trips: dayTrips,
+    routePlans: dayRoutePlans,
+    dispatchThreads: dayThreads,
+    dailyDrivers: [],
+    auditLog: dayAuditLog,
+    uiPreferences: normalizedState?.uiPreferences || {}
+  });
+};
+
+const shouldCreateAutomaticRestorePoint = async (queryExecutor, serviceDateKey, intervalHours = 4) => {
+  const normalizedDateKey = String(serviceDateKey || '').trim();
+  if (!normalizedDateKey) return false;
+
+  const result = await runQuery(
+    queryExecutor,
+    `SELECT created_at
+     FROM dispatch_restore_points
+     WHERE service_date = $1
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [normalizedDateKey]
+  );
+  const latest = result.rows[0]?.created_at ? new Date(result.rows[0].created_at) : null;
+  if (!latest || Number.isNaN(latest.getTime())) return true;
+  return (Date.now() - latest.getTime()) >= intervalHours * 60 * 60 * 1000;
+};
+
+export const createDispatchRestorePoint = async ({ serviceDateKey, state, reason = 'manual', force = false, intervalHours = 4 } = {}, options = {}) => {
+  const queryExecutor = options?.queryExecutor;
+  await ensureRestorePointsTable(queryExecutor);
+
+  const normalizedDateKey = String(serviceDateKey || '').trim();
+  if (!normalizedDateKey) return null;
+
+  const snapshotState = buildDispatchDaySnapshot(state, normalizedDateKey);
+  if (!snapshotState || ((snapshotState?.trips?.length || 0) === 0 && (snapshotState?.routePlans?.length || 0) === 0)) {
+    return null;
+  }
+
+  const normalizedReason = String(reason || 'manual').trim() || 'manual';
+  if (!force && normalizedReason === 'auto-4h') {
+    const allowCreate = await shouldCreateAutomaticRestorePoint(queryExecutor, normalizedDateKey, intervalHours);
+    if (!allowCreate) return null;
+  }
+
+  const inserted = await runQuery(
+    queryExecutor,
+    `INSERT INTO dispatch_restore_points (service_date, reason, data, created_at)
+     VALUES ($1, $2, $3, NOW())
+     RETURNING id, service_date, reason, created_at`,
+    [normalizedDateKey, normalizedReason, JSON.stringify(snapshotState)]
+  );
+
+  const row = inserted.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id) || 0,
+    serviceDateKey: String(row.service_date || '').trim(),
+    reason: String(row.reason || '').trim(),
+    createdAt: row.created_at,
+    tripCount: snapshotState.trips.length,
+    routeCount: snapshotState.routePlans.length
+  };
+};
+
+export const readDispatchRestorePoints = async (serviceDateKey, limit = 24) => {
+  await ensureRestorePointsTable();
+  const normalizedDateKey = String(serviceDateKey || '').trim();
+  if (!normalizedDateKey) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 24, 1), 200);
+  const result = await query(
+    `SELECT id, service_date, reason, created_at,
+            COALESCE(jsonb_array_length(data->'trips'), 0) AS trip_count,
+            COALESCE(jsonb_array_length(data->'routePlans'), 0) AS route_count
+     FROM dispatch_restore_points
+     WHERE service_date = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [normalizedDateKey, safeLimit]
+  );
+  return result.rows.map(row => ({
+    id: Number(row.id) || 0,
+    serviceDateKey: String(row.service_date || '').trim(),
+    reason: String(row.reason || '').trim(),
+    createdAt: row.created_at,
+    tripCount: Number(row.trip_count) || 0,
+    routeCount: Number(row.route_count) || 0
+  }));
+};
+
+export const readDispatchRestorePointById = async restorePointId => {
+  await ensureRestorePointsTable();
+  const normalizedId = Number(restorePointId);
+  if (!Number.isFinite(normalizedId) || normalizedId <= 0) return null;
+
+  const result = await query(
+    `SELECT id, service_date, reason, data, created_at
+     FROM dispatch_restore_points
+     WHERE id = $1
+     LIMIT 1`,
+    [normalizedId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+
+  const snapshot = normalizePersistentDispatchState(row.data || {});
+  return {
+    id: Number(row.id) || 0,
+    serviceDateKey: String(row.service_date || '').trim(),
+    reason: String(row.reason || '').trim(),
+    createdAt: row.created_at,
+    snapshot
   };
 };
