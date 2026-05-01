@@ -833,18 +833,15 @@ const getTripSortValue = (trip, sortKey, getDriverName) => {
 };
 
 const getTripLegFilterKey = trip => {
-  const legLabel = String(trip?.legLabel || '').trim().toLowerCase();
-  if (legLabel) {
-    if (legLabel.includes('outbound') || legLabel.includes('appointment') || legLabel.includes('appt')) return 'AL';
-    if (legLabel.includes('return') || legLabel.includes('home') || legLabel.includes('house') || legLabel.includes('back')) return 'BL';
-    if (legLabel.includes('3') || legLabel.includes('third') || legLabel.includes('connector') || legLabel.includes('cross')) return 'CL';
-  }
-
   const explicitLeg = String(trip?.leg || trip?.tripLeg || trip?.legCode || '').trim().toUpperCase();
   if (['A', 'AL', '1', 'L1'].includes(explicitLeg)) return 'AL';
   if (['B', 'BL', '2', 'L2'].includes(explicitLeg)) return 'BL';
   if (['C', 'CL', '3', 'L3', 'D', 'DL', '4', 'L4'].includes(explicitLeg)) return 'CL';
+  const legLabel = String(trip?.legLabel || '').trim().toLowerCase();
   if (!legLabel) return 'AL';
+  if (legLabel.includes('outbound') || legLabel.includes('appointment') || legLabel.includes('appt')) return 'AL';
+  if (legLabel.includes('return') || legLabel.includes('home') || legLabel.includes('house') || legLabel.includes('back')) return 'BL';
+  if (legLabel.includes('3') || legLabel.includes('third') || legLabel.includes('connector') || legLabel.includes('cross')) return 'CL';
   return 'CL';
 };
 
