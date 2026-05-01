@@ -38,16 +38,9 @@ npm start
 
 La app Expo no se sube a Render. Esa parte se publica con Expo / EAS.
 
-## Mapbox
+## Map Tiles
 
-La web puede usar Mapbox con estas variables:
-
-```bash
-NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_public_token
-NEXT_PUBLIC_MAPBOX_STYLE_ID=mapbox/streets-v12
-```
-
-Si no existe token, usa OpenStreetMap.
+La web usa OpenStreetMap y tiles locales opcionales.
 
 ## Render Deploy
 
@@ -84,8 +77,6 @@ El filesystem local queda solo para desarrollo local y compatibilidad legacy tem
 NODE_ENV=production
 NEXTAUTH_URL=https://your-service.onrender.com
 NEXTAUTH_SECRET=generated-in-render
-NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN=your_mapbox_public_token
-NEXT_PUBLIC_MAPBOX_STYLE_ID=mapbox/streets-v12
 SMTP_HOST=your_smtp_host
 SMTP_PORT=587
 SMTP_USER=your_smtp_user
