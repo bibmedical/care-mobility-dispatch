@@ -7016,6 +7016,10 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
                         checked: scannerActionPulse.invert,
                         onToggle: () => {
                           if (selectedVisibleTrips.length === 0) return;
+                          const shouldInvert = typeof window !== 'undefined'
+                            ? window.confirm(`Invert direction for ${selectedVisibleTrips.length} selected visible trip(s)? This swaps pickup/dropoff addresses, ZIPs, and coordinates.`)
+                            : true;
+                          if (!shouldInvert) return;
                           pulseScannerActionControl('invert');
                           handleInvertSelectedLiveScanTrips();
                         },
