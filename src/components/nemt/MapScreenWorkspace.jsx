@@ -2,7 +2,6 @@
 
 import { getMapTileConfigWithFallback, hasLocalMapTilesConfigured, probeLocalMapTilesAvailability } from '@/utils/map-tiles';
 import { useLayoutContext } from '@/context/useLayoutContext';
-import { useSearchParams } from 'next/navigation';
 import { divIcon } from 'leaflet';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Form, Spinner } from 'react-bootstrap';
@@ -229,8 +228,10 @@ const readDetachedMapSelection = source => {
 
 const MapScreenWorkspace = () => {
   const { themeMode } = useLayoutContext();
-  const searchParams = useSearchParams();
-  const detachedMapSource = normalizeDetachedMapSource(searchParams?.get('source'));
+  const detachedMapSource = useMemo(() => {
+    if (typeof window === 'undefined') return 'trip-dashboard';
+    return normalizeDetachedMapSource(new URLSearchParams(window.location.search).get('source'));
+  }, []);
   const isDarkMode = themeMode === 'dark';
   const [originQuery, setOriginQuery] = useState('');
   const [destinationQuery, setDestinationQuery] = useState('');
