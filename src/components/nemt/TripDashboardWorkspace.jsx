@@ -39,7 +39,7 @@ const darkToolbarButtonStyle = {
   backgroundColor: 'transparent'
 };
 
-const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
+const TRIP_DASHBOARD_DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION_TRIP_DASHBOARD__';
 const TRIP_DASHBOARD_LAYOUT_KEY = '__CARE_MOBILITY_TRIP_DASHBOARD_LAYOUT__';
 
 const TRIP_DASHBOARD_MAP_LAYER_OPTIONS = [{
@@ -2460,7 +2460,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   const openDetachedMapScreen = () => {
     if (typeof window === 'undefined') return;
 
-    const popup = window.open('/map-screen', 'care-mobility-map-screen', 'popup=yes,width=1440,height=920,resizable=yes,scrollbars=yes');
+    const popup = window.open('/map-screen?source=trip-dashboard', 'care-mobility-map-screen-trip-dashboard', 'popup=yes,width=1440,height=920,resizable=yes,scrollbars=yes');
 
     if (popup) {
       popup.focus();
@@ -2468,7 +2468,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       return;
     }
 
-    router.push('/map-screen');
+    router.push('/map-screen?source=trip-dashboard');
     setStatusMessage('Popup blocked. Opened the map screen in this tab instead.');
   };
 
@@ -3854,11 +3854,11 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
 
     try {
       if (!hasDetachedMapSelection) {
-        window.localStorage.removeItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+        window.localStorage.removeItem(TRIP_DASHBOARD_DETACHED_MAP_SELECTION_STORAGE_KEY);
         return;
       }
 
-      window.localStorage.setItem(DETACHED_MAP_SELECTION_STORAGE_KEY, JSON.stringify({
+      window.localStorage.setItem(TRIP_DASHBOARD_DETACHED_MAP_SELECTION_STORAGE_KEY, JSON.stringify({
         source: 'trip-dashboard',
         selectedTripIds: mapDetachedTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
         selectedDriverId: selectedDriverId || null,

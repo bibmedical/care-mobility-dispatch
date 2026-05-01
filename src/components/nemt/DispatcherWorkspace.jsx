@@ -39,7 +39,7 @@ const DISPATCHER_ROW2_DEFAULT_BLOCKS = ['stats', 'route-actions', 'actions', 'co
 const DISPATCHER_ROW3_DEFAULT_BLOCKS = ['table-view-mode', 'metric-miles', 'metric-duration'];
 const ALL_DISPATCHER_TOOLBAR_BLOCKS = Array.from(new Set([...DISPATCHER_ROW1_DEFAULT_BLOCKS, ...DISPATCHER_ROW2_DEFAULT_BLOCKS, ...DISPATCHER_ROW3_DEFAULT_BLOCKS]));
 const canonicalizeToolbarBlockId = value => String(value || '').trim().toLowerCase().replace(/[\s_]+/g, '-');
-const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
+const DISPATCHER_DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION_DISPATCHER__';
 
 const DISPATCHER_TOOLBAR_BLOCK_LABELS = {
   'status-filter': 'Status filter',
@@ -1501,9 +1501,9 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
 
   const handleOpenDetachedMap = () => {
     if (typeof window !== 'undefined') {
-      window.open('/map-screen', '_blank', 'noopener,noreferrer');
+      window.open('/map-screen?source=dispatcher', '_blank', 'noopener,noreferrer');
     } else {
-      router.push('/map-screen');
+      router.push('/map-screen?source=dispatcher');
     }
     setStatusMessage('Mapa grande abierto con la seleccion actual.');
   };
@@ -2556,11 +2556,11 @@ const DispatcherWorkspace = ({ mobileMode = false }) => {
     const hasDetachedMapSelection = detachedMapTrips.length > 0 || detachedMapRouteWaypoints.length > 0 || Boolean(selectedDriver?.hasRealLocation);
     try {
       if (!hasDetachedMapSelection) {
-        window.localStorage.removeItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+        window.localStorage.removeItem(DISPATCHER_DETACHED_MAP_SELECTION_STORAGE_KEY);
         return;
       }
 
-      window.localStorage.setItem(DETACHED_MAP_SELECTION_STORAGE_KEY, JSON.stringify({
+      window.localStorage.setItem(DISPATCHER_DETACHED_MAP_SELECTION_STORAGE_KEY, JSON.stringify({
         source: 'dispatcher',
         selectedTripIds: detachedMapTrips.map(trip => String(trip?.id || '').trim()).filter(Boolean),
         selectedDriverId: selectedDriverId || null,

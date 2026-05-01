@@ -2,6 +2,7 @@
 
 import { getMapTileConfigWithFallback, hasLocalMapTilesConfigured, probeLocalMapTilesAvailability } from '@/utils/map-tiles';
 import { useLayoutContext } from '@/context/useLayoutContext';
+import { useSearchParams } from 'next/navigation';
 import { divIcon } from 'leaflet';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Badge, Button, Form, Spinner } from 'react-bootstrap';
@@ -12,7 +13,9 @@ import { ZoomControl } from 'react-leaflet/ZoomControl';
 const DEFAULT_CENTER = [28.5383, -81.3792];
 const DEFAULT_ZOOM = 10;
 const RESULT_ZOOM = 16;
-const DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
+const LEGACY_DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION__';
+const DISPATCHER_DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION_DISPATCHER__';
+const TRIP_DASHBOARD_DETACHED_MAP_SELECTION_STORAGE_KEY = '__CARE_MOBILITY_DETACHED_MAP_SELECTION_TRIP_DASHBOARD__';
 const DETACHED_MAP_SELECTION_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_VEHICLE_ICON_URL = '/assets/gpscars/car-19.svg';
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -163,15 +166,24 @@ const loadRouteGeometry = async coordinatesList => {
   };
 };
 
-const readTripDashboardMapSelection = () => {
+const normalizeDetachedMapSource = value => String(value || '').trim().toLowerCase() === 'dispatcher' ? 'dispatcher' : 'trip-dashboard';
+
+const getDetachedMapSelectionStorageKey = source => normalizeDetachedMapSource(source) === 'dispatcher'
+  ? DISPATCHER_DETACHED_MAP_SELECTION_STORAGE_KEY
+  : TRIP_DASHBOARD_DETACHED_MAP_SELECTION_STORAGE_KEY;
+
+const readDetachedMapSelection = source => {
   if (typeof window === 'undefined') return null;
+  const sourceKey = getDetachedMapSelectionStorageKey(source);
   try {
-    const rawValue = window.localStorage.getItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+    const sourceValue = window.localStorage.getItem(sourceKey);
+    const rawValue = sourceValue || window.localStorage.getItem(LEGACY_DETACHED_MAP_SELECTION_STORAGE_KEY);
     if (!rawValue) return null;
     const parsedValue = JSON.parse(rawValue);
     const expiresAt = Number(parsedValue?.expiresAt);
     if (Number.isFinite(expiresAt) && expiresAt > 0 && Date.now() > expiresAt) {
-      window.localStorage.removeItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+      window.localStorage.removeItem(sourceKey);
+      window.localStorage.removeItem(LEGACY_DETACHED_MAP_SELECTION_STORAGE_KEY);
       return null;
     }
 
@@ -197,7 +209,8 @@ const readTripDashboardMapSelection = () => {
       : [];
 
     if (routeWaypoints.length === 0 && trips.length === 0 && drivers.length === 0) {
-      window.localStorage.removeItem(DETACHED_MAP_SELECTION_STORAGE_KEY);
+      window.localStorage.removeItem(sourceKey);
+      window.localStorage.removeItem(LEGACY_DETACHED_MAP_SELECTION_STORAGE_KEY);
       return null;
     }
 
@@ -216,6 +229,8 @@ const readTripDashboardMapSelection = () => {
 
 const MapScreenWorkspace = () => {
   const { themeMode } = useLayoutContext();
+  const searchParams = useSearchParams();
+  const detachedMapSource = normalizeDetachedMapSource(searchParams?.get('source'));
   const isDarkMode = themeMode === 'dark';
   const [originQuery, setOriginQuery] = useState('');
   const [destinationQuery, setDestinationQuery] = useState('');
@@ -224,7 +239,7 @@ const MapScreenWorkspace = () => {
   const [originResult, setOriginResult] = useState(null);
   const [destinationResult, setDestinationResult] = useState(null);
   const [routeResult, setRouteResult] = useState(null);
-  const [dashboardSelection, setDashboardSelection] = useState(() => readTripDashboardMapSelection());
+  const [dashboardSelection, setDashboardSelection] = useState(() => readDetachedMapSelection(detachedMapSource));
   const [dashboardRouteResult, setDashboardRouteResult] = useState(null);
   const [mapProviderPreference, setMapProviderPreference] = useState('auto');
   const [mapInteractionsLocked, setMapInteractionsLocked] = useState(false);
@@ -283,7 +298,7 @@ const MapScreenWorkspace = () => {
   }, [dashboardRouteGeometry, destinationResult?.coordinates, hasManualMapSearch, originResult?.coordinates, routeResult?.geometry]);
 
   useEffect(() => {
-    const refreshSelection = () => setDashboardSelection(readTripDashboardMapSelection());
+    const refreshSelection = () => setDashboardSelection(readDetachedMapSelection(detachedMapSource));
     refreshSelection();
     window.addEventListener('storage', refreshSelection);
     window.addEventListener('focus', refreshSelection);
@@ -293,7 +308,7 @@ const MapScreenWorkspace = () => {
       window.removeEventListener('focus', refreshSelection);
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [detachedMapSource]);
 
   useEffect(() => {
     if (hasManualMapSearch || !dashboardSelection?.routeWaypoints || dashboardSelection.routeWaypoints.length < 2) {
@@ -371,7 +386,7 @@ const MapScreenWorkspace = () => {
     setDestinationResult(null);
     setRouteResult(null);
     setErrorMessage('');
-    setDashboardSelection(readTripDashboardMapSelection());
+    setDashboardSelection(readDetachedMapSelection(detachedMapSource));
   };
 
   return <div style={shellStyle}>
