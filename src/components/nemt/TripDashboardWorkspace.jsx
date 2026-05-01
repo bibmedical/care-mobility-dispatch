@@ -3807,6 +3807,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     }
     return waypoints;
   }, [mapRelevantDriverPositions, routeStops, selectedDriver, selectedTripMapPoints, showDriverMapLayer]);
+  const mapRouteWaypointPositionsKey = useMemo(() => JSON.stringify(mapRouteWaypointPositions), [mapRouteWaypointPositions]);
   const hasDetachedMapSelection = selectedTripIds.length > 0 || Boolean(selectedRoute) || hasBtRouteDriverSelection;
   const mapDetachedTrips = useMemo(() => {
     if (!hasDetachedMapSelection) return [];
@@ -5519,7 +5520,6 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       return;
     }
 
-    setRouteGeometry([]);
     setRouteMetrics(null);
     setRouteGeometryLoading(true);
 
@@ -5528,8 +5528,8 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
 
     const loadRouteGeometry = async () => {
       try {
-        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}&ts=${Date.now()}`, {
-          cache: 'no-store',
+        const response = await fetch(`/api/maps/route?coordinates=${encodeURIComponent(coordinates)}`, {
+          cache: 'default',
           signal: abortController.signal
         });
         if (!response.ok) throw new Error('Routing service unavailable');
@@ -5555,7 +5555,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     return () => {
       abortController.abort();
     };
-  }, [hasVisibleTripDashboardMap, mapRouteWaypointPositions, showInlineMap, showRouteMapLayer]);
+  }, [hasVisibleTripDashboardMap, mapRouteWaypointPositionsKey, showInlineMap, showRouteMapLayer]);
 
   useEffect(() => {
     if (!dragMode) return;
