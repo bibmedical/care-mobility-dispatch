@@ -32,8 +32,6 @@ export const MAP_PROVIDER_OPTIONS = [{
 
 export const hasLocalMapTilesConfigured = Boolean(localTileUrl);
 
-export const hasMapboxConfigured = false;
-
 let localTileProbePromise = null;
 let localTileProbeResult = null;
 
