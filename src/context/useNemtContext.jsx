@@ -53,7 +53,6 @@ const MAX_AUDIT_LOG_ENTRIES = 500;
 const DISPATCH_MESSAGES_SYNC_ACTIVE_POLL_MS = 2500;
 const DISPATCH_STATE_SYNC_ACTIVE_POLL_MS = 2500;
 const DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS = 5000;
-const TRIP_DASHBOARD_DRIVERS_SYNC_ACTIVE_POLL_MS = 15000;
 const SAFE_RIDE_MISSING_STATUS = 'Missing from latest SafeRide file';
 
 const getTargetTripIdsForAudit = (currentState, tripIds = []) => {
@@ -1239,7 +1238,6 @@ export const NemtProvider = ({
       const path = String(window.location?.pathname || '').toLowerCase();
       if (document.visibilityState !== 'visible') return null;
       if (path.includes('/dispatch')) return DISPATCH_STATE_SYNC_ACTIVE_POLL_MS;
-      if (path.includes('/trip-dashboard')) return DISPATCH_STATE_SYNC_ACTIVE_POLL_MS;
       return null;
     };
 
@@ -1375,7 +1373,6 @@ export const NemtProvider = ({
       const path = String(window.location?.pathname || '').toLowerCase();
       if (document.visibilityState !== 'visible') return null;
       if (path.includes('/dispatch')) return DISPATCH_DRIVERS_SYNC_ACTIVE_POLL_MS;
-      if (path.includes('/trip-dashboard')) return TRIP_DASHBOARD_DRIVERS_SYNC_ACTIVE_POLL_MS;
       return null;
     };
 
