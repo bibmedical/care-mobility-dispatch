@@ -2424,6 +2424,39 @@ export const NemtProvider = ({
     });
   };
 
+  const deleteTripRecords = (tripIds = []) => {
+    const normalizedTripIds = Array.from(new Set((Array.isArray(tripIds) ? tripIds : []).map(tripId => String(tripId || '').trim()).filter(Boolean)));
+    if (normalizedTripIds.length === 0) return;
+
+    normalizedTripIds.forEach(tripId => {
+      recentlyDeletedTripIdsRef.current.set(tripId, Date.now());
+    });
+
+    const targetTripIdSet = new Set(normalizedTripIds);
+    updateState(currentState => ({
+      ...currentState,
+      selectedTripIds: currentState.selectedTripIds.filter(id => !targetTripIdSet.has(String(id || '').trim())),
+      routePlans: currentState.routePlans.map(routePlan => ({
+        ...routePlan,
+        tripIds: routePlan.tripIds.filter(id => !targetTripIdSet.has(String(id || '').trim()))
+      })).filter(routePlan => routePlan.tripIds.length > 0),
+      trips: currentState.trips.filter(trip => !targetTripIdSet.has(String(trip?.id || '').trim()))
+    }), {
+      markDispatchDirty: true,
+      allowTripShrink: true,
+      allowTripShrinkReason: 'manual-admin-delete',
+      buildAuditEntry: () => ({
+        action: 'delete-trips',
+        entityType: 'trip',
+        source: 'confirmation',
+        summary: `Deleted ${normalizedTripIds.length} trip(s)`,
+        metadata: {
+          tripIds: normalizedTripIds
+        }
+      })
+    });
+  };
+
   const setDispatcherVisibleTripColumns = useCallback(columnKeys => {
     const nextPreferences = normalizeNemtUiPreferences({
       ...userUiPreferences,
@@ -2514,6 +2547,7 @@ export const NemtProvider = ({
     updateTripRecord,
     cloneTripRecord,
     deleteTripRecord,
+    deleteTripRecords,
     upsertDispatchThreadMessage,
     markDispatchThreadRead,
     removeDispatchThreadMessageMedia,

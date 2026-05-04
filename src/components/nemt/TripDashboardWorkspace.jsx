@@ -1227,6 +1227,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     updateTripRecord,
     cloneTripRecord,
     deleteTripRecord,
+    deleteTripRecords,
     uiPreferences,
     hasLoadedUserUiPreferences,
     setDispatcherVisibleTripColumns,
@@ -1365,7 +1366,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
   const [panelView, setPanelView] = useState(TRIP_DASHBOARD_PANEL_VIEWS.both);
   const [panelOrder, setPanelOrder] = useState(TRIP_DASHBOARD_PANEL_ORDERS.driversFirst);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
-  const [tripOrderMode, setTripOrderMode] = useState('custom');
+  const [tripOrderMode, setTripOrderMode] = useState('original');
   const [routePrintColumns, setRoutePrintColumns] = useState(DEFAULT_ROUTE_PRINT_COLUMNS);
   const [tripSort, setTripSort] = useState({
     key: 'trip',
@@ -4875,9 +4876,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
     const confirmed = window.confirm(`Delete ${targetTrips.length} selected trip(s)? This will remove them from the dashboard and any route that contains them.`);
     if (!confirmed) return;
 
-    targetTrips.forEach(trip => {
-      deleteTripRecord(trip.id);
-    });
+    deleteTripRecords(targetTrips.map(trip => trip.id));
 
     if (noteModalTripId && targetTripIdSet.has(normalizeTripId(noteModalTripId))) {
       handleCloseTripNote();
@@ -5620,7 +5619,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       setRightPanelCollapsed(dashboardPreferences.rightPanelCollapsed === true);
       setShowConfirmationTools(dashboardPreferences.showConfirmationTools === true);
       setTimeDisplayMode(normalizeTripTimeDisplayMode(dashboardPreferences.timeDisplayMode));
-      setTripOrderMode(isTripDashboardSurface ? 'custom' : dashboardPreferences.tripOrderMode || 'custom');
+      setTripOrderMode(isTripDashboardSurface ? 'custom' : dashboardPreferences.tripOrderMode || 'original');
       if (isTripDashboardSurface) setTripSort({ key: 'trip', direction: 'asc' });
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(dashboardPreferences.columnSplit ?? TRIP_DASHBOARD_DEFAULT_FOCUS_RIGHT_SPLIT);
@@ -5637,7 +5636,7 @@ const TripDashboardWorkspace = ({ surface = 'dispatcher' } = {}) => {
       setRightPanelCollapsed(true);
       setShowConfirmationTools(false);
       setTimeDisplayMode(TRIP_TIME_DISPLAY_MODES.standard);
-      setTripOrderMode('custom');
+      setTripOrderMode('original');
       if (isTripDashboardSurface) setTripSort({ key: 'trip', direction: 'asc' });
       setRoutePrintColumns(normalizeRoutePrintColumns(dashboardPreferences.printColumns));
       setColumnSplit(94);
